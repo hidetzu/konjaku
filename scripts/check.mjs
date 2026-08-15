@@ -495,16 +495,48 @@ for (const f of htmlFiles) {
   };
   const idx = await readFile(join(PUB, "index.html"), "utf8");
   const peel = await readFile(join(PUB, "peel.html"), "utf8");
-  for (const [attr, name] of [["data-privacy-lead", "畳まずに見える1行"],
-                              ["data-privacy-body", "詳しい説明"]]) {
-    const a = grab(idx, attr), b = grab(peel, attr);
-    if (!a) bad(`index.html に${name}（${attr}）が無い（この検査が何も見ていない）`);
-    else if (!b) bad(`peel.html に${name}（${attr}）が無い。/peel も URL に地名と座標を載せる`);
-    else if (attr === "data-privacy-lead" && a !== b)
-      bad(`プライバシーの${name}が2つの画面で違う: / →「${a}」/ /peel →「${b}」`);
-    else if (attr === "data-privacy-body" && !b.includes("URL"))
-      bad(`peel.html の${name}に「URL に載る」が無い（同じことが起きるのに説明が違う）`);
-    else ok(`プライバシーの${name}が2つの画面で揃っている`);
+  // 畳まずに見える1行は、**一字一句そろえる**（短く、両画面で同じ約束をするところ）。
+  {
+    const a = grab(idx, "data-privacy-lead"), b = grab(peel, "data-privacy-lead");
+    if (!a) bad("index.html に畳まずに見える1行（data-privacy-lead）が無い（この検査が何も見ていない）");
+    else if (!b) bad("peel.html に畳まずに見える1行（data-privacy-lead）が無い。/peel も URL に地名と座標を載せる");
+    else if (a !== b) bad(`プライバシーの畳まずに見える1行が2つの画面で違う: / →「${a}」/ /peel →「${b}」`);
+    else ok("プライバシーの畳まずに見える1行が2つの画面で一字一句そろっている");
+  }
+  // ⚠ 詳しい説明は**一字一句そろえない**（index には 🔊 の行があるなど、正当に違う）。
+  //   ⚠ **だからといって「片方に URL の字があるか」で済ませない。**
+  //   前の版はそれで「2つの画面で揃っている」と言っていた（2026-08-15 に指摘）。
+  //   **説明が欠けても緑になる検査**だった。**項目ごとに、両方の画面で**見る。
+  {
+    const NEED = [
+      [/URL|アドレス欄/, "調べた場所が URL に載ること"],
+      [/(Cloudflare|配信)[^。]*(届|渡)/, "その URL を開くと配信元へ届くこと"],
+      [/(数えて|計測)[^。]*回数/, "こちらが数えているのは回数だけであること"],
+      [/(地名|座標)[^。]*含めて/, "そこに地名や座標を含めていないこと"],
+      [/端末の中/, "★とメモが端末の中だけに残ること"],
+      [/提供元に[はも、]?[^。]*座標が渡/, "提供元に表示に必要な座標が渡ること"],
+    ];
+    for (const [f, src] of [["index.html", idx], ["peel.html", peel]]) {
+      const body = grab(src, "data-privacy-body");
+      if (!body) { bad(`${f} に詳しい説明（data-privacy-body）が無い。/peel も URL に地名と座標を載せる`); continue; }
+      const missing = NEED.filter(([re]) => !re.test(body)).map(([, n]) => n);
+      missing.length
+        ? bad(`${f} のプライバシーの説明に書かれていないことがある: ${missing.join("、")}`)
+        : ok(`${f} のプライバシーの説明に ${NEED.length} 点すべてある`);
+    }
+  }
+  // ⚠ **保持期間を書かせない。確認していない。**
+  //   一度「アクセスの記録は事業者側で一定期間だけ保持されます」と書いたが、
+  //   プラン・Logpush / Logpull・Workers Logs の設定を**見ていない**（2026-08-15 に指摘）。
+  //   ⚠ **静的アセットは通常 Worker を経由しない**ので、Workers Logs（Worker 呼び出し単位）が
+  //   そもそも当てはまらない可能性がある。掟「確認できないことを『検査済み』と呼ばない」。
+  //   ⚠ **「届く」までは実測で言える**ので、そこで止める。確認できたらこの検査を外す。
+  for (const [f, src] of [["index.html", idx], ["peel.html", peel]]) {
+    const body = grab(src, "data-privacy-body") ?? "";
+    /保持|保存期間|日間|ログに残/.test(body)
+      ? bad(`${f} に、確認していない保持期間の話が書かれている`
+          + `（プラン・Logpush・Workers Logs を見ていない。「届く」までに留める）`)
+      : ok(`${f} は、確認していない保持期間を書いていない`);
   }
   // ⚠ **主語のない「サーバーには送りません」を、どちらの画面にも書かせない。**
   //   事実でない（調べた場所は URL に載り、開けば配信元へ届く）。
