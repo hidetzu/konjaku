@@ -359,6 +359,36 @@
       <a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" rel="noopener">国土地理院</a>
       ・<a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>（ODbL）
       　<span style="color:#3d4650">|</span>　作 <a href="https://github.com/hidetzu" target="_blank" rel="noopener">hidetzu</a>
+      <!-- ⚠ この画面にはプライバシーの説明が1つも無かった（2026-08-15 に判明）。
+           /peel も判定すると URL に ?q=<地名>&ll=<座標> を載せる（peel3d.js の replaceState）ので、
+           **トップと同じことが起きる**。同じ約束をする画面で、説明が片方だけ無いのはおかしい。
+           ⚠ 文言は index.html と同じものを置き、食い違わないことを npm run check が見る。 -->
+      <div data-privacy-lead style="margin-top:6px;font-size:var(--fs-note);line-height:1.7">
+        <b>利用状況の計測には、検索した地名や座標を送りません。</b>Cookie も使いません。
+      </div>
+      <details style="margin-top:6px">
+        <summary style="cursor:pointer;font-size:var(--fs-note);color:var(--ink-dim)">プライバシーについて</summary>
+        <div data-privacy-body style="margin-top:5px;font-size:var(--fs-note);line-height:1.7">
+          調べた場所は、<b>ブラウザのアドレス欄（URL）に入ります</b>。戻ったり、人に送ったりできるようにするためです。<br>
+          その URL を<b>開いたとき</b>は、アドレスの一部として<b>このサイトを配信している事業者（Cloudflare）に届きます</b>。
+          <!-- ⚠ **保持期間を書かない。** 「一定期間だけ保持されます」と書いていたが、
+               **確認していない**（2026-08-15 に指摘されて削除）。
+               プラン・Logpush / Logpull・Workers Logs の設定を見ていない。
+               ⚠ しかも**静的アセットは通常 Worker を経由しない**ので、
+               Workers Logs（Worker 呼び出し単位）がそもそも当てはまらない可能性がある。
+               掟「確認できないことを『検査済み』と呼ばない」。
+               **「届く」までは実測で言える**ので、そこで止める。 -->
+          <b>こちらが自分で数えているのは、判定・共有などの回数だけ</b>です。
+          そこに<b>地名も座標も含めていません</b>。<b>こちらの記録には</b>、誰がどこを調べたかは1件も残りません。<br>
+          なお、通信そのものには<b>接続元の IP や端末の種類</b>が伴い、これは配信元（Cloudflare）に届きます。
+          <b>こちらはそれを保存も利用もしません</b>（Cookie も識別子も使いません）。<br>
+          計測の受け口にはこの URL が付かないため、<b>こちらが持つログにも場所は残りません</b>。
+          記録を外部へ出す設定（Logpush）も<b>使っていません</b>。<br>
+          ★とメモは<b>この端末の中だけ</b>に残ります（こちらには届きません）。<br>
+          地図と判定に使うデータは、上の提供元から<b>その場で</b>取得します。
+          <b>提供元には、表示に必要な範囲の座標が渡ります</b>（こちらを経由しません）。
+        </div>
+      </details>
       <details style="margin-top:6px">
         <summary style="cursor:pointer;font-size:var(--fs-note);color:var(--ink-dim)">データについて</summary>
         <div style="margin-top:5px;font-size:var(--fs-note);line-height:1.7">
