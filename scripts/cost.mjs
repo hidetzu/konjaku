@@ -26,6 +26,27 @@ await new Promise((r) => setTimeout(r, 1200));
 
 const browser = await chromium.launch();
 
+// 棚に入れる地理院タイルのホスト。
+// ⚠ **持たない。public/sw.js から読む。**
+//   ここは「どのホストのタイルを棚に入れるか」という、sw.js と同じ問いに答える場所。
+//   写すと、片方だけ足したときに**棚に入れるものと数えるものがずれる**
+//   （実際にずれていた。判定文の根拠を sw.js は棚に入れず、ここは「その他外部」に
+//   数えていた）。掟「同じ問いに答える実装を2つ持たない」。
+//   ⚠ SW はブラウザで動くので import で共有できない。**こちらは Node なので読める。**
+//   だから写すのではなく、**唯一の定義（sw.js）を読む**。
+const TILE_HOSTS = await (async () => {
+  const { readFile } = await import("node:fs/promises");
+  const src = await readFile(new URL("../public/sw.js", import.meta.url), "utf8");
+  // ⚠ コメントを落としてから読む。落とさないと、この決まりを説明したコメントを拾う。
+  //   ⚠ `//` を素朴に落とすと URL を食う（`https://…`）。直前が `:` なら落とさない。
+  const bare = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/[^\n]*/g, "$1");
+  const m = /TILE_HOSTS\s*=\s*\[([^\]]*)\]/.exec(bare);
+  if (!m) throw new Error("public/sw.js から TILE_HOSTS を読めない（棚の対象が分からないまま数えない）");
+  const hosts = [...m[1].matchAll(/["']([^"']+)["']/g)].map((x) => x[1]);
+  if (!hosts.length) throw new Error("public/sw.js の TILE_HOSTS が空（棚の対象が分からないまま数えない）");
+  return hosts;
+})();
+
 // どこへ出たかを、請求の単位で分ける
 function bucket(u) {
   if (u.startsWith(BASE)) {
@@ -35,7 +56,9 @@ function bucket(u) {
     if (p === "/t") return "worker(/t)";
     return "静的(無料)";
   }
-  if (/cyberjapandata\.gsi\.go\.jp/.test(u)) return "国土地理院";
+  // ⚠ 地形分類（maps.gsi.go.jp）を数えていなかったため、**判定文の根拠にかけている負荷が
+  //   「その他外部」に紛れていた**。相手先への負荷の話なので、行き先で数える。
+  if (TILE_HOSTS.some((h) => u.includes(h))) return "国土地理院";
   if (/query\.wikidata\.org/.test(u)) return "Wikidata";
   if (/overpass/i.test(u)) return "Overpass";
   if (/nominatim|openstreetmap/i.test(u)) return "住所検索";
@@ -85,8 +108,9 @@ for (const trip of TRIPS) {
   const seen = [], bytes = new Map(), gsi = new Map();
   ctx.on("request", (r) => {
     seen.push(r.url());
-    // /xyz/<層>/z/x/y.ext のかたちなので、層の名前で割る
-    const m = /cyberjapandata\.gsi\.go\.jp\/xyz\/([^/]+)\//.exec(r.url());
+    // /xyz/<層>/z/x/y.ext のかたちなので、層の名前で割る。
+    // ⚠ ここも両ホストを見る。でないと「国土地理院」の合計と、層ごとの内訳が食い違う。
+    const m = new RegExp(`(?:${TILE_HOSTS.join("|").replace(/\./g, "\\.")})/xyz/([^/]+)/`).exec(r.url());
     if (m) gsi.set(m[1], (gsi.get(m[1]) ?? 0) + 1);
   });
   ctx.on("response", async (r) => {
