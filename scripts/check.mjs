@@ -522,13 +522,63 @@ for (const f of htmlFiles) {
       fns.cacheable("/vendor/maplibre-gl.js")
         ? ok("版のキャッシュに入るものはある（/vendor/ が通る）")
         : bad("許可リストが何も通していない（この検査が何も見ていない）");
-      // ⚠ /data/ は1つも入らない（SHELL に入っているものは別の経路）
-      const dataIn = ["/data/bl/index.json", "/data/ev/index.json", "/data/areas.json",
-                      "/data/landform.json", "/data/toyosu-water.geojson"].filter((u) => fns.cacheable(u));
-      dataIn.length
-        ? bad(`/data/ が版のキャッシュに入る: ${dataIn.join("、")}（取り込みで書き換わる。持たない）`)
-        : ok("/data/ は1つも版のキャッシュに入らない");
+      // ⚠ **「/data/ は1つも版のキャッシュに入らない」と言ってはいけない。**
+      //   /data/landform.json は SHELL に入っており、**同じ VERSION のキャッシュに入る**
+      //   （install の addAll）。2026-08-16 に指摘されるまで、
+      //   **検査が事実でないことを「確認済み」として表示していた**。
+      //   ⚠ **動的に足す分（0 件）と、SHELL の例外（明示した分）を分けて言う。**
+      const probes = ["/data/bl/index.json", "/data/ev/index.json", "/data/areas.json",
+                      "/data/landform.json", "/data/toyosu-water.geojson"];
+      const dyn = probes.filter((u) => fns.cacheable(u));
+      dyn.length
+        ? bad(`/data/ が版のキャッシュに**動的に**入る: ${dyn.join("、")}（取り込みで書き換わる。持たない）`)
+        : ok("/data/ は、網からは1つも版のキャッシュに入らない（動的追加 0 件）");
+      // SHELL 経由で入る /data/ は、**数えて名前で出す**。黙って 0 と言わない。
+      const shellData = (fns.SHELL ?? []).filter((u) => u.startsWith("/data/"));
+      // ⚠ SHELL に入れてよいのは「取り込みで書き換わらないもの」だけ。
+      //   _headers が must-revalidate と言っているものが SHELL にあれば、それは矛盾。
+      const shellStrict = shellData.filter((u) => strict.some((pat) =>
+        pat.endsWith("*") ? u.startsWith(pat.slice(0, -1)) : u === pat));
+      shellStrict.length
+        ? bad(`SHELL に、毎回確認させるはずの /data/ がある: ${shellStrict.join("、")}`
+            + `（版と一緒に配られるので、取り込みで書き換わるものを入れてはいけない）`)
+        : ok(`SHELL 経由で版のキャッシュに入る /data/ は ${shellData.length} 件`
+            + `（${shellData.join("、") || "無し"}。いずれも取り込みで書き換わらないもの）`);
     }
+  }
+}
+
+// ⚠ **`immutable` と名乗るなら、中身が変わったら名前も変わること。**
+//   `_headers` は /vendor/* に `max-age=31536000, immutable` を付けている。
+//   ⚠ **これは「この URL の中身は二度と変わらない」という約束**で、ブラウザは
+//   1 年間、確認すらしない。ところが実ファイル名は maplibre-gl.js / .css で**固定**。
+//   同じ名前のまま中身を差し替えると、**一度来た人は1年間、古い地図エンジンを使い続ける**。
+//   ⚠ SW の許可リストにも入っているので、そちらにも古いものが残る。
+//   ⚠ **名前が変わらない以上、ヘッダの約束は守られていない。** ここで中身を固定して、
+//   更新のときに必ず気づく形にする（気づいたうえで、改名するか immutable をやめるかを決める）。
+{
+  const { createHash } = await import("node:crypto");
+  // 中身の指紋。⚠ 更新したらここも直す。**直さずに済ませられないのが要点。**
+  const PINNED = {
+    "maplibre-gl.js": "45a9b07a9189ce56",
+    "maplibre-gl.css": "ab1e70d59ec40465",
+  };
+  const hdr = await readFile(join(PUB, "_headers"), "utf8");
+  const immutable = /\/vendor\/\*[\s\S]{0,80}?immutable/.test(hdr);
+  if (!immutable) ok("/vendor/ は immutable を名乗っていない（改名の縛りは無い）");
+  else {
+    const off = [];
+    for (const [f, want] of Object.entries(PINNED)) {
+      const buf = await readFile(join(PUB, "vendor", f)).catch(() => null);
+      if (!buf) { off.push(`${f}（無い）`); continue; }
+      const got = createHash("sha256").update(buf).digest("hex").slice(0, 16);
+      if (got !== want) off.push(`${f}（${want} → ${got}）`);
+    }
+    off.length
+      ? bad(`/vendor/ は immutable を名乗っているのに、名前を変えずに中身が変わった: ${off.join("、")}`
+          + `（一度来た人は1年間、古いものを使い続ける。改名するか immutable をやめるか決めること。`
+          + `決めたら scripts/check.mjs の PINNED を直す）`)
+      : ok(`/vendor/ は immutable の約束を守っている（${Object.keys(PINNED).length} 本の中身が変わっていない）`);
   }
 }
 

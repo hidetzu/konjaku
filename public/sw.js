@@ -205,15 +205,18 @@ self.addEventListener("fetch", (e) => {
         }
         return res;
       })
-      // ⚠ **JSON を頼んだ相手に index.html を返さない。**
-      //   ここは `?? caches.match("/")` で、**取れなかったのに「取れた」に化けていた**。
-      //   /data/ の読み手はいずれも `r.ok` を見て null に落とすので、
-      //   504 を返せば「取れなかった」として正しく扱われる（掟: 取れなかったを「無い」と言わない）。
+      // ⚠ **HTML を返してよいのは、ページの移動だけ。**
+      //   ここは `?? caches.match("/")` で、**何を頼まれても index.html を返していた**。
+      //   JSON を頼んだ相手に 200 text/html が返る＝**「取れなかった」が「取れた」に化ける**
+      //   （掟: 取れなかったを「無い」と言わない）。
+      //   ⚠ /data/ だけ除く形にしたが、それでは足りない（2026-08-16 の指摘）。
+      //     **将来 /version.json を置いたら黙って壊れる。** 未キャッシュの JS / CSS も同じ。
+      //   ⚠ 移動（navigate）かどうかで分ける。移動ならオフライン用の画面を出す意味がある。
+      //     それ以外は「取れなかった」を返す。読み手はいずれも `r.ok` を見て null に落とす。
       .catch(() => caches.match(e.request).then((r) => {
         if (r) return r;
-        if (/^\/data\//.test(url.pathname))
-          return new Response(null, { status: 504, statusText: "offline" });
-        return caches.match("/");
+        if (e.request.mode === "navigate") return caches.match("/");
+        return new Response(null, { status: 504, statusText: "offline" });
       }))
   );
 });
