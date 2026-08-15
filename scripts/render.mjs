@@ -2772,6 +2772,39 @@ const CASES = [
       return `${top.rows.length} 件が一致（選択 ${JSON.stringify(top.picked)}）`;
     },
   },
+  // ⚠ **別の語へ変えたときも、古い候補が出ない。**
+  //   「入力を消したとき」だけ切っていては足りない（2026-08-16 の指摘・実測で再現）。
+  //   「渋谷」の応答待ちのまま「新宿」へ変えると、デバウンスの 320〜350ms のあいだに
+  //   古い応答が届き、**入力欄は「新宿」なのに「東京都渋谷区」が並ぶ**。
+  //   ⚠ その候補を押せば**違う場所へ飛ぶ**。数え方の問題ではなく、行き先の問題。
+  //   ⚠ 新しい検索が始まるのはデバウンスのあとなので、run() の中で世代を進めるだけでは
+  //   間に合わない。**入力の瞬間に cancel() する**必要がある。
+  ...[["トップ", "/", "#list", false], ["3D", "/peel", "#cands", true]].map(([who, path, listSel, needOpen]) => ({
+    name: `${who}: 別の語へ変えたら、前の語の候補が出ない`, path,
+    // ⚠ 「渋谷」だけ遅らせる。実際の地理院には出ない
+    setup: (page) => page.route("**/AddressSearch*", async (r) => {
+      const q = decodeURIComponent(new URL(r.request().url()).searchParams.get("q") ?? "");
+      if (q === "渋谷") await new Promise((x) => setTimeout(x, 2000));
+      await r.fulfill({ status: 200, contentType: "application/json",
+        body: JSON.stringify([{ properties: { title: q === "渋谷" ? "東京都渋谷区" : "東京都新宿区" },
+                                geometry: { coordinates: [139.7, 35.66] } }]) });
+    }),
+    async check(page) {
+      if (needOpen) { await page.click("#findLabel"); await page.waitForTimeout(300); }
+      await page.fill("#q", "渋谷");
+      await page.waitForTimeout(2150);         // 古い応答が届く直前
+      await page.fill("#q", "新宿");
+      await page.waitForTimeout(250);          // ⚠ 新しい検索はまだ始まっていない
+      const mid = (await page.locator(listSel).innerText().catch(() => "")).trim();
+      must(await page.inputValue("#q") === "新宿", "入力欄が「新宿」になっていない");
+      must(!/渋谷/.test(mid),
+        `別の語へ変えたのに、前の語の候補が出ている: ${JSON.stringify(mid.slice(0, 40))}`
+        + `（押すと違う場所へ飛ぶ）`);
+      // 新しい語の候補は、そのあとちゃんと出る
+      await page.waitForFunction(() => /新宿/.test(document.body.innerText), null, { timeout: 20000 });
+      return `切替中は ${JSON.stringify(mid.slice(0, 14))} ／ そのあと新宿が出る`;
+    },
+  })),
   // ⚠ **入力を消したのに、遅れて返った候補が復活しない。**
   //   2026-08-15 に**両画面で再現させた**: 検索中に入力を空にすると、
   //   空の入力欄のまま候補が並んだ。原因は「2文字未満で return するとき、

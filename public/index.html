@@ -2255,9 +2255,14 @@ function onInput(){
   // コマンド絞り込みは手元だけの処理なので、変換中でも即座に効かせてよい
   if(mode==="action"){ items=buildActions(qEl.value,current); sel=0; renderList(); return; }
   clearTimeout(timer);
-  // ⚠ **世代を進める。** これが無いと、検索中に入力を消しても遅れて返った候補が
-  //   空の入力欄へ復活する（2026-08-15 に実際に再現させた）。
-  if(v.length<2){ search.cancel(); items=[]; sel=-1; listEl.innerHTML=""; renderKbd(); return; }
+  // ⚠ **打つたびに世代を進める。** 「2文字未満のときだけ」では足りない。
+  //   実測（2026-08-16）: 「渋谷」の応答待ちのまま「新宿」へ変えると、
+  //   デバウンスの 320ms のあいだに古い応答が届き、**入力欄は「新宿」なのに
+  //   「東京都渋谷区」が並ぶ**。その候補を押せば違う場所へ飛ぶ。
+  //   ⚠ 新しい検索が始まるのは 320ms 後なので、run() の中で世代を進めるだけでは間に合わない。
+  //   **入力の瞬間に切る。**
+  search.cancel();
+  if(v.length<2){ items=[]; sel=-1; listEl.innerHTML=""; renderKbd(); return; }
   // 住所検索は外部APIで 10req/10秒 の制限があるため、変換確定まで待つ
   if(composing) return;
   timer=setTimeout(()=>searchPlace(v),320);

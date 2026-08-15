@@ -779,9 +779,14 @@ async function search(q){
 qEl.addEventListener("input",()=>{
   clearTimeout(timer);
   const v=qEl.value.trim();
-  // ⚠ **世代を進める。** これが無いと、検索中に入力を消しても遅れて返った候補が
-  //   空の入力欄へ復活する（2026-08-15 に実際に再現させた）。
-  if(v.length<2){ search$.cancel(); candsEl.innerHTML=""; return; }
+  // ⚠ **打つたびに世代を進める。** 「2文字未満のときだけ」では足りない。
+  //   実測（2026-08-16）: 「渋谷」の応答待ちのまま「新宿」へ変えると、
+  //   デバウンスの 350ms のあいだに古い応答が届き、**入力欄は「新宿」なのに
+  //   「東京都渋谷区」が並ぶ**。その候補を押せば違う場所へ飛ぶ。
+  //   ⚠ 新しい検索が始まるのは 350ms 後なので、run() の中で世代を進めるだけでは間に合わない。
+  //   **入力の瞬間に切る。**
+  search$.cancel();
+  if(v.length<2){ candsEl.innerHTML=""; return; }
   timer=setTimeout(()=>search(v),350);
 });
 
