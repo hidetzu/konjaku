@@ -46,13 +46,13 @@ jobs:
     name: 静的検査・外部リンク・検索の並び
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           # ⚠ 外部リンク（足した分）が、比べる相手（base）を要る
           fetch-depth: 0
           # ⚠ 認証情報を .git/config に残さない。fork の PR で走るコードに拾わせない
           persist-credentials: false
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4.4.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
         with:
           node-version: "22"
       # 依存ゼロだが、npm ci が通ること自体がデプロイの前提条件
@@ -122,10 +122,10 @@ jobs:
       github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4.4.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
         with:
           node-version: "22"
       # デプロイ側の npm ci を重くしたくないので、CIでだけ入れる。
@@ -138,7 +138,7 @@ jobs:
       - run: npm i --no-save playwright@${{ env.PLAYWRIGHT_VERSION }}
       # ⚠ ブラウザの用意に 36 秒かかっていた（実測 2026-08-15）。ジョブ全体 284 秒のうち
       #   これが 13%。中身は変わらないので、版が同じなら取り直す必要がない。
-      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830  # v4.3.0
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ env.PLAYWRIGHT_VERSION }}
@@ -156,7 +156,7 @@ jobs:
       #   以前は 75 件すべて撮っていたのに、`.artifacts/` が隠しディレクトリで
       #   upload-artifact に除外され、**1枚も保存されていなかった**。
       #   拾えなかったことが分かるように、if-no-files-found は ignore にしない。
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         if: failure()
         with:
           name: screenshots
