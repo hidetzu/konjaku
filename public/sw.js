@@ -90,13 +90,19 @@ const TILES = "konjaku-tiles-v1";
 const TILE_MAX = 250;
 const DAY = 24 * 60 * 60 * 1000;
 const AT = "x-konjaku-at";
-// ⚠ **地形分類タイルを拾えていない。**
-//   判定文「この場所は 旧水部 です」の根拠は maps.gsi.go.jp/xyz にあり（verify.js の LFC）、
-//   ここは cyberjapandata しか見ていないので、下の「よそは素通し」に落ちて棚に入らない。
-//   同じ取りこぼしを scripts/cost.mjs も持っている。
-//   ⚠ **まだ直していない。** ここでは実装を変えていない（測るだけの回だった）。
-//   → docs/adr/0027-直していないと分かっていることを、名前で残す.md
-const isTile = (u) => u.host === "cyberjapandata.gsi.go.jp" && u.pathname.startsWith("/xyz/");
+// 棚に入れる地理院タイルのホスト。
+//   cyberjapandata … 空中写真・低湿地・土地条件（画像）
+//   maps           … 地形分類（判定文の根拠。**画像ではなく .geojson**。verify.js の LFC）
+// ⚠ **判定文の根拠だけが棚に入っていなかった。** 「この場所は 旧水部 です」と
+//   言い切っている、その出どころが、他のタイルと同じ扱いになっていなかった。
+// ⚠ この表は scripts/cost.mjs にも同じものがある。SW からは Node の道具と
+//   モジュールを共有できないので、掟が認める「やむを得ず2つ持つときは、機械で
+//   突き合わせる」を採る（npm run check が一致を見る）。**片方だけ足すと落ちる。**
+const TILE_HOSTS = ["cyberjapandata.gsi.go.jp", "maps.gsi.go.jp"];
+const isTile = (u) => TILE_HOSTS.includes(u.host) && u.pathname.startsWith("/xyz/");
+// ⚠ seamlessphoto（現在の写真）だけ短い。更新されるため。
+//   地形分類は 30 日でよい（実測 2026-08-15: last-modified が 2025-03-05 で
+//   1年以上動いていない。`experimental_` という名前だが、実際の更新は稀）。
 const tileTtl = (u) => u.pathname.startsWith("/xyz/seamlessphoto/") ? DAY : 30 * DAY;
 
 async function tile(req, url) {
@@ -144,9 +150,8 @@ self.addEventListener("fetch", (e) => {
   // 地理院タイルは、端末の中に置いて使い回す（同じ絵を何度も取りに行かない）
   if (isTile(url)) { e.respondWith(tile(e.request, url)); return; }
   // それ以外のよそは素通しする。実際に出る先は
-  //   maps.gsi.go.jp（地形分類。⚠ 本当は上の棚に入れたいが、まだ入れていない。
-//                    → docs/adr/0027-直していないと分かっていることを、名前で残す.md）
-  //   msearch.gsi.go.jp（住所検索）／ query.wikidata.org（事物）
+  //   msearch.gsi.go.jp（住所検索。⚠ 問い合わせで、同じ答えが返る保証が無いので棚に入れない）
+  //   query.wikidata.org（事物。同上）
   //   overpass-api.de・overpass.kumi.systems（建物。POST なので上の GET 判定で既に抜けている）
   // ⚠ Google へは fetch していない（リンクを開くだけ）。以前ここに書いてあったが誤り。
   if (url.origin !== location.origin) return;

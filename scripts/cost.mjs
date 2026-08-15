@@ -26,6 +26,12 @@ await new Promise((r) => setTimeout(r, 1200));
 
 const browser = await chromium.launch();
 
+// 棚に入れる地理院タイルのホスト。
+// ⚠ **この表は public/sw.js にも同じものがある。** SW からは Node の道具と
+//   モジュールを共有できないので、掟が認める「やむを得ず2つ持つときは、機械で
+//   突き合わせる」を採る（npm run check が一致を見る）。**片方だけ足すと落ちる。**
+const TILE_HOSTS = ["cyberjapandata.gsi.go.jp", "maps.gsi.go.jp"];
+
 // どこへ出たかを、請求の単位で分ける
 function bucket(u) {
   if (u.startsWith(BASE)) {
@@ -35,7 +41,9 @@ function bucket(u) {
     if (p === "/t") return "worker(/t)";
     return "静的(無料)";
   }
-  if (/cyberjapandata\.gsi\.go\.jp/.test(u)) return "国土地理院";
+  // ⚠ 地形分類（maps.gsi.go.jp）を数えていなかったため、**判定文の根拠にかけている負荷が
+  //   「その他外部」に紛れていた**。相手先への負荷の話なので、行き先で数える。
+  if (TILE_HOSTS.some((h) => u.includes(h))) return "国土地理院";
   if (/query\.wikidata\.org/.test(u)) return "Wikidata";
   if (/overpass/i.test(u)) return "Overpass";
   if (/nominatim|openstreetmap/i.test(u)) return "住所検索";
@@ -85,8 +93,9 @@ for (const trip of TRIPS) {
   const seen = [], bytes = new Map(), gsi = new Map();
   ctx.on("request", (r) => {
     seen.push(r.url());
-    // /xyz/<層>/z/x/y.ext のかたちなので、層の名前で割る
-    const m = /cyberjapandata\.gsi\.go\.jp\/xyz\/([^/]+)\//.exec(r.url());
+    // /xyz/<層>/z/x/y.ext のかたちなので、層の名前で割る。
+    // ⚠ ここも両ホストを見る。でないと「国土地理院」の合計と、層ごとの内訳が食い違う。
+    const m = new RegExp(`(?:${TILE_HOSTS.join("|").replace(/\./g, "\\.")})/xyz/([^/]+)/`).exec(r.url());
     if (m) gsi.set(m[1], (gsi.get(m[1]) ?? 0) + 1);
   });
   ctx.on("response", async (r) => {
