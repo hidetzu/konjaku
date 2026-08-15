@@ -11,6 +11,11 @@ window.KonjakuShare = (function (w) {
   "use strict";
 
   const W = 1200, H = 630;                 // OGP と同じ比率
+  // 名乗り。⚠ **index.html の <h1> と同じ文字にする。**
+  //   共有カードは SNS で画像だけが独立して流れるので、ここが看板の代わりになる。
+  //   ⚠ 割れていたことがある（カードだけ旧い「その土地を知る」のまま外へ出ていた）。
+  //   食い違いを止める検査が1つも無かったのが原因なので、npm run check が突き合わせる。
+  const BANNER = "この土地は、昔なんだったのか？";
   const BG = "#0b0e13", FG = "#eaeef3", DIM = "#8b96a3";
   const WATER = "#5ba3e0", LAND = "#d8cfa8", EST = "#e6c47a";
   const WATERY = new Set(["水部", "旧水部", "河川敷･浜", "湖", "干拓地", "落堀"]);
@@ -113,7 +118,13 @@ window.KonjakuShare = (function (w) {
 
     g.fillStyle = DIM;
     g.font = "500 24px system-ui, sans-serif";
-    g.fillText("今昔 — その土地を知る", 64, 84);
+    // ⚠ **看板と同じ問いにする。** ここは「今昔 — その土地を知る」だった。
+    //   看板は「カテゴリ名では何が起きるか分からない」として既に言い換えてあり
+    //   （index.html の h1・掟: 看板は効能で名乗る）、**カードだけが旧い名乗りのまま**
+    //   外へ配られていた。カード画像は SNS で単独に流れるので、ここが名乗りそのもの。
+    //   ⚠ ブランド名は残す。カードだけ見た人が、何のサービスか辿れなくなる。
+    //   ⚠ この文字列は index.html の h1 と一致していること（npm run check が見る）。
+    g.fillText(`今昔 — ${BANNER}`, 64, 84);
 
     g.fillStyle = FG;
     g.font = "600 52px system-ui, sans-serif";

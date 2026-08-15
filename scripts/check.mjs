@@ -381,6 +381,26 @@ for (const f of htmlFiles) {
   else if (url.endsWith(".html")) bad(`${f}: og:url が拡張子付き（${url}）`);
   else ok(`${f}: ${url}`);
 }
+// ⚠ **名乗りが、外へ出る面のあいだで割れないこと。**
+//   看板（index.html の h1）と、共有カード（share.js が canvas に描く文字）は
+//   **別ファイルにあり、片方だけ直すと気づけない**。実際に割れていた:
+//   看板は「カテゴリ名では何が起きるか分からない」として言い換えたのに、
+//   共有カードだけが旧い名乗りのまま SNS へ配られていた。
+//   ⚠ **止める検査が1つも無かった**ので、ここで突き合わせる
+//   （掟「やむを得ず2つ持つときは、機械で突き合わせる」）。
+{
+  const idx = await readFile(join(PUB, "index.html"), "utf8");
+  const shr = await readFile(join(PUB, "share.js"), "utf8");
+  const h1 = /<h1>([^<]+)<\/h1>/.exec(idx)?.[1]?.trim();
+  // ⚠ コメントを先に落とす。落とさないと、この決まりを説明したコメントの字面を拾う。
+  const banner = /BANNER\s*=\s*"([^"]+)"/.exec(shr.replace(/\/\/[^\n]*/g, ""))?.[1];
+  if (!h1) bad("index.html から看板（h1）を読めない（この検査が何も見ていない）");
+  else if (!banner) bad("share.js に BANNER が無い（共有カードの名乗りを追えない）");
+  else if (h1 !== banner)
+    bad(`名乗りが割れている: 看板「${h1}」/ 共有カード「${banner}」`
+      + `（カード画像は SNS で単独に流れるので、ここが看板の代わりになる）`);
+  else ok(`看板と共有カードの名乗りが揃っている（${h1}）`);
+}
 {
   const { execFileSync } = await import("node:child_process");
   try {
