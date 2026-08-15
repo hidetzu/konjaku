@@ -212,6 +212,34 @@ for (const f of htmlFiles) {
     : ok("棚の対象の定義は public/sw.js の1か所だけ（cost.mjs はそこを読む）");
 }
 
+// ⚠ **「無い」と読んでよい応答は 404 だけ**（掟: 取れなかったを「無い」と言わない）。
+//   403 は「見せてもらえなかった」であって「そこにデータが無い」ではない。
+//   以前は 404 と同じ absent に丸めていたため、拒まれただけの土地に
+//   「整備対象外」「標高データが無い」と書き、根拠に HTTP のステータスまで添えていた。
+//   ⚠ ここが見るのは**コードの形だけ**。実際に画面が断定しないことは実描画で見る
+//     （403 に差し替える 4 ケース）。静的検査だけで「確認済み」と呼ばない。
+//   ⚠ コメントを先に落とす。落とさないと、この決まりを説明したコメントの字面を拾う
+//     （CLAUDE.md「検査が文書やコメントを読むとき、コメントを先に落とす」）。
+{
+  const bare = (s) => s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/[^\n]*/g, "$1");
+  // 条件は複数行にまたがる（`if (…)` と `return` が別の行）。畳んでから見る
+  const flat = bare(await readFile(join(PUB, "verify.js"), "utf8")).replace(/\s+/g, " ");
+  const conds = [...flat.matchAll(/if\s*\(([^)]*status[^)]*)\)\s*(?:\{[^}]*\})?\s*return\s*\{\s*state:\s*(\w+)/g)]
+    .map(([, cond, state]) => ({ cond, state, codes: [...cond.matchAll(/status\s*===\s*(\d{3})/g)].map((m) => m[1]) }))
+    .filter((c) => c.codes.length);
+  const absent = conds.filter((c) => c.state === "ABSENT");
+  const wrong = absent.filter((c) => c.codes.some((n) => n !== "404"));
+  // ⚠ 0 件で緑にしない。分岐が消えても通ってしまう
+  if (!absent.length)
+    bad("verify.js に、HTTP のステータスから不在を決めている分岐が1つも無い（この検査が何も見ていない）");
+  else if (wrong.length)
+    bad(`verify.js が 404 以外を「無い」と読んでいる: ${
+      wrong.map((c) => `${c.codes.join("/")} → ABSENT`).join("、")}`
+      + `（403 は拒否であって、不在の証拠ではない）`);
+  else
+    ok(`不在と読むのは 404 だけ（verify.js の ${absent.length} 経路: 画像・GeoJSON・標高）`);
+}
+
 // ⚠ URL に地名と座標を載せているので、Referer で外へ出さないこと。
 //   実測で /t への referer に ?q=豊洲&ll=35.65,139.79 が乗っていた。
 //   画面に「地名も座標も送らない」と書いている以上、ここが外れたらその記述が嘘になる。

@@ -158,6 +158,18 @@ const GSI_ROUTE = "**://*.gsi.go.jp/**";
 // 「地表のラスタだけが1枚も届いていない」状態を作るための経路。
 const PHOTO_ROUTE = "**://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/**";
 
+// ---- 403（拒否）を作る経路 ----
+// ⚠ 403 は「見せてもらえなかった」であって「そこにデータが無い」ではない。
+//   以前は 404 と同じ absent に丸めていたため、拒まれただけの豊洲に
+//   「整備対象外」「標高データが無い」と書き、根拠に HTTP のステータスまで添えていた。
+//   取得の分岐は画像・GeoJSON・標高の3経路にそれぞれあるので、**別々に**落とす。
+//   1つずつ落とすことで、「他の経路まで巻き添えにしていないか」も同時に見られる。
+const SWALE_ROUTE = "**://cyberjapandata.gsi.go.jp/xyz/swale/**";
+const LFC_ROUTE = "**://maps.gsi.go.jp/xyz/experimental_landformclassification*/**";
+const DEM_ROUTE = "**://cyberjapandata.gsi.go.jp/xyz/dem*/**";
+const forbid = (page, route) => page.route(route, (r) => r.fulfill({
+  status: 403, contentType: "text/html", body: "<html><body>403 Forbidden</body></html>" }));
+
 const CASES = [
   {
     name: "ランチャー（水域）", path: `/?${TOYOSU}`,
@@ -728,6 +740,117 @@ const CASES = [
       must(/読み込め/.test(v), `読み込めなかったことが書かれていない: ${v.trim().slice(0, 70)}`);
       must(await page.locator("#retryBtn").count() === 1, "再試行の手段が出ていない");
       return `${wall}ms で確定（ページ起点 ${ms}ms）／${v.trim().split("\n")[0].slice(0, 34)}`;
+    },
+  },
+  {
+    // ⚠ 403 は「無い」ではない（掟: 取れなかったを「無い」と言わない）。
+    //   国土地理院の資料にも、403 を不在として読んでよいという記述は無い。
+    //   ここは**画像タイル**の経路（明治期の低湿地）。落とすのは swale だけなので、
+    //   地形分類が従来どおり答えられることも併せて見る。
+    name: "403 でも整備対象外と言わない（画像タイル）", path: `/?${TOYOSU}`,
+    setup: (page) => forbid(page, SWALE_ROUTE),
+    async check(page) {
+      await waitVerdict(page, 30000);
+      const v = await page.locator("#verdict").textContent();
+      const lie = LIES.find((w) => v.includes(w));
+      must(!lie, `403 なのに「${lie}」と断定している: ${v.trim().slice(0, 70)}`);
+      must(/読み込め/.test(v), `読み込めなかったことが書かれていない: ${v.trim().slice(0, 70)}`);
+      must(await page.locator("#retryBtn").count() === 1, "再試行の手段が出ていない");
+      // 落としたのは明治期のタイルだけ。地形分類まで巻き添えにしていないこと
+      must(/旧水部|水部/.test(v), `明治期だけ落としたのに地形分類まで消えている: ${v.trim().slice(0, 70)}`);
+      // 根拠UI。読んでいない画素と、403 を「タイルが存在しない」根拠にしていないこと
+      await page.click("#whyBtn");
+      await page.waitForSelector("#own .ev", { timeout: 30000 });
+      const cards = await page.$$eval("#own .card", (els) =>
+        els.map((e) => e.textContent.replace(/\s+/g, " ").trim()));
+      const meijiCard = cards.find((c) => /^明治期の地形/.test(c)) ?? "";
+      must(meijiCard, "明治期の根拠カードが無い（この検査が何も見ていない）");
+      must(!/rgba=/.test(meijiCard), `読んでいないのに画素の根拠が出ている: ${meijiCard.slice(0, 80)}`);
+      must(!/HTTP\s*403/.test(meijiCard), `403 を根拠として出している: ${meijiCard.slice(0, 80)}`);
+      const lie2 = LIES.find((w) => meijiCard.includes(w));
+      must(!lie2, `根拠欄で「${lie2}」と断定している: ${meijiCard.slice(0, 80)}`);
+      // 拒否が解けたら取れること。失敗をキャッシュに残していると、ここで永久に直らない
+      await page.unroute(SWALE_ROUTE);
+      await page.click("#retryBtn");
+      await page.waitForFunction(
+        () => /河川・湖沼・海面/.test(document.getElementById("verdict")?.textContent ?? ""),
+        null, { timeout: 30000 });
+      return `断定なし（${v.trim().split("\n")[0].slice(0, 24)}）／根拠なし／再試行で明治期が戻る`;
+    },
+  },
+  {
+    // ⚠ **GeoJSON** の経路。主題（その土地はどうやってできたか）に直接答えるのがここ。
+    //   403 を不在に丸めると「この地点には地形分類のデータが無い」と断定してしまう。
+    name: "403 でも地形分類のデータが無いと言わない（GeoJSON）", path: `/?${TOYOSU}`,
+    setup: (page) => forbid(page, LFC_ROUTE),
+    async check(page) {
+      await waitVerdict(page, 30000);
+      const v = await page.locator("#verdict").textContent();
+      const lie = LIES.find((w) => v.includes(w));
+      must(!lie, `403 なのに「${lie}」と断定している: ${v.trim().slice(0, 70)}`);
+      must(/読み込め/.test(v), `読み込めなかったことが書かれていない: ${v.trim().slice(0, 70)}`);
+      must(await page.locator("#retryBtn").count() === 1, "再試行の手段が出ていない");
+      // 落としたのは地形分類だけ。明治期は従来どおり答えられること
+      must(v.includes("河川・湖沼・海面"),
+        `地形分類だけ落としたのに明治期まで消えている: ${v.trim().slice(0, 70)}`);
+      await page.click("#whyBtn");
+      await page.waitForSelector("#own .ev", { timeout: 30000 });
+      const cards = await page.$$eval("#own .card", (els) =>
+        els.map((e) => e.textContent.replace(/\s+/g, " ").trim()));
+      const lfCard = cards.find((c) => /^地形分類/.test(c)) ?? "";
+      must(lfCard, "地形分類の根拠カードが無い（この検査が何も見ていない）");
+      must(!/図式コード/.test(lfCard), `読んでいないのに図式コードが出ている: ${lfCard.slice(0, 80)}`);
+      const lie2 = LIES.find((w) => lfCard.includes(w));
+      must(!lie2, `根拠欄で「${lie2}」と断定している: ${lfCard.slice(0, 80)}`);
+      return `断定なし／地形分類の根拠なし／明治期は従来どおり`;
+    },
+  },
+  {
+    // ⚠ **標高**の経路（dem5a → dem）。2枚とも 403 のとき、
+    //   「この地点の標高データが無い」と言ってはいけない。
+    name: "403 でも標高データが無いと言わない（標高タイル）", path: `/?${TOYOSU}`,
+    setup: (page) => forbid(page, DEM_ROUTE),
+    async check(page) {
+      await waitVerdict(page, 30000);
+      const v = await page.locator("#verdict").textContent();
+      const lie = LIES.find((w) => v.includes(w));
+      must(!lie, `403 なのに「${lie}」と断定している: ${v.trim().slice(0, 70)}`);
+      must(/標高を読み込めませんでした/.test(v),
+        `標高が読めなかったことが書かれていない: ${v.trim().slice(0, 70)}`);
+      // 読めていない数値を出さない
+      must(!/標高\s*-?[\d.]+\s*m/.test(v), `読めていないのに標高の数値を出している: ${v.trim().slice(0, 70)}`);
+      must(await page.locator("#retryBtn").count() === 1, "再試行の手段が出ていない");
+      // 落としたのは標高だけ。判定そのものは従来どおり出ること
+      must(v.includes("河川・湖沼・海面"),
+        `標高だけ落としたのに明治期まで消えている: ${v.trim().slice(0, 70)}`);
+      await page.click("#whyBtn");
+      await page.waitForSelector("#own .ev", { timeout: 30000 });
+      const own = await page.locator("#own").textContent();
+      must(!/生値/.test(own), "読んでいないのに標高の生値が出ている");
+      return `断定なし／標高の数値なし／判定は従来どおり`;
+    },
+  },
+  {
+    // ⚠ 0.0% の再来を止める。403 を不在に丸めていた頃は、拒まれた土地で
+    //   「1408件すべてデータなし」→ **0.0% を「実測値」として**出していた
+    //   （掟: 取れなかったを「無い」と言わない の元になった事故そのもの）。
+    name: "さかのぼる（403）", path: `/peel?${TOYOSU}`,
+    setup: (page) => forbid(page, SWALE_ROUTE),
+    async check(page) {
+      await page.waitForFunction(
+        () => /件|ありません|読み込めませんでした/.test(
+          document.getElementById("status")?.textContent ?? ""),
+        null, { timeout: 60000 });
+      const hero = (await page.locator("#heroNum").textContent()).trim();
+      must(!/^[\d.]+/.test(hero), `403 なのに割合を出している: ${hero}`);
+      const cap = (await page.locator("#heroCap").textContent()).trim();
+      must(!cap.includes("実測値"), `判定していないのに「実測値」と書いている: ${cap.slice(0, 50)}`);
+      must(/読み込め/.test(cap), `読み込めなかったことが書かれていない: ${cap.slice(0, 50)}`);
+      const status = (await page.locator("#status").textContent()).trim();
+      must(!status.includes("データがありません"),
+        `403 なのに「データがありません」と断定している: ${status.slice(0, 60)}`);
+      must(await page.locator("#status .retry-btn").count() >= 1, "再試行の手段が出ていない");
+      return `見出し「${hero}」／${cap.replace(/\s+/g, " ").slice(0, 30)}／再試行あり`;
     },
   },
   {
