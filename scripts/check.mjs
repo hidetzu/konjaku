@@ -521,6 +521,12 @@ for (const f of htmlFiles) {
       // ⚠ **配信元には IP と端末情報が届く**ことを隠さない。
       //   ここを書かないと「誰が・どこを調べたかは残らない」が**配信元も含めた断定**に読める。
       [/IP/, "接続元の IP が配信元に届くこと"],
+      // ⚠ **確認したから書ける**ことも、消されたら気づけない。必須にする。
+      //   実測: 場所つき URL は Worker を通らない（静的アセットに一致するため）ので、
+      //   こちらが持つ Workers Logs には残らない。Logpush も使っていない（無料プランで項目が無い）。
+      //   ⚠ wrangler.jsonc の observability の節に、崩れる条件を書いてある。
+      [/ログにも場所は残りません|ログにも場所が残りません/, "こちらのログに場所が残らないこと"],
+      [/Logpush/, "記録を外部へ出す設定を使っていないこと"],
     ];
     for (const [f, src] of [["index.html", idx], ["peel.html", peel]]) {
       const body = grab(src, "data-privacy-body");
