@@ -481,6 +481,57 @@ for (const f of htmlFiles) {
       + `（カード画像は SNS で単独に流れるので、ここが看板の代わりになる）`);
   else ok(`看板と共有カードの名乗りが揃っている（${h1}）`);
 }
+// ⚠ **配信方針（_headers）と、SW が版のキャッシュに入れるものを食い違わせない。**
+//   _headers が `max-age=0, must-revalidate` と言っているものを SW が持つと、
+//   **古いものがそのまま出る**。⚠ Cache API は HTTP キャッシュの鮮度を自動では見ないので、
+//   ヘッダを付けただけでは守られない。**持たないこと自体が要件**。
+//   ⚠ とくに /data/bl/ は、索引と本体が更新時に食い違うと**誤判定につながる**。
+//   実際に食い違っていた（建物タイル 65 ファイル・17.0 MB が版ごとに捨てて取り直されていた）。
+{
+  const swSrc = await readFile(join(PUB, "sw.js"), "utf8");
+  const hdr = await readFile(join(PUB, "_headers"), "utf8");
+  // _headers から「毎回確認させる」と言っているパスを拾う
+  // ⚠ **コメント（#）と空行を先に落とす。** 落とさないと、コメントを挟んだ次のブロックの
+  //   Cache-Control を手前のパスのものとして拾う（実際に踏んだ: /vendor/* が
+  //   immutable なのに must-revalidate と読めた。⚠ 検査が誤った警告を出していた）。
+  const strict = [];
+  let cur = null;
+  for (const raw of hdr.split("\n")) {
+    const line = raw.replace(/\s+$/, "");
+    if (!line.trim() || line.trim().startsWith("#")) continue;
+    if (/^\//.test(line)) { cur = line.trim(); continue; }
+    if (cur && /Cache-Control/i.test(line) && /must-revalidate/i.test(line)) strict.push(cur);
+  }
+  if (!strict.length) bad("_headers から must-revalidate のパスを読めない（この検査が何も見ていない）");
+  else {
+    // sw.js の判定を実際に動かす。**書いてある字面ではなく、動きで見る。**
+    const { runInNewContext } = await import("node:vm");
+    const sandbox = { self: { addEventListener() {} }, location: { origin: "" } };
+    let fns = null;
+    try { fns = runInNewContext(`${swSrc}\n;({ cacheable, SHELL })`, sandbox, { timeout: 3000 }); }
+    catch (e) { bad(`public/sw.js を動かせない: ${String(e.message).slice(0, 80)}`); }
+    if (fns) {
+      // must-revalidate のパスを代表する実ファイルで確かめる
+      const sample = (pat) => pat.endsWith("*") ? pat.slice(0, -1) + "index.json" : pat;
+      const held = strict.map(sample).filter((u) => fns.cacheable(u));
+      held.length
+        ? bad(`_headers が毎回確認させると言っているのに、SW が版のキャッシュに入れる: ${held.join("、")}`
+            + `（Cache API はヘッダの鮮度を見ない。持つと古いものが出る）`)
+        : ok(`_headers が毎回確認させるもの（${strict.length} 件）は、SW の版のキャッシュに入らない`);
+      // ⚠ 許可リストが**何も通さない**空振りになっていないこと
+      fns.cacheable("/vendor/maplibre-gl.js")
+        ? ok("版のキャッシュに入るものはある（/vendor/ が通る）")
+        : bad("許可リストが何も通していない（この検査が何も見ていない）");
+      // ⚠ /data/ は1つも入らない（SHELL に入っているものは別の経路）
+      const dataIn = ["/data/bl/index.json", "/data/ev/index.json", "/data/areas.json",
+                      "/data/landform.json", "/data/toyosu-water.geojson"].filter((u) => fns.cacheable(u));
+      dataIn.length
+        ? bad(`/data/ が版のキャッシュに入る: ${dataIn.join("、")}（取り込みで書き換わる。持たない）`)
+        : ok("/data/ は1つも版のキャッシュに入らない");
+    }
+  }
+}
+
 // ⚠ **住所検索を叩く実装は1か所だけ。**
 //   以前は index.html と peel3d.js が同じものを持っていて、**実際に食い違っていた**
 //   （/peel だけ時間切れも再試行も追い越し防止も無く、取れなかったときに
