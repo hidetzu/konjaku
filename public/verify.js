@@ -24,13 +24,20 @@
 
   // ---- 取得結果の3状態（掟: 取れなかったを「無い」と言わない）----
   //   ok          … 読めた
-  //   absent      … サーバが「無い」と答えた（404/403）。データが本当に存在しない
-  //   unreachable … 読めなかった（通信断・タイムアウト・CORS拒否・5xx）
+  //   absent      … サーバが「無い」と答えた（404）。データが本当に存在しない
+  //   unreachable … 読めなかった（通信断・タイムアウト・CORS拒否・403・5xx）
   //
   // ここを区別していなかったため、GSI への通信が落ちただけの豊洲に
   // 「整備対象外」「標高データが無い」「空中写真は残っていない」と、
   // しかも根拠UI付きで書いていた。最も権威ありげな見た目で最も誤ったことを言う状態。
   // 判定の厳密さ（meiji() が a===0 で黙ること）を、通信層にも通す。
+  //
+  // ⚠ **403 を absent に入れない。** 拒まれたのは「見せてもらえなかった」であって、
+  //   「そこにデータが無い」の証拠ではない（掟: 取れなかったを「無い」と言わない）。
+  //   国土地理院の資料にも、403 を不在として読んでよいという記述は無い。
+  //   実測（2026-08-16 / 5地点 × 6経路 = 30本）では、不在の応答は全部 404 で、
+  //   403 は 0 本だった。つまりここを 404 だけに絞っても、整備範囲外の土地
+  //   （札幌・帯広など）の「整備対象外」表示は変わらない。
   const OK = "ok", ABSENT = "absent", UNREACHABLE = "unreachable";
 
   // タイムアウト。GSI は通常 0.1〜0.3 秒で返る（判定確定まで実測 約280ms）。
@@ -99,8 +106,10 @@
   async function readImage(url) {
     try {
       const r = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT_MS) });
-      // 404/403 はサーバが「無い」と答えた確定的な不在。これは事実として使える。
-      if (r.status === 404 || r.status === 403)
+      // 404 はサーバが「無い」と答えた確定的な不在。これは事実として使える。
+      // 403 はここに入れない。下の !r.ok に落ちて unreachable になり、
+      // キャッシュにも残らないので、拒否が解けたら再試行で取れる。
+      if (r.status === 404)
         return { state: ABSENT, image: null, status: r.status };
       if (!r.ok) { imgCache.delete(url); return { state: UNREACHABLE, image: null, status: r.status }; }
       return { state: OK, image: await decodeImage(await r.blob()), status: r.status };
@@ -149,9 +158,13 @@
     const res = await loadImage(url);
     // 読めなかったときは根拠を持たない。evidence を空にするのは意図的で、
     // 参照タイルのリンクや画素座標を出すと「読んでいないのに読んだ顔」になる。
+    //
+    // ⚠ 文言で原因を名指ししない。ここには通信断・タイムアウト・403（拒否）が
+    //   まとめて来る。「通信エラー」と書くと、通信が成立している 403 のときに
+    //   測っていない原因を書くことになる（掟: 出すのは実測値そのものだけ）。
     if (res.state === UNREACHABLE)
       return { ...base, ok: false, state: UNREACHABLE, value: null, evidence: {}, caveat: null,
-        note: "明治期の低湿地データを、いま読み込めませんでした（通信エラー）。この土地が整備対象かどうかも、まだ分かっていません" };
+        note: "明治期の低湿地データを、いま読み込めませんでした。この土地が整備対象かどうかも、まだ分かっていません" };
     // 404 は「このタイルは存在しない」という確定的な答え。読んだ画素は無いので載せない。
     if (res.state === ABSENT)
       return { ...base, ok: false, state: ABSENT, value: "データなし",
@@ -233,7 +246,8 @@
   async function readGeo(url) {
     try {
       const r = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT_MS) });
-      if (r.status === 404 || r.status === 403) return { state: ABSENT, json: null, status: r.status };
+      // 不在と読んでよいのは 404 だけ（403 は下の !r.ok で unreachable になる）
+      if (r.status === 404) return { state: ABSENT, json: null, status: r.status };
       if (!r.ok) { geoCache.delete(url); return { state: UNREACHABLE, json: null, status: r.status }; }
       return { state: OK, json: await r.json(), status: r.status };
     } catch (e) {
@@ -289,7 +303,7 @@
       const r = await codeAt(LFC_NAT, lon, lat, z);
       if (r.state === UNREACHABLE)
         return { ...base, ok: false, state: UNREACHABLE, value: null, evidence: {}, caveat: null,
-          note: "地形分類を、いま読み込めませんでした（通信エラー）。この土地が対象かどうかも、まだ分かっていません" };
+          note: "地形分類を、いま読み込めませんでした。この土地が対象かどうかも、まだ分かっていません" };
       if (r.state === OK && r.code && tbl.codes[r.code]) { hit = { ...r, z }; break; }
       fine = false;
     }
@@ -347,7 +361,8 @@
   async function readDem(url) {
     try {
       const r = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT_MS) });
-      if (r.status === 404 || r.status === 403) return { state: ABSENT, text: null, status: r.status };
+      // 不在と読んでよいのは 404 だけ（403 は下の !r.ok で unreachable になる）
+      if (r.status === 404) return { state: ABSENT, text: null, status: r.status };
       if (!r.ok) { demCache.delete(url); return { state: UNREACHABLE, text: null, status: r.status }; }
       return { state: OK, text: await r.text(), status: r.status };
     } catch (e) {
@@ -377,7 +392,7 @@
     // 1枚でも読めなかったなら「無い」とは言えない。読めなかった、とだけ言う。
     if (unreachable)
       return { ...fact, ok: false, state: UNREACHABLE, value: null, evidence: {},
-        note: "標高データを、いま読み込めませんでした（通信エラー）" };
+        note: "標高データを、いま読み込めませんでした" };
     return { ...fact, ok: false, state: ABSENT, value: null, note: "この地点の標高データが無い" };
   }
 
@@ -429,7 +444,7 @@
       evidence: checked ? { checked } : {} };
     if (unread.length && !found.length)
       return { ...fact, ok: false, state: UNREACHABLE,
-        note: "空中写真を、いま読み込めませんでした（通信エラー）。残っているかどうかは分かっていません" };
+        note: "空中写真を、いま読み込めませんでした。残っているかどうかは分かっていません" };
     if (unread.length)
       return { ...fact, ok: true, state: "partial",
         note: `${unread.length} 年代分は読み込めませんでした。ここに出ているのは、読めた ${checked} 年代のうちの結果です` };
@@ -532,7 +547,7 @@
       // 黙ると「盛土地･埋立地です」が消えるだけになり、取れなかったのか
       // そもそも無かったのかを画面から区別できなくなる（掟: 主題は「成り立ち」。明治期は手法のひとつ）
       if (l.artificialUnread)
-        out.push("盛土・埋立・切土のデータは、いま読み込めませんでした（通信エラー）。この土地に手が入っているかどうかは、まだ分かっていません。");
+        out.push("盛土・埋立・切土のデータは、いま読み込めませんでした。この土地に手が入っているかどうかは、まだ分かっていません。");
     } else if (l.state === UNREACHABLE) {
       out.push(l.note);
     }
