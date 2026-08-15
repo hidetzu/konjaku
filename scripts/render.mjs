@@ -408,16 +408,33 @@ const CASES = [
       must(card.url > 20000, `カードが描けていない（${card.url} 文字）`);
       // ⚠ 大きさとバイト数しか見ていなかったので、出典行を丸ごと消しても緑だった。
       //   何が描かれているかを見る（fillText を捕まえる）
+      // ⚠ 座標も控える。**何を描いたかだけでは、名乗りが正しい位置に出たか分からない。**
       const drawn = await page.evaluate(() => {
         const orig = CanvasRenderingContext2D.prototype.fillText;
         const said = [];
-        CanvasRenderingContext2D.prototype.fillText = function (t, ...a) { said.push(t); return orig.call(this, t, ...a); };
+        CanvasRenderingContext2D.prototype.fillText = function (t, x, y, ...a) {
+          said.push({ t: String(t), x, y }); return orig.call(this, t, x, y, ...a);
+        };
         try { KonjakuShare.draw(meiji.facts, "豊洲"); } finally { CanvasRenderingContext2D.prototype.fillText = orig; }
-        return said.join(" / ");
+        return { all: said.map((s) => s.t).join(" / "),
+          // 名乗りの行。カード左上（64, 84）に描いている
+          banner: said.find((s) => s.x === 64 && s.y === 84)?.t ?? null,
+          h1: document.querySelector("h1")?.textContent.trim() ?? "" };
       });
-      must(/出典: 国土地理院/.test(drawn), `カードに出典が無い: ${drawn.slice(0, 120)}`);
-      must(/旧水部/.test(drawn), `カードに判定が無い: ${drawn.slice(0, 120)}`);
-      must(/konjaku\.hidetzu\.work/.test(drawn), "カードに戻り先が無い");
+      must(/出典: 国土地理院/.test(drawn.all), `カードに出典が無い: ${drawn.all.slice(0, 120)}`);
+      must(/旧水部/.test(drawn.all), `カードに判定が無い: ${drawn.all.slice(0, 120)}`);
+      must(/konjaku\.hidetzu\.work/.test(drawn.all), "カードに戻り先が無い");
+      // ⚠ **名乗りが看板と割れていないこと。実際に描かれた文字で見る。**
+      //   静的検査は share.js の BANNER 定義しか見ていない。**定義が正しいまま
+      //   fillText に旧い文字列を直書きすれば、静的検査は通ってしまう**（実際に指摘された）。
+      //   ここが「描いた結果」を見る唯一の場所。
+      must(drawn.banner !== null,
+        `カードの名乗りが (64, 84) に無い。位置を動かしたなら、この検査は何も見ていない`
+        + `（描かれた文字: ${drawn.all.slice(0, 120)}）`);
+      must(drawn.h1.length > 0, "看板（h1）を読めない。この検査が何も見ていない");
+      must(drawn.banner === `今昔 — ${drawn.h1}`,
+        `カードの名乗りが看板と違う: カード「${drawn.banner}」/ 看板から作るなら「今昔 — ${drawn.h1}」`
+        + `（カード画像は SNS で単独に流れるので、ここが名乗りそのものになる）`);
       // 共有ボタンが判定カードの中にあること
       must(await page.locator("#shareBtn").count() === 1, "共有の手段が出ていない");
       return `計測 ${ticks[0]} ／ カード ${card.w}x${card.h}`;
