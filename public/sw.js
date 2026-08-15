@@ -18,7 +18,7 @@
 //   一度来た人に古い `/` と `/share.js` が出続けた。しかもローカルは初回訪問なので
 //   絶対に再現せず、CI も全部通る。流入を測り始める直前に一度踏みかけた。
 //   なぜハッシュにしたかの全文は scripts/sw-hash.mjs の頭にある。
-const VERSION = "konjaku-03f5858b";
+const VERSION = "konjaku-2734b7b7";
 // ⚠ addAll は1件でも 404 すると install ごと reject し、キャッシュが丸ごと死ぬ。
 //   この一覧を足し引きしたときも版は変わる（一覧そのものもハッシュの材料に入れてある）。
 const SHELL = [
@@ -168,10 +168,14 @@ async function trim(c) {
 //   ⚠ とくに /data/bl/ は、**索引と本体が更新時に食い違うと誤判定につながる**
 //     （建物の足元を「明治期に水だった」と言い切っている、その出どころ）。
 //
-// ⚠ /data/ は1つも入れない。オフラインで要る /data/landform.json は SHELL にある
-//   （版と一緒に配られる。ここの網とは別）。
+// ⚠ /data/ は**動的には**1つも入れない。⚠ /data/landform.json は SHELL にあるので、
+//   **同じ版のキャッシュには入る**（install の addAll）。「1つも入らない」ではない。
+//   ここの網（動的追加）とは別の経路。
 const CACHEABLE = [
-  /^\/vendor\//,                 // 地図エンジン。中身が変われば名前が変わる前提（_headers も immutable）
+  // ⚠ 地図エンジン。**名前は maplibre-gl.js で固定**（中身が変われば名前が変わる、ではない）。
+  //   だから版（VERSION）の材料に vendor も入れてある（scripts/sw-hash.mjs）。
+  //   入れないと、MapLibre を上げても版が変わらず、**ここが古いものを返し続ける**。
+  /^\/vendor\//,
   /^\/[\w.-]+\.js$/,              // 自前のスクリプト（peel3d.js など SHELL に無いもの）
   /^\/[\w.-]*(icon|favicon)[\w.-]*$/,
   /\.webmanifest$/,

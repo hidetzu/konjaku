@@ -45,10 +45,20 @@ export function shellOf(sw) {
 //
 // ⚠ 一覧そのものも材料に混ぜる。SHELL から1行消しただけのときも
 //   版が変わらないと、古いキャッシュに残った分が activate で消えない。
+// ⚠ **SHELL 以外にも、版の材料に入れるもの。**
+//   /vendor/ は SHELL に入っていない（1 MB あるので、判定しか見ない人に乗せない）。
+//   だが SW の網は取ったあと版のキャッシュに入れる。**版が変わらないと、そこが
+//   古いままになる**。実ファイル名は maplibre-gl.js で固定なので、名前でも見分けられない。
+//   ⚠ ここに入れておけば、MapLibre を上げた時点で版が変わり、古いものが消える。
+//   ⚠ 入れる代償: vendor を上げると SHELL のキャッシュも捨てて取り直す（7 ファイル・小さい）。
+const EXTRA = ["vendor/maplibre-gl.js", "vendor/maplibre-gl.css"];
+
 export async function hashOf(sw) {
   const shell = shellOf(sw);
-  const h = createHash("sha256").update(JSON.stringify(shell));
+  // ⚠ 一覧に EXTRA も混ぜる。片方だけ足したときにも版が変わるように。
+  const h = createHash("sha256").update(JSON.stringify([shell, EXTRA]));
   for (const p of shell) h.update(await readFile(fileOf(p)));
+  for (const p of EXTRA) h.update(await readFile(new URL(`../public/${p}`, import.meta.url)));
   return h.digest("hex").slice(0, 8);
 }
 
