@@ -2180,6 +2180,13 @@ function run(it){
 }
 
 function setMode(m){
+  // ⚠ **画面が別のことを始めるときも、検索を切る。**
+  //   打つたびに切るだけでは足りない（2026-08-16 の指摘・実測で再現）。
+  //   「渋谷」の応答待ちのままクイック地点を選ぶと、行動一覧（立体で見る等）が出たあと、
+  //   **2.5 秒後に「東京都渋谷区」で上書きされた**。
+  //   ⚠ 入力欄は下で空にするので `oninput` は発火せず、そこの cancel() には届かない。
+  //   ⚠ デバウンス中のタイマーも落とす。落とさないと、空の語で検索が始まる。
+  clearTimeout(timer); search.cancel();
   mode=m;
   scopeEl.classList.toggle("on",m==="action");
   document.body.classList.toggle("picked",m==="action");

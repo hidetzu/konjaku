@@ -2772,6 +2772,38 @@ const CASES = [
       return `${top.rows.length} 件が一致（選択 ${JSON.stringify(top.picked)}）`;
     },
   },
+  // ⚠ **画面が別のことを始めたときも、古い候補が出ない。**
+  //   打つたびに切るだけでは足りない（2026-08-16 の指摘・実測で再現）。
+  //   「渋谷」の応答待ちのままクイック地点を選ぶと、行動一覧（立体で見る等）が出たあと、
+  //   **2.5 秒後に「東京都渋谷区」で上書きされた**。
+  //   ⚠ 入力欄は setMode() が空にするので `oninput` は発火せず、そこの cancel() には届かない。
+  {
+    name: "検索中に場所を選んでも、行動一覧が古い候補で上書きされない", path: "/",
+    setup: (page) => page.route("**/AddressSearch*", async (r) => {
+      await new Promise((x) => setTimeout(x, 2000));
+      await r.fulfill({ status: 200, contentType: "application/json",
+        body: JSON.stringify([{ properties: { title: "東京都渋谷区" },
+                                geometry: { coordinates: [139.7, 35.66] } }]) });
+    }),
+    async check(page) {
+      await page.fill("#q", "渋谷");
+      await page.waitForTimeout(1000);         // 応答はまだ返っていない
+      await page.locator(".quick button").first().click();   // 場所を選ぶ（setMode("action")）
+      await page.waitForFunction(() => document.querySelectorAll("#list .tx b").length > 0,
+        null, { timeout: 20000 });
+      const acted = (await page.locator("#list").innerText()).trim();
+      must(/立体で見る/.test(acted), `場所を選んでも行動一覧が出ていない: ${JSON.stringify(acted.slice(0, 40))}`);
+      await page.waitForTimeout(2500);         // ⚠ ここで古い応答が届く
+      const after = (await page.locator("#list").innerText()).trim();
+      must(!/渋谷区/.test(after),
+        `場所を選んだのに、行動一覧が古い候補で上書きされた: ${JSON.stringify(after.slice(0, 40))}`);
+      // ⚠ 「変わらないこと」は見ない。判定が進むと行動一覧は**正当に増える**
+      //   （最初そう書いて落ちた）。見たいのは**行動一覧のままであること**。
+      must(/立体で見る/.test(after),
+        `行動一覧でなくなっている: ${JSON.stringify(after.slice(0, 40))}`);
+      return `行動一覧のまま（${JSON.stringify(after.slice(0, 18))}）`;
+    },
+  },
   // ⚠ **別の語へ変えたときも、古い候補が出ない。**
   //   「入力を消したとき」だけ切っていては足りない（2026-08-16 の指摘・実測で再現）。
   //   「渋谷」の応答待ちのまま「新宿」へ変えると、デバウンスの 320〜350ms のあいだに
