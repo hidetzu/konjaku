@@ -97,6 +97,38 @@ GitHub の Security タブから非公開で報告できます。
 ⚠ この製品は「**取れなかったことを『無い』と言わない**」を掟にしています。
 外部サービスへの依存を増やす変更は、落ちたときの振る舞いまで含めて見ます。
 
+## ⚠ メンテナー向け: Action を更新するとき
+
+CI の `uses:` は**完全な SHA で固定**してあります。リポジトリ設定でも強制しているので、
+`@v4` のような可変の書き方を足すと**そこで落ちます**。
+
+固定した以上、相手が新しくなってもこちらは何も起きません。
+だから **Dependabot に追わせています**（`.github/dependabot.yml`・週次・まとめて 1 PR）。
+
+⚠ **Dependabot の PR を、緑だからといってそのまま入れないでください。** 次を見ます。
+
+| 見るもの | なぜ |
+|---|---|
+| **SHA が、コメントのタグを実際に指しているか** | ⚠ **ここだけは CI が見ていません。** 別の commit を指していても CI は緑になります |
+| リリースノート（メジャーが上がるとき） | 既定値の変更は、検査を通り抜けることがあります |
+| **`--links-new` が「origin/main と比べた」と言っているか** | ⚠ `checkout` の更新で `fetch-depth` / `persist-credentials` の挙動が変わると、**比べる相手を見失います**。一度落ちています |
+| 実描画が通っているか | 静的検査は DOM の壊れを見つけられません |
+
+SHA の照合は API でできます。⚠ **annotated tag は一段たどります**（`git/ref/tags` が返すのは
+タグ自身の SHA で、commit の SHA ではありません）。
+
+```
+gh api repos/actions/checkout/git/ref/tags/v7.0.1 -q '.object.sha + " " + .object.type'
+# type が "tag" なら、その SHA でもう一段
+gh api repos/actions/checkout/git/tags/<上の SHA> -q .object.sha
+```
+
+⚠ **Playwright は Dependabot では上がりません。**
+版の出どころは `.github/workflows/check.yml` の `env.PLAYWRIGHT_VERSION` 1 か所で、
+Dependabot はそこを読みません。**手で上げてください。**
+⚠ このページの「検査」の節にも版が書いてあります。**両方を揃えてください**
+（`npm run check` が突き合わせるので、片方だけ直すと落ちます）。
+
 ## 名前とロゴ
 
 ⚠ **MIT ライセンスは、名称やロゴといったブランド表示の使用許諾を含みません。**
