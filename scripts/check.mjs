@@ -137,6 +137,81 @@ for (const f of htmlFiles) {
   }
 }
 
+// ⚠ **判定文の根拠が、棚の対象に入っていること。**
+//   「この場所は 旧水部 です」と言い切っている、その出どころ（地形分類）だけが
+//   棚から漏れていた。漏れると**同じものを毎回取りに行く**（地理院タイルは
+//   Cache-Control も Expires も返さない）。
+//   ⚠ **`sw.js` の表を目で読んで確かめない。** verify.js が実際に使っているホストを
+//     読んで突き合わせる。表に何が書いてあっても、**使っている側が入っていなければ意味がない**。
+//   ⚠ 棚の対象は `public/sw.js` の TILE_HOSTS **1 か所だけ**が定義（cost.mjs はそこを読む）。
+{
+  const swSrc = await readFile(join(PUB, "sw.js"), "utf8");
+  // ⚠ コメントを先に落とす。落とさないと、この決まりを説明したコメントの字面を拾う
+  //   （CLAUDE.md「検査が文書やコメントを読むとき、コメントを先に落とす」）。
+  // ⚠ **`//` を素朴に落とすと URL を食う。** `https://…` の `//` をコメント開始と読んで
+  //   行末まで消してしまい、`const LFC = "https://maps.gsi.go.jp/xyz"` が空になった
+  //   （2026-08-15 に実際に踏んだ。検査は「読めない」と言って落ちたので気づけた）。
+  //   ⚠ **直前が `:` のときは落とさない。**
+  const bare = (s) => s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/[^\n]*/g, "$1");
+  const m = /TILE_HOSTS\s*=\s*\[([^\]]*)\]/.exec(bare(swSrc));
+  const shelf = m ? [...m[1].matchAll(/["']([^"']+)["']/g)].map((x) => x[1]) : null;
+  const vf = bare(await readFile(join(PUB, "verify.js"), "utf8"));
+  const lfc = /LFC\s*=\s*["']https:\/\/([^/"']+)/.exec(vf)?.[1];
+  if (!shelf?.length) bad("public/sw.js の TILE_HOSTS を読めない（この検査が何も見ていない）");
+  else if (!lfc) bad("verify.js から地形分類のホストを読めない（この検査が何も見ていない）");
+  else if (!shelf.includes(lfc))
+    bad(`判定文の根拠（${lfc}）が棚に入らない。verify.js はここから地形分類を取っている`
+      + `（「旧水部です」と言い切っている、その出どころだけが毎回取り直しになる）`);
+  else ok(`判定文の根拠（${lfc}）が棚に入る（棚の対象 ${shelf.length} ホスト）`);
+
+  // ⚠ **表を見るだけでは足りない。isTile() を実際に動かす。**
+  //   配列に載っていても、`isTile` の中を壊せば棚に入らない（ホストの見方でも、
+  //   パスの前置きでも）。**表だけ見る検査は、壊れた実装の上でも緑になる。**
+  // ⚠ 代表 URL は思いつきで書かない。**verify.js が実際に組み立てる形**から作る。
+  //   でないと「検査だけが通る URL」を相手にすることになる。
+  if (shelf?.length && lfc) {
+    const layer = /LFC_NAT\s*=\s*["']([^"']+)/.exec(vf)?.[1];
+    const shape = /\$\{LFC\}\/\$\{layer\}\/\$\{z\}\/\$\{t\.x\}\/\$\{t\.y\}\.geojson/.test(vf);
+    if (!layer) bad("verify.js から地形分類の層の名前を読めない（この検査が何も見ていない）");
+    else if (!shape) bad("verify.js の地形分類 URL の組み立てが変わった（代表 URL を作り直すこと）");
+    else {
+      const { runInNewContext } = await import("node:vm");
+      // sw.js は最上位で self.addEventListener を呼ぶ。動かすためだけの器を渡す。
+      const sandbox = { self: { addEventListener() {} }, location: { origin: "" } };
+      let fns = null;
+      try { fns = runInNewContext(`${swSrc}\n;({ isTile, tileTtl })`, sandbox, { timeout: 3000 }); }
+      catch (e) { bad(`public/sw.js を動かせない: ${String(e.message).slice(0, 80)}`); }
+      if (fns) {
+        const real = new URL(`https://${lfc}/xyz/${layer}/16/58205/25807.geojson`);
+        const cases = [
+          [real, true, "判定文の根拠（地形分類）"],
+          [new URL(`https://${lfc}/development/ichiran.html`), false, "同じホストだが /xyz/ でないもの"],
+          [new URL("https://msearch.gsi.go.jp/address-search/AddressSearch?q=x"), false, "住所検索"],
+          [new URL("https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/16/1/1.jpg"), true, "空中写真"],
+        ];
+        const wrong = cases.filter(([u, want]) => fns.isTile(u) !== want)
+          .map(([, want, name]) => `${name}は${want ? "入るはず" : "入らないはず"}`);
+        wrong.length
+          ? bad(`sw.js の isTile() の判定が違う: ${wrong.join("、")}`
+              + `（表に載っていても、isTile の中を壊せば棚に入らない）`)
+          : ok(`sw.js の isTile() を実際に動かして確かめた（${cases.length} 通り）`);
+        // 寿命も動かして見る。地形分類は 30 日（実測で 1 年以上更新が無い）
+        const D = 24 * 60 * 60 * 1000;
+        fns.tileTtl(real) === 30 * D
+          ? ok("地形分類の寿命は 30 日")
+          : bad(`地形分類の寿命が 30 日でない: ${fns.tileTtl(real) / D} 日`);
+      }
+    }
+  }
+
+  // ⚠ **cost.mjs が表を写していないこと。** 写すと、片方だけ足したときに
+  //   「棚に入れるもの」と「数えるもの」がずれる（実際にずれていた）。
+  const costSrc = bare(await readFile(join(ROOT, "scripts/cost.mjs"), "utf8"));
+  /TILE_HOSTS\s*=\s*\[/.test(costSrc)
+    ? bad("scripts/cost.mjs が TILE_HOSTS を写している（public/sw.js から読むこと。写すとずれる）")
+    : ok("棚の対象の定義は public/sw.js の1か所だけ（cost.mjs はそこを読む）");
+}
+
 // ⚠ URL に地名と座標を載せているので、Referer で外へ出さないこと。
 //   実測で /t への referer に ?q=豊洲&ll=35.65,139.79 が乗っていた。
 //   画面に「地名も座標も送らない」と書いている以上、ここが外れたらその記述が嘘になる。
