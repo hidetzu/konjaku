@@ -18,7 +18,7 @@
 //   一度来た人に古い `/` と `/share.js` が出続けた。しかもローカルは初回訪問なので
 //   絶対に再現せず、CI も全部通る。流入を測り始める直前に一度踏みかけた。
 //   なぜハッシュにしたかの全文は scripts/sw-hash.mjs の頭にある。
-const VERSION = "konjaku-03f5858b";
+const VERSION = "konjaku-55cd1a9b";
 // ⚠ addAll は1件でも 404 すると install ごと reject し、キャッシュが丸ごと死ぬ。
 //   この一覧を足し引きしたときも版は変わる（一覧そのものもハッシュの材料に入れてある）。
 const SHELL = [
@@ -57,13 +57,17 @@ self.addEventListener("activate", (e) => {
 //   **全利用者のキャッシュが丸ごと捨てられる**。
 //   索引は下の「自分のオリジン」の網（ネットワーク優先）で取る。
 //
-// ⚠ ここには「キャッシュは保険で足りる」と書いてあったが、**保険は無い**（2026-08-15 に判明）。
-//   下の網は /data/ev/ をキャッシュから除いているので、オフラインでは
-//   `caches.match("/")` が index.html の HTML を JSON 要求に返す。
-//   ⚠ 幸い events.js が `.catch(() => null)` で受けて実行時取得へ落ちるので、
-//     いまのところ安全に劣化する。壊れているのは主張のほうで、動作ではない。
-//     ⚠ **どう持つかは決めていない**（建物タイルが版ごとに捨てられる件と同根）。
-//     → docs/adr/0027-直していないと分かっていることを、名前で残す.md
+// ⚠ **/data/ に保険は持たない。決めた上でそうしている**（2026-08-16）。
+//   以前ここには「キャッシュは保険で足りる」と書いてあったが、保険は無かった。
+//   しかも下の網が `caches.match("/")` を返すので、**JSON を頼んだ相手に index.html が
+//   返っていた**＝「取れなかった」が「取れた」に化けていた。
+//   ⚠ **持たない理由**: /data/ は取り込みで書き換わる。索引と本体が食い違うと
+//     **誤判定につながる**（建物の足元を「明治期に水だった」と言い切る、その出どころ）。
+//     配信方針も `_headers` で `max-age=0, must-revalidate`。
+//     ⚠ Cache API は HTTP キャッシュの鮮度を自動では見ないので、
+//       **ヘッダを付けただけでは守られない。持たないこと自体が要件。**
+//   ⚠ **オフラインでは 504 を返す**（下の網）。読み手はいずれも `r.ok` を見て
+//     null に落とすので、「取れなかった」として正しく扱われる。
 
 // ---- 地理院タイル ----
 // ⚠ 以前はここを素通ししていた（「他人のタイルを勝手に溜め込むべきではない」）。
@@ -154,6 +158,31 @@ async function trim(c) {
   for (const k of keys.slice(0, keys.length - TILE_MAX)) await c.delete(k);
 }
 
+// ⚠ **版のキャッシュに入れてよいもの（許可リスト）。**
+//   配信方針（public/_headers）を正として、こちらを合わせる。
+//   _headers が `max-age=0, must-revalidate` と言っているもの（/data/ev/ ・ /data/bl/ ・
+//   HTML）は、**SW が持ってはいけない**。
+//   ⚠ **Cache API は HTTP キャッシュの鮮度を自動では見ない。**
+//     must-revalidate を付けても、Cache API から返せばそのまま古いものが出る。
+//     だから「ヘッダで守られている」とは考えず、**持たないこと自体を要件にする**。
+//   ⚠ とくに /data/bl/ は、**索引と本体が更新時に食い違うと誤判定につながる**
+//     （建物の足元を「明治期に水だった」と言い切っている、その出どころ）。
+//
+// ⚠ /data/ は**動的には**1つも入れない。⚠ /data/landform.json は SHELL にあるので、
+//   **同じ版のキャッシュには入る**（install の addAll）。「1つも入らない」ではない。
+//   ここの網（動的追加）とは別の経路。
+const CACHEABLE = [
+  // ⚠ 地図エンジン。**名前は maplibre-gl.js で固定**（中身が変われば名前が変わる、ではない）。
+  //   だから版（VERSION）の材料に vendor も入れてある（scripts/sw-hash.mjs）。
+  //   入れないと、MapLibre を上げても版が変わらず、**ここが古いものを返し続ける**。
+  /^\/vendor\//,
+  /^\/[\w.-]+\.js$/,              // 自前のスクリプト（peel3d.js など SHELL に無いもの）
+  /^\/[\w.-]*(icon|favicon)[\w.-]*$/,
+  /\.webmanifest$/,
+];
+// ⚠ /data/ は名前の形で弾く前に、明示的に落とす（許可リストの書き間違いで通さない）
+const cacheable = (p) => !/^\/data\//.test(p) && CACHEABLE.some((re) => re.test(p));
+
 self.addEventListener("fetch", (e) => {
   const url = new URL(e.request.url);
   if (e.request.method !== "GET") return;
@@ -170,22 +199,28 @@ self.addEventListener("fetch", (e) => {
   e.respondWith(
     fetch(e.request)
       .then((res) => {
-        // ⚠ 何でも溜めない。以前は束（z12）・geojson（380KB）・html まで無制限に
-        //   入れていて、版が上がると丸ごと捨てて取り直していた。
-        //   取り込んだ範囲の束は毎回確認させる（_headers も must-revalidate）。
-        //
-        // ⚠ **いまも「最小限」になっていない。** 除外は /data/ev/ と .geojson だけで、
-        //   **/data/bl/**（建物タイル・65 ファイル・生 17.0 MB）が入ってしまう。
-        //   版が上がると丸ごと捨てて取り直す＝すぐ上に書いた「以前の失敗」と同じ状態。
-        //   _headers が /data/bl/* に must-revalidate を付けているのとも食い違っている。
-        //   ⚠ **まだ直していない。** ここでは実装を変えていない（測るだけの回だった）。
-        //   → docs/adr/0027-直していないと分かっていることを、名前で残す.md
-        if (res.ok && !/^\/data\/ev\//.test(url.pathname) && !/\.geojson$/.test(url.pathname)) {
+        // ⚠ **入れないものを並べるのではなく、入れるものを決める**（許可リスト）。
+        //   除外を足していく形だと、**新しく置いたものが黙って入る**。
+        //   実際そうなっていた: /data/bl/（建物タイル・65 ファイル・生 17.0 MB）が
+        //   版のキャッシュに入り、**版が上がるたびに捨てて取り直していた**（実測で再現）。
+        if (res.ok && cacheable(url.pathname)) {
           const copy = res.clone();
           caches.open(VERSION).then((c) => c.put(e.request, copy));
         }
         return res;
       })
-      .catch(() => caches.match(e.request).then((r) => r ?? caches.match("/")))
+      // ⚠ **HTML を返してよいのは、ページの移動だけ。**
+      //   ここは `?? caches.match("/")` で、**何を頼まれても index.html を返していた**。
+      //   JSON を頼んだ相手に 200 text/html が返る＝**「取れなかった」が「取れた」に化ける**
+      //   （掟: 取れなかったを「無い」と言わない）。
+      //   ⚠ /data/ だけ除く形にしたが、それでは足りない（2026-08-16 の指摘）。
+      //     **将来 /version.json を置いたら黙って壊れる。** 未キャッシュの JS / CSS も同じ。
+      //   ⚠ 移動（navigate）かどうかで分ける。移動ならオフライン用の画面を出す意味がある。
+      //     それ以外は「取れなかった」を返す。読み手はいずれも `r.ok` を見て null に落とす。
+      .catch(() => caches.match(e.request).then((r) => {
+        if (r) return r;
+        if (e.request.mode === "navigate") return caches.match("/");
+        return new Response(null, { status: 504, statusText: "offline" });
+      }))
   );
 });

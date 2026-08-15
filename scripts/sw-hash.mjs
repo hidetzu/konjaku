@@ -14,7 +14,7 @@
 //   scripts/stamp-sw.mjs … 書き込む（npm run stamp）
 //   scripts/check.mjs    … 古ければ落とす（npm run check → CI）
 
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
 
@@ -45,10 +45,39 @@ export function shellOf(sw) {
 //
 // ⚠ 一覧そのものも材料に混ぜる。SHELL から1行消しただけのときも
 //   版が変わらないと、古いキャッシュに残った分が activate で消えない。
+// ⚠ **SHELL 以外にも、版の材料に入れるもの。**
+//   /vendor/ は SHELL に入っていない（1 MB あるので、判定しか見ない人に乗せない）。
+//   だが SW の網は取ったあと版のキャッシュに入れる。**版が変わらないと、そこが
+//   古いままになる**。実ファイル名は maplibre-gl.js で固定なので、名前でも見分けられない。
+//   ⚠ ここに入れておけば、MapLibre を上げた時点で版が変わり、古いものが消える。
+//   ⚠ 入れる代償: vendor を上げると SHELL のキャッシュも捨てて取り直す（7 ファイル・小さい）。
+// ⚠ **ファイル名を並べない。ディレクトリごと、再帰で全部**。
+//   2 本だけ書いていたが、**/vendor/other.js を足したら黙って材料から漏れる**
+//   （2026-08-16 の指摘）。漏れると、そのファイルは版が変わっても古いままになる。
+const EXTRA_DIRS = ["vendor"];
+
+// 材料にする実ファイルの一覧（public/ からの相対・並び順を固定）。
+// ⚠ 検査がこれを呼んで、実ディレクトリと突き合わせる。
+export async function extraFiles() {
+  const out = [];
+  const walk = async (rel) => {
+    const dir = new URL(`../public/${rel}/`, import.meta.url);
+    for (const e of (await readdir(dir, { withFileTypes: true })).sort((a, b) => a.name < b.name ? -1 : 1)) {
+      if (e.isDirectory()) await walk(`${rel}/${e.name}`);
+      else out.push(`${rel}/${e.name}`);
+    }
+  };
+  for (const d of EXTRA_DIRS) await walk(d);
+  return out;
+}
+
 export async function hashOf(sw) {
   const shell = shellOf(sw);
-  const h = createHash("sha256").update(JSON.stringify(shell));
+  const extra = await extraFiles();
+  // ⚠ 一覧そのものも混ぜる。ファイルを1つ消しただけのときも版が変わるように。
+  const h = createHash("sha256").update(JSON.stringify([shell, extra]));
   for (const p of shell) h.update(await readFile(fileOf(p)));
+  for (const p of extra) h.update(await readFile(new URL(`../public/${p}`, import.meta.url)));
   return h.digest("hex").slice(0, 8);
 }
 
