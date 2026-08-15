@@ -50,33 +50,10 @@ Cookieや利用者識別子は使いません。地名・座標も計測へ送�
 
 詳しい仕様と限界は [`docs/SPEC.md`](docs/SPEC.md) を参照してください。
 
-## ローカルで動かす
+## 開発・貢献
 
-Node.js 22 以上を使います。通常の表示には依存パッケージのインストールは不要です。
-
-```sh
-node serve.js
-```
-
-<http://localhost:8081> を開きます。
-
-## 検査
-
-```sh
-npm run check         # 構文・設定・データ・リンク・安全性の静的検査
-npm run render        # Playwrightで実際に描画・操作する検査
-npm run check-search  # 国土地理院の住所検索を使う並び順の検査
-```
-
-実描画にはCIと同じPlaywrightが必要です。
-
-```sh
-npm i --no-save playwright@1.62.1
-npx playwright install chromium
-```
-
-`npm run check-search` と `npm run render` は国土地理院のサービスへ実際に接続します。
-繰り返し実行せず、外部サービスへの負荷に配慮してください。
+ローカルでの起動、検査、Issue・PRの手順は
+[`CONTRIBUTING.md`](CONTRIBUTING.md) を参照してください。
 
 ## 主なデータとソフトウェア
 
@@ -91,7 +68,7 @@ npx playwright install chromium
 
 - [`docs/SPEC.md`](docs/SPEC.md) — 現在の仕様、言えること、言わないこと
 - [`docs/adr/`](docs/adr/) — 現在の実装を支える判断
-- [`CONTRIBUTING.md`](CONTRIBUTING.md) — Issue、PR、forkからの検査
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) — ローカルでの起動と検査、Issue、PR、forkからの検査
 - [`SECURITY.md`](SECURITY.md) — 脆弱性の非公開報告
 - [`TRADEMARKS.md`](TRADEMARKS.md) — 名称とロゴの扱い
 
