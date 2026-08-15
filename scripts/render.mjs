@@ -11,6 +11,7 @@
 import { chromium } from "playwright";
 import { spawn } from "node:child_process";
 import { mkdir } from "node:fs/promises";
+import { deflateSync } from "node:zlib";
 
 const PORT = 8099;
 const BASE = `http://127.0.0.1:${PORT}`;
@@ -164,6 +165,60 @@ const PHOTO_ROUTE = "**://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/**";
 //   「整備対象外」「標高データが無い」と書き、根拠に HTTP のステータスまで添えていた。
 //   取得の分岐は画像・GeoJSON・標高の3経路にそれぞれあるので、**別々に**落とす。
 //   1つずつ落とすことで、「他の経路まで巻き添えにしていないか」も同時に見られる。
+// ---- 年代ごとの応答を作る道具 ----
+// 「その年代のタイルは在るが、この地点は撮影範囲の外」＝真っ白なタイルを組み立てる。
+// ⚠ 白い画像をファイルとして置かない。fixture を置くと「画素を実際に読んで判定する」
+//   という主張が、置いた画像に対する主張に化ける（CLAUDE.md の懸念そのもの）。
+//   ここで組み立てて、page.route の応答にだけ使う。
+const whitePng = (size = 256) => {
+  const stride = size * 3 + 1;                 // 1行 = フィルタ種別1バイト + RGB
+  const raw = Buffer.alloc(stride * size);
+  for (let y = 0; y < size; y++) raw.fill(0xff, y * stride + 1, (y + 1) * stride);
+  const T = (() => { const t = []; for (let n = 0; n < 256; n++) {
+    let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; }
+    return t; })();
+  const crc32 = (b) => { let c = 0xffffffff;
+    for (const x of b) c = T[(c ^ x) & 0xff] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; };
+  const chunk = (type, data) => {
+    const len = Buffer.alloc(4); len.writeUInt32BE(data.length);
+    const td = Buffer.concat([Buffer.from(type, "ascii"), data]);
+    const crc = Buffer.alloc(4); crc.writeUInt32BE(crc32(td));
+    return Buffer.concat([len, td, crc]);
+  };
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(size, 0); ihdr.writeUInt32BE(size, 4);
+  ihdr[8] = 8; ihdr[9] = 2;                    // 8bit / トゥルーカラー
+  return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk("IHDR", ihdr), chunk("IDAT", deflateSync(raw)), chunk("IEND", Buffer.alloc(0))]);
+};
+const eraRoute = (id) => `**://cyberjapandata.gsi.go.jp/xyz/${id}/**`;
+
+// 段のラベルを、実際にスライダーを動かして読む。
+// ⚠ #track .lab は1つおきにしか文字を出さないので、DOM の文字だけ数えると足りない。
+//   ⚠ 読むだけのつもりでも、動かせば地図はタイルを取りに行く。
+//     要求数を数えるケースでは使わないこと。
+const stepLabels = (page) => page.evaluate(() => {
+  const el = document.getElementById("t"), max = Number(el.max), out = [];
+  const keep = el.value;
+  for (let v = 0; v <= max; v += 100) {
+    el.value = String(v); el.dispatchEvent(new Event("input"));
+    out.push(document.querySelector("#era .y").textContent.trim());
+  }
+  el.value = keep; el.dispatchEvent(new Event("input"));
+  return out;
+});
+// 建物の高さの式に埋まっている時間座標（tau）を読む。
+// ⚠ ここが「表示位置」に化けていないことが、この修正の肝。
+const tauNow = (page) => page.evaluate(() => {
+  const ex = map.getPaintProperty("bld", "fill-extrusion-height");
+  const found = JSON.stringify(ex).match(/\["-",\["get","vanish"\],([\d.]+)\]/);
+  return { tau: found ? Number(found[1]) : null,
+    water: map.getPaintProperty("water", "fill-extrusion-height") };
+});
+const peelReady = (page) => page.waitForFunction(
+  () => /件|ありません|読み込めませんでした/.test(document.getElementById("status")?.textContent ?? ""),
+  null, { timeout: 60000 });
+
 const SWALE_ROUTE = "**://cyberjapandata.gsi.go.jp/xyz/swale/**";
 const LFC_ROUTE = "**://maps.gsi.go.jp/xyz/experimental_landformclassification*/**";
 const DEM_ROUTE = "**://cyberjapandata.gsi.go.jp/xyz/dem*/**";
@@ -2363,8 +2418,15 @@ const CASES = [
       const now = await at(0);
       must(now.over === "", `現在なのに重ねていると言っている: ${now.over}`);
 
+      // ⚠ スライダーの端を決め打ちしない。段の数は**地点によって変わる**
+      //   （広島は 1936–42 と 1984–86 が存在しないので 7 段 / max=600）。
+      //   800 と書いていた頃は、この検査が「8段固定」という直したい前提そのものを
+      //   固定していた。端は実装に聞く。
+      const max = await page.$eval("#t", (e) => Number(e.max));
+      must(max > 0, "スライダーの上限が 0（段が組まれていない）");
+
       // 過去は必ず言う
-      const past = await at(600);
+      const past = await at(Math.round(max * 0.75));
       must(past.over.length > 0, `過去の年代なのに、重ねていることを言っていない（${past.year}）`);
       must(/いま/.test(past.over), `いまの街だと言っていない: ${past.over}`);
       must(past.over.includes(past.year), `どの年代の地面かを言っていない: ${past.over}`);
@@ -2376,9 +2438,152 @@ const CASES = [
         `過去の年代で建物が薄れている（不透明度 ${past.op}）。消えかけに見える`);
 
       // 明治期は建物が消えるので、建物の話をしない
-      const meiji = await at(800);
+      const meiji = await at(max);
+      must(meiji.year === "明治期", `左端が明治期でない: ${meiji.year}`);
       must(meiji.over === "", `建物が1棟も無いのに重ねていると言っている: ${meiji.over}`);
-      return `現在=無／${past.year}=「${past.over.slice(0, 28)}」${past.yFs}:${past.oFs}px`;
+      return `現在=無／${past.year}=「${past.over.slice(0, 28)}」${past.yFs}:${past.oFs}px／端=${max}`;
+    },
+  },
+  {
+    // ⚠ ここが核心。/peel は固定 8 段を出していたので、広島に**存在しない**
+    //   1936–42（陸軍撮影は東京23区と大阪市周辺だけ）と 1984–86 のタイルを
+    //   地図レイヤとして読み、写真タイルの 404 を **202 件**送っていた（2026-08-16 実測）。
+    //   トップは同じ地点で「残っているのは 5 年代」と正しく答えていた。
+    name: "存在しない年代を段に出さない（広島）",
+    path: `/peel?ll=34.39500,132.45500&q=%E5%BA%83%E5%B3%B6`,
+    async check(page, reqs) {
+      await peelReady(page);
+      const labels = await stepLabels(page);
+      must(labels[0] === "現在", `右端が現在でない: ${labels[0]}`);
+      must(labels[labels.length - 1] === "明治期", `左端が明治期でない: ${labels.at(-1)}`);
+      for (const gone of ["1936–42", "1984–86"])
+        must(!labels.includes(gone), `広島に存在しない ${gone} を段に出している: ${labels.join("/")}`);
+      for (const keep of ["1945–50", "1961–69", "1974–78", "1979–83", "1987–90"])
+        must(labels.includes(keep), `広島に残っている ${keep} が段から消えている: ${labels.join("/")}`);
+      // ⚠ 不在の年代へ出てよいのは、**判定用の中心タイル1枚まで**。
+      //   地図レイヤから引くと、また 100 枚単位で 404 を送ることになる。
+      const count = (id) => reqs.filter((u) => u.includes(`/xyz/${id}/`)).length;
+      for (const id of ["ort_riku10", "gazo3"])
+        must(count(id) <= 1, `存在しない年代 ${id} のタイルを ${count(id)} 枚取りに行っている`);
+      return `${labels.length} 段（${labels.join("/")}）／不在レイヤへの要求 `
+        + `ort_riku10 ${count("ort_riku10")}・gazo3 ${count("gazo3")} 枚`;
+    },
+  },
+  {
+    // ⚠ 同じ地点に、トップと /peel が別の答えを出していた（掟: 同じ問いに答える実装を2つ持たない）。
+    //   長崎 出島はいちばん差が大きく、固定 8 段のうち 5 年代が存在しない
+    //   （2026-08-16 実測で 404 を 491 件送っていた）。
+    name: "トップと /peel が、同じ地点で同じ年代を出す（長崎 出島）",
+    path: `/peel?ll=32.74400,129.87300&q=%E9%95%B7%E5%B4%8E%20%E5%87%BA%E5%B3%B6`,
+    async check(page) {
+      await peelReady(page);
+      const past = (l) => l.filter((x) => x !== "現在" && x !== "明治期").sort();
+      const peel = past(await stepLabels(page));
+      must(JSON.stringify(peel) === JSON.stringify(["1961–69", "1974–78"]),
+        `出島の過去年代が 1961–69 と 1974–78 だけになっていない: ${peel.join("/")}`);
+      // 同じ入れ物のままトップへ移る（同じ地点・同じ相手・同じキャッシュで比べる）
+      await page.goto(`${BASE}/?ll=32.74400,129.87300&q=%E9%95%B7%E5%B4%8E%20%E5%87%BA%E5%B3%B6`,
+        { waitUntil: "domcontentloaded", timeout: 45000 });
+      await waitVerdict(page);
+      const top = past(await page.$$eval("#strip .f .yr", (els) =>
+        els.map((e) => e.textContent.trim())));
+      must(JSON.stringify(top) === JSON.stringify(peel),
+        `トップと /peel の年代が食い違う: トップ ${top.join("/")} ／ /peel ${peel.join("/")}`);
+      return `両方とも ${peel.join("/")}（${peel.length} 年代）`;
+    },
+  },
+  {
+    // ⚠ 応答を固定して、4 通りの結末を作り分ける。実データに寄りかかると、
+    //   相手先の整備状況が変わった日にこの検査が何も見なくなる。
+    //     404      … その年代の写真は無い          → 段に出さない
+    //     200 白紙 … タイルはあるが撮影範囲の外    → 段に出さない
+    //     500      … 読めなかった                  → **段に残す**
+    //     通信断   … 読めなかった                  → **段に残す**
+    //   消してしまうと「取れなかった」が「無い」になる（掟: 取れなかったを「無い」と言わない）。
+    name: "年代ごとの結末で、段に出すかを決める", path: `/peel?${TOYOSU}`,
+    setup: async (page) => {
+      await page.route(eraRoute("gazo3"), (r) => r.fulfill({ status: 404, body: "" }));
+      await page.route(eraRoute("gazo2"), (r) => r.fulfill({
+        status: 200, contentType: "image/png", body: whitePng() }));
+      await page.route(eraRoute("gazo1"), (r) => r.fulfill({ status: 500, body: "" }));
+      await page.route(eraRoute("ort_riku10"), (r) => r.abort());
+    },
+    async check(page) {
+      await peelReady(page);
+      const labels = await stepLabels(page);
+      must(!labels.includes("1984–86"), `404 の年代を段に出している: ${labels.join("/")}`);
+      must(!labels.includes("1979–83"), `白紙（撮影範囲外）の年代を段に出している: ${labels.join("/")}`);
+      must(labels.includes("1974–78"), `読めなかった年代（500）を段から消している: ${labels.join("/")}`);
+      must(labels.includes("1936–42"), `読めなかった年代（通信断）を段から消している: ${labels.join("/")}`);
+      // 残した段では「届いていない」と言い、記録の有無は断定しない
+      const k = labels.indexOf("1936–42");
+      await page.$eval("#t", (e, v) => { e.value = String(v);
+        e.dispatchEvent(new Event("input")); }, k * 100);
+      await page.waitForTimeout(1200);
+      const ground = (await page.locator("#prov .prov").first().textContent()).replace(/\s+/g, " ").trim();
+      must(ground.includes("未取得"), `読めなかった年代が「未取得」になっていない: ${ground.slice(0, 60)}`);
+      const lie = LIES.find((w) => ground.includes(w));
+      must(!lie, `届いていないだけなのに「${lie}」と断定している: ${ground.slice(0, 60)}`);
+      return `${labels.length} 段（${labels.join("/")}）／404と白紙は消え、500と通信断は残る`;
+    },
+  },
+  {
+    // ⚠ 段を削って詰めるだけでは駄目。建物が消える年（tFromYear）・水位・建物のフェードは
+    //   **時間座標**で決まっている。広島で 2 段抜いたぶんを詰めると、
+    //   同じ 1945–50 の地面の上で、建物の消え方と水位が豊洲と変わってしまう。
+    name: "段を間引いても、時間座標が詰まらない（広島 と 豊洲）",
+    path: `/peel?ll=34.39500,132.45500&q=%E5%BA%83%E5%B3%B6`,
+    async check(page) {
+      const at = async (v) => { await page.$eval("#t", (e, x) => { e.value = String(x);
+        e.dispatchEvent(new Event("input")); }, v); await page.waitForTimeout(300);
+        return tauNow(page); };
+      await peelReady(page);
+      const l1 = await stepLabels(page);
+      const k1 = l1.indexOf("1945–50");
+      must(k1 === 5, `広島の 1945–50 が 5 段目でない: ${k1} 段目（${l1.join("/")}）`);
+      const a = await at(k1 * 100);
+      must(a.tau === 6, `広島の 1945–50 で時間座標が 6 でない: ${a.tau}（段は詰まっている）`);
+      // 豊洲では同じ年代が 6 段目。**段は違うが時間は同じ**でなければならない
+      await page.goto(`${BASE}/peel?${TOYOSU}`, { waitUntil: "domcontentloaded", timeout: 45000 });
+      await peelReady(page);
+      const l2 = await stepLabels(page);
+      const k2 = l2.indexOf("1945–50");
+      must(k2 === 6, `豊洲の 1945–50 が 6 段目でない: ${k2} 段目（${l2.join("/")}）`);
+      const b = await at(k2 * 100);
+      must(b.tau === a.tau, `同じ 1945–50 なのに時間座標が違う: 広島 ${a.tau} / 豊洲 ${b.tau}`);
+      must(Math.abs(b.water - a.water) < 1e-9,
+        `同じ 1945–50 なのに水位が違う: 広島 ${a.water} / 豊洲 ${b.water}`);
+      return `1945–50 は 広島 ${k1} 段目 / 豊洲 ${k2} 段目、時間座標はどちらも ${a.tau}`
+        + `（水位 ${a.water.toFixed(3)}m で一致）`;
+    },
+  },
+  {
+    // ⚠ 場所を変えたら段も変わる。組み直しを忘れると、前の場所の段のまま
+    //   別の土地のタイルを引く（＝また存在しない年代を取りに行く）。
+    name: "場所を変えるたびに、年代の段を組み直す",
+    path: `/peel?ll=34.39500,132.45500&q=%E5%BA%83%E5%B3%B6`,
+    async check(page) {
+      const shape = () => page.evaluate(() => ({
+        max: Number(document.getElementById("t").max),
+        ticks: document.querySelectorAll("#track .tick").length }));
+      const wait = (n) => page.waitForFunction(
+        (want) => document.querySelectorAll("#track .tick").length === want, n, { timeout: 60000 });
+      await peelReady(page);
+      await wait(7);
+      const hiroshima = await shape();
+      must(hiroshima.max === 600, `広島のスライダーの端が 600 でない: ${hiroshima.max}`);
+      // ⚠ 探す枠は畳まれているので、開けないとピンが押せない
+      await page.click("#findBox summary");
+      const pin = (name) => page.locator("#quick button").filter({ hasText: name }).first().click();
+      await pin("豊洲"); await wait(9);
+      const toyosu = await shape();
+      must(toyosu.max === 800, `豊洲のスライダーの端が 800 でない: ${toyosu.max}`);
+      await page.click("#findBox summary");
+      await pin("長崎 出島"); await wait(4);
+      const dejima = await shape();
+      must(dejima.max === 300, `出島のスライダーの端が 300 でない: ${dejima.max}`);
+      return `広島 ${hiroshima.ticks}段/${hiroshima.max} → 豊洲 ${toyosu.ticks}段/${toyosu.max}`
+        + ` → 出島 ${dejima.ticks}段/${dejima.max}`;
     },
   },
   {
