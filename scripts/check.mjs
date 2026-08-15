@@ -496,13 +496,21 @@ head("6. 外部リンク");
   //   ⚠ 既知の TLS の件（www.gsi.go.jp。リンクは生きている）は落とさない。
   const strict = !CHECK_LINKS && NEW_LINKS !== null;
   const TLS = "ERR_SSL_UNSAFE_LEGACY_RENEGOTIATION_DISABLED";
+  // ⚠ 自分のリポジトリの検査バッジは、**private のあいだ匿名では 404**（実測 2026-08-15）。
+  //   ⚠ ここを素通りさせるだけにすると、**public にしたあと本当に壊れても気づけない**。
+  //   だから 404 のときだけ理由付きの警告に落とし、**200 なら普通に通す**。
+  //   public 化すれば 200 になってこの分岐に入らなくなる。**消し忘れても害が出ない形**にする。
+  const OWN_ACTIONS = /^https:\/\/github\.com\/[^/]+\/konjaku\/actions\//;
   for (const u of targets) {
     let err = null;
     for (let i = 0; i < (strict ? 2 : 1); i++) {
       try {
         const r = await fetch(u, { headers: { "user-agent": UA }, redirect: "follow",
           signal: AbortSignal.timeout(20000) });
-        r.ok ? ok(`${r.status} ${u}`) : bad(`${r.status} ${u}`);
+        if (r.ok) ok(`${r.status} ${u}`);
+        else if (r.status === 404 && OWN_ACTIONS.test(u))
+          warn(`到達できず ${u}（自分のリポジトリが private のあいだは匿名で 404。public 化で解消する）`);
+        else bad(`${r.status} ${u}`);
         err = null; break;
       } catch (e) { err = e; }
     }
@@ -1403,6 +1411,22 @@ head("8. CI の固定");
         ? bad(`Playwright の版を env 以外にも書いている: ${direct.join("、")}`
             + `（出どころは PLAYWRIGHT_VERSION だけにする）`)
         : ok(`Playwright の版は1か所で固定されている（${pin}）`);
+
+      // ⚠ **手順書は、その 1 か所を見られない。** 人が読んで手で打つものなので、
+      //   版を書き写すしかない。掟「やむを得ず2つ持つときは、機械で突き合わせる」。
+      //   ⚠ ここがずれると**手元では通るのに CI で落ちる／その逆**が起きる。
+      //   ⚠ Dependabot は Playwright を上げないので、**手で上げたときにだけずれる**。
+      //     つまり、ずれるのは決まって人が急いでいるときになる。
+      const guide = await readFile(join(ROOT, "CONTRIBUTING.md"), "utf8").catch(() => "");
+      const inGuide = [...guide.matchAll(/playwright@(\d+\.\d+\.\d+)/g)].map((m) => m[1]);
+      if (!inGuide.length) bad("CONTRIBUTING.md に playwright の版が書かれていない（手順が版なしになっている）");
+      else {
+        const off = [...new Set(inGuide)].filter((v) => v !== pin);
+        off.length
+          ? bad(`CONTRIBUTING.md の Playwright が CI と違う: 手順 ${off.join("、")} / CI ${pin}`
+              + `（手元と CI で別の版になる）`)
+          : ok(`CONTRIBUTING.md の Playwright が CI と揃っている（${pin}・${inGuide.length} 箇所）`);
+      }
     }
   }
 }
