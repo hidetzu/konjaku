@@ -511,13 +511,25 @@ for (const f of htmlFiles) {
     try { fns = runInNewContext(`${swSrc}\n;({ cacheable, SHELL })`, sandbox, { timeout: 3000 }); }
     catch (e) { bad(`public/sw.js を動かせない: ${String(e.message).slice(0, 80)}`); }
     if (fns) {
-      // must-revalidate のパスを代表する実ファイルで確かめる
+      // ⚠ **本当の条件は「版が変わらないまま中身が変わりうるか」。**
+      //   最初は「must-revalidate なら SW に持たせない」と書いたが、**理屈が粗かった**
+      //   （2026-08-16）。/vendor/ は must-revalidate だが、**版（VERSION）の材料に
+      //   入れてある**ので、中身が変われば版も変わり、古いものは activate で消える。
+      //   ⚠ 危ないのは「must-revalidate なのに、版の材料に入っていないもの」。
+      //     /data/ がそれ（取り込みで書き換わるが、版は動かない）。
+      const swHash = await readFile(join(ROOT, "scripts/sw-hash.mjs"), "utf8");
+      const extra = [...(/EXTRA\s*=\s*\[([^\]]*)\]/.exec(swHash)?.[1] ?? "")
+        .matchAll(/["']([^"']+)["']/g)].map((m) => "/" + m[1]);
+      const versioned = (u) => (fns.SHELL ?? []).includes(u)
+        || extra.some((e) => u === e || u.startsWith(e.replace(/[^/]*$/, "")));
       const sample = (pat) => pat.endsWith("*") ? pat.slice(0, -1) + "index.json" : pat;
-      const held = strict.map(sample).filter((u) => fns.cacheable(u));
+      const held = strict.map(sample).filter((u) => fns.cacheable(u) && !versioned(u));
       held.length
-        ? bad(`_headers が毎回確認させると言っているのに、SW が版のキャッシュに入れる: ${held.join("、")}`
-            + `（Cache API はヘッダの鮮度を見ない。持つと古いものが出る）`)
-        : ok(`_headers が毎回確認させるもの（${strict.length} 件）は、SW の版のキャッシュに入らない`);
+        ? bad(`版の材料に入っていないのに、SW が版のキャッシュに入れる: ${held.join("、")}`
+            + `（_headers は毎回確認させると言っている。Cache API はヘッダの鮮度を見ないので、`
+            + `版が動かないまま中身が変わると古いものが出続ける）`)
+        : ok(`毎回確認させるもの（${strict.length} 件）のうち、SW が持つのは版の材料に入っているものだけ`
+            + `（版の材料: ${extra.join("、") || "SHELL のみ"}）`);
       // ⚠ 許可リストが**何も通さない**空振りになっていないこと
       fns.cacheable("/vendor/maplibre-gl.js")
         ? ok("版のキャッシュに入るものはある（/vendor/ が通る）")

@@ -2925,13 +2925,18 @@ const CASES = [
         must(r.ok(), `${u} が取れない（${r.status()}）`);
         got[u] = r.headers()["cache-control"] ?? "(無い)";
       }
-      // vendor は長く持たせる。⚠ 名前が変わる前提のものなので、毎回確認させる必要がない
-      for (const u of ["/vendor/maplibre-gl.js", "/vendor/maplibre-gl.css"])
-        must(/max-age=\d{3,}/.test(got[u]), `${u} がキャッシュされない: ${got[u]}`);
-      // ⚠ それ以外は毎回確認させる。索引と束が食い違うと、古い束を根拠に断定してしまう
-      for (const u of ["/index.html", "/peel", "/data/bl/index.json"])
+      // ⚠ **vendor も毎回確認させる**（2026-08-16 に変えた）。
+      //   以前は「名前が変わる前提だから長く持たせてよい」としていたが、
+      //   実ファイル名は maplibre-gl.js で**固定**で、その前提が嘘だった。
+      //   長く持たせると、MapLibre を上げても**古いものが返り続ける**。
+      //   ⚠ immutable も外した。ファイル名をハッシュ付きにできたら、また長く持たせる。
+      for (const u of Object.keys(got))
         must(/no-cache|max-age=0/.test(got[u]), `${u} が長く残る: ${got[u]}`);
-      return `vendor ${got["/vendor/maplibre-gl.js"]} ／ ほかは ${got["/index.html"]}`;
+      // ⚠ 「全部 max-age=0」だけでは、**取れていないのに通る**空振りになりうる。
+      //   実際に値が読めていることを見る。
+      must(Object.values(got).every((v) => v !== "(無い)"),
+        `キャッシュ方針が読めていない: ${JSON.stringify(got)}`);
+      return `${Object.keys(got).length} 本とも ${got["/index.html"]}`;
     },
   },
   {

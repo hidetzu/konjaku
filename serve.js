@@ -22,11 +22,17 @@ const TYPES = {
 
 // 本番（public/_headers）と揃える。⚠ ここが食い違うと、ローカルと CI でだけ
 // 起きる／起きないが生まれる。
-//   vendor/  … 中身が変わったらファイル名が変わる前提のもの。長く持たせる
+//   vendor/  … ⚠ **長く持たせない**（2026-08-16 に変えた）。実ファイル名は
+//              maplibre-gl.js で固定で、「中身が変わったら名前が変わる」は嘘だった。
+//              長く持たせると、上げても古いものが返り続ける
 //   それ以外 … 毎回確認させる（索引と束が食い違うと、古い束を根拠に断定してしまう）
 // ⚠ _headers は `immutable` を付けているが、ここでは付けない。
 //   ローカルは差し替えて試す場所で、immutable だとブラウザが再読込でも取りに行かない。
-const CACHE_LONG = "public, max-age=86400";
+// ⚠ **名前を CACHE_LONG のままにしない。** いまは長く持たせていない。
+//   古い名前を残すと、コードより強く誤誘導する。
+//   ⚠ 本番（_headers）と同じ文字にする。意味は同じでも、字が違うと
+//   「食い違っていない」を字面で確かめられなくなる。
+const CACHE_REVALIDATE = "public, max-age=0, must-revalidate";
 const CACHE_NONE = "no-cache";
 
 createServer(async (req, res) => {
@@ -50,7 +56,7 @@ createServer(async (req, res) => {
     res.writeHead(200, {
       "content-type": TYPES[extname(rel) || ".html"] ?? "application/octet-stream",
       // MapLibre は 1MB あるのでキャッシュさせる
-      "cache-control": relPath.startsWith("vendor/") ? CACHE_LONG : CACHE_NONE,
+      "cache-control": relPath.startsWith("vendor/") ? CACHE_REVALIDATE : CACHE_NONE,
     });
     res.end(body);
   } catch {
