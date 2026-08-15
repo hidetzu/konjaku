@@ -393,7 +393,12 @@ for (const f of htmlFiles) {
   const shr = await readFile(join(PUB, "share.js"), "utf8");
   const h1 = /<h1>([^<]+)<\/h1>/.exec(idx)?.[1]?.trim();
   // ⚠ コメントを先に落とす。落とさないと、この決まりを説明したコメントの字面を拾う。
-  const banner = /BANNER\s*=\s*"([^"]+)"/.exec(shr.replace(/\/\/[^\n]*/g, ""))?.[1];
+  //   ⚠ **`//` を素朴に落とすと URL を食う。** `https://…` の `//` をコメント開始と
+  //     読んで行末まで消すため、**同じ行で読みたい値より前に URL があると読めなくなる**
+  //     （実測 2026-08-15。`const LFC = "https://…"` を読む別の検査で実際に踏んだ）。
+  //     ⚠ いまの share.js では起きないが、正しい版と誤った版を並べて置かない。
+  //     直前が `:` のときは落とさない。
+  const banner = /BANNER\s*=\s*"([^"]+)"/.exec(shr.replace(/(^|[^:])\/\/[^\n]*/g, "$1"))?.[1];
   if (!h1) bad("index.html から看板（h1）を読めない（この検査が何も見ていない）");
   else if (!banner) bad("share.js に BANNER が無い（共有カードの名乗りを追えない）");
   else if (h1 !== banner)
