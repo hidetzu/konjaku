@@ -1,0 +1,33 @@
+# Action の更新を Dependabot に追わせる。
+#
+# ⚠ **なぜ要るか。** `uses:` を SHA で固定した以上、相手が新しくなっても
+#   こちらは何も起きない。実際、固定した 3 本が Node 20 を対象にしていて、
+#   実行環境が Node 24 へ強制されているという警告が出ている（2026-08-15 実測）。
+#   **強制が外れた時点で落ちる**が、固定してあるので自動では直らない。
+#   固定の代償を、ここで引き受ける。
+#
+# ⚠ **npm は見ていない。** package.json に dependencies も devDependencies も無い
+#   （MapLibre は public/vendor/ に同梱、Playwright は CI で --no-save で入れる）。
+#   ⚠ **Playwright の版は Dependabot では上がらない。**
+#   出どころは check.yml の env.PLAYWRIGHT_VERSION 1 か所で、
+#   Dependabot はそこを読まない。**手で上げる**（下の「手で見るもの」）。
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      # ⚠ 週次の外部リンク検査は月曜（check.yml の cron）。
+      #   同じ日に重ねると、落ちたときにどちらが原因か切り分けにくい。ずらす。
+      day: "wednesday"
+    # ⚠ **1 本にまとめる。** PR ごとに CI が約 4.5 分走る。
+    #   4 つの action を別々の PR にすると、同じ内容を 4 回測ることになる。
+    groups:
+      actions:
+        patterns: ["*"]
+    open-pull-requests-limit: 3
+    # ⚠ Conventional Commits（このリポジトリの決まり）に合わせる。
+    #   これを書かないと "Bump actions/checkout from …" になり、型から外れる。
+    commit-message:
+      prefix: "chore(ci)"
+    labels: ["ci"]

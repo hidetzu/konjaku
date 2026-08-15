@@ -1,0 +1,34 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "konjaku",
+	"compatibility_date": "2026-08-11",
+	// 配信するのは public/ だけ。
+	// ここを "." にすると、ビルド中に生成される node_modules まで
+	// アップロード対象になり workerd（122MiB）が 25MiB 制限に引っかかる。
+	"assets": {
+		"directory": "./public"
+	},
+	// 計測だけのための Worker。静的アセットに一致するリクエストでは起動しないので、
+	// ページの表示は従来どおり素の配信のまま（/t を叩いたときだけ動く）。
+	"main": "worker.js",
+	// 計測の貯め先。Workers Logs は保持3日しかなく、4日空けたらその期間の数字が
+	// 永久に消える（＝様子見が成立しない）ので D1 に貯める。保持は無期限。
+	// 無料枠は 書き込み10万行/日・読み500万行/日・容量5GB。
+	//
+	// ⚠ Analytics Engine（analytics_engine_datasets）は、このアカウントでは
+	//   バインディングを付けるとデプロイが通らなかった（バインディングだけ外して
+	//   押し直したらビルドが通ったので、原因はそこで確定している）。
+	"d1_databases": [
+		// ⚠ binding は DB ひとつだけ。worker.js が env.DB を使う。
+		//   wrangler d1 create が binding:"konjaku" を自動で追記するので、
+		//   作り直したときは重複していないか見ること（同じ DB に2本刺さる）。
+		{
+			"binding": "DB",
+			"database_name": "konjaku",
+			"database_id": "6ad7205d-59e3-44bf-ab75-18438f280eed"
+		}
+	],
+	"observability": {
+		"enabled": true
+	}
+}

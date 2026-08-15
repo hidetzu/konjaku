@@ -1,0 +1,16 @@
+{
+  "note": "事前に取得・生成しておいた範囲の索引。peel.html はここに載っている範囲では実行時に Overpass を叩かない。地点を足すときは fetch-buildings.js / build-water.js の BBOX を書き換えて実行し、ここに1件足す（README「道具」参照）。",
+  "areas": [
+    {
+      "id": "toyosu",
+      "title": "東京都江東区豊洲",
+      "bbox": { "s": 35.648, "w": 139.788, "n": 35.662, "e": 139.806 },
+      "buildings": "./data/toyosu-buildings.geojson",
+      "water": "./data/toyosu-water.geojson",
+      "source": {
+        "buildings": "OpenStreetMap contributors (ODbL) / fetch-buildings.js",
+        "water": "国土地理院「明治期の低湿地」タイルより生成 / build-water.js"
+      }
+    }
+  ]
+}

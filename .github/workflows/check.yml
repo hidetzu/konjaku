@@ -1,0 +1,164 @@
+name: check
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  # 外部サイトのURLは自分たちの都合と関係なく消えるので、定期的にも見る
+  schedule:
+    - cron: "0 0 * * 1"
+  workflow_dispatch:
+
+# ⚠ 既定の権限を読み取りだけにする。public にすると、fork からの PR でも
+#   Workflow が動きうる。書き込み権限を渡さない。
+permissions:
+  contents: read
+
+# ⚠ Playwright の版は、ここだけで決める。
+#   入れる版とキャッシュのキーの両方がこれを見る（出どころを2つ持たない）。
+env:
+  PLAYWRIGHT_VERSION: "1.62.1"
+
+# 古い実行を止める。⚠ **PR のときだけ**キャンセルする。
+#   main への push は、そこでしか走らない検査（外部リンク・全部）を持っているので、
+#   後から来た push に追い越されて消えると、その回の結果が永久に残らない。
+concurrency:
+  group: check-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# ⚠ **Action は SHA で固定する。** タグは動かせるので、`@v4` のままだと
+#   タグの指す先が変わった時点で、こちらの差分なしに中身が入れ替わる。
+#   公開リポジトリでは fork からの PR も走りうるので、ここは締めておく。
+#   ⚠ 上げるときは SHA を書き換える。**上げたことが差分に出る**のが要点。
+#
+# ⚠ **課金はジョブ単位で分に切り上げられる。**
+#   実測（2026-08-15・8/1〜15 の 173 実行）: 実作業 390 秒（6.5分）に対して課金 9 分。
+#   とくに `静的検査` は **8 秒の仕事に 1 分**を払っており、173 回で 144 分が
+#   切り上げだけで消えていた。
+#   → 1分に満たないもの・端数のものは**1つのジョブに束ねる**。
+#   ⚠ 束ねても実時間は伸びない。重い実描画（約 240 秒）と並列のままなので、
+#     待ち時間は実描画で決まる。
+jobs:
+  # 外へ出ない検査と、出る検査をまとめて1ジョブにする。
+  # 実測: 静的 8s ＋ 外部リンク 12s ＋ 検索 86s ＝ 106 秒 → 2 分（束ねる前は 4 分）。
+  # ⚠ 落ちたときに早く分かるよう、**速いものから**並べる。
+  checks:
+    name: 静的検査・外部リンク・検索の並び
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
+        with:
+          # ⚠ 外部リンク（足した分）が、比べる相手（base）を要る
+          fetch-depth: 0
+          # ⚠ 認証情報を .git/config に残さない。fork の PR で走るコードに拾わせない
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4.4.0
+        with:
+          node-version: "22"
+      # 依存ゼロだが、npm ci が通ること自体がデプロイの前提条件
+      - run: npm ci
+
+      # ⚠ ここでは外へ1本も出ない。外部リンクは「何本あるか」を数えるだけで、
+      #   生死は下の2つが見る。数えるだけでも、走査そのものが壊れたら止まる
+      #   （2026-08-14 に readdir で落ちたのを、マージ後まで見逃した）。
+      - name: 構文・デプロイ設定・出典・OGP・外部から来た文字列
+        run: node scripts/check.mjs
+
+      # ⚠ **PR ごとに外部サイトを叩かない**方針は変えていない。
+      #   叩くのは「このブランチで新しく足した URL」だけで、実測（直近12コミット）で
+      #   平均 0.00 本／PR・最大 0 本。ほとんどの PR は外へ1本も出ない。
+      #   ⚠ ここは落ちてよい。足したばかりの URL に一度も到達できないのは、
+      #     ほぼこちらの打ち間違いだから（既知の TLS の件だけは警告のまま／1回再試行する）。
+      # ⚠ fork の PR では skip する。新しい URL を足されると、その URL へ実際に出る。
+      #   見知らぬ人が書いた宛先へ、こちらの CI から通信させない。
+      - name: 外部リンク（このブランチで足した分）
+        if: >-
+          github.event_name == 'pull_request' &&
+          github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          BASE: ${{ github.event.pull_request.base.ref }}
+        # ⚠ ここで `git fetch` しない。persist-credentials: false にしてあるので、
+        #   private リポジトリでは認証できずに落ちる（実際に落ちた: 2026-08-15
+        #   "could not read Username for 'https://github.com'"）。
+        #   上の checkout が fetch-depth: 0 で全ブランチを取っているので、
+        #   origin/<base> はもう手元にある。
+        # ⚠ 万一取れていなければ check.mjs が「比べる相手を読めなかったので全部叩く」と
+        #   言って 8 本叩く（掟: 取れなかったを「無い」と言わない）。
+        #   **ログにその警告が出ていないこと**で、比較できていることを確かめる。
+        run: node scripts/check.mjs --links-new=origin/"$BASE"
+
+      # PR ごとに外部サイトを叩くのは迷惑なので、main と定期実行のときだけ。
+      # ⚠ ここは既存のリンクも含めて 8 本すべてを見るので、相手先の一時的な不調が混ざる。
+      #   だから**この段だけ**落ちても止めない（continue-on-error は step にも書ける）。
+      - name: 外部リンク（全部）
+        if: github.event_name != 'pull_request'
+        continue-on-error: true
+        run: node scripts/check.mjs --links
+
+      # ⚠ 住所検索APIを 42 語、1.5 秒あけて叩く（待機だけで約 63 秒）。
+      #   10req/10秒の制限内に収めている。**ここは速くできない**
+      #   （縮めると相手への頻度が上がる。語数を減らすと回帰の検出力が落ちる）。
+      #   だからこそ、他の短い検査と同じジョブに入れて端数を吸わせる。
+      #   応答が取れなかったときは「並びが悪い」ではなく取得失敗として落ちる。
+      # ⚠ fork の PR では skip する。**地理院の住所検索を 42 回**叩くので、
+      #   public にすると見知らぬ人の PR から地理院へ通信が飛ぶ
+      #   （掟: 地理院への負荷は自分の請求とは別に見る）。
+      #   ⚠ 代償: fork の PR では検索の並びが検証されない。取り込んでから main で見る。
+      #     （--offline で回す手はあるが、fixture の鮮度が別の問題になるので別の課題）
+      - name: 42語の回帰（1位27以上 / 3位内34以上 / 圏外0 / 誤発火0 / 決められない語で発火0）
+        if: >-
+          github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        run: node scripts/search-check.mjs
+
+  render:
+    name: 実描画
+    # ⚠ **fork からの PR では走らせない。** 実描画は国土地理院のタイルを実際に取りに行く。
+    #   public にすると、見知らぬ人の PR から地理院へ通信が飛ぶ
+    #   （掟: 地理院への負荷は自分の請求とは別に見る）。
+    #   ⚠ **代償: fork の PR は実描画で検証されない。** 取り込んでから main で検証する。
+    #     offline で回せるようにするのは別の課題（fixture が要る）。
+    if: >-
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4.4.0
+        with:
+          node-version: "22"
+      # デプロイ側の npm ci を重くしたくないので、CIでだけ入れる。
+      # ⚠ 版は x.y.z まで固定する。メジャーだけ書くと 1.x の最新に動くので、
+      #   ある日ブラウザの挙動が変わって検査が落ちる（原因が自分の変更に見える）。
+      #   上げるときは、上げたことが差分に出るようにする。
+      # ⚠ **版の出どころは、上の env.PLAYWRIGHT_VERSION の1か所だけ。**
+      #   入れる版とキャッシュのキーを別々に決めると、
+      #   「別の版のブラウザを、この版のキーで拾う」がいつか起きる。
+      - run: npm i --no-save playwright@${{ env.PLAYWRIGHT_VERSION }}
+      # ⚠ ブラウザの用意に 36 秒かかっていた（実測 2026-08-15）。ジョブ全体 284 秒のうち
+      #   これが 13%。中身は変わらないので、版が同じなら取り直す必要がない。
+      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830  # v4.3.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ env.PLAYWRIGHT_VERSION }}
+      # ⚠ **--with-deps を外してはいけない。** 一度外して実測した（2026-08-15）。
+      #   ブラウザは起動したが、`行を押すと、寄った結果が画面に入る` が
+      #   **2回とも同じ 53%** で落ちた（揺れではない）。
+      #   apt が入れているのはライブラリだけでなく**フォント**でもあり、
+      #   無いと文字の寸法が変わってレイアウトがずれる。
+      #   375px の画面で「押した結果が見えているか」を測っている検査なので、そこに出た。
+      #   ⚠ 速さのために外すと、**実描画が測っているもの自体が変わる**。
+      - run: npx playwright install --with-deps chromium
+      - name: ページが実際に描画されるか
+        run: node scripts/render.mjs
+      # ⚠ 成果物は**落ちたときだけ**残す（render.mjs が失敗時のみ撮る）。
+      #   以前は 75 件すべて撮っていたのに、`.artifacts/` が隠しディレクトリで
+      #   upload-artifact に除外され、**1枚も保存されていなかった**。
+      #   拾えなかったことが分かるように、if-no-files-found は ignore にしない。
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        if: failure()
+        with:
+          name: screenshots
+          path: artifacts/render/
+          if-no-files-found: warn

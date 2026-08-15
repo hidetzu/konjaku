@@ -1,0 +1,2509 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- ⚠ URL に地名と座標が載っている（?q=豊洲&ll=35.65,139.79）。既定のままだと、
+     計測の POST にも外部リンクにも Referer としてそれが付いて出ていく。
+     「地名も座標も送らない」と画面に書いている以上、ここを塞がないとその記述が嘘になる。
+     実測で /t への referer に ?q= と ?ll= が乗っていた（掟: 地名も座標も送らない） -->
+<meta name="referrer" content="no-referrer">
+<!-- ⚠ 看板は「効能」で名乗る（掟: 看板は効能で名乗る）。
+     以前は「その土地を知る」= カテゴリ名で、何が起きるか読んだ人に分からなかった。
+     主題（成り立ち・掟: 主題は「成り立ち」。明治期は手法のひとつ）と判定文は変えていない。変えたのは名乗りだけ。
+     「昔なんだったか」は地形分類の成因と明治期の低湿地から判定できる範囲の話で、
+     埋立年や「いつ陸になったか」は画素から出せない（掟: 確率を出さない。実測値そのものを出す）ので、ここでも約束しない。 -->
+<!-- ⚠ 「この土地」であって「あなたの住所」ではない。
+     判定文が「この場所は 旧水部 で、いまは 盛土地･埋立地 です」なので語が揃う。
+     そして駅名・施設名でも検索できるようにした以上、
+     入口を「住所」と名乗ると、実際にできることより狭く伝わる。 -->
+<title>この土地は、昔なんだったのか？ — 今昔</title>
+<meta name="description" content="その土地が昔なんだったかを、国土地理院のデータを実際に読んで判定します。読んだタイルと画素まで根拠として出します。そこから、その場所について調べられることが並びます。">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="今昔">
+<meta property="og:title" content="この土地は、昔なんだったのか？ — 今昔">
+<meta property="og:description" content="その土地が昔なんだったかを、国土地理院のデータを実際に読んで判定します。読んだタイルと画素まで根拠として出します。そこから、その場所について調べられることが並びます。">
+<meta property="og:url" content="https://konjaku.hidetzu.work/">
+<meta property="og:image" content="https://konjaku.hidetzu.work/ogp.png">
+<meta property="og:image:alt" content="この土地は、昔なんだったのか？ — 土地の成り立ちを、根拠とともに見る">
+<meta property="og:locale" content="ja_JP">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="この土地は、昔なんだったのか？ — 今昔">
+<meta name="twitter:description" content="その土地が昔なんだったかを、国土地理院のデータを実際に読んで判定します。読んだタイルと画素まで根拠として出します。そこから、その場所について調べられることが並びます。">
+<meta name="twitter:image" content="https://konjaku.hidetzu.work/ogp.png">
+<meta name="twitter:image:alt" content="この土地は、昔なんだったのか？ — 土地の成り立ちを、根拠とともに見る">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#0b0e13">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="今昔">
+<link rel="apple-touch-icon" href="/icon-192.png">
+<style>
+  /* ── 色は「見た目」ではなく「意味」で名付ける ────────────────────
+     この製品の核心は「実測／推定／取れなかった」を区別することなので、
+     その3つを色の名前そのものにする。`--ok` のような一般名だと、
+     いつか「成功」の意味で使われて、区別が静かに崩れる。
+     ⚠ テーマを足すときは、この :root と同じ**意味の集合**を別の値で定義する
+        （[data-theme="light"] などに、下と同じ名前で書く）。
+        個々の規則を書き換えないこと。 */
+  :root{
+    /* 面 */
+    --bg:#0b0e13;            /* いちばん奥 */
+    --surface:#141920;       /* カード・パネル */
+    --line:rgba(255,255,255,.10);
+
+    /* 文字 */
+    --ink:#eaeef3;           /* 本文 */
+    --ink-dim:#8b96a3;       /* 副次・注記 */
+    --ink-faint:#6b7683;     /* さらに弱い（出典など） */
+
+    /* 判定の格 ── ここがこの製品の掟そのもの */
+    --evidence:#7ee0a5;      /* 実測。読んだ画素・数えた件数 */
+    --estimate:#e6c47a;      /* 推定。こちらが決めた値 */
+    --missing:#e08a7a;       /* 取れなかった。「無い」ではない */
+
+    /* 土地の姿 */
+    --water:#5ba3e0;         /* 明治期の水 */
+
+    /* 操作 */
+    --action:#6fc3ff;        /* 押せるもの */
+    --tap:44px;              /* 指で押す最小の大きさ（Apple の指針） */
+
+    /* ============ 文字の大きさ ============
+       二層にしてある。**値はここ（--text-*）にしか書かない。**
+       使う側は下の役割（--fs-*）だけを書く。こうしておくと
+       「根拠を一段上げる」が --fs-evidence の1行で済む。
+       ⚠ 生の px を font-size に書いたら scripts/check.mjs が落とす。
+
+       なぜ整えたか（実測 2026-08-15）:
+         トップ 375 で 12px 未満が 46/70 個（66%）、/peel 375 で 51/63 個（81%）。
+         同じ「根拠」を出すのに 9 / 9.5 / 10 / 10.5px が混在していて、
+         **まとめて上げることができない状態**だった。
+       ⚠ 段の**構造**（根拠 ≦ 但し書き ≦ 主張）は測定に基づくが、
+         **12 という数字そのものに、この画面での実測の裏づけは無い**。
+         主要なフレームワークの最小段が 11〜12px（Tailwind text-xs=12px /
+         Material Design 3 label-small=11px / Apple iOS Caption 2=11pt）という
+         慣習に合わせた。読めるかを利用者に確かめたものではない。
+       ⚠ px のまま。**ブラウザの文字サイズ設定は効かない**（まだ直していない）。
+         → docs/adr/0027-直していないと分かっていることを、名前で残す.md
+         移るときは、下の --text-* の値だけを直せばよい（使う側は触らない）。 */
+
+    /* 値の段 */
+    --text-2xs:11px;         /* 印・タグ。**文ではないもの**だけ */
+    --text-xs:12px;          /* いちばん小さい「文」 */
+    --text-sm:12.5px;
+    --text-md:13px;
+    --text-base:14px;        /* body の基準と同じ */
+    --text-lg:15px;
+    --text-xl:16px;
+    --text-2xl:17px;
+    --text-3xl:19px;
+
+    /* 役割（使う側はこちらを書く） */
+    --fs-label:var(--text-2xs);      /* 印・タグ（「直読み」「根拠あり」「▸」） */
+    --fs-evidence:var(--text-xs);    /* 根拠。読んだ画素・取得方法・出所 */
+    --fs-note:var(--text-xs);        /* 但し書き・副題 */
+    --fs-badge:var(--text-sm);       /* バッジ（主張の要約） */
+    --fs-lead:var(--text-md);        /* 一覧の行の見出し */
+    --fs-body:var(--text-base);      /* 本文・判定文 */
+    --fs-claim:var(--text-lg);       /* 判定の値（旧水部・1.91 m） */
+    /* ⚠ 入力欄は 16px 未満にしない。iOS Safari は 16px 未満の入力欄に触れると
+       ページごと拡大し、戻らない。見た目の都合で下げないこと。 */
+    --fs-input:var(--text-xl);
+    --fs-era:var(--text-2xl);        /* 年 */
+    --fs-sign:var(--text-3xl);       /* 看板 */
+  }
+  /* ⚠ テーマを足すときは、ここに**同じ名前の集合**を別の値で書く。
+     個々の規則は1行も触らない。例:
+       [data-theme="light"]{ --bg:#f7f8fa; --surface:#fff; --ink:#1b2028; … }
+     ⚠ 「実測／推定／取れなかった」の3色は、どのテーマでも**互いに区別できる**こと。
+        ここが同じ色に見えるテーマは、この製品では成立しない。 */
+
+  *{box-sizing:border-box}
+  html,body{margin:0;min-height:100%;background:var(--bg);color:var(--ink);
+    font:14px/1.65 -apple-system,"Hiragino Sans","Noto Sans JP",sans-serif}
+  .wrap{max-width:680px;margin:0 auto;padding:34px 18px 90px}
+  header{margin-bottom:20px}
+  h1{margin:0 0 3px;font-size:var(--fs-sign);letter-spacing:.05em;font-weight:500}
+  .lead{margin:0;font-size:var(--fs-note);color:var(--ink-dim)}
+  /* 出所の名乗り。いまの時代、ここが差になる（AIが推測したものではない） */
+  .lead.src{margin-top:6px;font-size:var(--fs-evidence);color:var(--ink-faint)}
+  .lead.src b{color:var(--ink-dim);font-weight:500}
+  /* 場所が決まったら、リード文は用が済んでいる。実測でスマホ幅 79px（4行）あり、
+     そのぶん写真と判定文が下へ押し出されていた。
+     h1（＝この画面が答える問い）は残す。写真がその問いへの答えになっている。
+     ⚠ ここも display で消すが、消えるのは「場所が決まったあと」＝タップの処理が
+       終わったあとなので、入口の1タップは壊れない（.hint の事故と同じ轍は踏まない） */
+  body.picked .lead{display:none}
+  /* サービス名。共有リンクから来た人が「何のサイトか」「戻る先」を持てるように */
+  .brand{display:inline-flex;align-items:center;gap:6px;font-size:var(--fs-note);letter-spacing:.18em;
+    color:var(--ink-dim);text-decoration:none;margin-bottom:6px}
+  a.brand:hover{color:var(--action)}
+    .brand .mark{width:15px;height:15px;border-radius:3.5px;flex:none;display:block}
+  .brand{align-items:center}
+.brand b{font-weight:500;letter-spacing:.22em}
+
+
+  /* ============ 入力（2段: 場所 → コマンド） ============ */
+  .scope{display:flex;align-items:center;gap:0;border:1px solid var(--line);border-radius:12px;
+    background:var(--surface);overflow:hidden}
+  .scope.on{border-color:rgba(111,195,255,.45)}
+  .chip{display:none;align-items:center;gap:7px;padding:0 4px 0 13px;white-space:nowrap;flex:none}
+  .scope.on .chip{display:flex}
+  .chip .nm{font-size:var(--fs-lead);color:var(--action)}
+  /* ⚠ 当たり判定は「CSS の計算値」ではなく「その座標を押して本当に届くか」で決める。
+     擬似要素を親からはみ出させる書き方は、.scope の overflow:hidden で下端が切られ、
+     右側は後から重なる #q が先にクリックを拾って、実測 42×42 にしかなっていなかった。
+     ボタン**そのもの**を 44×44 にして、見た目の 19px は中の <i> で描く。
+     こうすると flex の場所取りも var(--tap) ぶん確保されるので、誰にも重ねられないし切られない。 */
+  .chip .x{flex:none;width:var(--tap);height:var(--tap);padding:0;border:0;background:transparent;
+    color:var(--ink-dim);font-size:var(--fs-note);line-height:1;cursor:pointer;display:grid;place-items:center}
+  .chip .x i{width:19px;height:19px;border-radius:5px;border:1px solid var(--line);
+    display:grid;place-items:center;font-style:normal}
+  .chip .x:hover{color:var(--missing)}
+  .chip .x:hover i{border-color:var(--missing)}
+  #q{flex:1;min-width:0;padding:15px 16px;font:inherit;font-size:var(--fs-input);border:0;outline:none;
+    background:transparent;color:var(--ink)}
+  /* placeholder に入りきらない補足。場所を選ぶ前に、入力欄に触れている間だけ出す。
+     ⚠ display で出し入れしてはいけない。**入口が塞がる。**
+       入力欄がフォーカスを失った瞬間にこの行が消え、下にあるもの（候補・地名の例）が
+       まるごと 42px 上へずれる。指を離す前にレイアウトが動くので、
+       押したつもりの座標には別の要素が来ている。
+       実測（375×667）: クイック選択も検索候補も **1タップ目が必ず空振り**していた。
+         クイック「豊洲」 y=302 → タップ後 260（ずれ 42px）→ 判定が始まらない
+         候補1件目      y=299 → タップ後 257（同上）      → 何も選ばれない
+         対照として .hint を常時表示に固定すると、1タップ目で通る
+       親切のつもりで足した1行が、スマホ利用者の最初の1回を毎回無効にしていた。
+     → 場所は常に確保し、visibility だけ切り替える。これならレイアウトが動かない。
+       場所が決まったあと（.scope.on）は用が済んでいるので、そこで初めて畳む
+       （このときの畳みは click の処理が終わったあとなので、タップを壊さない）。 */
+  .hint{visibility:hidden;margin:6px 2px 0;font-size:var(--fs-note);color:var(--ink-dim)}
+  .scope:not(.on):focus-within~.hint{visibility:visible}
+  .scope.on~.hint{display:none}
+
+  #list{margin-top:7px}
+  /* min-height は指の当たり判定（iOS の最小 var(--tap)）。副題の無い行でも下回らせない */
+  #list .it{display:flex;align-items:center;gap:11px;width:100%;min-height:var(--tap);text-align:left;
+    padding:10px 13px;margin-bottom:4px;border:1px solid var(--line);border-radius:9px;
+    background:var(--surface);color:var(--ink);font:inherit;font-size:var(--fs-lead);cursor:pointer;text-decoration:none}
+  #list .it:hover,#list .it.sel{border-color:var(--action);outline:none}
+  #list .it.sel{background:rgba(111,195,255,.07)}
+  #list .ic{flex:none;width:24px;text-align:center;font-size:var(--fs-body)}
+  #list .tx{flex:1;min-width:0}
+  #list .tx b{font-weight:500}
+  #list .tx small{display:block;color:var(--ink-dim);font-size:var(--fs-note);font-variant-numeric:tabular-nums}
+  /* 判定から出た行だけ、副題（＝なぜ出ているかの理由）を上のバッジと同じ色味にする。
+     どの行も副題を持っているので、グレーのままでは理由が単なる補足に見えてしまう。
+     色は判定に追従させる。ベージュ固定にしていたときは、水域の土地（豊洲など）で
+     判定カードもバッジも青いのにタグだけベージュになり、指し示す先が画面に無かった */
+  #list{--why:#d8cfa8;--why-bg:rgba(216,207,168,.12);--why-sub:#c4bda0}
+  #list.w{--why:var(--water);--why-bg:rgba(91,163,224,.14);--why-sub:#93b4cd}
+  #list .it.why .tx small{color:var(--why-sub)}
+  #list .tag{flex:none;font-size:var(--fs-label);letter-spacing:.06em;padding:1.5px 7px;border-radius:999px}
+  /* ⚠ 自前で根拠を持って見せる画面（3D・重ねて比べる）を、外部へ渡すだけの行と
+     同じ顔で並べない。実測で、本命が「ごはん / ラーメン」と同じ見た目のせいで
+     一覧全体が「リンク集」に見え、2画面下まで気づかれていなかった。 */
+  #list .it.own{min-height:56px;border-color:rgba(126,224,165,.3);background:rgba(126,224,165,.05)}
+  #list .it.own .ic{font-size:var(--fs-sign)}
+  #list .it.own .tx b{font-size:var(--fs-body)}
+  #list.w .it.own{border-color:rgba(91,163,224,.32);background:rgba(91,163,224,.06)}
+  .tag.own{background:rgba(126,224,165,.14);color:var(--evidence)}
+  .tag.ext{background:rgba(255,255,255,.07);color:var(--ink-dim)}
+  .tag.priv{background:rgba(111,195,255,.14);color:var(--action)}
+  /* 判定バッジから導かれた行であることを色で繋ぐ（陸=.badge.land / 水域=.badge.water と同じ） */
+  .tag.why{background:var(--why-bg);color:var(--why)}
+  /* 判定カードと、そこから出た行を1枚に溶接する。
+     利用者の指摘「深掘りのための情報は同一カード内に表示しないと迷う」への対応。
+     要素は動かさず、枠と地色だけで一続きに見せている（↑↓/Enter・絞り込みを壊さないため） */
+  .verdict.welded{margin-bottom:0;border-bottom-left-radius:0;border-bottom-right-radius:0;
+    border-bottom-color:transparent}
+  #list.welded{margin-top:0}
+  #list .it.fh{margin-bottom:0;border-radius:0;border-top-color:transparent;
+    border-left-color:rgba(126,224,165,.28);border-right-color:rgba(126,224,165,.28);
+    background:rgba(126,224,165,.04)}
+  #list.w .it.fh{border-left-color:rgba(91,163,224,.35);border-right-color:rgba(91,163,224,.35);
+    background:rgba(91,163,224,.05)}
+  #list .it.fh-last{margin-bottom:4px;border-bottom-left-radius:9px;border-bottom-right-radius:9px;
+    border-bottom-color:rgba(126,224,165,.28)}
+  #list.w .it.fh-last{border-bottom-color:rgba(91,163,224,.35)}
+  /* 溶接した中では、選択を枠色で示すと1枚に見せた箱がその行だけ切れて見える。
+     枠は溶接の色のまま置き、選択は左の縦棒と地色で示す */
+  #list .it.fh.sel{box-shadow:inset 3px 0 0 var(--action);background:rgba(111,195,255,.07)}
+  #list .it.fh.sel:not(.fh-last){border-bottom-color:transparent}
+  #list .it.fh{border-bottom-color:transparent}
+  #list .it.fh+.it.fh{border-top-color:var(--line)}
+  /* 災害リスク。断定ではなく引用なので、出典を必ず添える（掟: 根拠のないことは書かない） */
+  /* ⚠ 畳むが、消さない。掟: 災害リスクを、根拠の奥ではなく正面に出す で「根拠の奥から正面へ」引き上げた判断は生きている。
+     ただし実測で 167px あり、判定カードでいちばん場所を食っていた。
+     見出しは常に見えるので「気をつけることがある」ことは分かる。
+     ⚠ 見出しに危険の中身は書かない。要約すると、原典より強くも弱くもなる（掟: 根拠のないことは書かない）。
+       書けるのは「どの区分についての、誰の記述か」まで。 */
+  .risk{margin-top:9px;padding:7px 10px;border-radius:8px;font-size:var(--fs-note);line-height:1.6;
+    background:rgba(255,255,255,.04);border-left:2px solid var(--ink-dim);color:#c3ccd6}
+  .risk>summary{cursor:pointer;list-style:none;display:flex;flex-wrap:wrap;
+    align-items:baseline;gap:4px 8px;min-height:26px}
+  .risk>summary::-webkit-details-marker{display:none}
+  .risk>summary::after{content:"▸";font-size:var(--fs-label);color:var(--ink-dim);margin-left:auto;transition:transform .15s}
+  .risk[open]>summary::after{transform:rotate(90deg)}
+  .risk .rl{font-size:var(--fs-note);letter-spacing:.06em;color:#c3ccd6}
+  .risk .rs2{font-size:var(--fs-note);color:var(--ink-dim)}
+  .risk .rbody{margin-top:6px;padding-top:6px;border-top:1px dashed var(--line)}
+  .risk .rs{display:block;font-size:var(--fs-note);color:var(--ink-dim);margin-top:3px}
+  .report{display:inline-block;margin-left:6px;padding:3px 10px;border-radius:999px;
+    border:1px solid var(--line);color:var(--action);text-decoration:none;font-size:var(--fs-note)}
+  .report:hover{border-color:var(--action)}
+  .close-why{display:block;width:100%;margin-top:10px;padding:10px;border-radius:9px;
+    border:1px solid var(--line);background:transparent;color:var(--ink-dim);
+    font:inherit;font-size:var(--fs-badge);cursor:pointer;min-height:var(--tap)}
+  .close-why:hover{border-color:var(--action);color:var(--action)}
+  .share-msg{margin-top:8px;padding:6px 9px;border-radius:7px;font-size:var(--fs-note);
+    background:rgba(126,224,165,.10);border-left:2px solid var(--evidence);color:#9ed3b4}
+  .quick{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+  /* 地名の例は「何を打てばいいか分からない」を越えさせるためのもの。
+     場所が確定したら役目は終わっている。出し続けると一覧の全下（実測 y≈1183、
+     ファーストビューの外）に居座り、押しても画面は動かないので何が起きたか見えない。
+     場所を変える手段は ✕ と「保存した場所」が既に持っている */
+  #scope.on ~ .quick{display:none}
+  .quick button{padding:4px 11px;border:1px solid var(--line);border-radius:999px;background:transparent;
+    color:var(--ink-dim);font:inherit;font-size:var(--fs-note);cursor:pointer}
+  /* ⚠ 指で押す端末では、押せる高さを var(--tap) 取る（Apple の指針の値）。
+     実測（375px）: 高さ 29px のまま10個を2行に詰めると、行の間隔が 6px しかなく、
+     押し間違いが「隣の街が開く」という、間違えたことに気づきにくい形で出る。
+     ⚠ 見えない当たり判定を ::after で広げる手は使わない。行の間隔（35px）より
+     判定（var(--tap)）が大きくなり、上下の行の判定が重なって、
+     **下の行を押したのに上の行が開く**という、もっと分かりにくい壊れ方になる。
+     見た目と当たり判定は一致させる。 */
+  @media (hover:none){ .quick button{min-height:var(--tap);padding:4px 13px} }
+  .quick button:hover{border-color:var(--action);color:var(--action)}
+  /* 検索窓に組み込むボタン。入力欄は必ずファーストビューにあるので埋もれない */
+  .in-box{flex:none;height:30px;min-width:34px;padding:0 9px;margin-right:8px;
+    border-radius:8px;border:1px solid var(--line);background:transparent;
+    color:var(--ink-dim);font:inherit;font-size:var(--fs-body);cursor:pointer;line-height:1}
+  .in-box:hover{border-color:var(--action);color:var(--action)}
+  .in-box[disabled]{opacity:.4;cursor:default}
+  #here.busy{color:var(--action);border-color:var(--action)}
+  /* 拒否されたときは、直し方と代わりの手段を必ず出す。消さずに残す */
+  .here-msg{margin-top:7px;padding:9px 11px;border-radius:8px;font-size:var(--fs-note);line-height:1.7;
+    background:rgba(230,196,122,.09);border-left:2px solid var(--estimate);color:#cbb98f}
+  .here-msg b{color:var(--estimate);font-weight:500}
+  .here-msg .dim{color:var(--ink-dim)}
+  /* 場所を選んだ時点の「事実」。コマンドではないので一覧の外に置く */
+  .verdict{display:flex;align-items:center;gap:10px;margin-top:9px;padding:11px 14px;
+    border-radius:10px;border:1px solid rgba(126,224,165,.28);background:rgba(126,224,165,.07);
+    font-size:var(--fs-body)}
+  .verdict.w{border-color:rgba(91,163,224,.35);background:rgba(91,163,224,.09);color:var(--water)}
+  .verdict .tx{flex:1;min-width:0}
+  .verdict .dim{color:var(--ink-dim);font-size:var(--fs-badge)}
+  .verdict{display:block}
+  .verdict .v-head{display:flex;align-items:center;gap:10px}
+  /* ✕ と同じ理由で、ボタンそのものを 44×44 にする（見た目の丸は 22px のまま） */
+  .verdict .why{flex:none;width:var(--tap);height:var(--tap);padding:0;border:0;background:transparent;
+    color:var(--ink-dim);font:inherit;font-size:var(--fs-note);cursor:pointer;display:grid;place-items:center}
+  .verdict .why i{width:22px;height:22px;border-radius:50%;border:1px solid var(--line);
+    display:grid;place-items:center;font-style:normal}
+  .verdict .why:hover{color:var(--action)}
+  .verdict .why:hover i{border-color:var(--action)}
+  .verdict .why[aria-expanded="true"]{color:#07121c}
+  .verdict .why[aria-expanded="true"] i{background:var(--action);border-color:var(--action)}
+  /* ============ 年代（帯＝操作 ＋ 大きい写真） ============ */
+  /* この土地の空中写真を、撮られた順に並べて選ばせる。選んだ年代が下で大きくなる。
+     ⚠ 中間の年代について、こちらは一言も書かない。
+       「1960年代：造成開始」のような行は、空中写真からは出せないことが実測で
+       分かっている（掟: 画素から出せないことは言わない（実測1） — 輝度・分散・彩度では水陸すら分離できない。
+       皇居の森が東京湾より暗い）。建設年も OSM に **533件中8件**しか無い
+       （10街40万件では 1,216件 = 0.30%）。
+       写真を切り替えれば、変化は見た人が読み取る。こちらが言葉にした瞬間、
+       それは判定ではなく作文になり、この画面のほかの行と格が揃わなくなる。
+     ⚠ 出せるのは photos() が実際に読めた年代だけ。読めていない年代は並べない。 */
+  .strip{display:flex;align-items:flex-start;gap:4px;margin:0 0 9px}
+  /* 昔 → 今 の向きを、端に置いた2文字だけで示す。
+     枠が狭い端末では年代ラベルを畳むので、向きの手がかりがこれだけになる */
+  .strip .end{flex:none;align-self:center;font-size:var(--fs-label);color:var(--ink-dim);padding:0 1px}
+  /* 判定を待つあいだの骨組み。本番と同じ形にして、差し替わるときに飛び跳ねさせない */
+  .strip .sk{flex:1 1 0;min-width:0;aspect-ratio:1;border-radius:6px;border:1px solid var(--line);
+    background:linear-gradient(100deg,#131922 30%,#1b2430 50%,#131922 70%);
+    background-size:220% 100%;animation:sk 1.4s ease-in-out infinite}
+  @keyframes sk{0%{background-position:180% 0}100%{background-position:-80% 0}}
+  /* ⚠ 幅を固定しない。8枚を 375px に収めるために、枠のほうを伸縮させる。
+     以前は 72px 固定＋横スクロールで、いちばん見せたい「現在」が画面の外にいた */
+  .strip .f{flex:1 1 0;min-width:0;padding:0;border:0;background:transparent;
+    color:inherit;font:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent}
+  .strip .im{position:relative;display:block;width:100%;aspect-ratio:1;border-radius:6px;
+    overflow:hidden;border:1px solid var(--line);background:#0f141b}
+  .strip .im img{width:100%;height:100%;object-fit:cover;display:block;opacity:.62}
+  .strip .f:hover .im{border-color:var(--action)}
+  .strip .f.on .im{border-color:var(--action);box-shadow:0 0 0 2px rgba(111,195,255,.35)}
+  .strip .f.on .im img{opacity:1}
+  .strip .f.now.on .im{border-color:var(--action)}
+  /* 明治期は写真ではなくデータ。写真と同じ顔で並べない */
+  .strip .f.meiji .im{border-color:rgba(216,207,168,.45)}
+  .strip .f.meiji .yr{color:#d8cfa8}
+  .strip .im>img+img{position:absolute;inset:0}
+  /* 判定した地点そのもの。object-position と同じ割合で置くので、枠が何pxでも同じ場所を指す */
+  .strip .mk{position:absolute;width:7px;height:7px;margin:-4px 0 0 -4px;border-radius:50%;
+    border:1.5px solid rgba(255,255,255,.9);box-shadow:0 0 0 1px rgba(0,0,0,.6)}
+  .strip .yr{display:none;margin-top:4px;font-size:var(--fs-note);line-height:1.2;color:var(--ink-dim);
+    text-align:center;font-variant-numeric:tabular-nums}
+  .strip .f.on .yr{color:var(--ink)}
+  /* 年代ラベルは、入る幅があるときだけ出す。入らない幅では大きい写真の見出しが受け持つ */
+  @media (min-width:520px){ .strip .yr{display:block} }
+  /* 出せなかった1枚。img からは「写真が無い」のか「読めなかった」のか区別できないので、
+     枠を残して読めなかったとだけ言う。黙って詰めると年代が飛んだように見える */
+  .strip .im.err{display:grid;place-items:center}
+  .strip .im.err::after{content:"読み込めず";font-size:var(--fs-label);line-height:1.2;
+    color:var(--estimate);text-align:center;padding:0 2px}
+  .strip .im.err img,.strip .im.err .mk{display:none}
+
+  /* --- 選んだ年代を大きく --- */
+  /* 掴めることを、形でも出す（タッチ端末には効かないので、文言も別に出している） */
+  .big{cursor:grab;position:relative;width:100%;aspect-ratio:4/3;border-radius:10px;overflow:hidden;
+    border:1px solid var(--line);background:#0f141b;margin:0 0 9px}
+  .big .lyr{position:absolute;inset:0;opacity:0;transition:opacity .28s ease}
+  .big .lyr .t{position:absolute;display:block}
+  .big .lyr.on{opacity:1}
+  .big .mk{position:absolute;width:11px;height:11px;margin:-6px 0 0 -6px;border-radius:50%;
+    border:2px solid rgba(255,255,255,.95);box-shadow:0 0 0 1.5px rgba(0,0,0,.65)}
+  /* 主役は年代。写真の上に、読める大きさで置く（TimeMap の年バッジと同じ役割） */
+  /* ⚠ 年バッジと「寄せたものの名前」は、同じ積み上げに入れて位置を決める。
+       以前 .fx を bottom:46px で別に置いていたら、sub を持つ年代
+       （1936–42 陸軍撮影 / 1945–50 米軍撮影 / 現在 / 明治期 ＝ 9 コマ中 4 つ）で
+       年バッジが 46px より高くなり、実測で 102×10px 覆っていた。
+       固定値で避けようとすると、年バッジの高さが変わるたびに破れる。 */
+  .big .bl{position:absolute;left:10px;bottom:10px;z-index:3;
+    display:flex;flex-direction:column-reverse;align-items:flex-start;gap:6px;
+    max-width:calc(100% - 72px)}
+  .big .yr-big{padding:5px 11px;border-radius:8px;
+    background:rgba(11,14,19,.72);backdrop-filter:blur(6px);border:1px solid var(--line);
+    font-size:var(--fs-era);letter-spacing:.02em;font-variant-numeric:tabular-nums;line-height:1.25}
+  .big .yr-big small{display:block;font-size:var(--fs-evidence);color:var(--ink-dim);letter-spacing:.04em}
+  /* 大きい写真が落ちたときに、前の絵を黙って残さない */
+  .big-err{display:none}
+  .big.err .lyr,.big.err .mk,.big.err .yr-big,.big.err .bl{display:none}
+  .big.err .big-err{display:grid;place-items:center;position:absolute;inset:0;
+    font-size:var(--fs-note);color:var(--estimate);text-align:center;padding:0 12px}
+  /* --- 寄る --- */
+  .big-in{position:absolute;inset:0;transition:transform .35s cubic-bezier(.2,.7,.2,1)}
+  /* 拡大量と移動量は JS が入れる（枠の外にあるものを真ん中へ寄せるため） */
+  .big .unzoom{display:none;position:absolute;right:8px;top:8px;z-index:3;
+    padding:5px 10px;border-radius:999px;border:1px solid var(--line);
+    background:rgba(11,14,19,.75);color:var(--ink);font:inherit;font-size:var(--fs-note);cursor:pointer}
+  .big.zoom .unzoom{display:block}
+  .big .say{position:absolute;left:10px;top:10px;z-index:4;width:34px;height:34px;
+    border-radius:50%;cursor:pointer;border:1px solid var(--line);
+    background:rgba(11,14,19,.75);color:var(--ink);font:inherit;font-size:var(--fs-body);
+    line-height:1;backdrop-filter:blur(6px)}
+  .big .say:hover{border-color:var(--action);color:var(--action)}
+  .big .say.on{background:var(--action);color:#07121c;border-color:var(--action)}
+  /* 鳴らなかったことを、画面に出す（無音のまま黙らない） */
+  .big .say-msg{position:absolute;left:10px;top:50px;z-index:4;max-width:calc(100% - 20px);
+    padding:6px 10px;border-radius:8px;font-size:var(--fs-note);line-height:1.5;
+    background:rgba(11,14,19,.85);border:1px solid rgba(230,196,122,.45);color:#cbb98f;
+    backdrop-filter:blur(6px)}
+  .big.zoom .unzoom:hover{border-color:var(--action);color:var(--action)}
+  /* この範囲にあるものの位置。写真は静止画なので、印の側で示す */
+  /* 地図（触った瞬間に載る）。載ったら静止した写真は下に隠す */
+  .big .map{position:absolute;inset:0;display:none}
+  .big.map-on .map{display:block}
+  .big.map-on .big-in{display:none}
+  .big.map-on .bl{z-index:3}
+  .big:active{cursor:grabbing}
+  .big .zoombar{position:absolute;right:8px;bottom:8px;z-index:4;display:flex;flex-direction:column;gap:4px}
+  .big .zoombar button{width:32px;height:32px;border-radius:8px;cursor:pointer;
+    border:1px solid var(--line);background:rgba(11,14,19,.75);color:var(--ink);
+    font:inherit;font-size:var(--fs-claim);line-height:1;backdrop-filter:blur(6px)}
+  .big .zoombar button:hover{border-color:var(--action);color:var(--action)}
+  .big.map-loading .loading{display:block}
+  .big.map-loading .loading::after{content:"地図を読み込んでいます…"}
+  .big.map-loading .loading{font-size:0}
+  .big.map-loading .loading::after{font-size:var(--fs-label)}
+  .big .loading{display:none;position:absolute;left:50%;top:12px;transform:translateX(-50%);
+    z-index:4;padding:5px 12px;border-radius:999px;font-size:var(--fs-note);color:var(--ink);
+    background:rgba(11,14,19,.8);border:1px solid var(--line);backdrop-filter:blur(6px)}
+  .big .pin{position:absolute;width:9px;height:9px;margin:-5px 0 0 -5px;border-radius:50%;
+    background:rgba(230,196,122,.9);border:1.5px solid rgba(11,14,19,.85);
+    box-shadow:0 0 0 1px rgba(230,196,122,.5)}
+  .big .pin.on{background:var(--action);box-shadow:0 0 0 3px rgba(111,195,255,.35)}
+  /* ⚠ 寄せた先に、押したものの名前を残す。
+     実測（2026-08-14・利用者役のエージェント3体）: 押すと一覧の行そのものが画面から出ていき、
+     17行中15行で**名前がどこにも残らなかった**。画面にはぼやけた写真と同じ色の丸が
+     複数あるだけで、「動いたのは分かるが、何に寄ったのか分からない」。
+     年バッジ（左下）の上に置く。右下は拡大縮小のボタンが 76px 使うので避ける。 */
+  .big .fx{display:none;max-width:100%;padding:5px 10px;border-radius:8px;
+    font-size:var(--fs-lead);line-height:1.45;color:var(--ink);
+    background:rgba(11,14,19,.85);border:1px solid var(--line);backdrop-filter:blur(6px)}
+  /* 中身が無いときは出さない（押しても何も起きない導線を置かない、の裏返し） */
+  .big.zoom .fx:not(:empty){display:block}
+  .big .fx .fy{color:var(--estimate);font-variant-numeric:tabular-nums;margin-right:7px}
+
+  /* --- この時点までにできていたもの --- */
+  .ev{margin:0 0 11px}
+  /* ⚠ flex-wrap が無いと、狭い幅で件数ピルが縮んで 2 行に割れる
+       （実測 375/320px で 8 種の見出しすべて。18.5 → 35.0px） */
+  .ev-h{display:flex;align-items:center;flex-wrap:wrap;gap:7px;font-size:var(--fs-note);
+    color:var(--ink-dim);margin-bottom:6px}
+  .ev-n{font-size:var(--fs-label);padding:1px 7px;border-radius:999px;
+    background:rgba(230,196,122,.14);color:var(--estimate)}
+  .ev-row{display:flex;align-items:stretch;gap:4px;margin-bottom:3px}
+  .ev-it{display:flex;align-items:center;flex-wrap:wrap;gap:9px;row-gap:1px;flex:1;min-width:0;min-height:38px;text-align:left;
+    padding:6px 10px;border:1px solid var(--line);border-radius:8px;
+    background:var(--surface);color:var(--ink);font:inherit;font-size:var(--fs-badge);cursor:pointer}
+  /* ⚠ 項目ごとの出典。source_url を必須にしておきながら、画面に出していなかった */
+  .ev-u{flex:none;display:grid;place-items:center;width:30px;border:1px solid var(--line);
+    border-radius:8px;color:var(--ink-dim);text-decoration:none;font-size:var(--fs-note)}
+  .ev-u:hover{border-color:var(--action);color:var(--action)}
+  .ev-it:hover{border-color:var(--action)}
+  .ev-it.on{border-color:var(--action);background:rgba(111,195,255,.08)}
+  .ev-y{flex:none;font-size:var(--fs-evidence);color:var(--estimate);font-variant-numeric:tabular-nums}
+  /* 無くなったものは、できたものと同じ顔で並べない */
+  .ev-row.gone .ev-y{color:var(--ink-dim)}
+  .ev-row.gone .ev-l{color:var(--ink-dim);text-decoration:line-through;text-decoration-color:rgba(255,255,255,.25)}
+  .ev-k{flex:none;font-size:var(--fs-label);padding:1px 6px;border-radius:999px;
+    background:rgba(255,255,255,.07);color:var(--ink-dim)}
+  /* ⚠ flex:1 だと名前枠と説明枠が余白を折半し、説明の頭が名前の長さで動く
+       （PC 実測: 8 行 7 通り・幅 91.7px。表なのに列が揃わない）。名前は左に寄せきる。 */
+  .ev-l{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  /* ⚠ 説明は、押す前に読めるところに置く。利用者役のエージェント3体の第1位が「押す前に知りたい」で、
+       アコーディオン（開かないと読めない）は2周とも0票だった。
+     ⚠ 既定で行を折り返す（flex-basis:100%）。名前の長さで折り返す行としない行が
+       混ざると、境界に乗った項目（島病院は 256.9px vs 255px）で見え方が揺れる。
+     ⚠ 680px 以上では名前の右が空いている（実測 463.6px の名前枠のうち 75.8% が空）ので、
+       同じ行に置く。PC では行の高さは 38px のまま増えない。 */
+  .ev-d{flex:1 1 100%;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+    font-size:var(--fs-note);line-height:1.5;color:var(--ink-dim)}
+  @media (min-width:680px){ .ev-d{flex:1 1 auto} }
+  .ev-row.gone .ev-d{color:var(--ink-faint)}
+  /* ⚠ 「位置を見る」を行ごとに繰り返すのはやめた（利用者役のエージェントによる検証 3/3 で外す側）。
+       9.5px の 5 文字を 8 回、**行そのものが既に持っている情報**として並べていた。
+       しかも実測すると、PC では右端ではなく **名前と説明のあいだ**に入り
+       （説明のある行は途中／無い行は右端）、同じ画面で位置が 2 か所を行き来していた。
+       当たり判定はもともと行ぜんぶ（SP 257×52.9px／PC 580×38px）にある。
+       行は枠＋面＋角丸で、この画面に来るために押した #list .it と同じ形をしていて、
+       あちらも動作を名乗るラベルを 1 文字も持っていない。
+       ⚠ .ev-it.on .ev-go{color:--action} も一緒に消した。書いてはあったが、
+       押した 300ms 後には写真へスクロールしていて、**見える瞬間が存在しなかった**。
+     代わりに、案内は見出しの下に 1 回だけ置く。 */
+  .ev-tip{font-size:var(--fs-note);color:var(--action);margin:0 0 6px}
+  /* ⚠ 指の的。実測（2026-08-15）で、行 38px・↗ 30px幅・隙間 4px と、
+       自分で宣言している --tap:44px を3つとも割っていた。
+     ⚠ 隙間を広げるのは、隣り合う的の**行き先が違う**から。
+       行＝この画面の中で地図が動く／↗＝外部サイトへ出ていく。
+       4px の誤爆で、人がサイトから出る。 */
+  @media (hover:none){
+    .ev-it{min-height:var(--tap)}
+    .ev-u{width:var(--tap)}
+    .ev-row{gap:8px}
+  }
+  .ev-note{padding:7px 10px;border-radius:8px;font-size:var(--fs-note);line-height:1.6;
+    background:rgba(255,255,255,.04);color:var(--ink-dim)}
+  .ev-note.warn{background:rgba(230,196,122,.09);border-left:2px solid var(--estimate);color:#cbb98f}
+  /* ⚠ 指で押せる大きさ（var(--tap)）。ピンを 29→var(--tap) に上げたのと同じ理由。
+     ここは初めて来た人が最初に触る可能性のある唯一の一歩なので、外させない */
+  /* ⚠ 注記そのものを押せるようにする。別の要素を足すと高さが増え、折り返しの下へ出る
+     （実測: ボタンを足したら 51px → 95px）。見た目は注記のまま、当たり判定だけ全面。 */
+  .ev-note.step{display:block;width:100%;text-align:left;font:inherit;font-size:var(--fs-note);
+    line-height:1.6;cursor:pointer;border:1px solid var(--line);
+    border-left:2px solid var(--action)}
+  .ev-note.step:hover{border-color:var(--action)}
+  /* ⚠ 指で押す端末では var(--tap)（ピンを 29→var(--tap) にしたのと同じ理由）。
+     ここは初めて来た人が最初に触る可能性のある唯一の一歩なので、外させない */
+  @media (hover:none){ .ev-note.step{min-height:var(--tap)} }
+  .ev-note.step b{color:var(--action);font-weight:600}
+  .ev-note.step .go{color:var(--action);margin-left:6px}
+  .ev-note.warn b{color:var(--estimate);font-weight:500}
+  /* ⚠ 出典と、何を言っていないかを必ず添える。ここを削ると、ただの断定になる */
+  .ev-more{margin-top:4px;font-size:var(--fs-note);color:var(--ink-dim)}
+  .ev-src{margin-top:6px;font-size:var(--fs-evidence);line-height:1.65;color:var(--ink-faint)}
+  .ev-src b{color:var(--ink-dim);font-weight:500}
+
+  /* 重ねる操作。別ページでやっていたことを、判定と同じ画面に置く */
+  .ops{display:flex;align-items:center;gap:9px;margin:0 0 9px}
+  .op{flex:none;width:30px;height:30px;border-radius:50%;cursor:pointer;
+    border:1px solid var(--line);background:transparent;color:var(--ink);
+    font:inherit;font-size:var(--fs-note);line-height:1}
+  .op:hover{border-color:var(--action);color:var(--action)}
+  .op.on{background:var(--action);color:#07121c;border-color:var(--action)}
+  .mixbar{display:flex;flex:1;min-width:0;align-items:center;gap:9px;font-size:var(--fs-note);color:var(--ink-dim)}
+  /* 「現在」を選んでいるときは、重ねるものが無い（自分と自分を比べることになる） */
+  .mixbar.off{visibility:hidden}
+  /* 明治期の水域を写真に重ねる。判定の裏取りとして、面で見える */
+  .ov{display:flex;align-items:center;gap:7px;margin:0 0 10px;font-size:var(--fs-note);color:var(--ink-dim);cursor:pointer}
+  .ov input{accent-color:var(--action)}
+  .ov-src{font-size:var(--fs-evidence);color:var(--ink-faint)}
+  .mixbar input[type=range]{flex:1;min-width:0;accent-color:var(--action);height:22px}
+  .mixbar .mixv{flex:none;width:34px;text-align:right;font-variant-numeric:tabular-nums}
+  .strip-foot{margin:-3px 0 11px;font-size:var(--fs-note);color:var(--ink-dim)}
+  .strip-foot b{color:var(--ink);font-weight:500}
+  .strip-foot .warn{color:var(--estimate)}
+
+  /* バッジ。読ませずに1秒で伝えるための層 */
+  .badges{display:flex;flex-wrap:wrap;gap:5px;margin-top:9px}
+  /* 粗い区分で答えたときの断り書き。判定を打ち消す情報なので、判定と同じ枠の中に置く */
+  .coarse{margin-top:8px;padding:6px 9px;border-radius:7px;font-size:var(--fs-note);line-height:1.5;
+    background:rgba(230,196,122,.09);border-left:2px solid var(--estimate);color:#cbb98f}
+  .badge{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:999px;
+    font-size:var(--fs-note);letter-spacing:.01em;border:1px solid var(--line);background:rgba(255,255,255,.04);
+    color:var(--ink-dim);white-space:nowrap}
+  .badge i{font-style:normal;font-size:var(--fs-note)}
+  .badge.water{color:var(--water);border-color:rgba(91,163,224,.35);background:rgba(91,163,224,.10)}
+  .badge.land{color:#d8cfa8;border-color:rgba(216,207,168,.3);background:rgba(216,207,168,.08)}
+  .badge.warn{color:var(--estimate);border-color:rgba(230,196,122,.35);background:rgba(230,196,122,.10)}
+  /* 取れなかったときの行。断定の代わりに、状態と復帰手段だけを出す（掟: 取れなかったを「無い」と言わない） */
+  .retry-msg{margin-top:9px;padding:9px 11px;border-radius:8px;font-size:var(--fs-note);line-height:1.7;
+    background:rgba(230,196,122,.09);border-left:2px solid var(--estimate);color:#cbb98f}
+  .retry-msg b{color:var(--estimate);font-weight:500}
+  .retry-msg .retry,#result .retry{margin-left:8px;padding:3px 11px;border-radius:6px;
+    border:1px solid rgba(230,196,122,.45);background:transparent;color:var(--estimate);
+    font:inherit;font-size:var(--fs-note);cursor:pointer}
+  .retry-msg .retry:hover{border-color:var(--estimate);background:rgba(230,196,122,.16)}
+  /* PC の操作説明。キーは実物らしく見せる（Raycast のような手触りを狙う） */
+  /* 候補は10行あるので、一覧の直下に置くだけでは下端が画面の外に出る（実測 y=889 / 780px 画面）。
+     見えない説明に意味は無いので、はみ出す間だけ画面下端に貼る。
+     貼り付く範囲は #listbox の中なので、一覧を通り過ぎればそのまま流れて消える。
+     背景はページと同じ色。板が増えたようには見えないが、下の行は透けない。 */
+  .kbd{position:sticky;bottom:0;z-index:2;background:var(--bg);
+    font-size:var(--fs-note);color:#5f6a77;padding:8px 0 6px;display:flex;flex-wrap:wrap;
+    gap:5px 14px;align-items:center}
+  .kbd .k{display:inline-flex;align-items:center;gap:4px}
+  /* 押しても何も起きないキーは薄くする。表示と挙動を同じ規則（sel<0）から生やす */
+  .kbd .k.off{opacity:.42}
+  .kbd .k b{font-weight:400;color:var(--ink-dim)}
+  .kbd kbd{display:inline-block;min-width:19px;padding:2px 6px;border-radius:5px;
+    font:inherit;font-size:var(--fs-note);line-height:1.4;text-align:center;color:var(--ink);
+    background:linear-gradient(180deg,#232a33,#1a2028);
+    border:1px solid rgba(255,255,255,.14);border-bottom-color:rgba(0,0,0,.6);
+    box-shadow:0 1px 0 rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.06)}
+  /* タッチ端末には出さない。物理キーが無いので説明として使えないうえ、
+     画面下端に貼り付くぶん候補が2行隠れる（実測 375×667・候補10件）。
+     使えない説明のために見える候補を減らすのは、どちらの目的も達していない。 */
+  @media (hover:none){ .kbd{display:none} }
+
+  /* ============ 結果 ============ */
+  #result{margin-top:26px;display:none}
+  .group{margin-top:22px}
+  .group>.gh{display:flex;align-items:center;gap:8px;font-size:var(--fs-label);letter-spacing:.16em;
+    color:var(--ink-dim);margin-bottom:9px}
+  .card{display:block;padding:13px 15px;margin-bottom:7px;border-radius:11px;text-decoration:none;
+    border:1px solid var(--line);background:var(--surface);color:var(--ink);transition:.13s}
+  a.card:hover{border-color:var(--action);transform:translateX(2px)}
+  .card .t{font-size:var(--fs-body)}
+  .card .d{font-size:var(--fs-evidence);color:var(--ink-dim);margin-top:2px}
+  .card .v{font-size:var(--fs-claim);margin-top:5px}
+  .card .v.w{color:var(--water)}
+  .card .ev{margin-top:8px;padding-top:7px;border-top:1px dashed var(--line);
+    font-size:var(--fs-evidence);color:var(--ink-dim);font-variant-numeric:tabular-nums;line-height:1.55}
+  .card .arrow{float:right;color:var(--ink-dim);font-size:var(--fs-note)}
+  /* 取得方法。直読みなのか推定なのかを、事実ごとに隠さず出す */
+  .card .method{float:right;font-size:var(--fs-label);letter-spacing:.08em;padding:1.5px 7px;border-radius:999px;
+    background:rgba(126,224,165,.14);color:var(--evidence)}
+  .card .method.weak{background:rgba(230,196,122,.16);color:var(--estimate)}
+  /* コマンドから飛んできたとき、どのカードの話かを一瞬示す */
+  @keyframes flash{0%{border-color:var(--action);background:rgba(111,195,255,.16)}
+    100%{border-color:var(--line);background:var(--surface)}}
+  .card.flash{animation:flash 1.1s ease-out}
+  /* 評価は検索窓の右端に置く。入力欄は必ずファーストビューにあるので埋もれない */
+  .mine-toggle{flex:none;margin-right:8px;min-width:34px;height:30px;padding:0 9px;
+    border-radius:8px;border:1px solid var(--line);background:transparent;
+    color:var(--ink-dim);font:inherit;font-size:var(--fs-lead);cursor:pointer;line-height:1}
+  .mine-toggle:hover{border-color:#ffc861;color:#ffc861}
+  .mine-toggle.rated{color:#ffc861;border-color:rgba(255,200,97,.45);background:rgba(255,200,97,.10)}
+  .mine-toggle[aria-expanded="true"]{border-color:#ffc861;color:#ffc861}
+  #mine{margin-top:7px;padding:11px 13px;border-radius:10px;
+    border:1px solid rgba(255,200,97,.24);background:rgba(255,200,97,.05)}
+  .mine-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .mine-note{margin-left:auto;font-size:var(--fs-note);color:var(--ink-dim)}
+  .saveline .dim{color:var(--ink-dim)}
+  .stars{display:flex;gap:4px;margin:0 0 8px}
+  .stars button{width:30px;height:30px;border-radius:7px;border:1px solid var(--line);
+    background:transparent;color:var(--ink-dim);font-size:var(--fs-body);cursor:pointer;padding:0}
+  .stars button.on{color:#ffc861;border-color:rgba(255,200,97,.45);background:rgba(255,200,97,.10)}
+  #memo{width:100%;min-height:66px;padding:9px 11px;border-radius:9px;border:1px solid var(--line);
+    background:rgba(0,0,0,.25);color:var(--ink);font:inherit;font-size:var(--fs-badge);resize:vertical}
+  #memo:focus{outline:none;border-color:var(--action)}
+  .saveline{display:flex;justify-content:space-between;align-items:center;margin-top:7px;
+    font-size:var(--fs-note);color:var(--ink-dim)}
+  .saveline button{padding:4px 10px;border:1px solid var(--line);border-radius:6px;background:transparent;
+    color:var(--ink-dim);font:inherit;font-size:var(--fs-note);cursor:pointer}
+  .saveline button:hover{border-color:var(--action);color:var(--action)}
+  #saved .row{display:flex;justify-content:space-between;gap:10px;padding:8px 12px;margin-bottom:5px;
+    border:1px solid var(--line);border-radius:9px;background:var(--surface);cursor:pointer;font-size:var(--fs-badge)}
+  #saved .row:hover{border-color:var(--action)}
+  #saved .row .s{color:#ffc861;font-size:var(--fs-note);white-space:nowrap}
+  .note{font-size:var(--fs-note);color:var(--ink-dim);line-height:1.6}
+  .warn{color:var(--estimate)}
+  /* フッターは権利表記と作者だけ。細かい注記は畳んでおく */
+  footer{margin-top:34px;padding-top:14px;border-top:1px solid var(--line);
+    font-size:var(--fs-note);color:var(--ink-faint);line-height:1.7}
+  footer .f-main{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+  footer .sep{color:#3d4650}
+  footer .f-priv{margin-top:8px;font-size:var(--fs-note);line-height:1.7;color:#7c8794}
+  footer .f-priv b{color:#9aa5b1;font-weight:500}
+  footer .f-more{margin-top:8px}
+  footer .f-more summary{cursor:pointer;color:var(--ink-faint);font-size:var(--fs-note);list-style:none;
+    display:inline-flex;align-items:center;gap:5px;padding:2px 0}
+  footer .f-more summary::-webkit-details-marker{display:none}
+  footer .f-more summary::before{content:"▸";font-size:var(--fs-label);transition:transform .15s}
+  footer .f-more[open] summary::before{transform:rotate(90deg)}
+  footer .f-more summary:hover{color:var(--action)}
+  footer .f-body{margin-top:7px;padding:10px 12px;border-radius:8px;
+    background:rgba(255,255,255,.03);border:1px solid var(--line);font-size:var(--fs-note);line-height:1.75}
+  footer .f-body b{color:var(--ink-dim);font-weight:500}
+  a{color:var(--action)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="brand"><svg class="mark" viewBox="0 0 64 64" aria-hidden="true"><rect x="8" y="8" width="48" height="48" rx="6" fill="#2f7fc4"/><path d="M32 8h24v48H32z" fill="#e8dcc0"/><rect x="13" y="34" width="6" height="14" fill="#dce8f2"/><rect x="22" y="27" width="6" height="21" fill="#dce8f2"/><path d="M36 46c4-3 6 2 9 0s6 2 9 0" stroke="#2f7fc4" stroke-width="3" fill="none"/><path d="M36 37c4-3 6 2 9 0s6 2 9 0" stroke="#2f7fc4" stroke-width="3" fill="none" opacity=".6"/><rect x="31" y="8" width="2" height="48" fill="#0b0e13" opacity=".5"/></svg><b>今昔</b></div>
+  <!-- 何のサービスかを最初の画面で言う。
+       利用者役のエージェントによる検証で「グルメ検索? 不動産?」と受け取られ、理解まで1分半かかっていた。
+       書けるのは判定できることだけ（掟: 根拠のないことは書かない / 掟: 確率を出さない。実測値そのものを出す）。埋立年や「昔は海」は画素から出せないので書かない。 -->
+  <h1>この土地は、昔なんだったのか？</h1>
+  <!-- ⚠ 標高は「低地かどうか」に使うだけで、区分の判定には**使っていない**。
+       区分は地形分類のポリゴンと明治期の低湿地タイルの画素だけで決まる。
+       読んだものと使ったものを混ぜて書かない。 -->
+  <!-- ⚠ 画面が「判定して並べる」から「時間をさかのぼる」に変わったので、名乗りも合わせる。
+       以前の文は実測で 79px（4行）あり、3つの助言役のエージェントが揃って「長い」と言っていた。
+       技術の話は下の1行へ落とす。ただし**何を読んでいるか**は最初の画面から消さない
+       （利用者役のエージェントによる検証で「グルメ検索? 不動産?」と受け取られた事故の再発防止。検査あり）。
+       「など」なのは、地理院タイルのほかに OpenStreetMap・Wikidata も使うようになったから。 -->
+  <p class="lead">気になる場所を検索して、その土地の時間をさかのぼってみよう。<br>
+    昔の航空写真や土地の<b>成り立ち</b>から、その場所がどのように変わってきたのかをたどれます。</p>
+  <p class="lead src">国土地理院などの<b>一次データ</b>を使用。<b>判定根拠</b>まで確認できます。</p>
+</header>
+
+<div class="scope" id="scope">
+  <div class="chip"><span class="nm" id="chipName"></span><button class="x" id="chipX" title="場所を変える"><i>✕</i></button></div>
+  <!-- placeholder は入力欄の可視幅（375px 幅の端末で 259px）に収まる長さにする。
+       前の文言は 361px 必要で、肝心の「（例: 豊洲）」が切れて見えなかった。
+       補足は下の .hint に出す（入力欄に触れている間だけ） -->
+  <input id="q" placeholder="地名を入力（例: 豊洲）" autocomplete="off" autofocus>
+  <button id="here" class="in-box" title="現在地から調べる">📍</button>
+  <button id="mineToggle" class="mine-toggle in-box" title="この場所の評価とメモ"
+          aria-expanded="false" style="display:none">☆</button>
+</div>
+<!-- placeholder に入らなかった補足。場所を選ぶ前に入力欄へ触れている間だけ出す -->
+<div class="hint">地名のほか、駅名・施設名でも探せます（📍 で現在地から）</div>
+<div id="hereMsg" class="here-msg" style="display:none"></div>
+<!-- 自分の記録。入力欄の右端の ☆ で開く。
+     ⚠ 判定カードの**前**に置く。後ろに置いていたとき、実測でパネルは y=976 に出ていた。
+       押したのは画面上部のボタンなのに、開く先は2画面下。しかも自動でスクロールしないので、
+       利用者からは「星の色が変わっただけ」に見えていた。 -->
+<div id="mine" style="display:none">
+  <div class="mine-row">
+    <div class="stars" id="stars"></div>
+    <span class="mine-note" id="savedAt">未保存</span>
+  </div>
+  <textarea id="memo" placeholder="行った / また来たい / 誰と来た など"></textarea>
+  <div class="saveline"><span class="dim">この端末にだけ保存され、公開されません</span>
+    <button id="clearOne">この場所の記録を消す</button></div>
+</div>
+<div id="verdict" style="display:none"></div>
+
+<!-- 一覧とキーヒントを1つの箱にまとめる。ヒントは箱の中で下端に貼り付くので、
+     候補が10行あっても画面内に残り、一覧を通り過ぎれば一緒に消える -->
+<div id="listbox">
+  <div id="list"></div>
+  <div class="kbd">
+    <span class="k" id="kMove"><kbd>↑</kbd><kbd>↓</kbd> 選ぶ</span>
+    <span class="k" id="kEnter"><kbd>Enter</kbd> <b>決定</b></span>
+    <span class="k" id="kEsc"><kbd>Esc</kbd> <b>入力を消す</b></span>
+  </div>
+</div>
+<div class="quick" id="quick"></div>
+
+<div id="result">
+  <div class="group">
+    <div class="gh">この土地について <span class="tag own">自前・根拠あり</span></div>
+    <div id="own"></div>
+    <!-- 開くと自動で下までスクロールするので、? は画面の外にある。
+         ここに閉じる手段が無いと、戻り方が見えない -->
+    <button class="close-why" id="closeWhy" style="display:none">根拠を閉じる</button>
+  </div>
+</div>
+
+<div class="group" id="savedWrap" style="display:none">
+  <div class="gh">保存した場所</div>
+  <div id="saved"></div>
+  <div class="saveline"><span class="note">ブラウザ内に保存。消えると失われる</span>
+    <button id="exportBtn">JSONで書き出す</button></div>
+</div>
+
+<footer>
+  <!-- ⚠ フッターに置くのは、置かないと嘘になるものだけ。
+       1) 出典（地理院タイルは出典明示が利用の条件、OSM は ODbL でクレジット必須）
+       2) 何を送っていて何を送っていないか
+       3) データの限界（位置誤差・実験的提供）— 畳んでよいが、消してはいけない -->
+  <div class="f-main">
+    出典 <a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" rel="noopener">国土地理院</a>
+    ・<a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>
+    ・<a href="https://www.wikidata.org/" target="_blank" rel="noopener">Wikidata</a>
+    <span class="sep">|</span>
+    作 <a href="https://github.com/hidetzu" target="_blank" rel="noopener">hidetzu</a>
+  </div>
+  <!-- ⚠ ここは畳まない。「住所を入力するのに住所を集めない」はこのサービスの性格そのもので、
+       畳むと伝わらない。ただし**言い切りすぎない**: 地図やデータを取りに行く相手には、
+       表示に必要な範囲の座標が渡る。「どこにも送らない」は嘘になる。 -->
+  <!-- ⚠ いちばん強い約束の2行だけ、常に見えるところに残す。
+       「保存しません」ではなく「**送りません**」と書く。実装はそもそも送っていない
+       （/t が受け取るのは固定文字列だけで、地名も座標も含まない）ので、
+       「保存しない」と書くと、強い事実を弱く言い換えることになる。
+       残りは畳む。以前はここが 107px の地の文で、利用者役のエージェントによる検証で誰も読んでいなかった。 -->
+  <div class="f-priv">
+    <b>検索した地名や座標を、こちらのサーバーには送りません。</b>Cookie も使いません。
+  </div>
+  <details class="f-more">
+    <summary>プライバシーについて</summary>
+    <div class="f-body">
+      数えているのは<b>判定・共有などの回数だけ</b>です。誰が・どこを調べたかは1件も残しません。<br>
+      ★とメモは<b>この端末の中だけ</b>に残ります（こちらには届きません）。<br>
+      🔊 の読み上げは<b>端末の中で合成</b>します（音声は外へ送りません）。<br>
+      <!-- ⚠ 「こちらには送らない」だけ書いて「相手には渡っている」を書かないと、
+           Referrer-Policy を二重にしたり /t の Origin を塞いだりしてきた筋と食い違う。
+           実測で1人あたり国土地理院へ 28〜556 リクエスト出ており、タイルのURLに座標が入る。 -->
+      地図と判定に使うデータは、上の提供元から<b>その場で</b>取得します。
+      <b>提供元には、表示に必要な範囲の座標が渡ります</b>（こちらを経由しません）。
+    </div>
+  </details>
+  <details class="f-more">
+    <summary>データについて</summary>
+    <div class="f-body">
+      <b>判定</b>：<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" rel="noopener">国土地理院タイル</a>
+      （<a href="https://www.gsi.go.jp/bousaichiri/lfc_index.html" target="_blank" rel="noopener">地形分類</a>／年代別空中写真／<a href="https://www.gsi.go.jp/bousaichiri/lc_meiji.html" target="_blank" rel="noopener">明治期の低湿地</a>／標高）。
+      <b>成り立ち・災害リスクの説明文は国土地理院の記述</b>をそのまま表示しています。<br>
+      地形分類は<a href="https://maps.gsi.go.jp/" target="_blank" rel="noopener">地理院地図</a>の<b>ベクトルタイル提供実験</b>、
+      住所検索も<a href="https://github.com/gsi-cyberjapan/gsimaps/issues/29" target="_blank" rel="noopener">地理院地図からの利用を想定した機能</a>のため、
+      どちらも予告なく仕様変更・停止の可能性があります。主要平野部の外では<b>広い区分</b>でしか答えられません（そのときは画面にそう表示します）。<br>
+      明治期の資料は三角点整備前のため<b>位置誤差</b>を含みます。街区単位の判断に留めてください。<br>
+      <b>この範囲にできていたもの</b>：<a href="https://www.wikidata.org/" target="_blank" rel="noopener">Wikidata</a>（CC0）。
+      年が記録されているものだけで、<b>写真に写っているかどうかまでは確かめていません</b>。<br>
+      <b>建物</b>：© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a>（ODbL）
+    </div>
+  </details>
+</footer>
+</div>
+
+<!-- 外部から来た文字列（Wikidata のラベル・地理院の地名・OSM のタグ）を
+     HTML として実行させないための1か所。⚠ ほかより先に読む（下のインラインが使う） -->
+<script src="./esc.js"></script>
+<script src="./verify.js"></script>
+<!-- 住所検索の応答を並べ替える。scripts/search-check.mjs がこのファイルをそのまま読んで
+     35語の回帰検査を回すので、検査した実装と出荷する実装が同じであることを保証できる -->
+<script src="./places.js"></script>
+<script src="./events.js"></script>
+<script src="./share.js"></script>
+<script>
+const GSI=Konjaku.GSI, Z=16;
+// 外部から来た文字列は、HTML を組み立てるところで必ずここを通す（esc.js に理由がある）。
+// ⚠ 読み上げの文には通さない。あれは HTML ではない。
+const {esc,escUrl}=KonjakuEsc;
+
+// 検証ロジックは verify.js に集約している（index / peel で重複していたため）。
+// 事実の抽出・根拠の保持・文章化は、すべてそちらの責任。
+
+// ============ 私的な記録（この端末にだけ・非公開） ============
+const KEY="place-notes-v1";
+// 座標をそのままキーにすると、現在地から調べるたびに数m ずれて
+// 同じ場所が別エントリとして増える。約10m（小数4桁）に丸めて同一視する。
+const keyOf=(lon,lat)=>`${lat.toFixed(4)},${lon.toFixed(4)}`;
+
+function loadAll(){
+  let all;
+  try{ all=JSON.parse(localStorage.getItem(KEY)||"{}"); }catch{ return {}; }
+  // 旧キー（小数5桁）で保存されたものを、新しい粒度へ寄せる。
+  // 消さずに移すこと。利用者の記録は勝手に失ってはいけない。
+  let moved=false;
+  for(const k of Object.keys(all)){
+    const r=all[k];
+    if(!r || typeof r.lat!=="number" || typeof r.lon!=="number") continue;
+    const nk=keyOf(r.lon,r.lat);
+    if(nk===k) continue;
+    const cur=all[nk];
+    // 同じ場所が複数あったら、新しい方を残す
+    if(!cur || (r.at??0) > (cur.at??0)) all[nk]=r;
+    delete all[k]; moved=true;
+  }
+  if(moved) try{ localStorage.setItem(KEY,JSON.stringify(all)); }catch{}
+  return all;
+}
+const saveAll=(o)=>localStorage.setItem(KEY,JSON.stringify(o));
+let current=null;
+
+function renderPrivate(){
+  const all=loadAll(), rec=current?all[keyOf(current.lon,current.lat)]:null;
+  // 入力欄の右端に、いまの評価を出す。押すと下に開く。
+  const tg=document.getElementById("mineToggle");
+  tg.style.display = current ? "" : "none";
+  tg.textContent = rec?.star ? `★${rec.star}` : (rec?.memo ? "☆＋" : "☆");
+  tg.classList.toggle("rated", !!(rec?.star || rec?.memo));
+  if(!current){ document.getElementById("mine").style.display="none";
+    tg.setAttribute("aria-expanded","false"); }
+  const st=document.getElementById("stars"); st.innerHTML="";
+  for(let i=1;i<=5;i++){
+    const b=document.createElement("button");
+    b.textContent="★"; b.className=(rec&&rec.star>=i)?"on":"";
+    b.onclick=()=>setRec({star:(rec&&rec.star===i)?0:i});
+    st.appendChild(b);
+  }
+  document.getElementById("memo").value=rec?.memo??"";
+  document.getElementById("savedAt").textContent=
+    rec?.at?`保存済み: ${new Date(rec.at).toLocaleString("ja-JP")}`:"未保存";
+  renderSaved();
+}
+function setRec(patch){
+  if(!current) return;
+  const all=loadAll(), k=keyOf(current.lon,current.lat);
+  const rec={star:0,memo:"",...all[k],...patch,
+    title:current.title,lon:current.lon,lat:current.lat,at:Date.now()};
+  if(!rec.star && !rec.memo.trim()) delete all[k]; else all[k]=rec;
+  saveAll(all); renderPrivate();
+}
+let memoTimer=null;
+document.getElementById("memo").addEventListener("input",(e)=>{
+  clearTimeout(memoTimer); memoTimer=setTimeout(()=>setRec({memo:e.target.value}),500);
+});
+const mineToggle=document.getElementById("mineToggle");
+mineToggle.onclick=()=>{
+  const open=mineToggle.getAttribute("aria-expanded")==="true";
+  mineToggle.setAttribute("aria-expanded",String(!open));
+  const el=document.getElementById("mine");
+  el.style.display=open?"none":"block";
+  // 開いたことが見えるところまで連れていく。押しても何も起きないように見せない
+  if(!open) el.scrollIntoView({behavior:"smooth",block:"nearest"});
+};
+document.getElementById("clearOne").onclick=()=>{
+  if(!current) return;
+  const all=loadAll(); delete all[keyOf(current.lon,current.lat)]; saveAll(all); renderPrivate();
+};
+function renderSaved(){
+  const all=loadAll(), keys=Object.keys(all);
+  const wrap=document.getElementById("savedWrap"), el=document.getElementById("saved");
+  if(!keys.length){wrap.style.display="none";return}
+  wrap.style.display="";
+  // ⚠ 地名は地理院の応答（または共有された URL の q）から来ていて、メモは利用者が
+  //   打ったもの。どちらもこちらが中身を保証できないので、描くときに esc を通す。
+  //   data-k は下で dataset.k として読み戻すが、ブラウザが実体参照を元の文字に戻すので
+  //   キーは一致したままになる。
+  el.innerHTML=keys.sort((a,b)=>all[b].at-all[a].at).map((k)=>{
+    const r=all[k];
+    const memo=r.memo?`${r.memo.slice(0,22)}${r.memo.length>22?"…":""}`:"";
+    return `<div class="row" data-k="${esc(k)}"><span>${esc(r.title)}${
+      memo?`<span style="color:var(--ink-dim)"> — ${esc(memo)}</span>`:""
+    }</span><span class="s">${esc("★".repeat(r.star))}</span></div>`;
+  }).join("");
+  el.querySelectorAll(".row").forEach((row)=>{
+    row.onclick=()=>{const r=all[row.dataset.k]; openPlace(r.lon,r.lat,r.title)};
+  });
+}
+document.getElementById("exportBtn").onclick=()=>{
+  const b=new Blob([JSON.stringify(loadAll(),null,2)],{type:"application/json"});
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(b); a.download="place-notes.json"; a.click(); URL.revokeObjectURL(a.href);
+};
+
+// ============================================================
+// コマンド（場所を決めたあとに打ち込むもの）
+//   自前のレンズと、外部への受け渡しを1つの一覧に混ぜる。
+//   POI を自前で持つまでは、自由入力は素直に Google マップへ渡す（掟: 地名も座標も送らない）。
+// ============================================================
+// hl / gl を明示しないと、Googleアカウントの言語設定に引きずられて英語で開くことがある。
+// IP だけで判定されるとは限らないので、こちらから日本語を指定する。
+const gmap=(kw,lat,lon)=>
+  `https://www.google.com/maps/search/${encodeURIComponent(kw)}/@${lat},${lon},16z?hl=ja&gl=jp`;
+// 「次に調べる語」は店ではなく読み物なので、地図検索ではなく Web検索へ渡す。
+// 「埋立の歴史」を地図に投げても何も出てこない。地名と組にして初めて意味を持つ。
+const gweb=(kw)=>`https://www.google.com/search?q=${encodeURIComponent(kw)}&hl=ja`;
+// ただし場所の名前は、いつも地名とは限らない。現在地から調べたときは「現在地」、
+// URL から座標だけで開いたときは「35.6548, 139.7975」が入っている。
+// 「現在地 埋立の歴史」で検索しても何も出ない。無意味なクエリは投げない。
+// 地名として使えないときは、語だけで検索する（全国の話になるが、無意味よりはよい）。
+const placeName=(title)=>{
+  const s=(title??"").trim();
+  if(!s||s==="現在地") return "";
+  if(/^[\d.,\s+\-]+$/.test(s)) return "";     // 「35.6548, 139.7975」のような座標
+  return s;
+};
+
+// よく打つ語を並べておく。表記ゆれは kw で吸収する。
+const PRESETS=[
+  {ic:"🍚",label:"ごはん",       kw:["ごはん","ご飯","飯","食事","レストラン","グルメ","飲食","ランチ","ディナー","food"],q:"レストラン"},
+  {ic:"🍜",label:"ラーメン",     kw:["ラーメン","らーめん","麺"],q:"ラーメン"},
+  {ic:"☕",label:"カフェ",       kw:["カフェ","喫茶","コーヒー","cafe"],q:"カフェ"},
+  {ic:"🍺",label:"居酒屋・バー", kw:["居酒屋","バー","飲み","酒"],q:"居酒屋"},
+  {ic:"🛒",label:"スーパー",     kw:["スーパー","買い物","食材"],q:"スーパー"},
+  {ic:"🏪",label:"コンビニ",     kw:["コンビニ"],q:"コンビニ"},
+  {ic:"💊",label:"薬局",         kw:["薬局","ドラッグ","薬"],q:"薬局"},
+  {ic:"🏥",label:"病院・医者",   kw:["病院","医者","医院","クリニック","歯医者","歯科","内科"],q:"病院"},
+  {ic:"🌳",label:"公園・遊び場", kw:["公園","遊び","遊ぶ","子供","広場"],q:"公園"},
+  {ic:"🚉",label:"駅",           kw:["駅","電車"],q:"駅"},
+  {ic:"🅿️",label:"駐車場",       kw:["駐車","パーキング"],q:"駐車場"},
+  {ic:"🏦",label:"銀行・ATM",    kw:["銀行","atm","現金"],q:"ATM"},
+];
+
+// ============ 年代ストリップ ============
+// この地点の空中写真を、撮られた順に並べる。判定文より先に置く。
+//
+// ⚠ 並べるだけで、中間の年代については何も書かない（CSS 側の注記に理由）。
+// ⚠ 追加の通信はほぼ発生しない。過去の年代は photos() が判定のために既に取得していて、
+//   同じURLなので画像はキャッシュから出る。新しく取りに行くのは「現在」の1枚だけ。
+// この帯は「表示」ではなく「操作」。押した年代の写真が、その場で大きくなる。
+// 別ページへ飛ばさないのは、飛んだ先で場所も文脈も切れるから（実測: 戻り導線は
+// ./ で、調べていた場所が消えていた）。時間を動かす体験は、判定と同じ画面で完結させる。
+//
+// ⚠ 年代ごとの文は1行も書かない。中間の年代に何があったかは、空中写真からは
+//   出せないことが実測で分かっている（掟: 画素から出せないことは言わない（実測1） / 掟: 中間を語らない。中間は見せる）。写真を切り替えれば、
+//   変化は見た人が読み取る。こちらが言葉にした瞬間、それは判定ではなく作文になる。
+let frames=[], eraIdx=0;               // frames[eraIdx] がいま大きく出ている年代
+let eraTicked=false;                   // この場所で、年代を動かしたことを数えたか
+
+// 判定した画素の位置を「タイルに対する割合」で持つ。
+// ⚠ px の絶対値で切り出すと、枠の大きさを変えた瞬間に印が枠の外へ出る。
+//   object-position は「画像の X% の点を、枠の X% の位置に置く」という規則なので、
+//   印も同じ割合で置けば、枠が何pxでも必ず同じ場所を指す。
+//   年代が変わっても同じ座標・同じ z16 タイルなので、この割合は全年代で共通。
+const posOf=(fr)=>({x:(fr.px/256*100).toFixed(1),y:(fr.py/256*100).toFixed(1)});
+
+function buildFrames(f){
+  const p=f?.byKey?.photos;
+  // 読めていない・1枚も残っていないときは、帯ごと出さない。
+  // 空の枠を並べるより、何も無いほうが正確（掟: 取れなかったを「無い」と言わない）
+  if(!current||!p||!p.ok||!p.value?.length) return [];
+  const t=Konjaku.tileOf(current.lon,current.lat,16), L=Konjaku.LATEST;
+  const out=[];
+  // ⚠ いちばん左に明治期を置く。
+  //   判定は「旧水部（＝昔は水）」なのに、残っている写真はどれも既に陸で、
+  //   **主張と、目の前の写真が噛み合っていなかった**（実測: 豊洲は最古の 1936–42 が既に埋立地）。
+  //   明治期の低湿地データを1コマ入れると、判定の根拠がそのまま帯の左端に並ぶ。
+  //   ⚠ 判定できたときだけ。整備対象外・通信断のときは足さない（無いものを並べない）。
+  const m=f.byKey.meiji;
+  if(m?.ok&&m.value)
+    out.push({ id:"swale", label:"明治期", sub:"低湿地データ", ext:"png", min:6, max:16,
+      // 低湿地は区分の塗りだけなので、下に淡色地図を敷かないと何も見えない
+      under:"pale", px:t.px, py:t.py, meiji:true });
+  out.push(...p.value);
+  // 右端の「現在」だけは判定の材料ではないので、facts ではなくここで組み立てる
+  out.push({...L,tile:`${GSI}/${L.id}/16/${t.x}/${t.y}.${L.ext}`,px:t.px,py:t.py,now:true});
+  return out;
+}
+
+function frameHTML(fr,i){
+  const {x,y}=posOf(fr);
+  if(!fr.tile){ const t=Konjaku.tileOf(current.lon,current.lat,16);
+    fr={...fr,tile:`${GSI}/${fr.id}/16/${t.x}/${t.y}.${fr.ext}`}; }
+  const name=`${fr.label}${fr.sub?`（${fr.sub}）`:""}`;
+  const under=fr.under?`<img src="${GSI}/${fr.under}/16/${Konjaku.tileOf(current.lon,current.lat,16).x}/${Konjaku.tileOf(current.lon,current.lat,16).y}.png" alt="">`:"";
+  return `<button class="f${fr.now?" now":""}${fr.meiji?" meiji":""}${i===eraIdx?" on":""}" data-i="${i}"
+      aria-pressed="${i===eraIdx}" title="${fr.meiji?`${name}（この判定の根拠になっているデータ）`:`${name}の空中写真を大きく見る`}">
+    <!-- ⚠ loading="lazy" は付けない。右端（現在）が画面外から始まる端末で、
+         いちばん見せたい1枚だけが永久に読み込まれない -->
+    <span class="im">${under}<img src="${fr.tile}" alt="" fetchpriority="low" decoding="async">
+      <i class="mk" style="left:${x}%;top:${y}%"></i></span>
+    <span class="yr">${fr.label}</span></button>`;
+}
+
+// 大きい写真は 2×2 のタイルで組む。
+// ⚠ 1枚（z16 ≒ 600m×450m）では狭すぎた。実測で、この範囲に年の分かっているものは
+//   豊洲 2件・亀戸 1件・浦安 0件しか無く、「この時点までにできていたもの」が
+//   ほとんど空になる。4枚にすると面積が約4倍になり、同時に**拡大ボケも解ける**
+//   （素材 512px → 枠 616px で 1.2倍。1枚だと 2.4倍だった）。
+let mosaic=null;    // {x0,y0,mx,my} 左上のタイルと、判定した画素のモザイク内座標
+function setMosaic(){
+  if(!current) { mosaic=null; return; }
+  const t=Konjaku.tileOf(current.lon,current.lat,16);
+  // 判定した点がなるべく真ん中に来る 2×2 を選ぶ
+  const x0=t.px<128?t.x-1:t.x, y0=t.py<128?t.y-1:t.y;
+  mosaic={x0,y0,mx:t.px+(t.x-x0)*256,my:t.py+(t.y-y0)*256};
+}
+const tileUrl=(fr,x,y)=>`${GSI}/${fr.id}/16/${x}/${y}.${fr.ext}`;
+
+function bigLayer(fr,id,on){
+  const cells=[[0,0],[1,0],[0,1],[1,1]];
+  const draw=(f2)=>cells.map(([c,r])=>
+    f2?`<img class="t" data-c="${c}" data-r="${r}" alt="" fetchpriority="high"
+        decoding="async" src="${tileUrl(f2,mosaic.x0+c,mosaic.y0+r)}">`
+      :`<img class="t" data-c="${c}" data-r="${r}" alt="">`).join("");
+  // 明治期は区分の塗りだけなので、下に淡色地図を敷く（2組み重ねる）
+  const under=fr?.under?draw({id:fr.under,ext:"png"}):"";
+  return `<div class="lyr${on?" on":""}" id="${id}">${under}${draw(fr)}</div>`;
+}
+
+// モザイクを枠いっぱいに置く。判定した点を縦の基準にする（object-fit:cover と同じ考え）
+function layoutBig(){
+  const big=document.getElementById("big");
+  if(!big||!mosaic) return null;
+  const r=big.getBoundingClientRect(), W=r.width, H=r.height;
+  const S=W;                                  // モザイク（正方形）の表示辺
+  const top=(H-S)*(mosaic.my/512);            // はみ出す縦を、判定点の割合で配る
+  const cell=S/2;
+  big.querySelectorAll(".lyr .t").forEach((im)=>{
+    im.style.width=im.style.height=`${cell}px`;
+    im.style.left=`${(+im.dataset.c)*cell}px`;
+    im.style.top=`${top+(+im.dataset.r)*cell}px`;
+  });
+  const mk=big.querySelector(".big-in > .mk");
+  if(mk){ mk.style.left=`${mosaic.mx/512*S}px`; mk.style.top=`${top+mosaic.my/512*S}px`; }
+  return { W, H, S, top };
+}
+
+// 判定文。⚠ 写真の直下に置く。
+// 看板は「この土地は、昔なんだったのか？」なのに、実測でこの一文はスマホの
+// y=676（渋谷では 963）にあり、**答えが折り返しの下**だった。
+// しかも一覧の件数で位置が 300px 動いていた。写真の次に読むものにする。
+function headHTML(){
+  return `<div class="v-head">
+      <span class="tx">${meiji.text}</span>
+      <!-- ⚠ ↗ は使わない。利用者役のエージェント3体とも「どこかへ飛ぶ」と予想し、3体とも外れた。
+           ↗ は同じ画面で「外部サイトへ出る」の意味でも使っている（一覧のタグ・出典）。
+           実際に起きるのは画像の生成なので、絵の記号にする。
+           ⚠ title はタッチ端末では一生見えないので、aria-label も置く。 -->
+      <button class="why" id="shareBtn" title="この判定を画像にする"
+        aria-label="この判定を画像にする"><i>🖼</i></button>
+      <button class="why" id="whyBtn" title="根拠を見る" aria-expanded="false"><i>?</i></button>
+    </div>
+    <!-- ⚠ 押した結果は、押したボタンの隣に出す。
+         以前はこの知らせが判定ブロックの末尾にあり、実測でボタン y=744 に対して y=1043、
+         **299px 下の画面外**だった。利用者役のエージェント3体とも「押しても何も起きない＝壊れている」と判断し、
+         1体は2回押して画像が2枚落ちた（2026-08-14）。 -->
+    <div class="share-msg" id="shareMsg" style="display:none"></div>`;
+}
+
+// 判定を待つあいだの画面。出せるものだけ先に出す。
+// ⚠ 骨組みは本番と同じ形にする。あとで差し替わるときに画面が飛び跳ねない。
+function loadingHTML(){
+  if(!current) return `<span class="dim">この土地の成り立ちを判定中…</span>`;
+  setMosaic();
+  const L=Konjaku.LATEST;
+  const now={...L,px:mosaic.mx%256,py:mosaic.my%256};
+  return `<div class="strip skel" aria-hidden="true">
+      <span class="end">昔</span>${"<span class=\"sk\"></span>".repeat(6)}<span class="end">今</span>
+    </div>
+    <div class="big" id="big">
+      <div class="big-in" id="bigIn">
+        ${bigLayer(now,"lyrA",true)}${bigLayer(null,"lyrB",false)}
+        <i class="mk" aria-hidden="true"></i>
+        <div id="pins"></div>
+      </div>
+      <span class="yr-big">現在<small>この土地を調べています…</small></span>
+    </div>
+    <div class="v-head"><span class="tx dim">この土地の成り立ちを判定中…</span></div>`;
+}
+
+function timeHTML(f){
+  frames=buildFrames(f);
+  // ⚠ 写真が無くても、判定文だけは必ず出す。ここを空で返すと答えごと消える
+  if(!frames.length) return headHTML();
+  setMosaic();
+  const p=f.byKey.photos, cur=frames[eraIdx];
+  // ⚠ 明治期は空中写真ではない。混ぜて数えると「空中写真は 8 年代（7 年代中）」という
+  //   ありえない数字になる（実測で出た）。写真のコマだけを数える。
+  const past=frames.filter((x)=>!x.now&&!x.meiji).length;
+  return `<div class="strip" id="strip" role="group" aria-label="年代を選ぶ">
+      <span class="end">昔</span>
+      ${frames.map(frameHTML).join("")}
+      <span class="end">今</span>
+    </div>
+    <div class="big" id="big">
+      <div class="big-in" id="bigIn">
+        ${bigLayer(cur,"lyrA",true)}${bigLayer(null,"lyrB",false)}
+        <i class="mk" aria-hidden="true"></i>
+        <div id="pins"></div>
+      </div>
+      <div class="bl">
+        <span class="yr-big" id="yrBig">${cur.label}${cur.sub?`<small>${cur.sub}</small>`:""}</span>
+        <div class="fx" id="fx"></div>
+      </div>
+      <button class="unzoom" id="unzoom" type="button">全体に戻す</button>
+      <button class="say" id="sayBtn" type="button" title="この年代を読み上げる">🔊</button>
+      <span class="say-msg" id="sayMsg" style="display:none"></span>
+      <span class="loading" id="bigLoading"></span>
+      <div class="map" id="map"></div>
+      <div class="zoombar" id="zoombar">
+        <button type="button" id="zIn" title="拡大">＋</button>
+        <button type="button" id="zOut" title="縮小">−</button>
+      </div>
+      <span class="big-err" id="bigErr">この年代の写真を読み込めませんでした</span>
+    </div>`
+    + headHTML()
+    // ⚠ 「現在を重ねる」を外した（2026-08-14）。実測 30px。
+    //   帯が時間軸なのに、その真下に**2本目の時間の操作**が並んでいた。
+    //   ⚠ ▶ は残す。/eras を撤去したときに「前提条件」として移した3機能の1つ
+    //   （任意地点クリック判定・明治期の水域を重ねる・▶）。外すと撤去の前提が崩れる。
+    + `<div class="ops">
+        <button type="button" id="playBtn" class="op" title="年代を順に流す">▶</button>
+      </div>`
+    + (f.byKey.meiji?.ok ? `<label class="ov" id="ovRow">
+        <input type="checkbox" id="ovSwale"> 明治期の水域を写真に重ねる
+        <span class="ov-src">国土地理院「明治期の低湿地」</span></label>` : "")
+    // ⚠ 🔊 のプライバシーは footer の .f-priv へ寄せた（同じ主題が2か所にあった）。
+    //   ⚠ 「残っていた空中写真は N 年代」は残す。**調べた範囲**の申告で、帯を見ても
+    //   分母（7年代中）は分からない。ここを消すと「取れなかった」が言えなくなる。
+    + `<div class="strip-foot">写真はドラッグで動かせます（＋−で拡大縮小）`
+      + ` ／ 残っていた空中写真は <b>${past}</b> 年代（${Konjaku.ERAS.length} 年代中）`
+    + (p.state==="partial" ? ` ／ <span class="warn">${p.unread} 年代分は読み込めていません</span>` : "")
+    + `</div>`
+    + `<div class="ev" id="ev"></div>`;
+}
+
+// 年代を選ぶ。写真だけを差し替える（判定文も根拠も、場所の話なので動かさない）
+function setEra(i){
+  if(!frames.length) return;
+  const n=Math.min(Math.max(i,0),frames.length-1);
+  if(n===eraIdx) return;
+  eraIdx=n;
+  const fr=frames[eraIdx];
+  const big=document.getElementById("big");
+  const a=document.getElementById("lyrA"), b=document.getElementById("lyrB");
+  // 2枚重ねて入れ替える。切り替わったことが分かる程度の短い重なりだけ置く
+  const [show,hide]=a.classList.contains("on")?[b,a]:[a,b];
+  // 下地の有無で枚数が変わるので、組み直す（4枚 ⇄ 8枚）
+  show.outerHTML=bigLayer(fr,show.id,false);
+  const el2=document.getElementById(show.id);
+  void el2.offsetWidth;                       // 差し替え直後に .on を付けて、重なりを効かせる
+  el2.classList.add("on"); hide.classList.remove("on");
+  layoutBig();
+  big?.classList.remove("err");
+  document.getElementById("yrBig").innerHTML=
+    `${fr.label}${fr.sub?`<small>${fr.sub}</small>`:""}`;
+  document.querySelectorAll("#strip .f").forEach((el,j)=>{
+    el.classList.toggle("on",j===eraIdx);
+    el.setAttribute("aria-pressed",String(j===eraIdx));
+  });
+  // 年代が変われば「その時点までにできていたもの」も変わる。
+  // ここを忘れると、写真は 1936 なのに一覧は現在のまま、という食い違いになる
+  // 年代が変わったら、前の年代の読み上げは止める（画面と声が食い違わない）
+  stopSay();
+  unzoom(); renderEvents();
+  mapSetEra(fr);
+  // 重ねたまま年代を動かすと、上に載っている現在しか見えず、何が変わったのか分からない
+  mixVal=0; wireMix(); applyMix();
+  document.getElementById("mixbar")?.classList.toggle("off",!!fr.now);
+  // 「年代を動かしたか」だけを、**この場所につき1回**数える。
+  // ⚠ 動かすたびに送っていたら、1人が帯を全部たどるだけで8件書き込んでいた。
+  //   知りたいのは「触られたか」なので、1回で足りる。地名も座標も送らない（掟: 地名も座標も送らない）
+  if(!eraTicked){ eraTicked=true; KonjakuShare.tick("era.moved"); }
+}
+
+// ============ 触ったら地図にする ============
+// ⚠ 最初から地図にはしない。地図エンジンは gzip でも 276KB あり、
+//   入口の初速を落とす。しかも大半の人は「昔なんだったか」を見て終わる。
+//   静止した写真のままでも、その問いには答えられている。
+//   動かしたくなった人が触った瞬間に読み込む（読み込み中は画面に出す）。
+// ⚠ 読み込めなかったら、写真のまま黙って戻る。地図が出ないだけで、判定は壊さない。
+let mapObj=null, mapLoading=null, mapOn=false;
+const MAP_HOME=()=>({center:[current.lon,current.lat],zoom:mapZoomForBox()});
+// 静止した写真と同じ縮尺で始める（切り替わった瞬間に絵が飛ばないように）。
+// 写真は z16 のタイルを 枠幅/2 で描いているので、その縮尺に合う地図のズームを逆算する。
+function mapZoomForBox(){
+  const g=layoutBig();
+  return g ? 16+Math.log2(Math.max(g.W,1)/512) : 16;
+}
+function loadScript(src){
+  return new Promise((res,rej)=>{
+    const el=document.createElement("script");
+    el.src=src; el.onload=res; el.onerror=()=>rej(new Error(src)); document.head.appendChild(el);
+  });
+}
+function eraSource(fr){
+  return { type:"raster", tiles:[`${GSI}/${fr.id}/{z}/{x}/{y}.${fr.ext}`],
+    tileSize:256, minzoom:fr.min, maxzoom:fr.max,
+    attribution:'<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" rel="noopener">国土地理院</a>' };
+}
+async function ensureMap(){
+  if(mapObj) return mapObj;
+  if(mapLoading) return mapLoading;
+  const big=document.getElementById("big");
+  big?.classList.add("map-loading");
+  mapLoading=(async()=>{
+    try{
+      if(!window.maplibregl){
+        const css=document.createElement("link");
+        css.rel="stylesheet"; css.href="./vendor/maplibre-gl.css"; document.head.appendChild(css);
+        await loadScript("./vendor/maplibre-gl.js");
+      }
+      const fr=frames[eraIdx];
+      const m=new maplibregl.Map({
+        container:"map", ...MAP_HOME(),
+        style:{version:8,
+          sources:{under:eraSource({id:"pale",ext:"png",min:2,max:18}),
+            era:eraSource(fr),now:eraSource(Konjaku.LATEST),
+            swale:eraSource({id:"swale",ext:"png",min:6,max:16})},
+          // 下地（淡色地図）。明治期の低湿地は区分の塗りだけなので、これが無いと何も見えない
+          layers:[{id:"under",type:"raster",source:"under",
+              paint:{"raster-opacity":fr.under?1:0}},
+            {id:"era",type:"raster",source:"era"},
+            // 上に「現在」を重ね、濃さで比べる。既定は 0（＝選んだ年代だけ）
+            {id:"now",type:"raster",source:"now",paint:{"raster-opacity":mixVal/100}},
+            // 明治期の水域。既定は 0（押した人にだけ出す）
+            {id:"swale",type:"raster",source:"swale",paint:{"raster-opacity":0}}]},
+        attributionControl:{compact:true}, dragRotate:false, pitchWithRotate:false });
+      m.touchZoomRotate.disableRotation();
+      await new Promise((res)=>m.on("load",res));
+      // ⚠ 押した地点を判定し直す。地名の代表点でしか調べられなかったのを、
+      //   任意の1点まで下ろす（/eras にしか無かった機能）。
+      //   実測で、同じ豊洲でも 500m 離れると標高が 1.91m → 6.49m と変わる。
+      m.on("click",(e)=>{ judgeHere(e.lngLat.lng,e.lngLat.lat); });
+      m.getCanvas().style.cursor="crosshair";
+      mapObj=m; mapOn=true; applyMix(); applyOverlay();
+      big?.classList.add("map-on");
+      placeMarkers();
+      return m;
+    }catch{
+      // 読み込めなかった。写真のまま続ける（判定は巻き添えにしない）
+      return null;
+    }finally{
+      big?.classList.remove("map-loading"); mapLoading=null;
+    }
+  })();
+  return mapLoading;
+}
+// 地図側の印。押すと一覧と同じように寄る
+let markers=[];
+function placeMarkers(){
+  if(!mapObj) return;
+  markers.forEach((mk)=>mk.remove()); markers=[];
+  evShown.forEach((x,i)=>{
+    const el=document.createElement("i"); el.className="pin";
+    // ⚠ 静止画の印（renderPins）と同じ data-i を付ける。付け忘れていたので、
+    //   押したものを強調する側が地図の印を一度も見つけられず、
+    //   実測で markerCount 9 に対し onCount 0 だった（利用者役のエージェント3体とも「どの点？」）
+    el.dataset.i=i;
+    el.title=`${yearLabel(x)} ${x.label}`;
+    el.onclick=(e)=>{ e.stopPropagation(); focusOn(x,i); };
+    markers.push(new maplibregl.Marker({element:el}).setLngLat([x.lon,x.lat]).addTo(mapObj));
+  });
+  // 判定した地点そのもの
+  const c=document.createElement("i"); c.className="mk";
+  markers.push(new maplibregl.Marker({element:c}).setLngLat([current.lon,current.lat]).addTo(mapObj));
+}
+function mapSetEra(fr){
+  if(!mapObj) return;
+  // 下地は、明治期のコマのときだけ見せる
+  if(mapObj.getLayer("under"))
+    mapObj.setPaintProperty("under","raster-opacity",fr.under?1:0);
+  const src=mapObj.getSource("era");
+  if(src?.setTiles) src.setTiles([`${GSI}/${fr.id}/{z}/{x}/{y}.${fr.ext}`]);
+  else { mapObj.removeLayer("era"); mapObj.removeSource("era");
+    mapObj.addSource("era",eraSource(fr)); mapObj.addLayer({id:"era",type:"raster",source:"era"}); }
+}
+function dropMap(){
+  markers.forEach((mk)=>mk.remove()); markers=[];
+  if(mapObj){ mapObj.remove(); mapObj=null; }
+  mapOn=false;
+  document.getElementById("big")?.classList.remove("map-on","map-loading");
+}
+
+// 年代を順に流す。
+// ⚠ 在庫を無視して回さない（/eras で同じ事故を起こしている。写真の無い年代を
+//   「1945–50年」と言い切ったまま地図だけ出していた）。ここは frames にある年代しか回らない。
+// ⚠ 自動では始めない。押した人にだけ動かす。
+let playTimer=null;
+function stopPlay(){
+  clearInterval(playTimer); playTimer=null;
+  const b=document.getElementById("playBtn");
+  if(b){ b.textContent="▶"; b.classList.remove("on"); b.title="年代を順に流す"; }
+}
+function wirePlay(){
+  const b=document.getElementById("playBtn");
+  if(!b) return;
+  b.onclick=()=>{
+    if(playTimer) return stopPlay();
+    if(frames.length<2) return;
+    b.textContent="❚❚"; b.classList.add("on"); b.title="止める";
+    setEra(0);
+    playTimer=setInterval(()=>{
+      if(eraIdx>=frames.length-1) return stopPlay();   // 最後まで来たら止める
+      setEra(eraIdx+1);
+    },1300);
+  };
+}
+
+// 明治期の水域を、いま見ている写真の上に重ねる。
+// ⚠ 判定の裏取りとして、利用者役のエージェントが「いちばん効く」と評価した機能。
+//   判定文が「明治期には 河川・湖沼・海面」と言っているものが、**面として**見える。
+// ⚠ 土地条件図は重ねない。凡例が機械可読でないため（掟: 説明できない色は重ねない）、出した色を説明できない。
+//   説明できない色を画面に置くのは、この画面の他の部分と格が揃わない。
+function applyOverlay(){
+  const on=document.getElementById("ovSwale")?.checked;
+  if(!mapObj||!mapObj.getLayer("swale")) return;
+  mapObj.setPaintProperty("swale","raster-opacity",on?0.75:0);
+}
+function wireOverlay(){
+  const c=document.getElementById("ovSwale");
+  if(!c) return;
+  c.onchange=async()=>{
+    if(!mapObj&&!mapLoading){ await ensureMap(); }
+    applyOverlay();
+  };
+}
+
+// 現在を重ねる。
+// ⚠ 別ページ（/eras）でやっていたことを、判定と同じ画面に持ってくる。
+//   あちらは2枚の地図を左右に切って擦る仕掛けだったが、地図が1枚あれば
+//   「重ねて濃さを変える」はラスタをもう1枚足すだけで足りる。
+//   左右に擦る（スワイプ）は地図が2枚要るので、ここでは作らない。
+//   まずこの形で置いて、物足りなければそのとき足す。
+let mixVal=0;
+function applyMix(){
+  const el=document.getElementById("mixv");
+  if(el) el.textContent=`${mixVal}%`;
+  // ⚠ 重ねているあいだは、見えている絵が「その年代の写真」ではない。
+  //   100% にすると現在の写真が全面に出るのに、ラベルも読み上げも
+  //   「1936–42年の空中写真です」と名乗っていた（実測。映っているのは現在の豊洲）。
+  //   年代を動かしたときは mixVal=0 に戻すので守られていたが、逆順だけ抜けていた。
+  const yb=document.getElementById("yrBig");
+  if(yb&&frames[eraIdx]){
+    const fr=frames[eraIdx];
+    yb.innerHTML=mixVal>0
+      ? `${fr.label}<small>現在を ${mixVal}% 重ねています</small>`
+      : `${fr.label}${fr.sub?`<small>${fr.sub}</small>`:""}`;
+  }
+  if(!mapObj||!mapObj.getLayer("now")) return;
+  mapObj.setPaintProperty("now","raster-opacity",mixVal/100);
+}
+function wireMix(){
+  const r=document.getElementById("mix");
+  if(!r) return;
+  r.value=String(mixVal);
+  r.oninput=async()=>{
+    mixVal=Number(r.value); applyMix();
+    // 重ねるには地図が要る。触った時点で読み込む（ドラッグ・ホイールと同じ）
+    if(!mapObj&&!mapLoading){ await ensureMap(); applyMix(); }
+  };
+}
+
+// ============ この写真の範囲に、その時点までにできていたもの ============
+// ⚠ 「その年のニュース」ではない。**主張が違う**。
+//   ニュースは「その年に起きたこと」で、この土地の話とは限らないうえ、
+//   点座標に置くと「ここで起きた」と読める（実測: 豊洲の最古は「1942 東京空襲」だった）。
+//   ここで言うのは「**開業年 ≤ 撮影年なら、撮影時に存在していた**」だけ。
+//   推論ではなく含意なので、年と座標が正しければ必ず正しい。
+// ⚠ 「写っている」とは言わない。範囲に**ある**とだけ言う。
+//   小さい建物や木の陰は、写真からは確認できない。確認できるのは座標と年だけ。
+let evState=null;          // null=未取得 / {loading} / {state, items}
+// ⚠ 一覧と印は、**同じ配列**から作る。
+//   別々に絞って並べていたため、一覧は新しい順・印は古い順になり、
+//   「一覧の1行目」と「印の1つ目」が別のものを指していた（実測で中心がずれた）。
+let evShown=[];
+let evTile=null, zoomOn=false;
+
+async function loadEvents(){
+  if(!current||!frames.length) return;
+  if(!mosaic) setMosaic();
+  const box={...mosaic};
+  evTile=box;
+  evState={loading:true}; renderEvents();
+  const r=await KonjakuEvents.around(16,box);
+  // 別の場所に移っていたら捨てる
+  if(!current||!mosaic||mosaic.x0!==box.x0||mosaic.y0!==box.y0) return;
+  // ⚠ 索引が読めなかったときだけ数える。静的が壊れると全PVが実行時 Wikidata に
+  //   流れるが、それに気づく手段が無かった。毎回送ると /t が1件増えて天井が下がるので、
+  //   **壊れたときだけ**言う（正常時の /t は 2件のまま）
+  if(r.idxBroken) KonjakuShare.events("fail");
+  evState=r; renderEvents();
+}
+
+// ⚠ 年は「点」とは限らない。Wikidata には「1950年代」「20世紀」しか無い項目がある。
+//   幅の広い記録を年として扱うと、1985年築のものが「1936年に在った」と出る（実測）。
+//   幅の**終わり**を使って、言い切れるときだけ「あった」と言う。
+const yspan=(x)=>x.precision==="century"?99:x.precision==="decade"?9:0;
+// ある年代のコマで出るものを返す。
+// ⚠ 描画と「次の一歩の行き先」の両方がここを使う。2か所に書くと、
+//   押した先が空になる（＝押しても何も起きない一歩）ことに気づけない。
+function hitsAt(i,all){
+  const f=frames[i]; if(!f||f.meiji) return [];
+  const year=KonjakuEvents.yearOf(f.label);
+  const prev=i>0 ? KonjakuEvents.yearOf(frames[i-1]?.label) : null;
+  if(year==null) return [];
+  return prev==null
+    ? all.filter((x)=>x.year+yspan(x)<=year&&(x.until==null||x.until>=year))
+        .map((x)=>({...x,kind:"あった"}))
+    : [...all.filter((x)=>x.year>prev&&x.year<=year).map((x)=>({...x,kind:"できた"})),
+       // ⚠ 無くなったものも出す。実測で「へぇ」と言われたのは、消えたもののほうだった
+       ...all.filter((x)=>x.until!=null&&x.until>prev&&x.until<=year)
+             .map((x)=>({...x,kind:"無くなった"}))];
+}
+
+function renderEvents(){
+  const el=document.getElementById("ev");
+  if(!el||!frames.length) return;
+  // ⚠ 一覧を作り直すと、押していたものの番号は前の年代のものになる。
+  //   強調も、寄せた先に残した名前も、ここで落とす。
+  //   残すと、いま画面に無いものの名前が写真の上に出たままになる。
+  clearFocus();
+  // ⚠ 明治期のコマには「年」が無い（低湿地データは年を持たない）。
+  //   ここで無理に年を当てると、持っていない精度を演出することになる（掟: 中間を語らない。中間は見せる）。
+  if(frames[eraIdx]?.meiji){
+    // ⚠ ここは着いたときに必ず通る（帯の既定は最古＝明治期）。
+    //   つまり **初めて来た人が最初に見る事物の枠は、必ずこの注記**だった。
+    //   実測（UI/UX・2026-08-14）: 30秒のあいだ「このころ何があった？」が
+    //   一度も画面に現れていなかった。説明だけを 51px 置いて、次の一歩が無い。
+    //   → 同じ高さのまま、押せる一歩にする。写真のある最古の年代へ送る。
+    //   ⚠ 年を当てない、という判断は変えていない（説明の文はそのまま残す）。
+    // ⚠ 行き先は「写真のある最初の年代」ではなく「**中身のある最初の年代**」。
+    //   最初の年代へ送っても、そこが空なら「押しても何も起きない一歩」になる
+    //   （実測: 豊洲の 1936–42 は 0 件。埋立前なので当然）。
+    const all0=evState?.items??[];
+    let step=-1;
+    if(!evState?.loading&&evState?.state!=="unreachable")
+      for(let i=0;i<frames.length;i++)
+        if(!frames[i].meiji&&hitsAt(i,all0).length){ step=i; break; }
+    // 注記そのものを押せるようにする。要素を足すと高さが増える
+    //   （実測: ボタンを足したら 51px → 95px になり、折り返しの下へ出た）
+    el.innerHTML= step<0
+      ? `<div class="ev-note">明治期の低湿地データには年がありません。
+          年でくらべられるのは、写真のある年代からです。</div>`
+      : `<button class="ev-note step" id="evStep">明治期の低湿地データには年がありません。
+          年で見られるのは <b>${frames[step].label}</b> からです<span class="go">→</span></button>`;
+    const b=document.getElementById("evStep");
+    if(b) b.onclick=()=>setEra(step);
+    evShown=[]; renderPins([]); placeMarkers(); return; }
+  const year=KonjakuEvents.yearOf(frames[eraIdx]?.label);
+  const nowSel=!!frames[eraIdx]?.now;
+  if(!evState){ el.innerHTML=""; return; }
+  if(evState.loading){
+    el.innerHTML=`<div class="ev-note">この範囲にあるものを調べています…</div>`; return; }
+  if(evState.state==="unreachable"){
+    // 取れなかったことを「無い」と言わない（掟: 取れなかったを「無い」と言わない）
+    el.innerHTML=`<div class="ev-note warn">Wikidata を読み込めませんでした。
+      <b>この範囲に何があるかは分かっていません。</b>
+      <button class="retry" id="evRetry">再試行</button></div>`;
+    document.getElementById("evRetry").onclick=loadEvents; return; }
+  const all=evState.items??[];
+  // ⚠ 目録ではなく**差分**を出す。
+  //   「その時点までにあるもの」を並べると、密な土地では上位が古いもので埋まり、
+  //   年代を動かしても中身が変わらない（実測: 清澄白河・渋谷は8段すべて同一だった）。
+  //   しかも動かない対象に年号を付けても、時間の話にならない
+  //   （1947年の小学校は、1961年の写真にも現在の写真にも同じ形で写っている）。
+  //   帯を動かすたびに必ず何かが変わり、**変わったものだけが名前を持つ**形にする。
+  const prev=eraIdx>0 ? KonjakuEvents.yearOf(frames[eraIdx-1]?.label) : null;
+  const base=(prev==null);          // いちばん古い年代だけは、そこまでの積み上げを出す
+  // ⚠ 年は「点」とは限らない。Wikidata には「1950年代」「20世紀」しか無い項目がある。
+  //   幅の広い記録を年として扱うと、1985年築のものが「1936年に在った」と出る（実測）。
+  //   幅の**終わり**を使って、言い切れるときだけ「あった」と言う。
+  const hit=hitsAt(eraIdx,all);
+  // ⚠ 新しい順に8件で切ると、大事なものが黙って落ちる。
+  //   実測（渋谷・現在）: 19件中8件しか出ず、渋谷ヒカリエ・スクランブルスクエア・
+  //   QFRONT・「五島プラネタリウムが2001年に無くなった」が、**何の表示も無く消えていた**。
+  //   代わりに美容室と、同じ公園の重複2行が上に来ていた。
+  //   → 「無くなったもの」を先に置く。実測で当たり率がいちばん高いのはこれ（52コマ回して3件、
+  //     3件とも「へぇ」だった）。そのうえで新しい順。
+  const RANK=8;
+  hit.sort((a,b)=>{
+    if((a.kind==="無くなった")!==(b.kind==="無くなった")) return a.kind==="無くなった"?-1:1;
+    return (b.kind==="無くなった"?b.until:b.year)-(a.kind==="無くなった"?a.until:a.year);
+  });
+  evShown=hit.slice(0,RANK);
+  const rest=hit.length-evShown.length;
+  // 見出しは「いつからいつまでの話か」。差分なので、期間を名乗らないと意味が決まらない
+  const span=base ? `${nowSel?"いま":`${year}年`}まで`
+    : `${frames[eraIdx-1].label} → ${nowSel?"いま":frames[eraIdx].label}`;
+  if(!hit.length){
+    el.innerHTML=`<div class="ev-note">${span}のあいだに、記録のある変化はありません${
+      all.length?`（この範囲の記録は ${all.length} 件）`:""}。</div>`;
+    evShown=[]; renderPins([]); placeMarkers(); return; }
+  el.innerHTML=`<div class="ev-h">${base
+      ? `${span}に、この範囲にあったもの`
+      : `${span} のあいだに変わったもの`}
+      <span class="ev-n">${hit.length}件</span></div>
+      <div class="ev-tip">行を押すと、地図でその場所が光ります</div>`
+    // ⚠ 名前・説明・出典URL は Wikidata（誰でも編集できる CC0 の第三者データ）。
+    //   実測（同じラベルが 8 行並んだ状態）では、ここが 8 回発火していた。
+    //   出典URLは scheme も見る。esc だけでは href="javascript:…" は塞げない。
+    //   http/https でなければリンクそのものを出さない（掟: 押しても何も起きない導線を置かない）。
+    + evShown.map((x,i)=>{
+        const label=yearLabel(x);
+        const d=evDesc(x.note,x.label);
+        const gone=x.kind==="無くなった";
+        const src=escUrl(x.url);
+        return `<div class="ev-row${gone?" gone":""}">
+          <button class="ev-it" data-i="${i}">
+            <span class="ev-y">${esc(label)}</span><span class="ev-l">${esc(x.label)}</span>
+            ${gone?`<span class="ev-k">無くなった</span>`:""}
+            ${d?`<span class="ev-d">${esc(d)}</span>`:""}</button>
+          ${src?`<a class="ev-u" href="${src}" target="_blank" rel="noopener"
+            title="この項目の出典">↗</a>`:""}</div>`;
+      }).join("")
+    + (rest>0 ? `<div class="ev-more">ほかに ${rest} 件（新しいものから ${RANK} 件だけ出しています）</div>` : "")
+    + (evState.truncated ? `<div class="ev-note warn" style="margin-top:6px">
+        <b>この範囲は記録が多く、取りきれていない可能性があります。</b>
+        ここに出ていないものがあるかもしれません。</div>` : "")
+    // ⚠ 説明が出ない行について、「説明が無い」と読ませない。説明はある。
+    //   地名と、名前でもう分かる部分を落とした結果、残らなかっただけ（実測 29.6%）。
+    //   ここを書かないと「この項目には説明が無いのだ」という誤った推論を誘う
+    //   （掟: 取れなかったことを「無い」と言わない、の裏返し）。
+    + `<div class="ev-src">出典 <a href="https://www.wikidata.org/" target="_blank" rel="noopener">Wikidata</a>（CC0）。
+      説明は Wikidata の一行説明から、<b>地名と、名前でもう分かる部分</b>を機械的に落として出しています。
+      落とすと何も残らない項目には出ません。全文は各行の ↗ から。
+      <b>年が記録されているものだけ</b>です。${
+        evState.at?`この範囲を調べたのは <b>${evState.at}</b> です。`:""}年代に幅があるとき（1936–42 など）は
+      <b>先頭の年</b>で区切っているので、記録があっても出ない年があります。
+      写真に写っているかどうかまでは確かめていません。</div>`;
+  const shown=evShown;
+  el.querySelectorAll(".ev-it").forEach((b)=>{
+    b.onclick=()=>focusOn(shown[+b.dataset.i],+b.dataset.i);
+  });
+  renderPins(shown); placeMarkers();
+}
+
+// ⚠ 説明（Wikidata の日本語の一行説明）から、**この画面では自明なもの**を落とす。
+//   ここでやる理由: 取り込み側でやると、取り込み済みの土地と実行時に問い合わせる土地で
+//   答えが変わる（掟: 同じ問いに答える実装を2つ持たない）。生のまま配って、描くときに落とす。
+//
+//   実測（2026-08-15・分母＝日本語の説明がある 2,225 / 2,367 件）:
+//     「〈行政区画〉にある／に所在する」で始まる … 66.9%（規則で落とせたのは 90.0%）
+//     頭から「…」で切ると本題が消える            … 66.2%
+//     落とした残りが名前に既出（読んでも増えない）… 29.6%
+//     結果、説明が出る行 70.4% / 空になる行 29.6%
+//
+//   ⚠ 前置きの語は「行政区画の接尾辞で終わること」を必須にしてある。
+//     これを外して `[^、。]{0,14}?にある` にすると
+//     「**広島原爆の爆心地にある**慰霊碑」まで落ちる。
+//   ⚠ 「かつて」は捕まえて先頭に戻す。落とすと
+//     「かつて仙台市にあった貨物駅」が**いまある駅**になる。
+//   ⚠ `[^、。の]` で「の」を禁じているのは
+//     「仙台市**の榴岡公園**にある資料館」の公園名を守るため。
+const ADMIN = "(?:北海道|東京都|京都府|大阪府|[^、。の]{2,3}県)?[^、。の]{0,12}?(?:市|区|町|村|郡|都|道|府|県)";
+const DROP = [
+  new RegExp(`^(かつて)?(?:日本の|日本、)?(?:${ADMIN})[^、。の]{0,8}?に(?:ある|あった|所在する|所在した|位置する|存在する|面する)`),
+  new RegExp(`^(かつて)?(?:日本の|日本、)?(?:${ADMIN})の`),
+  /^(かつて)?日本の/,
+];
+const NORM=(s)=>(s??"").replace(/[（(][^）)]*[）)]/g,"").replace(/[\s・･]/g,"");
+function evDesc(note,label){
+  let d=(note??"").trim();
+  if(!d) return "";
+  for(const re of DROP){
+    const m=d.match(re);
+    if(m){ d=((m[1]??"")+d.slice(m[0].length)).replace(/^[、,\s]+/,""); break; }
+  }
+  // 残りが名前にもう書いてあるなら、読んでも増えないので出さない
+  return (!d || NORM(label).includes(NORM(d))) ? "" : d;
+}
+
+// ⚠ 記録の精度どおりに書く。「1950年代」を「1950年」と書かない。
+//   一覧の行と、寄せた先に残す名前の両方がこれを使う
+//   （掟: 同じ問いに答える実装を2つ持たない）。
+function yearLabel(x){
+  const y=x.kind==="無くなった"?x.until:x.year;
+  if(x.kind==="無くなった") return `${y}`;
+  if(x.precision==="century") return `${Math.floor(y/100)+1}世紀`;
+  if(x.precision==="decade") return `${y}年代`;
+  return `${y}`;
+}
+
+// 経緯度を写真の中の座標に直して印を打つ。
+// ⚠ object-fit:cover の写像を、割合の当てはめで済ませてはいけない。
+//   横は枠の幅ぴったりに拡大され、縦だけがはみ出す。はみ出した分だけずれる。
+const bigGeom=()=>layoutBig();
+function renderPins(list){
+  const wrap=document.getElementById("pins");
+  if(!wrap) return;
+  const g=bigGeom();
+  if(!g){ wrap.innerHTML=""; return; }
+  // ⚠ 枠の外に出るものも打つ。写真は 2×2 の正方形で、枠は 4:3 なので上下が隠れている。
+  //   隠れているだけのものを打たないでいると、一覧に出ているのに印が無く、
+  //   押しても何も起きない行になる（実測: 亀戸「1925 江東区立水神小学校」）。
+  //   はみ出した分は枠が切るだけで、寄せれば見える。
+  wrap.innerHTML=list.map((x,i)=>{
+    const f=KonjakuEvents.fractionIn(x.lon,x.lat,16,mosaic);
+    const left=f.x*g.S, top=g.top+f.y*g.S;
+    // ⚠ 属性の中も HTML。title="" の中で引用符を閉じられると、そこから先はタグになる
+    return `<i class="pin" data-i="${i}" style="left:${left.toFixed(1)}px;top:${top.toFixed(1)}px"
+      title="${esc(x.year)} ${esc(x.label)}"></i>`;
+  }).join("");
+}
+
+// 押されたものの位置へ寄る。写真は静止画なので、箱ごと拡大して原点をそこに置く
+const ZOOM=2.4;
+
+// ⚠ 押した結果の始末は、写真の経路と地図の経路で**同じ1か所**にまとめる。
+//   別々に書いていたので、地図の経路だけ強調に届かなかった（同じ取りこぼしを2回やった）。
+//   ここでやるのは3つ:
+//     1. 一覧の行を強調する（行が画面外へ出ても、戻ってきたときに分かる）
+//     2. 印を強調する。静止画の印も地図の印も `.pin[data-i]` で同じように拾う
+//     3. 寄せた先に名前を残す。これが無いと「押せたけど答えが無い」になる
+function markFocus(x,i){
+  document.querySelectorAll(".ev-it").forEach((el,j)=>el.classList.toggle("on",j===i));
+  document.querySelectorAll(".big .pin").forEach((el)=>
+    el.classList.toggle("on",+el.dataset.i===i));
+  const fx=document.getElementById("fx");
+  // ⚠ ここは 2026-08-15 に足したときエスケープを忘れていて、一覧に続けてもう 2 回発火していた
+  const gone=x.kind==="無くなった";
+  if(fx) fx.innerHTML=`<span class="fy">${esc(yearLabel(x))}</span>${esc(x.label)}${
+    gone?"（無くなった）":""}`;
+}
+
+function focusOn(x,i){
+  markFocus(x,i);
+  // ⚠ 押したときは地図で寄せる。静止した写真のままだと、枠の端にあるものが
+  //   端に貼り付いたままになり、押しても見えない（実測: 水神小学校・富岡小学校）。
+  //   地図なら中心に置けるので、どこにあっても必ず見える。
+  if(!mapObj&&!mapLoading){ ensureMap().then((m)=>{ if(m) focusOn(x,i); }); return; }
+  if(mapObj){
+    mapObj.easeTo({center:[x.lon,x.lat],zoom:Math.max(mapObj.getZoom(),17.4),duration:500});
+    const big=document.getElementById("big");
+    big?.classList.add("zoom");
+    zoomOn=true;
+    // ⚠ 寄せた結果が**画面に入っていること**まで面倒を見る。
+    //   実測（2026-08-14・375×667）: 一覧を読んでいる位置から押すと、
+    //   写真の枠は画面の 69px 上にあり、**見えている割合 0%**。
+    //   利用者役のエージェント3体とも「何も起きない」「押せてないのかと思った」と言った。
+    //   すぐ下のコメントが同じ症状を過去に直したと書いているのに、
+    //   地図の経路だけ return していて、その手当てに届いていなかった。
+    //   ⚠ 既に見えているときは動かさない（読んでいる位置を勝手に奪わない）。
+    if(big){
+      const r=big.getBoundingClientRect();
+      const seen=Math.max(0,Math.min(r.bottom,innerHeight)-Math.max(r.top,0));
+      if(seen<r.height*0.5) big.scrollIntoView({behavior:"smooth",block:"center"});
+    }
+    return;
+  }
+  const big=document.getElementById("big"), inner=document.getElementById("bigIn");
+  const g=bigGeom();
+  if(!big||!inner||!g||!mosaic) return;
+  const f=KonjakuEvents.fractionIn(x.lon,x.lat,16,mosaic);
+  const px=f.x*g.S, py=g.top+f.y*g.S;
+  // ⚠ 枠の外にあっても諦めない。**真ん中まで動かしてから**拡大する。
+  //   以前はここで return していたので、上下に隠れているものは押しても無反応だった。
+  //   押して何も起きない行を置かない（この画面の他の導線と同じ規則）。
+  const k=ZOOM, S=g.S*k;
+  // 拡大したあとの位置（原点をその点に置くので、その点は動かない）
+  const l0=(0-px)*k+px, t0=(g.top-py)*k+py;
+  // 中央へ寄せる。ただし枠に地色が見えるところまでは動かさない
+  const cl=(v,lo,hi)=>Math.min(Math.max(v,lo),hi);
+  const tx=cl(g.W/2-px, g.W-S-l0, -l0);
+  const ty=cl(g.H/2-py, g.H-S-t0, -t0);
+  inner.style.transformOrigin=`${px.toFixed(1)}px ${py.toFixed(1)}px`;
+  inner.style.transform=`translate(${tx.toFixed(1)}px,${ty.toFixed(1)}px) scale(${k})`;
+  big.classList.add("zoom"); zoomOn=true;
+  // 印と名前は markFocus が済ませている（この経路だけ別に書いて取りこぼした過去がある）
+  big.scrollIntoView({behavior:"smooth",block:"nearest"});
+}
+// 寄せたものを解く。強調も名前も、ここ1か所で落とす
+function clearFocus(){
+  document.querySelectorAll(".big .pin.on,.ev-it.on").forEach((el)=>el.classList.remove("on"));
+  const fx=document.getElementById("fx"); if(fx) fx.innerHTML="";
+}
+function unzoom(){
+  const big=document.getElementById("big"), inner=document.getElementById("bigIn");
+  if(!big) return;
+  clearFocus();
+  if(mapObj&&current){ mapObj.easeTo({...MAP_HOME(),duration:400});
+    big.classList.remove("zoom"); zoomOn=false; return; }
+  if(inner) inner.style.transform="";
+  big.classList.remove("zoom"); zoomOn=false;
+}
+
+function wireStrip(){
+  // 読めなかった1枚は、黙って詰めずに枠として残す（写真が無いのか読めないのか区別できない）
+  document.querySelectorAll("#strip img").forEach((im)=>{
+    im.addEventListener("error",()=>im.parentNode.classList.add("err"));
+  });
+  document.querySelectorAll("#strip .f").forEach((el)=>{
+    el.onclick=()=>setEra(+el.dataset.i);
+  });
+  // 大きい写真が落ちたときは、黙って前の絵を残さない。
+  // ⚠ ただし **1枚でも欠けたら全滅**にしてはいけない。2×2 の端のタイルは、
+  //   その年代の撮影範囲の外だと 404 になる（軽井沢で実測）。真ん中が写っていても
+  //   「この年代の写真を読み込めませんでした」と出て、写真ごと消えていた。
+  //   4枚とも駄目なときだけ、読み込めなかったと言う。
+  document.querySelectorAll("#big .lyr img").forEach((im)=>{
+    const judge=()=>{
+      const on=document.querySelector("#big .lyr.on");
+      if(!on) return;
+      const t=[...on.querySelectorAll("img")];
+      if(!t.every((e)=>e.complete)) return;
+      document.getElementById("big")?.classList.toggle("err",
+        t.every((e)=>!e.naturalWidth));
+    };
+    im.addEventListener("error",judge);
+    im.addEventListener("load",judge);
+  });
+  const uz=document.getElementById("unzoom");
+  if(uz) uz.onclick=unzoom;
+  // 動かしたくなった人が触った瞬間に、地図として使えるようにする
+  const bigEl=document.getElementById("big");
+  if(bigEl){
+    const wake=(e)=>{
+      if(e.target.closest(".unzoom,.zoombar,.loading")) return;   // 操作ボタンは対象外
+      if(!mapObj&&!mapLoading) ensureMap();
+    };
+    bigEl.addEventListener("pointerdown",wake,{passive:true});
+    bigEl.addEventListener("wheel",wake,{passive:true});
+  }
+  const zi=document.getElementById("zIn"), zo=document.getElementById("zOut");
+  const step=async(d)=>{ const m=await ensureMap(); if(m) m.easeTo({zoom:m.getZoom()+d,duration:260}); };
+  if(zi) zi.onclick=(e)=>{ e.stopPropagation(); step(+1); };
+  if(zo) zo.onclick=(e)=>{ e.stopPropagation(); step(-1); };
+  // 写真そのものを押しても戻せる（寄ったまま戻れない、を作らない）
+  const big=document.getElementById("big");
+  // ⚠ 地図の上を押したときは、寄りを解除しない（判定し直しと同時に画が飛ぶ）
+  if(big) big.addEventListener("click",(e)=>{
+    if(e.target.closest("#unzoom,.zoombar,.say,#map")) return;
+    if(zoomOn) unzoom(); });
+  addEventListener("resize",()=>{ if(evState&&!evState.loading) renderEvents(); },{passive:true});
+}
+
+// 明治期の地形は「する事」ではなく、その場所の事実。
+// コマンドに混ぜず、場所を選んだ時点の見出しとして常に出す。
+let meiji=null;   // null=未選択 / {loading:true} / {text, water, cls}
+
+function renderVerdict(){
+  const el=document.getElementById("verdict");
+  if(!current||!meiji){ el.style.display="none"; return; }
+  el.style.display="";
+  // ⚠ 判定を待ってから絵を出していたので、3G相当で **2.6秒、文字だけ**だった（実測）。
+  //   座標は選んだ瞬間に分かっているので、**現在の写真は判定を待たずに出せる**。
+  //   まず「いまのその場所」を見せ、判定が届いたら明治期へ重ねて戻す。
+  //   （待ち時間が「何も無い」から「いまを見ている」に変わる。時間の話とも噛み合う）
+  if(meiji.loading){ el.className="verdict"; el.innerHTML=loadingHTML(); wireStrip(); return; }
+  el.className="verdict"+(meiji.water?" w":"");
+  // 「この土地から」の色を判定に合わせる。判定カードが青いときにタグだけベージュだと、
+  // 色が何を指しているのか分からなくなる
+  listEl.classList.toggle("w",!!meiji.water);
+  // 1行の事実 → バッジ（読ませずに伝える） → ? で根拠を開く、の三層。
+  // 普段は軽く、気になる人だけが深掘りできる形にする。
+  const bs = meiji.facts ? Konjaku.badges(meiji.facts) : [];
+  // 取れなかったものがあるときは、必ず再試行の手段を出す。
+  // 「読み込めませんでした」で終わらせると、利用者は詰む（掟: 取れなかったを「無い」と言わない / 現在地の作法と揃える）。
+  const unread = meiji.facts?.unread ?? [];
+  // 詳細版が無くて広い区分で答えたときは、その理由を判定カード自体に置く。
+  // バッジの「（広い区分）」だけだと、なぜ粗いのかが ? を開いた人にしか届かない。
+  // 「詳細版が無い」が「これがこの土地の分類だ」に化けるのが、いちばん危ない（掟: 主題は「成り立ち」。明治期は手法のひとつ）
+  const lfF = meiji.facts?.byKey?.landform;
+  const coarse = (lfF && lfF.ok && !lfF.fine) ? lfF.note : null;
+  // 災害リスクを根拠パネルの奥から正面へ引き上げる（掟: 災害リスクを、根拠の奥ではなく正面に出す）。
+  // 文は国土地理院の記述をそのまま出す。要約すると原典より強くも弱くもなる。
+  // 人工地形があるならそちら（いまの土地の状態）を採る。両方は長すぎて読まれない。
+  //
+  // ⚠ 広い区分（広域版）では出さない。
+  //   区分「低地」の記述は「河川氾濫、高潮、液状化に注意」で、これは全国の低地一般に
+  //   ついての文。詳細版が無い軽井沢（標高 939.56m）に当てると、内陸の高原で
+  //   「高潮に注意」と出る。高山（565m）でも同じ。原典が誤っているのではなく、
+  //   **こちらが、この地点についての記述であるかのように見せているのが誤り**。
+  //   詳細版が無いなら、リスクの粒度も無い。無いものは出さない（掟: 根拠のないことは書かない）。
+  const risk = (lfF && lfF.ok && lfF.fine)
+    ? (lfF.artificialRisk ? { text: lfF.artificialRisk, of: lfF.artificial }
+      : lfF.risk ? { text: lfF.risk, of: lfF.value } : null)
+    : null;
+  el.innerHTML=`
+    ${timeHTML(meiji.facts)}
+    ${bs.length ? `<div class="badges">${bs.map((b)=>
+      `<button class="badge ${b.tone}" data-k="${b.key??""}"
+        title="このバッジの根拠を見る"><i>${b.icon}</i>${b.text}</button>`).join("")}</div>` : ""}
+    ${risk ? `<details class="risk"><summary><span class="rl">⚠ この土地で気をつけること</span>
+        <span class="rs2">${risk.of} 一般についての、国土地理院の記述</span></summary>
+      <div class="rbody">${risk.text}
+        <span class="rs">（地形の種類ごとに書かれているので、この地点に当てはまらない条件も含まれます）</span>
+      </div></details>` : ""}
+    ${coarse ? `<div class="coarse">${coarse}</div>` : ""}
+
+    ${unread.length ? `<div class="retry-msg">
+      <b>${unread.map((f)=>f.unreadLabel ?? f.label).join("・")}</b> を、いま読み込めませんでした。
+      通信を確認して、もう一度お試しください。
+      <button class="retry" id="retryBtn">再試行</button></div>` : ""}`;
+  wireStrip(); wireMix(); wireBadges(); wireSay(); wirePlay(); wireOverlay();
+  document.getElementById("mixbar")?.classList.toggle("off",!!frames[eraIdx]?.now);
+  if(frames.length&&!evState) loadEvents(); else renderEvents();
+  const sb=document.getElementById("shareBtn");
+  if(sb) sb.onclick=async(ev)=>{
+    ev.preventDefault();
+    if(!meiji.facts||!current) return;
+    const say=(t)=>{ const n=document.getElementById("shareMsg");
+      if(n){ n.textContent=t; n.style.display="block"; clearTimeout(say._t);
+        say._t=setTimeout(()=>{ n.style.display="none"; },2600); } };
+    sb.disabled=true;
+    try{ await KonjakuShare.share(meiji.facts,current.title,location.href,say); }
+    catch{ say("共有できませんでした"); }
+    finally{ sb.disabled=false; }
+  };
+  const cw=document.getElementById("closeWhy");
+  if(cw&&!cw.dataset.on){ cw.dataset.on="1";
+    cw.onclick=()=>{ const w=document.getElementById("whyBtn"); if(w) w.click();
+      document.getElementById("verdict")?.scrollIntoView({behavior:"smooth",block:"nearest"}); }; }
+  const rb=document.getElementById("retryBtn");
+  if(rb) rb.onclick=()=>{ const c=current; if(c) openPlace(c.lon,c.lat,c.title); };
+  document.getElementById("whyBtn").onclick=(ev)=>{
+    const btn=ev.currentTarget;
+    const open=btn.getAttribute("aria-expanded")==="true";
+    btn.setAttribute("aria-expanded", String(!open));
+    const own=document.getElementById("own");
+    // "" にすると CSS の display:none が復活してしまうので、明示的に block にする
+    document.getElementById("result").style.display = open ? "none" : "block";
+    document.getElementById("closeWhy")?.style.setProperty("display", open?"none":"block");
+    if(!open){ own.scrollIntoView({behavior:"smooth",block:"nearest"});
+      const card=own.firstElementChild;
+      if(card){ card.classList.remove("flash"); void card.offsetWidth; card.classList.add("flash"); } }
+  };
+}
+
+// この年代を聞く。
+//
+// ⚠ 読み上げるのは「出せるもの」だけ。
+//   助言にあった「1964年。このころ、この周辺には……」は書けない。
+//   その年代に何があったかは空中写真から出せないことが実測で分かっている
+//   （掟: 画素から出せないことは言わない）。文にした瞬間、それは判定ではなく作文になる。
+//   読み上げるのは、画面に出ているのと**同じ文**だけ:
+//     1. 年代の名前（撮影者の注記まで）
+//     2. 判定文（narrate の1文目。国土地理院の記述から作った文）
+//     3. その年代の差分（Wikidata で年が確認できたものだけ）
+//   聞いている人は文字を追えないので、**画面より多くのことを言わない**のが特に重要。
+//
+// ⚠ 自動で再生しない。押した人にだけ鳴らす。
+// ⚠ 端末の中で合成する。外へは何も送らない（画面にもそう書く）。
+let speaking=false;
+function sayText(){
+  const fr=frames[eraIdx];
+  if(!fr||!meiji||meiji.loading) return "";
+  const parts=[];
+  parts.push(fr.meiji ? "明治期の低湿地データです。"
+    : fr.now ? "現在の空中写真です。"
+    : `${fr.label.replace("–","年から")}年の空中写真です。${fr.sub?fr.sub+"。":""}`);
+  // ⚠ 重ねているあいだは、見えている絵が違う。声だけ言い切らない
+  if(mixVal>0) parts.push(`いまは現在の写真を ${mixVal} パーセント重ねています。`);
+  parts.push(meiji.text);
+  // 差分。画面に出ている行と同じものだけを、同じ順で読む
+  for(const x of evShown.slice(0,3))
+    parts.push(x.kind==="無くなった"
+      ? `${x.until}年に、${x.label}が無くなりました。`
+      : `${x.year}年、${x.label}。`);
+  return parts.join(" ");
+}
+function sayMsg(t){
+  const el=document.getElementById("sayMsg");
+  if(!el) return;
+  el.textContent=t??""; el.style.display=t?"block":"none";
+  clearTimeout(sayMsg._t);
+  if(t) sayMsg._t=setTimeout(()=>{ el.style.display="none"; },5000);
+}
+let sayTimer=null;
+function stopSay(){
+  clearTimeout(sayTimer); sayTimer=null;
+  try{ speechSynthesis.cancel(); }catch{}
+  speaking=false;
+  const b=document.getElementById("sayBtn");
+  if(b){ b.textContent="🔊"; b.classList.remove("on"); }
+}
+// ⚠ 声の一覧は、最初の呼び出しでは空のことがある（あとから非同期で入る）。
+//   温めておかないと、1回目だけ日本語の声が選ばれない。
+try{ speechSynthesis.getVoices();
+  speechSynthesis.addEventListener?.("voiceschanged",()=>{ speechSynthesis.getVoices(); }); }catch{}
+function pickVoice(){
+  const all=speechSynthesis.getVoices()||[];
+  const ja=all.filter((v)=>v.lang.replace("_","-").toLowerCase().startsWith("ja"));
+  // 端末に入っている声を優先する。入っていない声を指すと、**無音のまま終わる**
+  return ja.find((v)=>v.localService)??ja[0]??null;
+}
+function wireSay(){
+  const b=document.getElementById("sayBtn");
+  if(!b) return;
+  if(!("speechSynthesis" in window)){ b.style.display="none"; return; }
+  b.onclick=(ev)=>{
+    ev.stopPropagation();
+    if(speaking) return stopSay();
+    const t=sayText();
+    if(!t) return;
+    const u=new SpeechSynthesisUtterance(t);
+    u.lang="ja-JP"; u.rate=1.0;
+    const v=pickVoice();
+    if(v) u.voice=v;
+    let started=false;
+    u.onstart=()=>{ started=true; clearTimeout(sayTimer); sayTimer=null; };
+    u.onend=stopSay;
+    u.onerror=(e)=>{ stopSay(); sayMsg(`音声を再生できませんでした（${e?.error??"原因不明"}）`); };
+    speaking=true; b.textContent="■"; b.classList.add("on"); sayMsg(null);
+    // ⚠ 計測の無い機能を増やさない。
+    //   era.moved / open.peel には入れたのに、音声にだけ入れ忘れていた。
+    //   「これが無いと『使われなければ後で消す』の"後で"が永久に来ない」と
+    //   自分で書いた同じ日に、それを破っていた（PO レビューで指摘）。
+    KonjakuShare.tick("open.speak");
+    try{
+      // ⚠ cancel() を毎回呼ばない。直後の speak() が飲み込まれることがある。
+      //   止める必要があるとき（前の読み上げが残っているとき）だけ呼ぶ。
+      if(speechSynthesis.speaking||speechSynthesis.pending) speechSynthesis.cancel();
+      speechSynthesis.speak(u);
+    }catch{ stopSay(); sayMsg("音声を再生できませんでした"); return; }
+    // ⚠ 鳴らないまま黙らない。始まらなければ、始まらなかったと画面に出す。
+    //   端末に日本語の声が入っていないと、例外も error も出ずに無音で終わることがある。
+    sayTimer=setTimeout(()=>{
+      if(started||speechSynthesis.speaking) return;
+      stopSay();
+      sayMsg(v ? "音声が鳴りませんでした（端末の音量と、読み上げ音声の設定をご確認ください）"
+              : "この端末には日本語の読み上げ音声が入っていないようです");
+    },1500);
+  };
+}
+
+// バッジを押したら、その根拠を開く。
+// ⚠ 実測で、バッジ5個と判定文の中の語は**全部押せそうに見えて、全部無反応**だった。
+//   「旧水部って何？」の答えは根拠パネルの中にあるのに、そこへ行く導線が丸い ? 1つしか
+//   無かった。押されている場所に、答えへの道を付ける。
+function wireBadges(){
+  document.querySelectorAll("#verdict .badge").forEach((b)=>{
+    b.onclick=()=>{
+      const w=document.getElementById("whyBtn");
+      if(w&&w.getAttribute("aria-expanded")!=="true") w.click();
+      // その事実のカードまで連れていって、どれの話か分かるようにする
+      const k=b.dataset.k;
+      setTimeout(()=>{
+        const card=k?document.querySelector(`#own .card[data-k="${k}"]`):null;
+        const t=card??document.getElementById("own");
+        t?.scrollIntoView({behavior:"smooth",block:"nearest"});
+        if(card){ card.classList.remove("flash"); void card.offsetWidth; card.classList.add("flash"); }
+      },60);
+    };
+  });
+}
+
+// ---- 意見・不具合の受け口 ----
+// ⚠ ここが空のあいだは、報告の導線を一切出さない。
+//   押しても何も起きないボタンや、404 に飛ぶリンクを置くほうが黙っているより悪い。
+//
+// url   … Google フォームの「事前入力したURLを取得」で出てくる URL から、
+//         ?usp=pp_url より前の部分（.../viewform）
+// place … 同じ URL に入っている entry.xxxxxxxxx（「探した地名」の欄の id）。
+//         これがあると、見つからなかった語を入力済みでフォームを開ける。
+//         黙って集めるのではなく、送るかどうかは本人が決める（掟: 地名も座標も送らない）
+const FEEDBACK={
+  url:"https://docs.google.com/forms/d/e/1FAIpQLSd65OIeRYpq8PYXoW53YOzT_x98kEJNVfY4GVeVFlL3NE83Fw/viewform",
+  place:"entry.1545984463",           // 「探した地名（分かれば）」
+  kind:"entry.2129165259",            // 「どれについてですか」
+  kindNotFound:"地名が見つからない",   // 選択肢の文言と一字一句合っていないと選ばれない
+};
+const feedbackUrl=(term)=>{
+  if(!FEEDBACK.url) return null;
+  if(!term) return FEEDBACK.url;
+  // 見つからなかったときは、種類も地名も入れた状態で開く。
+  // 利用者にやってもらうのは「送る」を押すことだけにする
+  const p=new URLSearchParams({ "usp":"pp_url" });
+  if(FEEDBACK.kind&&FEEDBACK.kindNotFound) p.set(FEEDBACK.kind,FEEDBACK.kindNotFound);
+  if(FEEDBACK.place) p.set(FEEDBACK.place,term);
+  return `${FEEDBACK.url}?${p}`;
+};
+
+// 自前レンズ。ここだけが「根拠あり」で出せるもの
+function ownLenses(p,facts){
+  const ll=`${p.lat.toFixed(5)},${p.lon.toFixed(5)}`;
+  const enc=encodeURIComponent(p.title);
+  // id は「次に調べる語」との重複を避けるための目印。
+  // 同じ話題を自前で持っているなら、Google 検索の提案はその劣化版になる。
+  return [
+    {id:"peel",ic:"🌊",label:"立体で見る",sub:"いまの街が、明治期の地面のどこに立っているか",tag:"own",
+     kw:["3d","さかのぼる","剥がす","埋立","水","動画","戻す","地盤","昔","むかし","歴史","明治","過去"],
+     href:`./peel?q=${enc}&ll=${ll}`},
+    // ⚠ 「1936年〜」を固定で書いていた。バッジは実測した最古の年代を出すので、
+    //   新潟では「1945–50年から見られる」の真下に「1936年〜」が並んでいた。
+    //   根拠を売りにしていて、同じ画面に2つの数字を出していた。
+    {id:"hazard",ic:"⚠️",label:"ハザードマップで見る",sub:"洪水・土砂・津波の想定（国交省）",tag:"ext",
+     kw:["ハザード","災害","洪水","浸水","地震","津波","土砂","risk"],
+     href:`https://disaportal.gsi.go.jp/maps/index.html?ll=${p.lat},${p.lon}&z=15`},
+    {id:"gsi",ic:"🗺",label:"地理院地図で開く",sub:"標高・土地条件図など",tag:"ext",
+     kw:["地理院","標高","土地条件","地図"],href:`https://maps.gsi.go.jp/#16/${p.lat}/${p.lon}/`},
+  ];
+}
+
+function buildActions(text,p){
+  const t=text.trim().toLowerCase();
+  const out=[];
+  const hit=(kw,label)=>!t||kw.some(k=>k.toLowerCase().includes(t)||t.includes(k.toLowerCase()))
+    ||label.toLowerCase().includes(t);
+
+  const own=ownLenses(p,meiji&&!meiji.loading?meiji.facts:null).filter(o=>hit(o.kw,o.label));
+  const pre=t?PRESETS.find(x=>hit(x.kw,x.label)):null;
+
+  // 判定から導いた「次に調べる語」。語を思いつけた人は自分で打てばよいので、
+  // 自前レンズの後・カテゴリの前に置く。打鍵中も既存の絞り込みに参加させる。
+  // 打った語が同じ話題の自前レンズに当たっているときは出さない。
+  // 「ハザード」で〈ハザードマップで見る（根拠あり）〉と〈浸水の Google 検索〉を
+  // 並べると、後者はただの劣化版になる。
+  const facts=meiji&&!meiji.loading?meiji.facts:null;
+  const lensHit=new Set(t?own.map(o=>o.id):[]);
+  const sug=(facts?Konjaku.suggestions(facts):[])
+    .filter(s=>hit(s.kw,s.label)&&!(s.lens&&lensHit.has(s.lens)));
+
+  // 自由入力の扱い:
+  //   カテゴリに当たれば → その語で周辺検索を最上位に
+  //   当たらないが自前レンズ・次に調べる語に当たれば → そちらを優先
+  //     （「昔」「揺れ」を Google マップに投げても店は出てこない。無意味なので出さない）
+  //   どれにも当たらなければ → 素直にその語で周辺検索
+  if(t && (pre || (!own.length && !sug.length))){
+    out.push({ic:pre?pre.ic:"🔍",label:`「${text.trim()}」を周辺で探す`,
+      sub:pre?`Google マップで「${pre.q}」を検索`:"Google マップで検索",tag:"ext",
+      href:gmap(pre?pre.q:text.trim(),p.lat,p.lon)});
+  }
+  // 並びの原則は「この場所に固有なものほど上」。
+  // 自前レンズのうち ハザードマップ・地理院地図 は座標を渡すだけで、どこで開いても中身が
+  // 同じ固定リンクなので、この地点の判定から出た語より下に置く。
+  // （以前は own を丸ごと先に積んでいたため、亀戸の標高 -0.57m から出た〈水害の記録〉が、
+  //   亀戸と何の関係もない〈地理院地図で開く〉の下に並んでいた。逆だった）
+  const derived=own.filter(o=>o.tag==="own"), fixed=own.filter(o=>o.tag!=="own");
+  out.push(...derived);
+
+  // タグは行き先ではなく「なぜここに出ているのか」を書く。
+  // 〈水害の記録〉と〈ごはん〉が同じ 外部↗ を下げていたので、判定から導いた語だという
+  // 唯一の手がかりが副題のグレー文字しか無く、それは全行が持っているので区別にならない。
+  for(const s of sug)
+    out.push({ic:s.icon,label:`${s.label} を調べる`,sub:s.reason,tag:"why",
+      href:gweb([placeName(p.title),s.query].filter(Boolean).join(" "))});
+
+  out.push(...fixed);
+
+  // ⚠ 打っていないときは、店のカテゴリを並べない。
+  //   実測で、本命（時間をさかのぼる 3D）が「ごはん / ラーメン / カフェ」と
+  //   同じ見た目・同じ列に並び、一覧全体が「リンク集」に見えていた。
+  //   打てば出るので、機能は失われない（掟: 地名も座標も送らない のランチャーは残る）。
+  return out;
+}
+
+// ============================================================
+// 入力の状態管理: place（場所を探す）→ action（その場所で調べる）
+// ============================================================
+const qEl=document.getElementById("q"), listEl=document.getElementById("list");
+const scopeEl=document.getElementById("scope"), chipName=document.getElementById("chipName");
+// sel = -1 は「何も選んでいない」。Enter を押しても何も起きない状態を、
+// 表示（.kbd を薄字にする）と挙動（run しない）の両方が同じ変数から生える形にしてある。
+let mode="place", items=[], sel=-1, timer=null;
+
+// タグの文言。行き先ではなく「なぜここに出ているのか」を書く
+const TAG_LABEL={own:"根拠あり",priv:"自分",why:"この土地から",ext:"外部↗"};
+
+function renderList(){
+  // 判定カードと、そこから出た行を1枚に見せる（利用者の指摘: 深掘りが別ゾーンだと迷う）。
+  // 対象は「先頭から続く、この場所の判定から出た行」だけ。自前レンズ（3D・年代比較）も
+  // その場所のデータを描くものなので含める。ハザードマップ・地理院地図のような
+  // どこで開いても同じ固定リンクが来たところで切る。
+  // 要素は動かしていないので、↑↓/Enter の輪も打鍵中の絞り込みもそのまま。
+  let weld=0;
+  if(mode==="action"&&meiji&&!meiji.loading)
+    while(weld<items.length&&(items[weld].tag==="own"||items[weld].tag==="why")) weld++;
+  // ⚠ 判定から出た語が1つも無いときは溶接しない。
+  //   軽井沢のように提案が0件だと、どの土地でも同じ2行（3D・年代比較）を囲むだけの
+  //   空箱になり、「この土地の答え」があるように見えてしまう。
+  if(!items.slice(0,weld).some((it)=>it.tag==="why")) weld=0;
+  listEl.classList.toggle("welded",weld>0);
+  const vEl=document.getElementById("verdict");
+  if(vEl) vEl.classList.toggle("welded",weld>0);
+  // ⚠ 行の見出しと副題には、地理院の応答（地名）と、利用者が打った語がそのまま入る
+  //   （「〈打った語〉を周辺で探す」）。描くときに esc を通す。
+  //   行き先（href）はこちらが組み立てたものだが、属性の中なので同じ扱いにする。
+  listEl.innerHTML=items.map((it,i)=>{
+    const tag=it.tag, sub=it.sub, ext=it.href&&it.href.startsWith("http");
+    const inner=`<span class="ic">${esc(it.ic??"📍")}</span>
+      <span class="tx"><b>${esc(it.label)}</b>${sub?`<small>${esc(sub)}</small>`:""}</span>
+      ${tag?`<span class="tag ${esc(tag)}">${TAG_LABEL[tag]??"外部↗"}</span>`:""}`;
+    const cls=`it${i===sel?" sel":""}${tag==="why"?" why":""}${tag==="own"?" own":""}`
+      +(i<weld?` fh${i===weld-1?" fh-last":""}`:"");
+    return it.href
+      ? `<a class="${cls}" data-i="${i}" href="${esc(it.href)}"${ext?' target="_blank" rel="noopener"':""}>${inner}</a>`
+      : `<button class="${cls}" data-i="${i}">${inner}</button>`;
+  }).join("");
+  listEl.querySelectorAll(".it").forEach((el)=>{
+    // ⚠ 何も選んでいない間は hover で sel を動かさない。
+    // 動かすと、PCでマウスが一覧の上をただ通っただけで Enter が武装し、
+    // 「先頭を自動選択しない」を入れた意味が消える。ハイライトは :hover の見た目だけ。
+    el.addEventListener("mouseenter",()=>{ if(sel>=0){ sel=+el.dataset.i; markSel(); } });
+    if(el.tagName==="BUTTON") el.onclick=()=>run(items[+el.dataset.i]);
+    // ⚠ ここで open.peel を送っていたが、**この導線から来た人しか数えられていなかった**。
+    //   共有された 3D の URL を踏んだ人は、計測から丸ごと消えていた（実測: /peel を
+    //   直接開くと /t が 0 回）。共有は唯一の指標なので、ここは効く穴だった。
+    //   → 数えるのは peel.html 側に移した。開き方によらず、開いたら必ず1回。
+    //   （リンクは必ず /peel を読み込むので、こちらで送らなくても取りこぼさない）
+  });
+  renderKbd();
+}
+const markSel=()=>{
+  listEl.querySelectorAll(".it").forEach((el,i)=>{
+    const on=i===sel;
+    el.classList.toggle("sel",on);
+    if(on) el.scrollIntoView({block:"nearest"});
+  });
+  renderKbd();
+};
+
+// キーヒントは実際の挙動から作る。
+// 「決定」では何が決まるか分からないので、行き先の名前をそのまま入れる。
+const kEnter=document.getElementById("kEnter"), kMove=document.getElementById("kMove"),
+      kEsc=document.getElementById("kEsc");
+function renderKbd(){
+  const it=sel>=0?items[sel]:null;
+  kMove.classList.toggle("off",!items.length);
+  kEnter.classList.toggle("off",!it);
+  kEnter.querySelector("b").textContent = it
+    ? (mode==="place" ? `${it.label}を調べる` : it.label)
+    : (items.length ? "↑↓ で選ぶと使えます" : "決定");
+  // Esc の行き先はモードで違う。場所選択中は入力のクリアであって「場所を変える」ではない
+  kEsc.querySelector("b").textContent = mode==="action" ? "場所を変える" : "入力を消す";
+  kEsc.classList.toggle("off",mode!=="action"&&!qEl.value);
+}
+
+function run(it){
+  if(!it) return;
+  if(it.href){ if(it.href.startsWith("http")) window.open(it.href,"_blank","noopener"); else location.href=it.href; return; }
+  it.act?.();
+}
+
+function setMode(m){
+  mode=m;
+  scopeEl.classList.toggle("on",m==="action");
+  document.body.classList.toggle("picked",m==="action");
+  qEl.placeholder = m==="action"
+    ? `${current.title} で調べる（例: ごはん、公園、歯医者、昔）`
+    : "地名を入力（例: 豊洲）";
+  // コマンド一覧は場所が決まった後の話で、先頭が「明治期の地形を見る」に固定されている。
+  // 別の土地へ飛ばされる事故は起きないので、ここは従来どおり先頭を選んでおく。
+  qEl.value=""; sel=m==="action"?0:-1;
+  if(m==="action"){ items=buildActions("",current); renderList(); }
+  else { items=[]; listEl.innerHTML=""; renderKbd(); }
+}
+document.getElementById("chipX").onclick=()=>{
+  current=null; meiji=null;
+  document.getElementById("result").style.display="none";
+  renderVerdict();
+  setMode("place"); qEl.focus();
+};
+
+// --- 場所の検索（地理院 AddressSearch） ---
+// ⚠ 検索経路にも verify.js と同じ規律を通す（掟: 取れなかったを「無い」と言わない「取れなかった」を「無い」と言わない）。
+// 直前は res.ok を見ずに .json() し、配列の長さ0だけで「見つかりませんでした」と書いていた。
+// 実測すると HTTP 500＋JSON本文も、200 だが配列でない応答も、すべて
+// 「その地名は存在しない」に化けていた。無応答に至っては10秒経っても「検索中…」のまま。
+//   接続できない／時間切れ／HTTP エラー／配列でない  → 取れなかった（＋再試行）
+//   配列が返って長さ0                                → 見つからなかった
+const SEARCH_TIMEOUT_MS=8000;   // verify.js の TIMEOUT_MS と同じ
+async function fetchPlaces(q){
+  const url="https://msearch.gsi.go.jp/address-search/AddressSearch?q="+encodeURIComponent(q);
+  const r=await fetch(url,{signal:AbortSignal.timeout(SEARCH_TIMEOUT_MS)});
+  if(!r.ok) throw new Error(`サーバが ${Number(r.status)} を返しました`);
+  const j=await r.json();
+  // 200 でも本文が配列とは限らない。形を確かめる前に「無い」と言わない
+  if(!Array.isArray(j)) throw new Error("応答が一覧の形をしていません");
+  return j;
+}
+// 画面に出す理由は、こちらが用意した文字列だけにする（応答の中身は入れない）
+const searchWhy=(e)=> e?.name==="TimeoutError" ? "時間切れ"
+  : /^サーバが|^応答が/.test(e?.message??"") ? e.message : "通信できません";
+let searchSeq=0;
+async function searchPlace(q){
+  const seq=++searchSeq;                       // 遅れて返った古い応答で画面を上書きしない
+  const stale=()=>seq!==searchSeq;
+  listEl.innerHTML=`<div class="note" style="padding:6px 2px">検索中…</div>`;
+  let list=null,err=null;
+  // 瞬断と 5xx は1回だけ自動で再試行する。
+  // 時間切れは再試行しない（同じ相手をもう8秒待たせるのは、待たせただけになる）。
+  for(let i=0;i<2 && list===null;i++){
+    try{ list=await fetchPlaces(q); }catch(e){ err=e; }
+    if(stale()) return;
+    if(err?.name==="TimeoutError") break;
+  }
+  if(list===null){
+    items=[]; sel=-1;
+    listEl.innerHTML=`<div class="note warn" style="padding:6px 2px">
+      検索の応答を取れませんでした（${searchWhy(err)}）。
+      「見つからなかった」ではありません。
+      <button class="retry" id="searchRetry">再試行</button></div>`;
+    document.getElementById("searchRetry").onclick=()=>searchPlace(q);
+    renderKbd(); return;
+  }
+  if(!list.length){
+    items=[]; sel=-1;
+    // ⚠ ここが、このサービスでいちばん価値のある信号が出る場所。
+    //   「探したのに出せなかった語」は、黙って去られると永久に分からない。
+    //   ただし勝手には送らない。押すかどうかは本人が決める（掟: 地名も座標も送らない）
+    const fu=feedbackUrl(qEl.value.trim());
+    listEl.innerHTML=`<div class="note" style="padding:6px 2px">見つかりませんでした`
+      +(fu?` <a class="report" href="${fu}" target="_blank" rel="noopener">この地名を報告する ↗</a>`:"")
+      +`</div>`;
+    renderKbd(); return; }
+  // 応答は関連度順ではなく都道府県コードの昇順なので、そのままでは先頭が別の土地になる。
+  // 並べ替えと「選ぶかどうか」の判定は places.js（応答の中身だけで決まる）。
+  const r=KonjakuPlaces.places(list,q,10);
+  items=r.rows.map((x)=>({ic:"📍",label:x.title,sub:x.sub,
+    act:()=>openPlace(x.ll[0],x.ll[1],x.title)}));
+  // 確度が高いときだけ選ぶ。低いときは何も選ばず、Enter を空振りさせる。
+  sel=r.pick; renderList();
+}
+
+// 日本語入力（IME）の変換中かどうか。
+// 変換中の Enter は「確定」であって「決定」ではないので、横取りしてはいけない。
+// ↑↓ も変換候補の操作なので奪わない。
+let composing=false;
+qEl.addEventListener("compositionstart",()=>{composing=true});
+qEl.addEventListener("compositionend",()=>{composing=false; onInput();});
+
+function onInput(){
+  const v=qEl.value.trim();
+  // コマンド絞り込みは手元だけの処理なので、変換中でも即座に効かせてよい
+  if(mode==="action"){ items=buildActions(qEl.value,current); sel=0; renderList(); return; }
+  clearTimeout(timer);
+  if(v.length<2){ items=[]; sel=-1; listEl.innerHTML=""; renderKbd(); return; }
+  // 住所検索は外部APIで 10req/10秒 の制限があるため、変換確定まで待つ
+  if(composing) return;
+  timer=setTimeout(()=>searchPlace(v),320);
+}
+qEl.addEventListener("input",onInput);
+
+// キー操作は画面のどこにフォーカスがあっても効かせる。
+// 「↑↓ 選ぶ / Enter …を調べる / Esc 入力を消す」と画面に出している以上、
+// 入力欄にフォーカスがあるときだけ効くのでは約束を守れていない。
+addEventListener("keydown",(e)=>{
+  if(composing||e.isComposing||e.keyCode===229) return;   // 変換中は触らない
+  const ae=document.activeElement;
+  // メモ欄など他の入力欄の操作は邪魔しない
+  if(ae&&ae!==qEl&&(ae.tagName==="TEXTAREA"||ae.tagName==="INPUT"||ae.isContentEditable)) return;
+  // ボタンやリンクにフォーカスがあるときの Enter / Space は既定の動作に任せる
+  // （クイック選択・★・書き出しボタン等を横取りしないため）
+  if(ae&&ae!==qEl&&(ae.tagName==="BUTTON"||ae.tagName==="A")&&(e.key==="Enter"||e.key===" ")) return;
+
+  // 未選択（sel<0）からの ↑↓ は先頭に付ける。ここで初めて Enter が武装する。
+  if(e.key==="ArrowDown"){e.preventDefault(); if(items.length){sel=sel<0?0:Math.min(sel+1,items.length-1); markSel()}}
+  else if(e.key==="ArrowUp"){e.preventDefault(); if(items.length){sel=sel<0?0:Math.max(sel-1,0); markSel()}}
+  // 選んでいないときの Enter は本当に何も起こさない（薄字の表示と挙動を一致させる）
+  else if(e.key==="Enter"){ if(sel>=0&&items[sel]){e.preventDefault(); run(items[sel])} }
+  else if(e.key==="Escape"){
+    e.preventDefault();
+    if(mode==="action") document.getElementById("chipX").click();
+    else if(qEl.value){ qEl.value=""; onInput(); qEl.focus(); }
+  }
+  // 文字を打ち始めたら入力欄へ吸い込む（ランチャーとして当然の挙動）
+  else if(ae!==qEl&&e.key.length===1&&!e.metaKey&&!e.ctrlKey&&!e.altKey) qEl.focus();
+});
+
+
+// 根拠は「実測値そのもの」を出す。確率は出さない（docs 掟: 確率を出さない。実測値そのものを出す）。
+//
+// ⚠ 取れなかったときは根拠UIを出さない（掟: 取れなかったを「無い」と言わない）。
+// 「読んだ画素 z16/58217,25812」と「参照したデータ」リンクは、読んだ証拠であって、
+// 読めなかったときに出すと、最も権威ありげな見た目で最も誤ったことを言うことになる。
+function evidenceOf(fa){
+  if(fa.state==="unreachable") return "読み込めていないため、根拠はありません";
+  const e=fa.evidence||{};
+  const parts=[];
+  if(e.pixel) parts.push(`読んだ画素 z${e.pixel.length>3?16:"-"}/${e.pixel[0]},${e.pixel[1]}`);
+  if(e.rgba) parts.push(`rgba=${e.rgba.join(",")}`);
+  if(e.agreement!=null) parts.push(`近傍一致率 ${(e.agreement*100).toFixed(1)}%`);
+  if(e.raw!=null) parts.push(`生値 ${e.raw}`);
+  if(e.source) parts.push(e.source);
+  if(e.status) parts.push(`HTTP ${e.status}（タイルが存在しない）`);
+  if(e.code) parts.push(`図式コード ${e.code}`);
+  if(e.detail) parts.push(e.detail);
+  if(e.artificialCode) parts.push(`人工地形 ${e.artificialCode}`);
+  if(e.checked) parts.push(`${e.checked} 年代を確認`);
+  if(fa.unread) parts.push(`${fa.unread} 年代は読み込めず`);
+  let out=parts.join(" ／ ");
+  if(e.tile) out+=`<br><a href="${e.tile}" target="_blank" rel="noopener">参照したデータ</a>`;
+  return out||"—";
+}
+
+// ============ 場所を開く ============
+// 地図の上で押された地点を、その場で判定し直す。
+// ⚠ 地図は壊さない。壊すと、押した場所を見失う。
+//   /eras にしか無かった「検索していない場所の昔を知る」を、ここへ移す。
+async function judgeHere(lon,lat){
+  stopPlay();
+  await openPlace(lon,lat,`${lat.toFixed(4)}, ${lon.toFixed(4)}`,{keepMap:true});
+}
+
+async function openPlace(lon,lat,title,opt){
+  // ⚠ 「地図を残す」といっても、判定カードを描き直すと **#map の要素ごと消える**。
+  //   生きているのは JS のオブジェクトだけで、置き場所が無くなる。
+  //   だから見ている位置だけを覚えて、描き直したあとに同じ位置で作り直す。
+  const keepMap=!!opt?.keepMap;
+  const view=(keepMap&&mapObj)
+    ? {center:mapObj.getCenter(),zoom:mapObj.getZoom()} : null;
+  current={lon,lat,title};
+  chipName.textContent=title;
+  history.replaceState(null,"",`?q=${encodeURIComponent(title)}&ll=${lat.toFixed(5)},${lon.toFixed(5)}`);
+  meiji={loading:true};
+  // ⚠ 着いたときに大きく出すのは「最古」。看板は「この土地は、昔なんだったのか？」なので、
+  //   その問いに写真で即答している状態から始める。現在は1タップ先にある。
+  stopSay(); stopPlay();
+  frames=[]; eraIdx=0; eraTicked=false; evState=null; evTile=null;
+  zoomOn=false; mixVal=0;
+  dropMap();
+  setMode("action");
+  renderVerdict();
+  if(!keepMap) qEl.focus();
+  showResult();
+  renderPrivate();
+
+  const own=document.getElementById("own");
+  own.innerHTML=`<div class="card"><div class="d">この土地の成り立ちを判定中…</div></div>`;
+  // 検証器から「事実の集合」を受け取る。答えではなく、根拠つきの事実の並び。
+  const f = await Konjaku.facts(lon, lat);
+  const m = f.byKey.meiji, el = f.byKey.elevation, ph = f.byKey.photos;
+
+  // 見出し（コマンドの外に出す事実。掟: 外部の助言は、実測で確かめてから採る）
+  const headline = Konjaku.narrate(f)[0];
+  // 色（青＝水由来）は、いまや地形分類が主。明治期はもうひとつの手法（掟: 主題は「成り立ち」。明治期は手法のひとつ）
+  const lf = f.byKey.landform;
+  // 分母。共有率＝共有回数÷判定回数を出すために、判定が確定したことを1件数える。
+  // 送るのは結果の種類（出た／広い区分／出ない／読めなかった）だけで、
+  // 地名も座標も送らない（掟: 地名も座標も送らない の「自分専用」を破らない）
+  KonjakuShare.tick(KonjakuShare.outcome(f));
+  KonjakuShare.health(f);
+  meiji = { loading:false, text: headline, facts: f,
+            water: lf.ok ? ["水部","旧水部","河川敷･浜","湖","干拓地","落堀"].includes(lf.value) : !!m.water };
+  if (current && current.lon===lon && current.lat===lat) {
+    renderVerdict();
+    // 押した場所を見失わないよう、同じ位置で地図を戻す
+    if(view) ensureMap().then((m)=>{ if(m) m.jumpTo(view); });
+    if (mode==="action") {
+      // 判定が出ると提案が一覧の途中に挿し込まれる。番号で選択を持っていると、
+      // 押そうとしていた行が別の行にすり替わる。中身で追い直す。
+      const cur=sel>=0?items[sel]:null;
+      items=buildActions(qEl.value,current);
+      const i=cur?items.findIndex(x=>x.label===cur.label):-1;
+      if(i>=0) sel=i;
+      renderList();
+    }
+  }
+
+  // 事実1つを、値・取得方法・根拠・限界の順で出す。
+  // 読めていないものは「直読み」ではない。取得方法のバッジも偽らない。
+  const factCard = (fa, body) => `
+    <div class="card" data-k="${fa.key}">
+      <div class="t">${fa.label}<span class="method${
+        fa.state === "unreachable" || fa.mixed ? " weak" : ""}">${
+        fa.state === "unreachable" ? "未取得" : fa.mixed ? "境目" : fa.method}</span></div>
+      ${body}
+      ${fa.note ? `<div class="d" style="margin-top:3px">${fa.note}</div>` : ""}
+      <div class="ev">${evidenceOf(fa)}${fa.caveat ? `<br>※ ${fa.caveat}` : ""}</div>
+    </div>`;
+
+  const ll=`${lat.toFixed(5)},${lon.toFixed(5)}`, enc=encodeURIComponent(title);
+  // 取れなかったものの値欄。「なし」「—」は事実の主張なので使わない。
+  const unread = `<div class="v warn">読み込めませんでした
+    <button class="retry">再試行</button></div>`;
+  // 地形分類が先頭。見出しで言い切っているのはこれなので、根拠も最初に出す（掟: 根拠のないことは書かない）
+  const lfBody = lf.state === "unreachable" ? unread
+    : lf.ok
+      ? `<div class="v ${["水部","旧水部","河川敷･浜","湖","干拓地","落堀"].includes(lf.value) ? "w" : ""}">${
+          lf.value}${lf.artificial ? `　<span style="font-size:var(--fs-note)">＋ ${lf.artificial}</span>` : ""}</div>`
+        + (lf.why ? `<div class="d" style="margin-top:3px">${lf.why}</div>` : "")
+        + (lf.risk ? `<div class="d" style="margin-top:3px">災害リスク: ${lf.risk}</div>` : "")
+      : `<div class="v warn">判定できません</div>`;
+  own.innerHTML =
+    factCard(lf, lfBody) +
+    factCard(m, m.state === "unreachable" ? unread
+      : `<div class="v ${m.water ? "w" : m.ok ? "" : "warn"}">${
+        m.value ?? (m.none ? "記録なし" : "判定できません")}</div>`) +
+    (el.ok
+      ? factCard(el, `<div class="v ${el.value < 0 ? "w" : ""}">${el.value.toFixed(2)} m${
+          el.value < 0 ? "　<span style=\"font-size:var(--fs-note)\">海面より低い</span>" : ""}</div>`)
+      : factCard(el, el.state === "unreachable" ? unread : `<div class="v warn">—</div>`)) +
+    // ⚠ 「残っている空中写真」の根拠カードは出さない。
+    //   根拠パネルは「その主張が、どのデータのどの画素から出たか」を見せる場所で、
+    //   写真の年代は主張ではなく**画面にそのまま並んでいるもの**。
+    //   帯に9コマ並び、脚注に「残っていた空中写真は 7 年代（7 年代中）」と書き、
+    //   バッジにも年代が出ている状態で、根拠に4つ目の言い方を足すと、
+    //   利用者は「どれが答えなのか」を数え直すことになる。
+    `<a class="card" href="./peel?q=${enc}&ll=${ll}"><span class="arrow">→</span>
+      <div class="t">立体で見る</div>
+      <div class="d">いまの街が、明治期の地面のどこに立っているか</div></a>`;
+  // 再試行はカード側にも置く。根拠を開いた人がそこで詰まらないように。
+  own.querySelectorAll(".retry").forEach((b)=>{
+    b.onclick=()=>{ const c=current; if(c) openPlace(c.lon,c.lat,c.title); };
+  });
+}
+// 根拠は既定では開かない。判定は常に見せ、詳細は ? を押した人にだけ出す。
+const showResult=()=>{};
+
+// ============ クイック ============
+// ⚠ ピンは、取り込み済みの土地からしか選ばない。
+//   押した先が未整備だと、入口でいきなり「分かっていません」に当たる。
+//   seeds/areas.jsonl に入っていること（scripts/check.mjs が突き合わせている）。
+//   選び方は scripts/survey.mjs の実測から。判定がばらけるように選んである
+//   （全部「昔は水」だと、どこを押しても同じ話になり、判定を疑えない）。
+const QUICK=[["豊洲",139.7975,35.6548,"東京都江東区豊洲"],
+  ["渋谷",139.7016,35.6586,"東京都渋谷区"],
+  ["西新宿",139.6929,35.6905,"東京都新宿区西新宿"],
+  ["上野",139.7745,35.7148,"東京都台東区上野"],
+  ["お台場",139.7760,35.6300,"東京都港区台場"],
+  ["札幌",141.3540,43.0620,"北海道札幌市中央区"],
+  ["仙台",140.8720,38.2600,"宮城県仙台市青葉区"],
+  ["大阪 難波",135.5020,34.6660,"大阪市中央区難波"],
+  ["広島",132.4550,34.3950,"広島市中区"],
+  ["長崎 出島",129.8730,32.7440,"長崎市出島町"]];
+const quickEl=document.getElementById("quick");
+for(const [n,lo,la,t] of QUICK){
+  const b=document.createElement("button"); b.textContent=n;
+  b.onclick=()=>openPlace(lo,la,t);
+  quickEl.appendChild(b);
+}
+
+// ============ 現在地 ============
+// スマホでの入口。街歩き中に、その場の土地を調べられるようにする（掟: 場所のランチャーとして作る 差分5）
+const hereBtn=document.getElementById("here");
+const hereMsg=document.getElementById("hereMsg");
+const HERE_LABEL="📍";
+
+// 一度拒否すると、ブラウザは二度と許可を尋ねてくれない。
+// 「許可されていません」と出して数秒で戻すだけだと、押しても何も起きない
+// ボタンが残るだけで、利用者は詰む。復帰のしかたと代わりの手段を必ず示す。
+function hereDenied(){
+  hereBtn.disabled=true;
+  hereBtn.textContent="📍"; hereBtn.title="現在地は使えません（設定を確認）";
+  const ios=/iP(hone|ad|od)/.test(navigator.userAgent);
+  hereMsg.innerHTML=`
+    <b>位置情報が拒否されています。</b>ブラウザは一度断られると再度尋ねないため、
+    設定から許可し直す必要があります。<br>
+    ${ios
+      ? "Safari：アドレスバー左の <b>ぁあ</b> → <b>Webサイトの設定</b> → 位置情報 を「許可」に。<br>"
+        + "アプリごと切れている場合は、<b>設定 → プライバシーとセキュリティ → 位置情報サービス → Safari</b>。"
+      : "アドレスバーの鍵アイコン（または ⓘ）→ サイトの設定 → 位置情報 を「許可」に。"}
+    <br><span class="dim">許可しなくても、<b>地名を入力すれば同じことが調べられます。</b></span>`;
+  hereMsg.style.display="";
+}
+function hereFailed(msg){
+  hereBtn.disabled=false; hereBtn.classList.remove("busy"); hereBtn.title="現在地から調べる";
+  hereMsg.innerHTML=`${msg}<br><span class="dim">地名を入力すれば同じことが調べられます。</span>`;
+  hereMsg.style.display="";
+}
+
+if(!navigator.geolocation){
+  hereBtn.disabled=true; hereBtn.textContent="📍"; hereBtn.disabled=true; hereBtn.title="この端末では現在地を使えません";
+} else {
+  // 事前に状態が分かるなら、押させる前に伝える（対応ブラウザのみ）
+  navigator.permissions?.query({name:"geolocation"})
+    .then((st)=>{ if(st.state==="denied") hereDenied();
+      st.onchange=()=>{ if(st.state!=="denied"){ hereBtn.disabled=false;
+        hereBtn.title="現在地から調べる"; hereMsg.style.display="none"; } }; })
+    .catch(()=>{});
+
+  hereBtn.onclick=()=>{
+    hereBtn.disabled=true; hereBtn.classList.add("busy"); hereBtn.title="現在地を取得中…";
+    hereMsg.style.display="none";
+    navigator.geolocation.getCurrentPosition(
+      (pos)=>{ hereBtn.disabled=false; hereBtn.classList.remove("busy"); hereBtn.title="現在地から調べる";
+        openPlace(pos.coords.longitude, pos.coords.latitude, "現在地"); },
+      (err)=>{
+        if(err.code===1) hereDenied();                                  // 拒否
+        else if(err.code===3) hereFailed("現在地の取得が時間切れになりました。");
+        else hereFailed("現在地を取得できませんでした（電波状況などの可能性）。");
+      },
+      { enableHighAccuracy:true, timeout:12000, maximumAge:60000 });
+  };
+}
+
+// ============ URL から復元 ============
+const sp=new URLSearchParams(location.search);
+const ll=sp.get("ll"), q0=sp.get("q");
+if(ll && /^-?[\d.]+,-?[\d.]+$/.test(ll)){
+  const [la,lo]=ll.split(",").map(Number);
+  openPlace(lo,la,q0||`${la.toFixed(4)}, ${lo.toFixed(4)}`);
+} else if(q0){ qEl.value=q0; searchPlace(q0); }
+else { renderSaved(); renderKbd(); }
+</script>
+<script>
+// PWA。地図タイルはキャッシュしない（sw.js 参照）ので、オフラインで地図は出ない。
+// 目的はホーム画面から素早く全画面で開けること。
+// ⚠ localhost も安全なコンテキストなので登録する。https だけにしていたため、
+//   タイルを使い回す仕組みを**手元で検査できない**状態だった。
+if ("serviceWorker" in navigator
+    && (location.protocol === "https:" || location.hostname === "127.0.0.1"
+        || location.hostname === "localhost"))
+  addEventListener("load", () => navigator.serviceWorker.register("/sw.js").catch(() => {}));
+</script>
+</body>
+</html>

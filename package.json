@@ -1,0 +1,26 @@
+{
+  "name": "konjaku",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "echo \"静的サイトのためビルド不要\"",
+    "serve": "node serve.js",
+    "check-tiles": "node check-tiles.js",
+    "build-water": "node build-water.js",
+    "fetch-buildings": "node fetch-buildings.js",
+    "stamp": "node scripts/stamp-sw.mjs",
+    "ogp": "node scripts/generate-ogp.mjs",
+    "check": "node scripts/check.mjs",
+    "check-search": "node scripts/search-check.mjs",
+    "render": "node scripts/render.mjs",
+    "survey": "node scripts/survey.mjs",
+    "cost": "node scripts/cost.mjs",
+    "stats": "node scripts/stats.mjs",
+    "ingest": "node scripts/ingest-wikidata.mjs",
+    "export": "node scripts/export-tiles.mjs",
+    "ingest:bld": "node scripts/ingest-buildings.mjs",
+    "export:bld": "node scripts/export-buildings.mjs",
+    "pack:bld": "node scripts/pack-buildings.mjs",
+    "db:init": "npx wrangler d1 execute konjaku --remote --file migrations/0001_tick.sql"
+  }
+}

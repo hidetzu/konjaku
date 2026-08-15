@@ -1,0 +1,32 @@
+{
+  "generatedBy": "npm run ogp",
+  "rasterizer": "rsvg-convert version 2.62.1",
+  "font": "assets/ogp/NotoSansCJKjp-Bold.subset.otf",
+  "fontSha256": "521f2e835ccb45ee9df5f01b33aa77467fd92175b93457e3af6f96e696f21f51",
+  "pages": [
+    {
+      "id": "index",
+      "source": "assets/ogp/index.svg",
+      "sourceSha256": "5bf7c3616e3bc3589d505b1009c9ca567b2a41e0f6bf47e6a83947d69a26210c",
+      "output": "public/ogp.png",
+      "outputSha256": "6c5e3a2a07fe622a89652c8ec423b11b98bf77bc4d6f15ba5a05804cccf21bb3",
+      "width": 1200,
+      "height": 630,
+      "title": "この土地は、昔なんだったのか？ — 今昔",
+      "headline": "この土地は、昔なんだったのか？",
+      "subtitle": "土地の成り立ちを、根拠とともに見る"
+    },
+    {
+      "id": "peel",
+      "source": "assets/ogp/peel.svg",
+      "sourceSha256": "cd7c60b6f065986b40df879365305b5e8465daa547b496ac3efe0e7fda3cf8aa",
+      "output": "public/ogp-peel.png",
+      "outputSha256": "eba9b76758016cedf2022896196a0ba97f1ebf2784e062097bd56802f0d21926",
+      "width": 1200,
+      "height": 630,
+      "title": "立体で見る — いまの街と、明治期の地面",
+      "headline": "立体で見る",
+      "subtitle": "いまの街と、明治期の地面"
+    }
+  ]
+}

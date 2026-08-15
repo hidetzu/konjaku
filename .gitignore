@@ -1,0 +1,26 @@
+node_modules/
+.DS_Store
+*.log
+
+# wrangler
+.wrangler/
+# ⚠ 秘密は wrangler.jsonc の vars に書かず、Cloudflare Secrets / GitHub Actions Secrets へ。
+#   ここは「間違って置いてしまったとき」の網。
+.dev.vars
+.dev.vars*
+.env
+.env*
+!.env.example
+
+# 作業用の一時ファイル
+tmp/
+scratch/
+
+# 検査の出力
+.artifacts/
+# ⚠ 実描画のスクリーンショット。隠しディレクトリだと upload-artifact に
+#   除外されて1枚も保存されなかったので、隠しでない場所へ移した
+artifacts/
+
+# 取り込みの「正」。書き出した public/data/ev だけを配信する
+.data/

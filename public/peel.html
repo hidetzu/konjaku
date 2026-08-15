@@ -1,0 +1,433 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- ⚠ URL に地名と座標が載っている（?q=豊洲&ll=35.65,139.79）。既定のままだと、
+     計測の POST にも外部リンクにも Referer としてそれが付いて出ていく。
+     「地名も座標も送らない」と画面に書いている以上、ここを塞がないとその記述が嘘になる。
+     実測で /t への referer に ?q= と ?ll= が乗っていた（掟: 地名も座標も送らない） -->
+<meta name="referrer" content="no-referrer">
+<title>立体で見る — いまの街と、明治期の地面</title>
+<meta name="description" content="いまの街を立体で見て、建物1件ずつの足元を明治期の低湿地データで判定している。押すと、その建物の足元が分かる。">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="今昔">
+<meta property="og:title" content="立体で見る — いまの街と、明治期の地面">
+<meta property="og:description" content="いまの街を立体で見て、建物1件ずつの足元を明治期の低湿地データで判定している。押すと、その建物の足元が分かる。">
+<meta property="og:url" content="https://konjaku.hidetzu.work/peel">
+<meta property="og:image" content="https://konjaku.hidetzu.work/ogp-peel.png">
+<meta property="og:image:alt" content="立体で見る — いまの街と、明治期の地面">
+<meta property="og:locale" content="ja_JP">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="立体で見る — いまの街と、明治期の地面">
+<meta name="twitter:description" content="いまの街を立体で見て、建物1件ずつの足元を明治期の低湿地データで判定している。押すと、その建物の足元が分かる。">
+<meta name="twitter:image" content="https://konjaku.hidetzu.work/ogp-peel.png">
+<meta name="twitter:image:alt" content="立体で見る — いまの街と、明治期の地面">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#0b0e13">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="今昔">
+<link rel="apple-touch-icon" href="/icon-192.png">
+<link rel="stylesheet" href="./vendor/maplibre-gl.css">
+<style>
+  /* 色の意味は index.html と同じ。⚠ 値だけ違う（地図の上なので、面はより暗い）。
+     名前を揃えてあるので、テーマを足すときは両方に同じ名前で書けばよい。 */
+  :root{
+    --bg:#080b0f;
+    --surface:rgba(12,16,22,.84);
+    --line:rgba(255,255,255,.13);
+    --ink:#eef1f5;
+    --ink-dim:#8e99a6;
+    --ink-faint:#6b7683;
+    --evidence:#7ee0a5;
+    --estimate:#e6c47a;
+    --missing:#e08a7a;
+    --water:#5ba3e0;
+    --action:#6fc3ff;
+    --tap:44px;
+
+    /* 文字の大きさ。⚠ 名前も段も index.html と揃える。
+       二層にしてあり、**値は --text-* にしか書かない**。使う側は --fs-* を書く。
+       理由と実測は index.html の同じ節に全文がある。 */
+    --text-2xs:11px;
+    --text-xs:12px;
+    --text-sm:12.5px;
+    --text-md:13px;
+    --text-base:14px;
+    --text-lg:15px;
+    --text-xl:16px;
+    --text-2xl:17px;
+    --text-3xl:19px;
+    /* ⚠ ここから下は index.html に無い段。3D は数字そのものが主役なので大きい。 */
+    --text-4xl:22px;         /* 数字を出せないときの、ヒーローの代わりの文 */
+    --text-hero:38px;
+    --text-hero-lg:60px;     /* 画面が狭いときは --text-hero に落とす（下のメディアクエリ） */
+
+    --fs-label:var(--text-2xs);      /* 「実測」「推定」の印・節の見出し */
+    --fs-evidence:var(--text-xs);    /* 根拠。出所の台帳・内訳 */
+    --fs-note:var(--text-xs);        /* 但し書き */
+    --fs-badge:var(--text-sm);
+    --fs-lead:var(--text-md);
+    --fs-body:var(--text-base);
+    --fs-claim:var(--text-lg);
+    /* ⚠ 入力欄は 16px 未満にしない。iOS Safari は 16px 未満の入力欄に触れると
+       ページごと拡大し、戻らない。index.html と同じ約束（見た目の都合で下げないこと）。 */
+    --fs-input:var(--text-xl);
+    --fs-era:var(--text-2xl);
+    --fs-sign:var(--text-3xl);
+    --fs-hero-sm:var(--text-4xl);    /* 数字を出せないとき（「判定できません」） */
+    --fs-hero:var(--text-hero);      /* 99.6% と年。この画面の主役 */
+    --fs-hero-lg:var(--text-hero-lg);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);overflow:hidden;
+    font:14px/1.6 -apple-system,"Hiragino Sans","Noto Sans JP",sans-serif}
+  #map{position:absolute;inset:0;transition:filter .25s linear}
+  #vig{position:absolute;inset:0;z-index:3;pointer-events:none;
+    background:radial-gradient(ellipse at 50% 45%,rgba(0,0,0,0) 45%,rgba(0,0,0,.55) 100%)}
+  #grade{position:absolute;inset:0;z-index:4;pointer-events:none;opacity:0;
+    background:linear-gradient(180deg,rgba(20,60,110,.18),rgba(10,35,70,.42));mix-blend-mode:multiply}
+
+  /* ============ HUD ============ */
+  #hud{position:absolute;left:0;right:0;bottom:0;z-index:12;pointer-events:none;
+    padding:0 26px 22px;display:flex;flex-direction:column;align-items:center;gap:13px}
+  #era{text-align:center;line-height:1;text-shadow:0 3px 24px rgba(0,0,0,.85)}
+  #era .y{font-size:var(--fs-hero-lg);letter-spacing:.02em;font-weight:200;font-variant-numeric:tabular-nums}
+  #era .s{display:block;margin-top:7px;font-size:var(--fs-note);letter-spacing:.22em;color:var(--ink-dim)}
+  /* ⚠ 建物についての但し書きは、**畳まれない場所**に置く。
+     以前は左パネルの中にしか無く、スマホは panelOpen=!isNarrow で閉じて始まるので
+     **初期状態で1文字も見えなかった**。利用者役のエージェント3体のうち2体が
+     「高さと建設年は実データだ」と思ったまま操作した（2026-08-14）。
+     絵は文字よりはるかに強いので、誤解を生む絵が出ている間は必ず一緒に出す。 */
+  /* ⚠ 板を敷く。板なしで出したときは、10.5px・薄い色・影だけで航空写真の上に置いており、
+     読めるのは琥珀色の数字だけだった（UI/UX の実測）。
+     年が 60px、誤解を止める文が 10.5px で **5.7倍**。一瞥した人が受け取るのは
+     「オレンジの数字が2つある」だけになる。出したのに読めないなら、出していないのと同じ。
+     ⚠ 3D のジオメトリにも既定の色にも触らない。敷きと文字の大きさだけで直す。 */
+  #est{margin:9px auto 0;font-size:var(--fs-note);line-height:1.65;color:#c3ccd6;
+    max-width:min(560px,92vw);letter-spacing:.01em;text-align:left;
+    padding:7px 10px;border-radius:7px;border-left:2px solid var(--estimate);
+    background:rgba(10,14,20,.72);backdrop-filter:blur(8px);text-shadow:none}
+  #est:empty{display:none}
+  /* ⚠ 年（60px）に対して、これが 12px では「言い切っている」ことにならない。
+     利用者の言葉:「写真の横に『これは今の街を重ねた絵です』と、写真と同じ大きさで書いてほしい」 */
+  #over{margin-top:6px;font-size:var(--fs-claim);line-height:1.4;color:var(--estimate);
+    letter-spacing:.02em;text-shadow:0 2px 12px rgba(0,0,0,.9)}
+  #over:empty{display:none}
+  #over b{color:var(--ink);font-weight:600}
+  /* ⚠ 触る前の案内。押したら消える（役目が終わったものを常設しない）。
+     以前は左パネルの中に「建物をクリックすると、その足元を判定する。」と書いてあったが、
+     スマホはパネルが閉じて始まり、PC は内スクロールの外だったので、**誰も読んでいなかった**。
+     3D で 100% 言えるのは足元だけなので、そこへ誘う1行は出す価値がある。 */
+  #tip{margin:8px auto 0;font-size:var(--fs-note);line-height:1.5;color:var(--action);
+    max-width:min(560px,92vw);padding:6px 10px;border-radius:999px;
+    border:1px solid rgba(111,195,255,.35);background:rgba(10,14,20,.72);
+    backdrop-filter:blur(8px);text-shadow:none;display:inline-block}
+  #tip:empty{display:none}
+  #est b{color:#eef1f5;font-weight:600}
+  #est .k{color:var(--estimate)}
+  #era.meiji .y{color:var(--water)}
+  #bar{pointer-events:auto;width:min(660px,100%);display:flex;align-items:center;gap:13px}
+  #play{flex:none;width:42px;height:42px;border-radius:50%;cursor:pointer;font-size:var(--fs-body);
+    border:1px solid rgba(255,255,255,.28);background:rgba(10,14,20,.6);color:var(--ink);
+    backdrop-filter:blur(10px);transition:.15s}
+  #play:hover{border-color:var(--action);color:var(--action)}
+  #play[aria-pressed="true"]{background:var(--action);color:#07121c;border-color:var(--action)}
+  #track{position:relative;flex:1;height:42px;cursor:pointer}
+  #track .rail{position:absolute;top:20px;left:0;right:0;height:2px;background:rgba(255,255,255,.18)}
+  #track .fill{position:absolute;top:20px;left:0;height:2px;background:var(--action)}
+  #track .tick{position:absolute;top:15px;width:1px;height:8px;background:rgba(255,255,255,.3)}
+  #track .tick.on{background:var(--action);height:12px;top:13px}
+  #track .lab{position:absolute;top:28px;font-size:var(--fs-label);color:var(--ink-dim);transform:translateX(-50%);white-space:nowrap}
+  /* ⚠ 端の2つは中心そろえにしない。枠の外へ出て横スクロールが生まれる（peel3d.js に実測） */
+  #track .lab.at-start{transform:none}
+  #track .lab.at-end{transform:translateX(-100%)}
+  #track .knob{position:absolute;top:14px;width:14px;height:14px;border-radius:50%;background:var(--ink);
+    margin-left:-7px;box-shadow:0 2px 10px rgba(0,0,0,.6);transition:background .2s}
+  #track.meiji .knob{background:var(--water)}
+  /* ⚠ 飾りは指を受け取らない。
+     目盛り・年代の文字・ノブ・レールは insertAdjacentHTML("beforeend") で
+     <input type=range> の**後ろ**に挿さるので、そのままだと入力を覆う。
+     実測（2026-08-14・375px）: 年代の文字5つは全滅、目盛りも大半が無反応、
+     ノブは掴めなかった。**いちばん押したくなる的が、全部死んでいた。**
+     CSS の意図（input を最前面）を DOM 順が覆していた。 */
+  #track .rail,#track .fill,#track .tick,#track .lab,#track .knob{pointer-events:none}
+  #track input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;margin:0}
+
+  /* ============ パネル ============ */
+  #panel{position:absolute;top:14px;left:14px;z-index:11;width:300px;
+    max-height:calc(100% - 190px);overflow-y:auto;
+    background:var(--surface);border:1px solid var(--line);border-radius:11px;padding:15px;
+    backdrop-filter:blur(16px);transition:opacity .45s ease,transform .45s ease}
+  #panel.hide{opacity:0;transform:translateX(-14px);pointer-events:none}
+  /* ⚠ 調べ終わった土地で、検索欄が最上段にあるのは順序として弱い。
+     結果を先に出すと、いちばん遠かった「いま画面に出ているもの」が近くなる。
+     実測（375×667・パネルを開いた状態）: 641px → 264px。
+     UI を1つも足さずに到達距離だけ縮める（UI/UX レビューの案A+B）。 */
+  #panel.col{display:flex;flex-direction:column}
+  #panel.col > #result{order:-1}
+  #closePanel{position:absolute;top:11px;right:11px;width:26px;height:26px;border-radius:7px;
+    border:1px solid var(--line);background:transparent;color:var(--ink-dim);cursor:pointer;font-size:var(--fs-note);padding:0}
+  #closePanel:hover{border-color:var(--missing);color:var(--missing)}
+  h1{margin:0 0 2px;font-size:var(--fs-claim);letter-spacing:.05em}
+  .lead{margin:0 0 12px;font-size:var(--fs-note);color:var(--ink-dim)}
+  /* サービス名。共有リンクから来た人が「何のサイトか」「戻る先」を持てるように */
+  .brand{display:inline-flex;align-items:center;gap:6px;font-size:var(--fs-note);letter-spacing:.18em;
+    color:var(--ink-dim);text-decoration:none;margin-bottom:6px}
+  a.brand:hover{color:var(--action)}
+    .brand .mark{width:15px;height:15px;border-radius:3.5px;flex:none;display:block}
+  .brand{align-items:center}
+.brand b{font-weight:500;letter-spacing:.22em}
+
+  .sec{margin-top:13px;padding-top:11px;border-top:1px solid var(--line)}
+  .sec>.label{font-size:var(--fs-note);letter-spacing:.15em;color:var(--ink-dim);margin-bottom:8px}
+
+  /* 検索 */
+  #q{width:100%;padding:8px 10px;border-radius:7px;border:1px solid var(--line);
+    background:rgba(255,255,255,.06);color:var(--ink);font:inherit;font-size:var(--fs-input)}
+  #q:focus{outline:none;border-color:var(--action)}
+  #cands{margin-top:6px;max-height:190px;overflow-y:auto}
+  #cands button{display:block;width:100%;text-align:left;padding:6px 9px;margin-bottom:3px;
+    border:1px solid var(--line);border-radius:6px;background:transparent;color:var(--ink);
+    font:inherit;font-size:var(--fs-note);cursor:pointer}
+  #cands button:hover{border-color:var(--action);color:var(--action)}
+  #cands button small{display:block;color:var(--ink-dim);font-size:var(--fs-note)}
+  .quick{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px}
+  .quick button{padding:3px 9px;border:1px solid var(--line);border-radius:999px;background:transparent;
+    color:var(--ink-dim);font:inherit;font-size:var(--fs-note);cursor:pointer}
+  .quick button:hover{border-color:var(--action);color:var(--action)}
+  .here{width:100%;margin-top:7px;padding:7px;border-radius:7px;border:1px solid var(--line);
+    background:transparent;color:var(--ink);font:inherit;font-size:var(--fs-note);cursor:pointer}
+  .here:hover{border-color:var(--action);color:var(--action)}
+  .here[disabled]{opacity:.5;cursor:default}
+  .here-msg{margin-top:7px;padding:8px 10px;border-radius:7px;font-size:var(--fs-note);line-height:1.65;
+    background:rgba(230,196,122,.09);border-left:2px solid var(--estimate);color:#cbb98f}
+  .here-msg b{color:var(--estimate);font-weight:500}
+  .here-msg .dim{color:var(--ink-dim)}
+
+
+  #status{font-size:var(--fs-evidence);color:var(--ink-dim);line-height:1.55;min-height:1.5em}
+  #status .err{color:var(--missing)}
+  #status .go{color:var(--action)}
+  /* 取れなかったときの復帰手段。断定の代わりに必ずこれを出す（掟: 取れなかったを「無い」と言わない） */
+  #status .retry-btn{margin-top:6px;padding:4px 10px;border:1px solid var(--line);border-radius:6px;
+    background:transparent;color:var(--action);font:inherit;font-size:var(--fs-note);cursor:pointer}
+  #status .retry-btn:hover{border-color:var(--action)}
+
+  .hero{font-size:var(--fs-hero);line-height:1;font-weight:200;font-variant-numeric:tabular-nums}
+  /* 数字を出せないとき（「判定できません」「水域なし」）。文なので数字より小さい */
+  .hero .hero-alt{font-size:var(--fs-hero-sm)}
+  .hero small{font-size:var(--fs-lead);color:var(--ink-dim);margin-left:3px}
+  .hero-cap{font-size:var(--fs-evidence);color:var(--ink-dim);margin-top:5px;line-height:1.5}
+  .place{font-size:var(--fs-badge);margin-bottom:9px}
+  .stat{display:flex;justify-content:space-between;gap:8px;font-size:var(--fs-evidence);padding:2.5px 0;
+    color:var(--ink-dim);font-variant-numeric:tabular-nums}
+  .stat b{color:var(--ink);font-weight:500}
+  .swatch{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px}
+  .prov{font-size:var(--fs-evidence);line-height:1.55;padding:7px 9px;border-radius:6px;margin-bottom:5px}
+  .prov.ok{background:rgba(126,224,165,.09);border-left:2px solid var(--evidence)}
+  .prov.est{background:rgba(230,196,122,.09);border-left:2px solid var(--estimate)}
+  .prov.no{background:rgba(224,138,122,.09);border-left:2px solid var(--missing)}
+  /* 押している間だけ光らせる。状態を残さないので、既定の絵（99.6% の色）を壊さない */
+  .peek{display:inline-block;margin-top:5px;padding:3px 9px;border-radius:999px;
+    border:1px solid var(--line);background:transparent;color:var(--ink-dim);
+    font:inherit;font-size:var(--fs-note);cursor:pointer;-webkit-tap-highlight-color:transparent}
+  .peek:hover{border-color:var(--action);color:var(--action)}
+  .peek:active{background:var(--action);color:#0b1017;border-color:var(--action)}
+  /* ⚠ 実測 163×24px。自分で宣言している --tap:44px を割っていた。
+       指の的にはマウスの的と同じ寸法を使わない（.ev-note.step / .quick button と同じ書き方） */
+  @media (hover:none){ .peek{min-height:var(--tap)} }
+
+  .prov .t{font-size:var(--fs-label);letter-spacing:.12em;margin-right:5px}
+  .prov.ok .t{color:var(--evidence)}.prov.est .t{color:var(--estimate)}.prov.no .t{color:var(--missing)}
+  .prov span.d{color:var(--ink-dim)}
+  /* 押した場所に出すカード。⚠ 左パネルの中だけに書いていたときは、実測で
+     y=672（スマホ・パネル閉）／y=721（PC・内スクロールの外）と、両方の端末で画面の外だった。 */
+  .pick-pop .maplibregl-popup-content{background:rgba(11,14,19,.94);backdrop-filter:blur(10px);
+    border:1px solid var(--line);border-radius:9px;padding:10px 12px;
+    box-shadow:0 8px 28px rgba(0,0,0,.5)}
+  .pick-pop .maplibregl-popup-tip{border-top-color:rgba(11,14,19,.94);
+    border-bottom-color:rgba(11,14,19,.94)}
+  .pick-pop .card{background:none;padding:0}
+  .pick-pop .maplibregl-popup-close-button{color:var(--ink-dim);font-size:var(--fs-era);padding:2px 7px}
+  /* ⚠ 指で押せる大きさ（var(--tap)）。ピンと同じ理由 */
+  .pick-say{display:inline-flex;align-items:center;min-height:var(--tap);margin-top:8px;
+    padding:0 12px;border:1px solid var(--line);border-radius:999px;background:transparent;
+    color:var(--action);font:inherit;font-size:var(--fs-note);cursor:pointer}
+  .pick-say:hover{border-color:var(--action)}
+  #pick .card{padding:9px 10px;border-radius:6px;background:rgba(255,255,255,.05);
+    border:1px solid var(--line);line-height:1.6;font-size:var(--fs-note)}
+  #pick .v{font-size:var(--fs-lead)}#pick .v.w{color:var(--water)}
+  #pick .meta{color:var(--ink-dim);font-size:var(--fs-evidence);margin-top:5px}
+  .hint{font-size:var(--fs-note);color:var(--ink-dim);line-height:1.55}
+  /* パネルは主役（3Dの絵）を隠すので、いつでも畳めるようにする。
+     スマホでは画面の4割を占めるため、既定で閉じる。 */
+  /* ⚠ 戻る手段は、常に見えている場所に置く。
+     以前は左パネルの中の「←今昔」だけで、実測すると
+       スマホ  y=688・18px・パネルは閉じて始まる → **画面に戻る手段が1つも無い**
+       PC      y=737・18px・11px            → 最下端の細い行
+     しかも「←今昔」はロゴに見えて、戻る操作に読めない。
+     ⚠ var(--tap)（ピンと同じ理由）。地図の ＋−/コンパスも var(--tap) にそろえてある。 */
+  #chrome{position:absolute;top:14px;left:14px;z-index:13;display:flex;gap:8px}
+  #chrome a,#chrome button{height:var(--tap);padding:0 12px;border-radius:9px;
+    border:1px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer;
+    backdrop-filter:blur(16px);font:inherit;font-size:var(--fs-note);text-decoration:none;
+    display:inline-flex;align-items:center;gap:6px;transition:opacity .25s}
+  #chrome a:hover,#chrome button:hover{border-color:var(--action);color:var(--action)}
+  /* パネルを開いたら ☰ だけ引っ込める。戻るは残す（開いていても帰りたい） */
+  /* ⚠ `~` は**後続の**兄弟にしか効かない。#chrome を #panel より前に置いていたので、
+       この規則は構造上ぜったいに一致していなかった（実測 2026-08-14）。
+       結果、パネルを開いても ☰ が残り、いちばん上の地名を隠していた（重なり 6,076px²）。 */
+  #panel:not(.hide) ~ #chrome #toggle{opacity:0;pointer-events:none}
+  /* ⚠ ☰ が消えても「← もどる」は残す（開いていても帰りたい）。
+       その分、開いたパネルの中身が下敷きにならないよう頭を空ける。 */
+  #panel:not(.hide){padding-top:64px}
+  a{color:var(--action)}
+  .maplibregl-ctrl-attrib{display:none!important}
+  .maplibregl-ctrl-group{background:rgba(12,16,22,.8)!important;backdrop-filter:blur(10px);
+    border:1px solid rgba(255,255,255,.14)}
+  /* ⚠ MapLibre の +/− は白背景を前提にした濃い色のアイコン。
+     パネルを暗くしただけだと黒地に黒になり、実測でボタンの存在すら見えなかった。
+     eras 側は既定の白パネルなので見えていた（見た目を暗くしたこちらだけの事故） */
+  .maplibregl-ctrl-group button .maplibregl-ctrl-icon{filter:invert(1) brightness(1.7)}
+  /* 指の当たり判定。既定は 29×29 で iOS の最小 var(--tap) を下回っていた */
+  .maplibregl-ctrl-group button{width:var(--tap)!important;height:var(--tap)!important}
+  @media(max-width:680px){
+    #panel{width:calc(100% - 28px);max-height:58%}
+    #era .y{font-size:var(--fs-hero)}#hud{padding:0 14px 16px}
+    #chrome a span,#toggle span{display:none}
+  }
+</style>
+</head>
+<body>
+<div id="map"></div><div id="vig"></div><div id="grade"></div>
+
+
+<div id="panel" class="col">
+  <button id="closePanel" title="閉じる">✕</button>
+  <!-- ⚠ ここにあった「←今昔」は外した。地図の左上に「← もどる」（44px・常時）があり、
+       同じことを2か所で言っていた。しかもパネルの中は 18px で、スマホでは
+       パネルが閉じて始まるので**そもそも見えない**。 -->
+  <!-- ⚠ 名乗りは、実装が実際にやっていることに合わせる。
+       「時間をさかのぼる」は時間を自由に動かせると約束していたが、建物が年で消えるのは
+       建設年が分かる 0.30%（10街40万件の実測）しか支えていない。約束をやめる。
+       ⚠ 「（3D）」も出さない。利用者役のエージェント3体は「もっと見る」「立体で見る」「本当か確かめる」と言い、
+       誰も「2D/3D」と言わなかった（利用者役のエージェントによる検証 2026-08-14）。 -->
+  <h1>立体で見る</h1>
+  <p class="lead">いまの街が、明治期の地面のどこに立っているか</p>
+
+  <!-- ⚠ 214px。既にその場所を見ているのに、検索欄と地名12個がパネルの中段を占めていた。
+       利用者の言葉:「もう見たい場所を見ているのに、検索欄と地名のボタンが12個も真ん中にある。
+       『別の場所を見る』の一行にして、押したら開く形で十分」 -->
+  <!-- ⚠ 畳んだままでよい。`/peel` は ll が無ければ既定で豊洲を読むので（peel3d.js）、
+       この枠を見る人は必ず何かの場所を見ている。開閉を場所の有無で切り替えようとしたが、
+       「場所を持たない人」は存在せず、要らない複雑さだった。 -->
+  <details class="sec" id="findBox" style="border-top:0;padding-top:0">
+    <summary class="label" id="findLabel" style="cursor:pointer">別の場所を見る</summary>
+    <input id="q" placeholder="地名や住所（例: 亀戸、豊洲、天王洲）" autocomplete="off">
+    <div id="cands"></div>
+    <div class="quick" id="quick"></div>
+    <button id="here" class="here">現在地から調べる</button>
+    <div id="hereMsg" class="here-msg" style="display:none"></div>
+  </details>
+
+  <!-- ⚠ #status は「場所を探す」ではなく**判定の結果**を出す場所なので、畳む中に入れない。
+       一度入れたら「建物 533 件を判定しました」も「低湿地データがありません」も
+       再試行ボタンも畳まれて消えた。畳んだ <details> の中身は innerText に出ない＝
+       画面にも出ない。取れなかったことを言う文まで一緒に隠れるので、掟に反する。 -->
+  <div id="status" style="margin-top:8px"></div>
+
+  <div id="result" style="display:none">
+    <div class="sec">
+      <div class="place" id="placeName"></div>
+      <div class="hero" id="heroNum">–<small>%</small></div>
+      <div class="hero-cap" id="heroCap"></div>
+    </div>
+    <div class="sec s-prov"><div class="label">いま画面に出ているもの</div><div id="prov"></div></div>
+    <div class="sec"><div class="label">内訳</div><div id="breakdown"></div></div>
+    <div class="sec"><div class="label">建物を調べる</div>
+      <!-- ⚠ 「建物をクリックすると〜」は HUD の #tip にある（常時見える・押したら消える）。
+           ここに置くと、パネルを開いた人にだけ二度言うことになる。 -->
+      <div id="pick"></div></div>
+  </div>
+
+  <div class="sec">
+    <div class="label">出典</div>
+    <div class="hint">
+      <a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" rel="noopener">国土地理院</a>
+      ・<a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>（ODbL）
+      　<span style="color:#3d4650">|</span>　作 <a href="https://github.com/hidetzu" target="_blank" rel="noopener">hidetzu</a>
+      <details style="margin-top:6px">
+        <summary style="cursor:pointer;font-size:var(--fs-note);color:var(--ink-dim)">データについて</summary>
+        <div style="margin-top:5px;font-size:var(--fs-note);line-height:1.7">
+          年代別空中写真／明治期の低湿地／標高。明治期の資料は三角点整備前のため<b>位置誤差</b>を含む。<br>
+          建物は OpenStreetMap。<b>事前に取得して固めた範囲</b>（<code>data/areas.json</code>）ではそれを使う。
+          範囲外では実行時に Overpass を参照するため、混雑時は取得できないことがある。<br>
+          住所検索は<a href="https://maps.gsi.go.jp/" target="_blank" rel="noopener">地理院地図</a>の機能で、
+          <a href="https://github.com/gsi-cyberjapan/gsimaps/issues/29" target="_blank" rel="noopener">予告なく変更・停止の可能性</a>がある。
+        </div>
+      </details>
+    </div>
+  </div>
+</div>
+
+<div id="chrome">
+  <!-- ⚠ href は loadArea が場所つきに書き換える（./?q=…&ll=…）。
+       ここを "./" のままにすると、戻ったときに調べていた場所が消える -->
+  <a id="back" href="./" title="今昔にもどる">← <span>もどる</span></a>
+  <button id="toggle" title="情報を開く">☰ <span>この土地について</span></button>
+</div>
+<div id="hud">
+  <div id="era"><div class="y">現在</div><span class="s">&nbsp;</span>
+    <!-- ⚠ 過去の年代では、**年と同じ強さで**「重ねている」と言う。
+         実測（2026-08-14 利用者役のエージェントによる検証）: 広島 1945–50（原爆直後の焼け野原）の上に
+         現在の3,555棟が立ち、広島の利用者は最初の3秒「1945年の広島」だと読んだ。
+         判別できた人の根拠は画面ではなく**自分の歴史知識**だった。
+         「建物はいまの形です」は 12px で、年は 60px。比は5倍。しかもその一文は
+         直後に「高さは…件が推定」と続くので、**データ品質の但し書きとして読まれる**。
+         → 年のすぐ下に、独立した文として置く。 -->
+    <div id="over"></div>
+    <!-- ⚠ 空のまま置かない。建物が立っていないときは何も書かない（無いものを説明しない） -->
+    <div id="est"></div><div id="tip"></div></div>
+  <div id="bar">
+    <button id="play" aria-pressed="false" title="再生（Space）">▶</button>
+    <div id="track"><div class="rail"></div><div class="fill"></div><div class="knob"></div>
+      <input type="range" id="t" min="0" max="800" value="0" step="1"></div>
+  </div>
+</div>
+
+<script src="./vendor/maplibre-gl.js"></script>
+<!-- 外部から来た文字列（OSM の種別・建設年、地理院の地名）を HTML として実行させない。
+     ⚠ peel3d.js より先に読む -->
+<script src="./esc.js"></script>
+<!-- タイル取得（タイムアウト・3状態）は検証器に集約している。
+     「取れなかった」を「無い」と書かないための判定は、1か所にしか置かない（掟: 取れなかったを「無い」と言わない） -->
+<script src="./verify.js"></script>
+<!-- ⚠ 検索の並べ替えと確度の判定は places.js が唯一の定義。
+     ここを持たなかったせいで、/peel の検索だけが古い実装のまま取り残され、
+     「取れなかった」を「見つかりませんでした」と書いていた（2026-08-14 のレビューで発覚）。
+     SHELL に既に入っているので、配る量は増えない。 -->
+<script src="./places.js"></script>
+<script src="./peel3d.js"></script>
+<script>
+// 3D を開いた人を数える。⚠ トップの導線からではなく**ここで**数える。
+//   導線側で数えていたときは、共有された URL を踏んだ人が計測から消えていた
+//   （実測: /peel を直接開くと /t が 0 回）。開き方によらず、開いたら1回。
+//   share.js は読まない（共有カードを描くための重い道具で、ここでは要らない）。
+//   送るのは worker.js の EVENTS に載っている固定文字列だけ。地名も座標も送らない。
+//   ⚠ 1回だけ。loadArea は場所を変えるたびに走るので、そこに載せると回数が変わる。
+try{
+  if(navigator.sendBeacon) navigator.sendBeacon("/t","open.peel");
+  else fetch("/t",{method:"POST",body:"open.peel",keepalive:true}).catch(()=>{});
+}catch{ /* 計測は落ちてよい。画面の動きは一切変えない */ }
+</script>
+<script>
+// PWA。地図タイルはキャッシュしない（sw.js 参照）ので、オフラインで地図は出ない。
+// 目的はホーム画面から素早く全画面で開けること。
+if ("serviceWorker" in navigator && location.protocol === "https:")
+  addEventListener("load", () => navigator.serviceWorker.register("/sw.js").catch(() => {}));
+</script>
+</body>
+</html>

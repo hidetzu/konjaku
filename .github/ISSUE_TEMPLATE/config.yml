@@ -1,0 +1,8 @@
+# ⚠ 空の Issue を作らせない。テンプレートに当てはまらないものは「提案・改善」へ。
+blank_issues_enabled: false
+contact_links:
+  - name: ⚠ 脆弱性の報告（公開の Issue に書かないでください）
+    url: https://github.com/hidetzu/konjaku/security/advisories/new
+    about: 直る前に手口が広まります。非公開で報告できます。詳しくは SECURITY.md
+# ⚠ Discussions への導線は置いていない。このリポジトリでは有効にしていないため
+#   （掟: 押しても何も起きない導線を置かない）。有効にしたら、ここに足すこと。

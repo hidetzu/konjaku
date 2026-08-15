@@ -1,0 +1,42 @@
+# 地名と座標を URL に載せているので、Referer で外へ出さない。
+# meta と二重にしてあるのは、片方が効かない配信経路があっても漏らさないため。
+/*
+  Referrer-Policy: no-referrer
+
+# 静的アセットは長期キャッシュ、HTML は毎回確認させる
+/vendor/*
+  Cache-Control: public, max-age=31536000, immutable
+# ⚠ 取り込んだ範囲の索引と束は、長く残してはいけない。
+#   実測: 索引は no-cache で必ず取り直すのに束は24時間残るため、デプロイ直後の
+#   再訪者は「新しい索引 ＋ 古い束」を見る。新しく立ったビットの区画について、
+#   その区画のデータが入っていない古い束を根拠に「記録のある変化はありません」と
+#   断定し、しかも Wikidata へ1件も出ない（通信断より静か）。
+#
+#   ⚠ Cloudflare の _headers は、**一致した規則を全部適用して連結する**。
+#   「より細かい規則が勝つ」ではない。/data/ev/* と /data/* を両方書いていたため、
+#   本番では実際にこうなっていた（実測 2026-08-14）:
+#     cache-control: public, max-age=86400, public, max-age=0, must-revalidate
+#   max-age が2つあり、どちらが効くかは実装依存。**上の事故を直すために入れた
+#   must-revalidate が、効いている保証が無かった。**
+#   → 規則を重ならないように分ける。/data/* は書かない。
+#   scripts/check.mjs が、同じ実ファイルに同じヘッダの規則が2つ当たっていないかを見ている。
+/data/ev/*
+  Cache-Control: public, max-age=0, must-revalidate
+# 建物も、索引と本体が食い違うと同じことが起きる（索引は「見た」と言うのに
+# 中身が古い）。事物と同じ扱いにする。1画面で読むのは4枚なので、
+# 取り直しの確認が4回増えるだけ（中身が変わっていなければ 304）
+/data/bl/*
+  Cache-Control: public, max-age=0, must-revalidate
+# 取り込みで書き換わらない、置きっぱなしのもの
+/data/areas.json
+  Cache-Control: public, max-age=86400
+/data/landform.json
+  Cache-Control: public, max-age=86400
+/data/toyosu-buildings.geojson
+  Cache-Control: public, max-age=86400
+/data/toyosu-water.geojson
+  Cache-Control: public, max-age=86400
+/*.html
+  Cache-Control: public, max-age=0, must-revalidate
+/
+  Cache-Control: public, max-age=0, must-revalidate

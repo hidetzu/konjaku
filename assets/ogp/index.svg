@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-labelledby="title desc">
+  <title id="title">この土地は、昔なんだったのか？ — 今昔</title>
+  <desc id="desc">土地の成り立ちを、根拠とともに見る</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0b0e13"/>
+      <stop offset="1" stop-color="#111923"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#5ba3e0" stop-opacity=".26"/>
+      <stop offset="1" stop-color="#5ba3e0" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="grid" width="44" height="44" patternUnits="userSpaceOnUse">
+      <path d="M44 0H0V44" fill="none" stroke="#eaeef3" stroke-opacity=".055"/>
+    </pattern>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#000" flood-opacity=".38"/>
+    </filter>
+  </defs>
+  <style>
+    text{font-family:"Konjaku OGP",sans-serif;font-weight:700}
+    .brand{font-size:28px;letter-spacing:.18em;fill:#7ee0a5}
+    .headline{font-size:62px;letter-spacing:.01em;fill:#eaeef3}
+    .subtitle{font-size:25px;letter-spacing:.04em;fill:#8b96a3}
+    .url{font-size:18px;letter-spacing:.05em;fill:#6b7683}
+  </style>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <rect width="1200" height="630" fill="url(#grid)"/>
+  <ellipse cx="930" cy="310" rx="390" ry="330" fill="url(#glow)"/>
+  <rect x="54" y="54" width="1092" height="522" rx="30" fill="none" stroke="#eaeef3" stroke-opacity=".10"/>
+  <text x="86" y="126" class="brand">今昔</text>
+  <text x="86" y="248" class="headline">この土地は、</text>
+  <text x="86" y="326" class="headline">昔なんだったのか？</text>
+  <text x="88" y="394" class="subtitle">土地の成り立ちを、根拠とともに見る</text>
+  <text x="88" y="528" class="url">konjaku.hidetzu.work</text>
+  
+  <g transform="translate(760 102)" filter="url(#shadow)">
+    <path d="M0 118 184 20l184 98-184 99z" fill="#172431" stroke="#6fc3ff" stroke-opacity=".55" stroke-width="2"/>
+    <path d="M0 187 184 89l184 98-184 99z" fill="#11202c" stroke="#7ee0a5" stroke-opacity=".72" stroke-width="2"/>
+    <path d="M0 256 184 158l184 98-184 99z" fill="#0c1721" stroke="#eaeef3" stroke-opacity=".20" stroke-width="2"/>
+    <path d="M76 196c43-21 66-6 94-22 29-16 53-59 101-61 38-2 63 23 82 34l-169 90z" fill="#5ba3e0" fill-opacity=".42"/>
+    <circle cx="184" cy="187" r="13" fill="#7ee0a5"/>
+    <circle cx="184" cy="187" r="27" fill="none" stroke="#7ee0a5" stroke-opacity=".35" stroke-width="2"/>
+    <path d="m184 187 0 69" stroke="#7ee0a5" stroke-width="2" stroke-dasharray="5 7"/>
+  </g>
+</svg>

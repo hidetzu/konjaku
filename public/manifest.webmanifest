@@ -1,0 +1,21 @@
+{
+  "name": "今昔 — その土地を調べる",
+  "short_name": "今昔",
+  "description": "場所を入れると、その土地について調べられることが並ぶ。明治期に何だったかは、地図タイルの画素を実際に読んで判定している。",
+  "lang": "ja",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0b0e13",
+  "theme_color": "#0b0e13",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/icon-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "立体で見る", "url": "/peel" },
+    { "name": "東京駅を見る", "url": "/?q=%E6%9D%B1%E4%BA%AC%E9%A7%85&ll=35.68124,139.76712" }
+  ]
+}

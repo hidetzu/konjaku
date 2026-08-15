@@ -1,0 +1,176 @@
+// Service Worker。
+//
+// 持つのは2つ。**自前アセット**（下の SHELL）と、**利用者が自分で見た地理院タイル**
+// （下の TILES。最大 250 枚）。
+//
+// ⚠ 当初は「自前アセットだけ。地理院のものは溜め込むべきではない」としていたが、
+//   2026-08-13 に考えを変えた。素通しは「溜め込まない」ではなく
+//   「**同じ絵を何度も取りに行く**」だったため（理由は下の「地理院タイル」の節に全文）。
+//   端末の中に置くだけで、再配信はしない。
+//
+// したがって **オフラインでも、一度見た範囲の地図なら出ることがある**。
+// ただし見ていない範囲は出ない。ホーム画面から素早く開くための最小構成であることは変えていない。
+
+// ⚠ 手で書かない。**下の SHELL の中身から決まるハッシュ**で、`npm run stamp` が振り直す。
+//   古ければ `npm run check`（＝CI）が落ちる。
+//
+//   手で番号を振っていた頃は、中身だけ変えて上げ忘れると
+//   一度来た人に古い `/` と `/share.js` が出続けた。しかもローカルは初回訪問なので
+//   絶対に再現せず、CI も全部通る。流入を測り始める直前に一度踏みかけた。
+//   なぜハッシュにしたかの全文は scripts/sw-hash.mjs の頭にある。
+const VERSION = "konjaku-330e4a65";
+// ⚠ addAll は1件でも 404 すると install ごと reject し、キャッシュが丸ごと死ぬ。
+//   この一覧を足し引きしたときも版は変わる（一覧そのものもハッシュの材料に入れてある）。
+const SHELL = [
+  "/", "/peel",
+  // ⚠ esc.js が来ないと、両ページのスクリプトが起動時に落ちる（KonjakuEsc を読む）。
+  //   オフラインでも画面が成り立つための最小限に入る。
+  "/esc.js", "/verify.js", "/places.js", "/share.js", "/events.js",
+  "/data/landform.json",
+  // ⚠ 地図エンジン（1,032 KB）と CSS（68 KB）は SHELL に入れない。
+  //   入れると、判定しか見ない人にも丸ごと乗る。Zenn 流入はほぼ全員が初回なので効く。
+  //   （実測 2026-08-15: maplibre-gl.js 1032.1 KiB / maplibre-gl.css 68.4 KiB）
+  //   ⚠ ここにあった「初回訪問が 250 KB → 1,646 KB」「1万PV で約 16 GB の差」は消した。
+  //     1,646 KB と 16 GB の測り方がどこにも残っておらず、再現できなかった。
+  //   ⚠ 「地図は触った人だけが読み込む」のは `/` だけ。**`/peel` は常に読む**
+  //     （peel.html が <link> と <script> で直に読む）。3D は地図が本体なので、それでよい。
+  //   触ったときに取ればよい（下の網でキャッシュには入る）。
+  "/favicon.svg", "/icon-192.png", "/manifest.webmanifest",
+];
+
+self.addEventListener("install", (e) => {
+  e.waitUntil(caches.open(VERSION).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
+});
+
+self.addEventListener("activate", (e) => {
+  e.waitUntil(
+    caches.keys()
+      // ⚠ タイルの棚は消さない。版が上がるたびに捨てると、溜めた意味が無くなる
+      .then((ks) => Promise.all(ks.filter((k) => k !== VERSION && k !== TILES)
+        .map((k) => caches.delete(k))))
+      .then(() => self.clients.claim())
+  );
+});
+
+// ⚠ /data/ev/index.json は SHELL に入れない。
+//   取り込みを1回走らせるたびに中身が変わり、SHELL の中身から決まる版も変わるので、
+//   **全利用者のキャッシュが丸ごと捨てられる**。
+//   索引は下の「自分のオリジン」の網（ネットワーク優先）で取る。
+//
+// ⚠ ここには「キャッシュは保険で足りる」と書いてあったが、**保険は無い**（2026-08-15 に判明）。
+//   下の網は /data/ev/ をキャッシュから除いているので、オフラインでは
+//   `caches.match("/")` が index.html の HTML を JSON 要求に返す。
+//   ⚠ 幸い events.js が `.catch(() => null)` で受けて実行時取得へ落ちるので、
+//     いまのところ安全に劣化する。壊れているのは主張のほうで、動作ではない。
+//     ⚠ **どう持つかは決めていない**（建物タイルが版ごとに捨てられる件と同根）。
+//     → docs/adr/0027-直していないと分かっていることを、名前で残す.md
+
+// ---- 地理院タイル ----
+// ⚠ 以前はここを素通ししていた（「他人のタイルを勝手に溜め込むべきではない」）。
+//   実測して考えを変えた。地理院タイルは **Cache-Control も Expires も返さない**
+//   （返るのは ETag と Last-Modified だけ）。つまりブラウザは経験則で判断するしかなく、
+//   取り直しが起きる。素通しは「溜め込まない」ではなく「**同じ絵を何度も取りに行く**」だった。
+//   年代を行き来すれば、同じタイルを何度も引く。
+//   `npm run cost` の実測では、3D まで開くと国土地理院 **136 回**
+//   （seamlessphoto 60 / gazo4 60 / swale 16）。
+//   ⚠ ここにあった「223 リクエスト / 8 MB」は消した。測り方がどこにも残っておらず、
+//     現在の計測結果とも合わなかった。
+//
+//   端末の中に置くだけなので、再配信（README で触れている禁止事項）とは別のこと。
+//   利用者1人が、自分が見たタイルを持っているだけ。
+//
+// ⚠ 古い年代の空中写真は**もう変わらない**（1936–42 の写真が更新されることはない）。
+//   一方 seamlessphoto は更新されるので、寿命を短くする。
+const TILES = "konjaku-tiles-v1";
+// 上限。3D を1回開くと 3桁のタイルを取るので、数百枚で溢れる。
+// 50枚に1回しか片付けないので、最大 +50 のはみ出しも見込んでおく（実際の上限は約 300 枚）。
+// ⚠ ここにあった「3D は1回開くと 223枚」「実測で端末に 16.9 MB 載った」は消した。
+//   どちらも測り方が残っておらず、再現できなかった。
+//   ⚠ この 250 という値自体、上の消した数字から決めたもの。**測り直していない。**
+const TILE_MAX = 250;
+const DAY = 24 * 60 * 60 * 1000;
+const AT = "x-konjaku-at";
+// ⚠ **地形分類タイルを拾えていない。**
+//   判定文「この場所は 旧水部 です」の根拠は maps.gsi.go.jp/xyz にあり（verify.js の LFC）、
+//   ここは cyberjapandata しか見ていないので、下の「よそは素通し」に落ちて棚に入らない。
+//   同じ取りこぼしを scripts/cost.mjs も持っている。
+//   ⚠ **まだ直していない。** ここでは実装を変えていない（測るだけの回だった）。
+//   → docs/adr/0027-直していないと分かっていることを、名前で残す.md
+const isTile = (u) => u.host === "cyberjapandata.gsi.go.jp" && u.pathname.startsWith("/xyz/");
+const tileTtl = (u) => u.pathname.startsWith("/xyz/seamlessphoto/") ? DAY : 30 * DAY;
+
+async function tile(req, url) {
+  const c = await caches.open(TILES);
+  const hit = await c.match(req);
+  if (hit) {
+    const at = Number(hit.headers.get(AT) || 0);
+    if (Date.now() - at < tileTtl(url)) return hit;
+  }
+  try {
+    // ⚠ cors で取り直す。<img> の既定（no-cors）で来た応答をそのまま置くと
+    //   中身の見えない応答になり、保存量の見積もりが実際よりはるかに大きく計上される。
+    //   地理院は ACAO:* を返すので cors で取れる。
+    const res = await fetch(new Request(url.href, { mode: "cors", credentials: "omit" }));
+    if (!res.ok) return hit ?? res;         // 404 は「そこに無い」。溜めない
+    const body = await res.blob();
+    const h = new Headers(res.headers);
+    h.set(AT, String(Date.now()));
+    await c.put(req, new Response(body, { status: 200, headers: h }));
+    maybeTrim(c);
+    return new Response(body, { status: 200, headers: h });
+  } catch {
+    // 取れなかった。持っているなら出す（同じタイルなので、嘘にはならない）
+    if (hit) return hit;
+    throw new Error("tile unreachable");
+  }
+}
+// ⚠ 片付けを毎回走らせない。cache.keys() は全件を数えるので、
+//   タイルを大量に取る画面（3D は1回で 223枚）では O(n^2) になり、
+//   ページ全体が目に見えて遅くなる（検査が 60秒で到達しなくなって気づいた）。
+let puts = 0;
+function maybeTrim(c) {
+  if (++puts % 50) return;                 // 50枚に1回でよい
+  trim(c);
+}
+async function trim(c) {
+  const keys = await c.keys();
+  if (keys.length <= TILE_MAX) return;
+  for (const k of keys.slice(0, keys.length - TILE_MAX)) await c.delete(k);
+}
+
+self.addEventListener("fetch", (e) => {
+  const url = new URL(e.request.url);
+  if (e.request.method !== "GET") return;
+  // 地理院タイルは、端末の中に置いて使い回す（同じ絵を何度も取りに行かない）
+  if (isTile(url)) { e.respondWith(tile(e.request, url)); return; }
+  // それ以外のよそは素通しする。実際に出る先は
+  //   maps.gsi.go.jp（地形分類。⚠ 本当は上の棚に入れたいが、まだ入れていない。
+//                    → docs/adr/0027-直していないと分かっていることを、名前で残す.md）
+  //   msearch.gsi.go.jp（住所検索）／ query.wikidata.org（事物）
+  //   overpass-api.de・overpass.kumi.systems（建物。POST なので上の GET 判定で既に抜けている）
+  // ⚠ Google へは fetch していない（リンクを開くだけ）。以前ここに書いてあったが誤り。
+  if (url.origin !== location.origin) return;
+
+  // ネットワーク優先。更新をすぐ反映したいので、キャッシュは落ちたときの保険に留める。
+  e.respondWith(
+    fetch(e.request)
+      .then((res) => {
+        // ⚠ 何でも溜めない。以前は束（z12）・geojson（380KB）・html まで無制限に
+        //   入れていて、版が上がると丸ごと捨てて取り直していた。
+        //   取り込んだ範囲の束は毎回確認させる（_headers も must-revalidate）。
+        //
+        // ⚠ **いまも「最小限」になっていない。** 除外は /data/ev/ と .geojson だけで、
+        //   **/data/bl/**（建物タイル・65 ファイル・生 17.0 MB）が入ってしまう。
+        //   版が上がると丸ごと捨てて取り直す＝すぐ上に書いた「以前の失敗」と同じ状態。
+        //   _headers が /data/bl/* に must-revalidate を付けているのとも食い違っている。
+        //   ⚠ **まだ直していない。** ここでは実装を変えていない（測るだけの回だった）。
+        //   → docs/adr/0027-直していないと分かっていることを、名前で残す.md
+        if (res.ok && !/^\/data\/ev\//.test(url.pathname) && !/\.geojson$/.test(url.pathname)) {
+          const copy = res.clone();
+          caches.open(VERSION).then((c) => c.put(e.request, copy));
+        }
+        return res;
+      })
+      .catch(() => caches.match(e.request).then((r) => r ?? caches.match("/")))
+  );
+});
