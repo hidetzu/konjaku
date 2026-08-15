@@ -5,6 +5,13 @@
 
 **[今昔を開く](https://konjaku.hidetzu.work/)**
 
+[![検査](https://github.com/hidetzu/konjaku/actions/workflows/check.yml/badge.svg?branch=main)](https://github.com/hidetzu/konjaku/actions/workflows/check.yml?query=branch%3Amain)
+
+⚠ **このバッジが見ているのは `main` の静的検査・実描画・検索の並びです。**
+⚠ **外部リンクの生死は含みません**（相手先の一時的な不調でこちらを止めないため、
+到達できなくても緑のままになります）。リンクが腐っていないかは実行ログを見てください。
+件数は [`docs/SPEC.md`](docs/SPEC.md) にあります。
+
 ![今昔の画面](public/ogp.png)
 
 ## できること
