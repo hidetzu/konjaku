@@ -2206,42 +2206,27 @@ document.getElementById("chipX").onclick=()=>{
 // 「その地名は存在しない」に化けていた。無応答に至っては10秒経っても「検索中…」のまま。
 //   接続できない／時間切れ／HTTP エラー／配列でない  → 取れなかった（＋再試行）
 //   配列が返って長さ0                                → 見つからなかった
-const SEARCH_TIMEOUT_MS=8000;   // verify.js の TIMEOUT_MS と同じ
-async function fetchPlaces(q){
-  const url="https://msearch.gsi.go.jp/address-search/AddressSearch?q="+encodeURIComponent(q);
-  const r=await fetch(url,{signal:AbortSignal.timeout(SEARCH_TIMEOUT_MS)});
-  if(!r.ok) throw new Error(`サーバが ${Number(r.status)} を返しました`);
-  const j=await r.json();
-  // 200 でも本文が配列とは限らない。形を確かめる前に「無い」と言わない
-  if(!Array.isArray(j)) throw new Error("応答が一覧の形をしていません");
-  return j;
-}
-// 画面に出す理由は、こちらが用意した文字列だけにする（応答の中身は入れない）
-const searchWhy=(e)=> e?.name==="TimeoutError" ? "時間切れ"
-  : /^サーバが|^応答が/.test(e?.message??"") ? e.message : "通信できません";
-let searchSeq=0;
+// ⚠ 通信・時間切れ・再試行・古い応答の追い越し防止は **places.js の1か所**にある
+//   （掟: 同じ問いに答える実装を2つ持たない）。ここに残すのは**描くことだけ**。
+//   以前はここと peel3d.js が同じものを持っていて、実際に食い違っていた。
+const search=KonjakuPlaces.createSearch();
 async function searchPlace(q){
-  const seq=++searchSeq;                       // 遅れて返った古い応答で画面を上書きしない
-  const stale=()=>seq!==searchSeq;
   listEl.innerHTML=`<div class="note" style="padding:6px 2px">検索中…</div>`;
-  let list=null,err=null;
-  // 瞬断と 5xx は1回だけ自動で再試行する。
-  // 時間切れは再試行しない（同じ相手をもう8秒待たせるのは、待たせただけになる）。
-  for(let i=0;i<2 && list===null;i++){
-    try{ list=await fetchPlaces(q); }catch(e){ err=e; }
-    if(stale()) return;
-    if(err?.name==="TimeoutError") break;
-  }
-  if(list===null){
+  // ⚠ 受け皿の名前に `r` を使わない。このファイルでは `r` が
+  //   「保存した記録（地名と、利用者のメモ）」＝**外部から来た値**を指す約束で、
+  //   npm run check がその名前を追っている。同じ名前を別の意味で使うと監査できなくなる。
+  const res=await search.run(q,10);
+  if(res.state==="stale") return;              // 遅れて返った古い応答。画面に触らない
+  if(res.state==="error"){
     items=[]; sel=-1;
     listEl.innerHTML=`<div class="note warn" style="padding:6px 2px">
-      検索の応答を取れませんでした（${searchWhy(err)}）。
+      検索の応答を取れませんでした（${res.why}）。
       「見つからなかった」ではありません。
       <button class="retry" id="searchRetry">再試行</button></div>`;
     document.getElementById("searchRetry").onclick=()=>searchPlace(q);
     renderKbd(); return;
   }
-  if(!list.length){
+  if(res.state==="empty"){
     items=[]; sel=-1;
     // ⚠ ここが、このサービスでいちばん価値のある信号が出る場所。
     //   「探したのに出せなかった語」は、黙って去られると永久に分からない。
@@ -2251,13 +2236,11 @@ async function searchPlace(q){
       +(fu?` <a class="report" href="${fu}" target="_blank" rel="noopener">この地名を報告する ↗</a>`:"")
       +`</div>`;
     renderKbd(); return; }
-  // 応答は関連度順ではなく都道府県コードの昇順なので、そのままでは先頭が別の土地になる。
-  // 並べ替えと「選ぶかどうか」の判定は places.js（応答の中身だけで決まる）。
-  const r=KonjakuPlaces.places(list,q,10);
-  items=r.rows.map((x)=>({ic:"📍",label:x.title,sub:x.sub,
+  // ⚠ 地名は外部の値。描くのは renderList で、そこで esc() を通る。
+  items=res.rows.map((x)=>({ic:"📍",label:x.title,sub:x.sub,
     act:()=>openPlace(x.ll[0],x.ll[1],x.title)}));
   // 確度が高いときだけ選ぶ。低いときは何も選ばず、Enter を空振りさせる。
-  sel=r.pick; renderList();
+  sel=res.pick; renderList();
 }
 
 // 日本語入力（IME）の変換中かどうか。
@@ -2272,7 +2255,9 @@ function onInput(){
   // コマンド絞り込みは手元だけの処理なので、変換中でも即座に効かせてよい
   if(mode==="action"){ items=buildActions(qEl.value,current); sel=0; renderList(); return; }
   clearTimeout(timer);
-  if(v.length<2){ items=[]; sel=-1; listEl.innerHTML=""; renderKbd(); return; }
+  // ⚠ **世代を進める。** これが無いと、検索中に入力を消しても遅れて返った候補が
+  //   空の入力欄へ復活する（2026-08-15 に実際に再現させた）。
+  if(v.length<2){ search.cancel(); items=[]; sel=-1; listEl.innerHTML=""; renderKbd(); return; }
   // 住所検索は外部APIで 10req/10秒 の制限があるため、変換確定まで待つ
   if(composing) return;
   timer=setTimeout(()=>searchPlace(v),320);

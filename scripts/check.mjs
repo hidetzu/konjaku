@@ -481,6 +481,29 @@ for (const f of htmlFiles) {
       + `（カード画像は SNS で単独に流れるので、ここが看板の代わりになる）`);
   else ok(`看板と共有カードの名乗りが揃っている（${h1}）`);
 }
+// ⚠ **住所検索を叩く実装は1か所だけ。**
+//   以前は index.html と peel3d.js が同じものを持っていて、**実際に食い違っていた**
+//   （/peel だけ時間切れも再試行も追い越し防止も無く、取れなかったときに
+//   「見つかりませんでした」と書いていた）。揃え直したあとも「揃えてあるだけ」で、
+//   片方だけ直す事故が起きうる状態だった（掟: 同じ問いに答える実装を2つ持たない）。
+{
+  const files = ["index.html", "peel.html", "places.js", "peel3d.js", "verify.js", "events.js", "share.js", "esc.js", "sw.js"];
+  const hits = [];
+  for (const f of files) {
+    const t = await readFile(join(PUB, f), "utf8").catch(() => "");
+    // ⚠ コメントは落とす。落とさないと、この決まりを説明したコメントを拾う。
+    //   ⚠ `//` を素朴に落とすと URL を食うので、直前が `:` なら落とさない。
+    const bare = t.replace(/<!--[\s\S]*?-->/g, "").replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/(^|[^:])\/\/[^\n]*/g, "$1");
+    const n = (bare.match(/AddressSearch\?q=/g) ?? []).length;
+    if (n) hits.push(`${f}×${n}`);
+  }
+  hits.length === 1 && hits[0].startsWith("places.js")
+    ? ok(`住所検索を叩くのは places.js の1か所だけ（${hits[0]}）`)
+    : bad(`住所検索を叩く箇所が1つでない: ${hits.join("、") || "0 か所"}`
+      + `（画面ごとに持つと、片方だけ直す事故が起きる。places.js の createSearch() を使うこと）`);
+}
+
 // ⚠ **プライバシーの説明が、2 つの画面で割れないこと。**
 //   / と /peel は**同じことをする**（どちらも判定すると URL に地名と座標を載せる）ので、
 //   同じ約束をしなければならない。⚠ 実際、**peel には説明が1つも無かった**（2026-08-15）。
