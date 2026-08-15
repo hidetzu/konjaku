@@ -517,19 +517,31 @@ for (const f of htmlFiles) {
       //   入れてある**ので、中身が変われば版も変わり、古いものは activate で消える。
       //   ⚠ 危ないのは「must-revalidate なのに、版の材料に入っていないもの」。
       //     /data/ がそれ（取り込みで書き換わるが、版は動かない）。
-      const swHash = await readFile(join(ROOT, "scripts/sw-hash.mjs"), "utf8");
-      const extra = [...(/EXTRA\s*=\s*\[([^\]]*)\]/.exec(swHash)?.[1] ?? "")
-        .matchAll(/["']([^"']+)["']/g)].map((m) => "/" + m[1]);
-      const versioned = (u) => (fns.SHELL ?? []).includes(u)
-        || extra.some((e) => u === e || u.startsWith(e.replace(/[^/]*$/, "")));
-      const sample = (pat) => pat.endsWith("*") ? pat.slice(0, -1) + "index.json" : pat;
-      const held = strict.map(sample).filter((u) => fns.cacheable(u) && !versioned(u));
+      // ⚠ **ソースから名前を拾わない。実際に材料になっている一覧をもらう。**
+      //   以前はディレクトリ名で前方一致していたので、**/vendor/other.js を足すと
+      //   材料に入っていないのに「版の材料」と判定していた**（2026-08-16 の指摘）。
+      const { extraFiles } = await import("./sw-hash.mjs");
+      const extra = (await extraFiles()).map((p) => "/" + p);
+      const versioned = (u) => (fns.SHELL ?? []).includes(u) || extra.includes(u);
+      // ⚠ 代表ファイルは**実在するもの**にする。/vendor/index.json のような
+      //   存在しない名前で試すと、実態と違う判定になる。
+      const { readdir } = await import("node:fs/promises");
+      const samples = [];
+      for (const pat of strict) {
+        if (!pat.endsWith("*")) { samples.push(pat); continue; }
+        const dir = pat.slice(1, -1);                     // "/vendor/*" → "vendor/"
+        const names = await readdir(join(PUB, dir)).catch(() => []);
+        // ⚠ そのディレクトリの**全ファイル**で試す。1つだけでは、後から足した分を見逃す。
+        for (const n of names) samples.push(`/${dir}${n}`);
+        if (!names.length) samples.push(pat.slice(0, -1) + "index.json");
+      }
+      const held = samples.filter((u) => fns.cacheable(u) && !versioned(u));
       held.length
         ? bad(`版の材料に入っていないのに、SW が版のキャッシュに入れる: ${held.join("、")}`
             + `（_headers は毎回確認させると言っている。Cache API はヘッダの鮮度を見ないので、`
             + `版が動かないまま中身が変わると古いものが出続ける）`)
-        : ok(`毎回確認させるもの（${strict.length} 件）のうち、SW が持つのは版の材料に入っているものだけ`
-            + `（版の材料: ${extra.join("、") || "SHELL のみ"}）`);
+        : ok(`毎回確認させるもの（実ファイル ${samples.length} 本）のうち、`
+            + `SW が持つのは版の材料に入っているものだけ（版の材料: ${extra.length} 本）`);
       // ⚠ 許可リストが**何も通さない**空振りになっていないこと
       fns.cacheable("/vendor/maplibre-gl.js")
         ? ok("版のキャッシュに入るものはある（/vendor/ が通る）")
