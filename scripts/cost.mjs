@@ -27,10 +27,25 @@ await new Promise((r) => setTimeout(r, 1200));
 const browser = await chromium.launch();
 
 // 棚に入れる地理院タイルのホスト。
-// ⚠ **この表は public/sw.js にも同じものがある。** SW からは Node の道具と
-//   モジュールを共有できないので、掟が認める「やむを得ず2つ持つときは、機械で
-//   突き合わせる」を採る（npm run check が一致を見る）。**片方だけ足すと落ちる。**
-const TILE_HOSTS = ["cyberjapandata.gsi.go.jp", "maps.gsi.go.jp"];
+// ⚠ **持たない。public/sw.js から読む。**
+//   ここは「どのホストのタイルを棚に入れるか」という、sw.js と同じ問いに答える場所。
+//   写すと、片方だけ足したときに**棚に入れるものと数えるものがずれる**
+//   （実際にずれていた。判定文の根拠を sw.js は棚に入れず、ここは「その他外部」に
+//   数えていた）。掟「同じ問いに答える実装を2つ持たない」。
+//   ⚠ SW はブラウザで動くので import で共有できない。**こちらは Node なので読める。**
+//   だから写すのではなく、**唯一の定義（sw.js）を読む**。
+const TILE_HOSTS = await (async () => {
+  const { readFile } = await import("node:fs/promises");
+  const src = await readFile(new URL("../public/sw.js", import.meta.url), "utf8");
+  // ⚠ コメントを落としてから読む。落とさないと、この決まりを説明したコメントを拾う。
+  //   ⚠ `//` を素朴に落とすと URL を食う（`https://…`）。直前が `:` なら落とさない。
+  const bare = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/[^\n]*/g, "$1");
+  const m = /TILE_HOSTS\s*=\s*\[([^\]]*)\]/.exec(bare);
+  if (!m) throw new Error("public/sw.js から TILE_HOSTS を読めない（棚の対象が分からないまま数えない）");
+  const hosts = [...m[1].matchAll(/["']([^"']+)["']/g)].map((x) => x[1]);
+  if (!hosts.length) throw new Error("public/sw.js の TILE_HOSTS が空（棚の対象が分からないまま数えない）");
+  return hosts;
+})();
 
 // どこへ出たかを、請求の単位で分ける
 function bucket(u) {

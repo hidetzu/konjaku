@@ -137,15 +137,15 @@ for (const f of htmlFiles) {
   }
 }
 
-// ⚠ **「どのホストのタイルを棚に入れるか」を、2 か所が別々に答えている。**
-//   public/sw.js（ブラウザの Service Worker）と scripts/cost.mjs（Node の計測）で、
-//   SW からは Node のモジュールを読めないため一本化できない。
-//   掟「やむを得ず2つ持つときは、機械で突き合わせる」に従い、ここで見る。
-//   ⚠ 実際に食い違っていた。判定文の根拠（地形分類）を **sw.js は棚に入れず、
-//     cost.mjs は「その他外部」に数えていた**。どちらも同じ取りこぼしだった。
+// ⚠ **判定文の根拠が、棚の対象に入っていること。**
+//   「この場所は 旧水部 です」と言い切っている、その出どころ（地形分類）だけが
+//   棚から漏れていた。漏れると**同じものを毎回取りに行く**（地理院タイルは
+//   Cache-Control も Expires も返さない）。
+//   ⚠ **`sw.js` の表を目で読んで確かめない。** verify.js が実際に使っているホストを
+//     読んで突き合わせる。表に何が書いてあっても、**使っている側が入っていなければ意味がない**。
+//   ⚠ 棚の対象は `public/sw.js` の TILE_HOSTS **1 か所だけ**が定義（cost.mjs はそこを読む）。
 {
   const swSrc = await readFile(join(PUB, "sw.js"), "utf8");
-  const costSrc = await readFile(join(ROOT, "scripts/cost.mjs"), "utf8");
   // ⚠ コメントを先に落とす。落とさないと、この決まりを説明したコメントの字面を拾う
   //   （CLAUDE.md「検査が文書やコメントを読むとき、コメントを先に落とす」）。
   // ⚠ **`//` を素朴に落とすと URL を食う。** `https://…` の `//` をコメント開始と読んで
@@ -153,27 +153,23 @@ for (const f of htmlFiles) {
   //   （2026-08-15 に実際に踏んだ。検査は「読めない」と言って落ちたので気づけた）。
   //   ⚠ **直前が `:` のときは落とさない。**
   const bare = (s) => s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/[^\n]*/g, "$1");
-  const hosts = (s) => {
-    const m = /TILE_HOSTS\s*=\s*\[([^\]]*)\]/.exec(bare(s));
-    return m ? [...m[1].matchAll(/["']([^"']+)["']/g)].map((x) => x[1]).sort() : null;
-  };
-  const a = hosts(swSrc), b = hosts(costSrc);
-  if (!a) bad("public/sw.js に TILE_HOSTS が無い（この検査が何も見ていない）");
-  else if (!b) bad("scripts/cost.mjs に TILE_HOSTS が無い（この検査が何も見ていない）");
-  else if (a.join() !== b.join())
-    bad(`棚に入れるタイルのホストが2か所で食い違う: sw.js [${a.join(" ")}] / cost.mjs [${b.join(" ")}]`
-      + `（片方だけに足すと、棚に入れるものと数えるものがずれる）`);
-  else ok(`棚に入れるタイルのホストが2か所で揃っている（${a.join(" / ")}）`);
-
-  // ⚠ ホスト表が揃っていても、**両方から地形分類が抜けていれば「揃った空振り」**になる。
-  //   判定文の根拠を verify.js から読んで、それが棚の対象に入っていることまで見る。
+  const m = /TILE_HOSTS\s*=\s*\[([^\]]*)\]/.exec(bare(swSrc));
+  const shelf = m ? [...m[1].matchAll(/["']([^"']+)["']/g)].map((x) => x[1]) : null;
   const vf = bare(await readFile(join(PUB, "verify.js"), "utf8"));
   const lfc = /LFC\s*=\s*["']https:\/\/([^/"']+)/.exec(vf)?.[1];
-  if (!lfc) bad("verify.js から地形分類のホストを読めない（この検査が何も見ていない）");
-  else if (a && !a.includes(lfc))
+  if (!shelf?.length) bad("public/sw.js の TILE_HOSTS を読めない（この検査が何も見ていない）");
+  else if (!lfc) bad("verify.js から地形分類のホストを読めない（この検査が何も見ていない）");
+  else if (!shelf.includes(lfc))
     bad(`判定文の根拠（${lfc}）が棚に入らない。verify.js はここから地形分類を取っている`
       + `（「旧水部です」と言い切っている、その出どころだけが毎回取り直しになる）`);
-  else ok(`判定文の根拠（${lfc}）も棚に入る`);
+  else ok(`判定文の根拠（${lfc}）が棚に入る（棚の対象 ${shelf.length} ホスト）`);
+
+  // ⚠ **cost.mjs が表を写していないこと。** 写すと、片方だけ足したときに
+  //   「棚に入れるもの」と「数えるもの」がずれる（実際にずれていた）。
+  const costSrc = bare(await readFile(join(ROOT, "scripts/cost.mjs"), "utf8"));
+  /TILE_HOSTS\s*=\s*\[/.test(costSrc)
+    ? bad("scripts/cost.mjs が TILE_HOSTS を写している（public/sw.js から読むこと。写すとずれる）")
+    : ok("棚の対象の定義は public/sw.js の1か所だけ（cost.mjs はそこを読む）");
 }
 
 // ⚠ URL に地名と座標を載せているので、Referer で外へ出さないこと。
