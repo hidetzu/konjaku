@@ -743,45 +743,27 @@ let timer=null;
 //   時間切れも再試行も、古い応答の追い越し防止も無く、
 //   **取れなかったときに「見つかりませんでした」と書いていた**。
 //   この製品がいちばんやってはいけない形が、片方のページにだけ残っていた。
-const SEARCH_TIMEOUT_MS=8000;                  // verify.js の TIMEOUT_MS と同じ
-async function fetchPlaces(q){
-  const r=await fetch("https://msearch.gsi.go.jp/address-search/AddressSearch?q="+encodeURIComponent(q),
-    {signal:AbortSignal.timeout(SEARCH_TIMEOUT_MS)});
-  if(!r.ok) throw new Error(`サーバが ${Number(r.status)} を返しました`);
-  const j=await r.json();
-  // 200 でも本文が配列とは限らない。形を確かめる前に「無い」と言わない
-  if(!Array.isArray(j)) throw new Error("応答が一覧の形をしていません");
-  return j;
-}
-// 画面に出す理由は、こちらが用意した文字列だけにする（応答の中身は入れない）
-const searchWhy=(e)=> e?.name==="TimeoutError" ? "時間切れ"
-  : /^サーバが|^応答が/.test(e?.message??"") ? e.message : "通信できません";
-let searchSeq=0;
+// ⚠ 通信・時間切れ・再試行・古い応答の追い越し防止は **places.js の1か所**にある
+//   （掟: 同じ問いに答える実装を2つ持たない）。ここに残すのは**描くことだけ**。
+//   以前はここだけ別実装で、時間切れも再試行も追い越し防止も無く、
+//   **取れなかったときに「見つかりませんでした」と書いていた**。
+//   この製品がいちばんやってはいけない形が、片方のページにだけ残っていた。
+const search$=KonjakuPlaces.createSearch();
 async function search(q){
-  const seq=++searchSeq;                       // 遅れて返った古い応答で画面を上書きしない
-  const stale=()=>seq!==searchSeq;
   candsEl.innerHTML=`<div class="hint" style="padding:4px 2px">検索中…</div>`;
-  let list=null,err=null;
-  // 瞬断と 5xx は1回だけ再試行する。時間切れは再試行しない（待たせただけになる）
-  for(let i=0;i<2 && list===null;i++){
-    try{ list=await fetchPlaces(q); }catch(e){ err=e; }
-    if(stale()) return;
-    if(err?.name==="TimeoutError") break;
-  }
-  if(list===null){
+  const r=await search$.run(q,10);
+  if(r.state==="stale") return;                // 遅れて返った古い応答。画面に触らない
+  if(r.state==="error"){
     candsEl.innerHTML=`<div class="hint" style="padding:4px 2px;color:var(--missing)">
-      検索の応答を取れませんでした（${searchWhy(err)}）。<b>「見つからなかった」ではありません。</b>
+      検索の応答を取れませんでした（${r.why}）。<b>「見つからなかった」ではありません。</b>
       <button class="retry-btn" id="reSearch">再試行</button></div>`;
     document.getElementById("reSearch").onclick=()=>search(q);
     return;
   }
-  if(!list.length){
+  if(r.state==="empty"){
     candsEl.innerHTML=`<div class="hint" style="padding:4px 2px">見つかりませんでした</div>`;
     return;
   }
-  // 応答は関連度順ではなく都道府県コードの昇順なので、そのままでは先頭が別の土地になる
-  // （実測:「豊洲」は八戸市が先頭）。並べ替えと確度の判定は places.js に任せる
-  const r=KonjakuPlaces.places(list,q,10);
   // ⚠ 地名も副題も地理院の応答そのもの。data-title は下で dataset.title として
   //   読み戻すが、ブラウザが実体参照を元の文字に戻すので、渡る値は生のままになる。
   //   （以前は " だけを &quot; にしていた。< は素通りしていた）
@@ -797,6 +779,13 @@ async function search(q){
 qEl.addEventListener("input",()=>{
   clearTimeout(timer);
   const v=qEl.value.trim();
+  // ⚠ **打つたびに世代を進める。** 「2文字未満のときだけ」では足りない。
+  //   実測（2026-08-16）: 「渋谷」の応答待ちのまま「新宿」へ変えると、
+  //   デバウンスの 350ms のあいだに古い応答が届き、**入力欄は「新宿」なのに
+  //   「東京都渋谷区」が並ぶ**。その候補を押せば違う場所へ飛ぶ。
+  //   ⚠ 新しい検索が始まるのは 350ms 後なので、run() の中で世代を進めるだけでは間に合わない。
+  //   **入力の瞬間に切る。**
+  search$.cancel();
   if(v.length<2){ candsEl.innerHTML=""; return; }
   timer=setTimeout(()=>search(v),350);
 });
