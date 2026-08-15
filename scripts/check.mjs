@@ -164,6 +164,46 @@ for (const f of htmlFiles) {
       + `（「旧水部です」と言い切っている、その出どころだけが毎回取り直しになる）`);
   else ok(`判定文の根拠（${lfc}）が棚に入る（棚の対象 ${shelf.length} ホスト）`);
 
+  // ⚠ **表を見るだけでは足りない。isTile() を実際に動かす。**
+  //   配列に載っていても、`isTile` の中を壊せば棚に入らない（ホストの見方でも、
+  //   パスの前置きでも）。**表だけ見る検査は、壊れた実装の上でも緑になる。**
+  // ⚠ 代表 URL は思いつきで書かない。**verify.js が実際に組み立てる形**から作る。
+  //   でないと「検査だけが通る URL」を相手にすることになる。
+  if (shelf?.length && lfc) {
+    const layer = /LFC_NAT\s*=\s*["']([^"']+)/.exec(vf)?.[1];
+    const shape = /\$\{LFC\}\/\$\{layer\}\/\$\{z\}\/\$\{t\.x\}\/\$\{t\.y\}\.geojson/.test(vf);
+    if (!layer) bad("verify.js から地形分類の層の名前を読めない（この検査が何も見ていない）");
+    else if (!shape) bad("verify.js の地形分類 URL の組み立てが変わった（代表 URL を作り直すこと）");
+    else {
+      const { runInNewContext } = await import("node:vm");
+      // sw.js は最上位で self.addEventListener を呼ぶ。動かすためだけの器を渡す。
+      const sandbox = { self: { addEventListener() {} }, location: { origin: "" } };
+      let fns = null;
+      try { fns = runInNewContext(`${swSrc}\n;({ isTile, tileTtl })`, sandbox, { timeout: 3000 }); }
+      catch (e) { bad(`public/sw.js を動かせない: ${String(e.message).slice(0, 80)}`); }
+      if (fns) {
+        const real = new URL(`https://${lfc}/xyz/${layer}/16/58205/25807.geojson`);
+        const cases = [
+          [real, true, "判定文の根拠（地形分類）"],
+          [new URL(`https://${lfc}/development/ichiran.html`), false, "同じホストだが /xyz/ でないもの"],
+          [new URL("https://msearch.gsi.go.jp/address-search/AddressSearch?q=x"), false, "住所検索"],
+          [new URL("https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/16/1/1.jpg"), true, "空中写真"],
+        ];
+        const wrong = cases.filter(([u, want]) => fns.isTile(u) !== want)
+          .map(([, want, name]) => `${name}は${want ? "入るはず" : "入らないはず"}`);
+        wrong.length
+          ? bad(`sw.js の isTile() の判定が違う: ${wrong.join("、")}`
+              + `（表に載っていても、isTile の中を壊せば棚に入らない）`)
+          : ok(`sw.js の isTile() を実際に動かして確かめた（${cases.length} 通り）`);
+        // 寿命も動かして見る。地形分類は 30 日（実測で 1 年以上更新が無い）
+        const D = 24 * 60 * 60 * 1000;
+        fns.tileTtl(real) === 30 * D
+          ? ok("地形分類の寿命は 30 日")
+          : bad(`地形分類の寿命が 30 日でない: ${fns.tileTtl(real) / D} 日`);
+      }
+    }
+  }
+
   // ⚠ **cost.mjs が表を写していないこと。** 写すと、片方だけ足したときに
   //   「棚に入れるもの」と「数えるもの」がずれる（実際にずれていた）。
   const costSrc = bare(await readFile(join(ROOT, "scripts/cost.mjs"), "utf8"));
