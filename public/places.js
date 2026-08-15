@@ -326,7 +326,71 @@
              pick: shouldPick(rows, areas, contested) ? 0 : -1 };
   }
 
-  const api = { places, parseAddress, classify, buildAreas, shouldPick, contestedOf, describe };
+  // ---- 検索そのもの（通信・時間切れ・再試行・世代） ----
+  //
+  // ⚠ **ここが唯一の実装。** 以前は index.html と peel3d.js が同じものを持っていて、
+  //   実際に食い違っていた（/peel だけ時間切れも再試行も無く、**取れなかったときに
+  //   「見つかりませんでした」と書いていた**）。揃え直したあとも「揃えてあるだけ」で、
+  //   片方だけ直す事故が起きうる状態だった（掟: 同じ問いに答える実装を2つ持たない）。
+  //
+  // ⚠ **画面には何も描かない。** 返すのは状態と値だけで、DOM は各画面が作る。
+  //   トップの「この地名を報告する」や 3D の候補ボタンは、画面ごとに違ってよい。
+  //
+  // ⚠ `fetch` は差し替えられるようにする。**検査が「1検索で何回叩いたか」を数えるため**
+  //   （数えられないと、1検索1リクエストという地理院への約束を機械で守れない）。
+  const API = "https://msearch.gsi.go.jp/address-search/AddressSearch?q=";
+  const SEARCH_TIMEOUT_MS = 8000;              // verify.js の TIMEOUT_MS と同じ
+
+  // 画面に出す理由は、こちらが用意した文字列だけにする（応答の中身は入れない）
+  const whyOf = (e) => e?.name === "TimeoutError" ? "時間切れ"
+    : /^サーバが|^応答が/.test(e?.message ?? "") ? e.message : "通信できません";
+
+  function createSearch(opt) {
+    const doFetch = opt?.fetch ?? ((...a) => global.fetch(...a));
+    // 遅れて返った古い応答で画面を上書きしない。**入力を消したときも進める**（cancel）。
+    let seq = 0;
+
+    async function once(q) {
+      const r = await doFetch(API + encodeURIComponent(q),
+        { signal: AbortSignal.timeout(SEARCH_TIMEOUT_MS) });
+      if (!r.ok) throw new Error(`サーバが ${Number(r.status)} を返しました`);
+      const j = await r.json();
+      // 200 でも本文が配列とは限らない。形を確かめる前に「無い」と言わない
+      if (!Array.isArray(j)) throw new Error("応答が一覧の形をしていません");
+      return j;
+    }
+
+    return {
+      // ⚠ 入力が短くなった／画面が別のことを始めたときに呼ぶ。
+      //   これを呼ばないと、**遅れて返った候補が空の入力欄へ復活する**
+      //   （2026-08-15 に両画面で再現させた）。
+      cancel() { seq++; },
+
+      // { state:"found", rows, pick } / { state:"empty" }
+      // { state:"error", why }        / { state:"stale" }
+      async run(q, limit) {
+        const my = ++seq;
+        const stale = () => my !== seq;
+        let list = null, err = null;
+        // 瞬断と 5xx は1回だけ自動で再試行する。
+        // 時間切れは再試行しない（同じ相手をもう8秒待たせるのは、待たせただけになる）。
+        for (let i = 0; i < 2 && list === null; i++) {
+          try { list = await once(q); } catch (e) { err = e; }
+          if (stale()) return { state: "stale" };
+          if (err?.name === "TimeoutError") break;
+        }
+        if (list === null) return { state: "error", why: whyOf(err) };
+        if (!list.length) return { state: "empty" };
+        // 応答は関連度順ではなく都道府県コードの昇順なので、そのままでは先頭が別の土地になる。
+        // 並べ替えと「選ぶかどうか」の判定は places()（応答の中身だけで決まる）。
+        const r = places(list, q, limit ?? 10);
+        return { state: "found", rows: r.rows, pick: r.pick };
+      },
+    };
+  }
+
+  const api = { places, parseAddress, classify, buildAreas, shouldPick, contestedOf, describe,
+    createSearch, SEARCH_TIMEOUT_MS };
   if (typeof module === "object" && module.exports) module.exports = api;
   else global.KonjakuPlaces = api;
 })(typeof window !== "undefined" ? window : globalThis);

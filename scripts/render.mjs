@@ -2724,6 +2724,147 @@ const CASES = [
       return `畳んで ${shut.h}px → 押すと ${open.h}px（検索欄・地名 ${open.chips} 個・現在地）`;
     },
   },
+  // ⚠ **同じ応答を渡したとき、トップと 3D が同じ並び・同じ自動選択になること。**
+  //   AC の本体。以前は画面ごとに実装があり、**片方だけ直す事故**が起きうる状態だった。
+  //   ⚠ **実通信しない。** 42 語をトップと 3D で別々に叩くと 84 リクエストになり、
+  //   地理院への負荷が倍になる（掟: 地理院への負荷は自分の請求とは別に見る）。
+  //   同じ固定の応答を両画面へ流して、出てきた並びを突き合わせる。
+  //   ⚠ 応答は「渋谷」の実際の形（都道府県コードの昇順＝**先頭が別の土地**）を模してある。
+  {
+    name: "同じ応答なら、トップと 3D の候補が一致する", path: "/",
+    setup: (page) => page.route("**/AddressSearch*", (r) => r.fulfill({
+      status: 200, contentType: "application/json",
+      // ⚠ **自動選択が発火する組み合わせにする。** 先に「福島県猪苗代町渋谷」を混ぜた
+      //   3 件で試したが pick=-1（発火しない）で、**「自動選択が一致する」の主張が
+      //   空振りしていた**（2026-08-15 に気づいた）。区＋駅なら発火する（実測）。
+      body: JSON.stringify([
+        { properties: { title: "東京都渋谷区" }, geometry: { coordinates: [139.700, 35.660] } },
+        { properties: { title: "渋谷駅" },       geometry: { coordinates: [139.701, 35.658] } },
+      ]),
+    })),
+    async check(page) {
+      await page.fill("#q", "渋谷");
+      await page.waitForFunction(() => document.querySelectorAll("#list .tx b").length > 0,
+        null, { timeout: 30000 });
+      const top = await page.evaluate(() => ({
+        rows: [...document.querySelectorAll("#list .tx b")].map((e) => e.textContent.trim()),
+        picked: document.querySelector("#list .sel .tx b")?.textContent?.trim() ?? null,
+      }));
+      // 同じ入れ物のまま /peel を開いて、同じ応答で比べる（route は生きたまま）
+      await page.goto(BASE + "/peel", { waitUntil: "domcontentloaded" });
+      await page.click("#findLabel");
+      await page.fill("#q", "渋谷");
+      await page.waitForFunction(() => document.querySelectorAll("#cands button").length > 0,
+        null, { timeout: 30000 });
+      const peel = await page.evaluate(() => ({
+        rows: [...document.querySelectorAll("#cands button")].map((b) => b.childNodes[0].textContent.trim()),
+        picked: document.querySelector("#cands button.on")?.childNodes[0]?.textContent?.trim() ?? null,
+      }));
+      must(top.rows.length > 0, "トップに候補が出ていない");
+      must(peel.rows.length > 0, "3D に候補が出ていない");
+      must(JSON.stringify(top.rows) === JSON.stringify(peel.rows),
+        `同じ応答なのに並びが違う: トップ ${JSON.stringify(top.rows)} / 3D ${JSON.stringify(peel.rows)}`);
+      // ⚠ **どちらも null なら、この主張は空振りする。** 発火することまで見る。
+      must(top.picked !== null,
+        "自動選択が発火していない。この応答では発火するはずで、発火しないと下の突き合わせが空振りする");
+      must(top.picked === peel.picked,
+        `同じ応答なのに自動選択が違う: トップ ${JSON.stringify(top.picked)} / 3D ${JSON.stringify(peel.picked)}`);
+      return `${top.rows.length} 件が一致（選択 ${JSON.stringify(top.picked)}）`;
+    },
+  },
+  // ⚠ **画面が別のことを始めたときも、古い候補が出ない。**
+  //   打つたびに切るだけでは足りない（2026-08-16 の指摘・実測で再現）。
+  //   「渋谷」の応答待ちのままクイック地点を選ぶと、行動一覧（立体で見る等）が出たあと、
+  //   **2.5 秒後に「東京都渋谷区」で上書きされた**。
+  //   ⚠ 入力欄は setMode() が空にするので `oninput` は発火せず、そこの cancel() には届かない。
+  {
+    name: "検索中に場所を選んでも、行動一覧が古い候補で上書きされない", path: "/",
+    setup: (page) => page.route("**/AddressSearch*", async (r) => {
+      await new Promise((x) => setTimeout(x, 2000));
+      await r.fulfill({ status: 200, contentType: "application/json",
+        body: JSON.stringify([{ properties: { title: "東京都渋谷区" },
+                                geometry: { coordinates: [139.7, 35.66] } }]) });
+    }),
+    async check(page) {
+      await page.fill("#q", "渋谷");
+      await page.waitForTimeout(1000);         // 応答はまだ返っていない
+      await page.locator(".quick button").first().click();   // 場所を選ぶ（setMode("action")）
+      await page.waitForFunction(() => document.querySelectorAll("#list .tx b").length > 0,
+        null, { timeout: 20000 });
+      const acted = (await page.locator("#list").innerText()).trim();
+      must(/立体で見る/.test(acted), `場所を選んでも行動一覧が出ていない: ${JSON.stringify(acted.slice(0, 40))}`);
+      await page.waitForTimeout(2500);         // ⚠ ここで古い応答が届く
+      const after = (await page.locator("#list").innerText()).trim();
+      must(!/渋谷区/.test(after),
+        `場所を選んだのに、行動一覧が古い候補で上書きされた: ${JSON.stringify(after.slice(0, 40))}`);
+      // ⚠ 「変わらないこと」は見ない。判定が進むと行動一覧は**正当に増える**
+      //   （最初そう書いて落ちた）。見たいのは**行動一覧のままであること**。
+      must(/立体で見る/.test(after),
+        `行動一覧でなくなっている: ${JSON.stringify(after.slice(0, 40))}`);
+      return `行動一覧のまま（${JSON.stringify(after.slice(0, 18))}）`;
+    },
+  },
+  // ⚠ **別の語へ変えたときも、古い候補が出ない。**
+  //   「入力を消したとき」だけ切っていては足りない（2026-08-16 の指摘・実測で再現）。
+  //   「渋谷」の応答待ちのまま「新宿」へ変えると、デバウンスの 320〜350ms のあいだに
+  //   古い応答が届き、**入力欄は「新宿」なのに「東京都渋谷区」が並ぶ**。
+  //   ⚠ その候補を押せば**違う場所へ飛ぶ**。数え方の問題ではなく、行き先の問題。
+  //   ⚠ 新しい検索が始まるのはデバウンスのあとなので、run() の中で世代を進めるだけでは
+  //   間に合わない。**入力の瞬間に cancel() する**必要がある。
+  ...[["トップ", "/", "#list", false], ["3D", "/peel", "#cands", true]].map(([who, path, listSel, needOpen]) => ({
+    name: `${who}: 別の語へ変えたら、前の語の候補が出ない`, path,
+    // ⚠ 「渋谷」だけ遅らせる。実際の地理院には出ない
+    setup: (page) => page.route("**/AddressSearch*", async (r) => {
+      const q = decodeURIComponent(new URL(r.request().url()).searchParams.get("q") ?? "");
+      if (q === "渋谷") await new Promise((x) => setTimeout(x, 2000));
+      await r.fulfill({ status: 200, contentType: "application/json",
+        body: JSON.stringify([{ properties: { title: q === "渋谷" ? "東京都渋谷区" : "東京都新宿区" },
+                                geometry: { coordinates: [139.7, 35.66] } }]) });
+    }),
+    async check(page) {
+      if (needOpen) { await page.click("#findLabel"); await page.waitForTimeout(300); }
+      await page.fill("#q", "渋谷");
+      await page.waitForTimeout(2150);         // 古い応答が届く直前
+      await page.fill("#q", "新宿");
+      await page.waitForTimeout(250);          // ⚠ 新しい検索はまだ始まっていない
+      const mid = (await page.locator(listSel).innerText().catch(() => "")).trim();
+      must(await page.inputValue("#q") === "新宿", "入力欄が「新宿」になっていない");
+      must(!/渋谷/.test(mid),
+        `別の語へ変えたのに、前の語の候補が出ている: ${JSON.stringify(mid.slice(0, 40))}`
+        + `（押すと違う場所へ飛ぶ）`);
+      // 新しい語の候補は、そのあとちゃんと出る
+      await page.waitForFunction(() => /新宿/.test(document.body.innerText), null, { timeout: 20000 });
+      return `切替中は ${JSON.stringify(mid.slice(0, 14))} ／ そのあと新宿が出る`;
+    },
+  })),
+  // ⚠ **入力を消したのに、遅れて返った候補が復活しない。**
+  //   2026-08-15 に**両画面で再現させた**: 検索中に入力を空にすると、
+  //   空の入力欄のまま候補が並んだ。原因は「2文字未満で return するとき、
+  //   検索の世代を進めていなかった」こと。**同じ実装が2つあったので、両方に同じ穴があった。**
+  //   いまは places.js の createSearch().cancel() を両画面が呼ぶ。
+  //   ⚠ 応答を遅らせて作る。実際の地理院には出ない。
+  ...[["トップ", "/", "#list", false], ["3D", "/peel", "#cands", true]].map(([who, path, listSel, needOpen]) => ({
+    name: `${who}: 入力を消したら、遅れて返った候補が復活しない`, path,
+    setup: (page) => page.route("**/AddressSearch*", async (r) => {
+      await new Promise((x) => setTimeout(x, 2500));
+      await r.fulfill({ status: 200, contentType: "application/json",
+        body: JSON.stringify([{ properties: { title: "東京都渋谷区" }, geometry: { coordinates: [139.7, 35.66] } },
+                              { properties: { title: "渋谷駅" }, geometry: { coordinates: [139.7, 35.65] } }]) });
+    }),
+    async check(page) {
+      if (needOpen) { await page.click("#findLabel"); await page.waitForTimeout(300); }
+      await page.fill("#q", "渋谷");
+      await page.waitForTimeout(900);          // 応答はまだ返っていない
+      await page.fill("#q", "");               // ⚠ ここで世代が進まないと復活する
+      await page.waitForTimeout(3200);         // 遅れた応答が返る
+      const shown = (await page.locator(listSel).innerText().catch(() => "")).trim();
+      const value = await page.inputValue("#q");
+      must(value === "", `入力欄が空になっていない: ${JSON.stringify(value)}`);
+      must(!/渋谷/.test(shown),
+        `入力を消したのに、遅れて返った候補が復活している: ${JSON.stringify(shown.slice(0, 40))}`);
+      return `入力欄 空 ／ 一覧 ${shown ? JSON.stringify(shown.slice(0, 20)) : "空"}`;
+    },
+  })),
   {
     name: "3D の検索も、取れなかったときに「無い」と言わない", path: `/peel?${TOYOSU}`,
     setup: (page) => page.route("**/address-search/**", (r) => r.abort()),
@@ -3015,7 +3156,19 @@ await mkdir(OUT, { recursive: true });
 const browser = await chromium.launch();
 let failed = 0;
 
-for (const c of CASES) {
+// ⚠ **1件だけ回せるようにする。**
+//   79 件を全部回すと 5 分近くかかる。検査を1つ足すたび、あるいは
+//   「わざと壊して落ちることを確かめる」たびに全件を回していては、確認が高くつき、
+//   **確かめずに済ませる誘惑が生まれる**（実際、確認1つに 5 分かけていた）。
+//   ⚠ **CI と main では必ず全件を回す。** ここは手元で1件を見るためだけのもの。
+const ONLY = process.argv.find((a) => a.startsWith("--only="))?.slice(7);
+const RUN = ONLY ? CASES.filter((c) => c.name.includes(ONLY)) : CASES;
+if (ONLY) {
+  if (!RUN.length) { console.log(`\x1b[31m--only=${ONLY} に当てはまるケースが無い\x1b[0m`); process.exit(1); }
+  console.log(`\x1b[33m⚠ --only=${ONLY}: ${RUN.length} / ${CASES.length} 件だけ回す（全件ではない）\x1b[0m\n`);
+}
+
+for (const c of RUN) {
   // スマホ幅でしか出ない壊れ方（タップ判定）を見るケースがあるので、画面はケースごとに指定できる
   // スマホ幅でしか出ない壊れ方を見るケースは、指（hasTouch）も一緒に再現する。
   // これが無いと @media (hover:none) が効かず、タッチ端末での見え方を測れない。
@@ -3060,5 +3213,8 @@ await browser.close();
 stop();
 
 console.log(`\n${"─".repeat(52)}`);
-if (failed) { console.log(`\x1b[31m${failed} / ${CASES.length} 件が失敗\x1b[0m`); process.exit(1); }
-console.log(`\x1b[32m${CASES.length} 件すべて描画できた\x1b[0m`);
+if (failed) { console.log(`\x1b[31m${failed} / ${RUN.length} 件が失敗\x1b[0m`); process.exit(1); }
+// ⚠ 回していないケースを「描画できた」と言わない（--only のとき）
+console.log(ONLY
+  ? `\x1b[33m${RUN.length} 件は描画できた（⚠ 全 ${CASES.length} 件のうち --only で選んだぶんだけ）\x1b[0m`
+  : `\x1b[32m${RUN.length} 件すべて描画できた\x1b[0m`);
