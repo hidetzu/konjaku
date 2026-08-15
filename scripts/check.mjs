@@ -481,6 +481,40 @@ for (const f of htmlFiles) {
       + `（カード画像は SNS で単独に流れるので、ここが看板の代わりになる）`);
   else ok(`看板と共有カードの名乗りが揃っている（${h1}）`);
 }
+// ⚠ **プライバシーの説明が、2 つの画面で割れないこと。**
+//   / と /peel は**同じことをする**（どちらも判定すると URL に地名と座標を載せる）ので、
+//   同じ約束をしなければならない。⚠ 実際、**peel には説明が1つも無かった**（2026-08-15）。
+//   ⚠ 文言は HTML に直接書く。JS から差し込むと、**スクリプトが落ちたとき説明だけ消える**。
+//   そのぶん 2 か所に同じ文字が並ぶので、ここで突き合わせる
+//   （掟「やむを得ず2つ持つときは、機械で突き合わせる」）。
+{
+  const strip = (s) => s.replace(/<!--[\s\S]*?-->/g, "").replace(/<[^>]+>/g, "").replace(/\s+/g, "");
+  const grab = (src, attr) => {
+    const m = new RegExp(`<div[^>]*\\b${attr}\\b[^>]*>([\\s\\S]*?)</div>`).exec(src);
+    return m ? strip(m[1]) : null;
+  };
+  const idx = await readFile(join(PUB, "index.html"), "utf8");
+  const peel = await readFile(join(PUB, "peel.html"), "utf8");
+  for (const [attr, name] of [["data-privacy-lead", "畳まずに見える1行"],
+                              ["data-privacy-body", "詳しい説明"]]) {
+    const a = grab(idx, attr), b = grab(peel, attr);
+    if (!a) bad(`index.html に${name}（${attr}）が無い（この検査が何も見ていない）`);
+    else if (!b) bad(`peel.html に${name}（${attr}）が無い。/peel も URL に地名と座標を載せる`);
+    else if (attr === "data-privacy-lead" && a !== b)
+      bad(`プライバシーの${name}が2つの画面で違う: / →「${a}」/ /peel →「${b}」`);
+    else if (attr === "data-privacy-body" && !b.includes("URL"))
+      bad(`peel.html の${name}に「URL に載る」が無い（同じことが起きるのに説明が違う）`);
+    else ok(`プライバシーの${name}が2つの画面で揃っている`);
+  }
+  // ⚠ **主語のない「サーバーには送りません」を、どちらの画面にも書かせない。**
+  //   事実でない（調べた場所は URL に載り、開けば配信元へ届く）。
+  //   ⚠ この検査を足す前は、**実描画がこの文言を必須にしていた**（誤りを固定していた）。
+  for (const [f, src] of [["index.html", idx], ["peel.html", peel]]) {
+    /サーバーには送りません/.test(strip(src))
+      ? bad(`${f} に主語のない「サーバーには送りません」がある（URL に載る以上、事実でない）`)
+      : ok(`${f} に主語のない「送りません」は無い`);
+  }
+}
 {
   const { execFileSync } = await import("node:child_process");
   try {
