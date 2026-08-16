@@ -330,6 +330,18 @@ function summarizeLand(counts, classifiedPixels){
   return {name,count,classifiedPixels,pct:(count/classifiedPixels*100).toFixed(1)};
 }
 
+// 建物の足元に付いた明治期区分の最多値。「該当なし」「特定できず」は
+// 土地区分名ではないため、最多区分の候補から除く。
+function summarizeBuildingLand(counts, classified){
+  if(!counts || !(classified>0)) return null;
+  const entries=Object.entries(counts)
+    .filter(([name,n])=>n>0 && SWALE.some(c=>c.name===name))
+    .sort((a,b)=>b[1]-a[1]);
+  if(!entries.length) return null;
+  const [name,count]=entries[0];
+  return {name,count,classified,pct:(count/classified*100).toFixed(1)};
+}
+
 // ============================================================
 // 建物（Overpass）。事前計算データが無い範囲だけの経路。
 // 混雑で落ちうるので、失敗しても画面は成立させる（そして嘘は書かない）。
@@ -482,11 +494,11 @@ let place=null;
 //   rgbaは通常のカードには出さず、利用者が読む主情報を優先する。
 function meijiText(p){
   if(Number(p.wasWater)===1) return "足元は、明治期には水でした";
-  if(p.meiji==="該当なし") return "この地点は、明治期の低湿地データでは区分されていません";
+  if(p.meiji==="該当なし") return "この建物の足元では、明治期の土地の区分を確認できませんでした";
   if(p.meiji==="データなし") return "明治期の低湿地データの対象外です";
   if(p.meiji==="読み込めず") return "明治期の低湿地データを読み込めませんでした";
-  if(p.meiji==="特定できず") return "明治期の土地の区分を特定できませんでした";
-  return `明治期の土地: ${p.meiji}`;
+  if(p.meiji==="特定できず") return "明治期の土地の区分を判定できませんでした";
+  return `明治期には、${p.meiji}でした`;
 }
 function pickCard(p){
   const src=p.heightSource, made=p.startDate, land=esc(meijiText(p));
@@ -702,7 +714,7 @@ async function loadArea(lon,lat,title,opt){
   area={ title, areaTitle:pre?.title??null, source:w.pre?"pre":"tiles", pending:true,
     total:0, wet:0, classified:0, unread:0, counts:{}, dated:0,
     waterRatio:w.ratio, waterRead, waterUnread,
-    landSummary:summarizeLand(w.classCounts,w.classifiedPixels) };
+    landSummary:summarizeLand(w.classCounts,w.classifiedPixels), buildingLand:null };
   showResult(); render();
 
   // --- 2. 建物 ---
@@ -747,7 +759,7 @@ async function loadArea(lon,lat,title,opt){
     map.getSource("bld").setData({type:"FeatureCollection",features:[]});
     area={ title, total:0, wet:0, classified:0, unread:0, counts:{}, dated:0,
       waterRatio:w.ratio, waterRead, waterUnread, source:"none",
-      landSummary:summarizeLand(w.classCounts,w.classifiedPixels) };
+      landSummary:summarizeLand(w.classCounts,w.classifiedPixels), buildingLand:null };
     statusEl.innerHTML=`<span class="err">建物データを取得できませんでした（Overpass 混雑）。</span>
       <span style="color:var(--ink-dim)">水域と空中写真だけで表示しています。</span> ${retryBtn(lon,lat,title)}`;
     wireRetry(lon,lat,title);
@@ -801,7 +813,8 @@ async function loadArea(lon,lat,title,opt){
       return c;
     })(),
     waterRatio:w.ratio, waterRead, waterUnread,
-    landSummary:summarizeLand(w.classCounts,w.classifiedPixels) };
+    landSummary:summarizeLand(w.classCounts,w.classifiedPixels),
+    buildingLand:summarizeBuildingLand(counts,classified) };
 
   // 水域が読めていないのに「水域 0 面を判定しました」とは書かない
   statusEl.innerHTML=`<span style="color:var(--ink-dim)">${waterRead?`水域 ${w.rects} 面 ／ `:""}建物 ${
@@ -858,7 +871,8 @@ function landVerdict(){
   // 建物がある場合は、足元のラスタ判定が成立したときだけ範囲集計も見せる。
   // 通信断で建物の判定が0件なのに、事前生成GeoJSONの割合だけ出すと、
   // 「読めていないのに割合が出た」状態になる。
-  const land=(area.classified>0||area.total===0)?area.landSummary:null;
+  const land=(area.classified>0||area.total===0)
+    ? (area.total>0 ? area.buildingLand : area.landSummary) : null;
   // 足元を1件でも判定できた。割合は**判定できた件数**からしか作らない
   if(area.classified>0)
     return { kind:"ratio", pct:(area.wet/area.classified*100).toFixed(1),
@@ -885,15 +899,23 @@ function renderLand(v){
   if(v.kind==="ratio"||v.kind==="area"){
     // 数字だけを置かない。**何の割合か**と**分母**を必ず同じ板に出す
     const what=v.kind==="ratio"
-      ? `の建物が、明治期には<b>水の上</b>だった`
+      ? (v.land
+        ? `建物の足元は、明治期には<b>${esc(v.land.name)}</b>が最多でした`
+        : `の建物が、明治期には<b>水の上</b>だった`)
       : `の面積が、明治期には<b>水</b>だった`;
     const den=v.kind==="ratio"
       ? `${v.classified} / ${v.total}件の足元を判定`
       : (v.pending?"建物を取得中。揃うと建物ごとの割合になる"
                   :"建物が取れなかったため、面積比で出している");
-    const land=`${v.land?`<div class="land-sub">この範囲で最も多い区分: <b>${esc(v.land.name)}</b>（${v.land.pct}%）</div>`:""}`;
-    landEl.innerHTML=`<div class="land-line"><b class="land-num">${v.pct}<small>%</small></b>`
-      + `<span class="land-what">${what}</span></div><div class="land-den">${den}</div>${land}`;
+    const land=v.kind==="ratio"&&v.land
+      ? `<div class="land-sub">区分を特定できた足元のうち ${esc(v.land.name)} ${v.land.count} / ${v.land.classified}件（${v.land.pct}%）</div>`
+      : (v.land?`<div class="land-sub">この範囲で最も多い区分: <b>${esc(v.land.name)}</b>（${v.land.pct}%）</div>`:"");
+    const water=v.kind==="ratio"&&v.land
+      ? `<div class="land-sub">水域だった建物: ${v.pct}%</div>` : "";
+    landEl.innerHTML=v.kind==="ratio"&&v.land
+      ? `<div class="land-line"><b class="land-alt">${esc(v.land.name)}</b><span class="land-what">${what}</span></div><div class="land-den">${den}</div>${land}${water}`
+      : `<div class="land-line"><b class="land-num">${v.pct}<small>%</small></b>`
+        + `<span class="land-what">${what}</span></div><div class="land-den">${den}</div>${land}`;
     return;
   }
   if(v.kind==="dry"){
@@ -929,13 +951,20 @@ function showResult(){
   const v=landVerdict();
   renderLand(v);
   if(v.kind==="ratio"){
-    heroEl.innerHTML=`${v.pct}<small>%</small>`;
-    capEl.innerHTML = v.all
-      ? `の建物が、明治期には<b>水の上</b>だった<br>
-         <span style="opacity:.7">${v.total}件すべての足元を1件ずつ判定した実測値</span>`
-      : `の建物が、明治期には<b>水の上</b>だった<br>
-         <span style="opacity:.7">足元を判定できた ${v.classified} / ${v.total} 件のうちの実測値
-         （残りは明治期のデータが${v.unread?"読み込めていない":"無い"}）</span>`;
+    if(v.land){
+      heroEl.innerHTML=`<span class="hero-alt">${esc(v.land.name)}</span>`;
+      capEl.innerHTML=`建物の足元は、明治期には<b>${esc(v.land.name)}</b>が最多でした<br>
+        <span style="opacity:.7">区分を特定できた ${v.land.count} / ${v.land.classified} 件（${v.land.pct}%）</span><br>
+        <span style="opacity:.7">水域だった建物：${v.pct}%（足元を判定できた ${v.classified} / ${v.total} 件）</span>`;
+    } else {
+      heroEl.innerHTML=`${v.pct}<small>%</small>`;
+      capEl.innerHTML = v.all
+        ? `の建物が、明治期には<b>水の上</b>だった<br>
+           <span style="opacity:.7">${v.total}件すべての足元を1件ずつ判定した実測値</span>`
+        : `の建物が、明治期には<b>水の上</b>だった<br>
+           <span style="opacity:.7">足元を判定できた ${v.classified} / ${v.total} 件のうちの実測値
+           （残りは明治期のデータが${v.unread?"読み込めていない":"無い"}）</span>`;
+    }
   } else if(v.kind==="none"&&v.scope==="building"){
     // 建物ごとの割合は出せない。だが土地そのものには地形分類が答えられる。
     // 出せないものと、出せるものを、混ぜずに並べる

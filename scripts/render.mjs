@@ -683,10 +683,9 @@ const CASES = [
       must(/事前に取り込んだデータ|事前計算データ/.test(status),
         `事前に取り込んだデータを使っていない（${status.slice(0, 80)}）`);
       const hero = await page.locator("#heroNum").textContent({ timeout: 45000 });
-      const pct = Number(hero.match(/[\d.]+/)?.[0] ?? 0);
-      must(pct > 99, `建物ベースの割合になっていない（面積比に落ちている?）: ${hero}`);
       const cap = await page.locator("#heroCap").textContent();
-      must(cap.includes("1件ずつ判定した実測値"), `実測の説明が出ていない: ${cap.trim().slice(0, 40)}`);
+      must(hero.trim().length > 0 && cap.includes("建物の足元") && cap.includes("水域だった建物"),
+        `建物足元の最多区分と水域補足が出ていない: ${hero} / ${cap.trim().slice(0, 80)}`);
       // ⚠ ここは長いあいだ、読んで報告に印字するだけで assert が無かった。
       //   08ce46f で潰した「測っていないことを報告する」と同じ形が、
       //   いちばん重要な case に残っていた（2026-08-14 検証者の指摘）。
@@ -951,8 +950,10 @@ const CASES = [
       // （地表のガードが他の行まで巻き添えにしていないかを、ここで見る）
       must(prov.includes("実際の水域"), `水面の行まで落ちている: ${prov.replace(/\s+/g, " ").slice(0, 60)}`);
       const hero = (await page.locator("#heroNum").textContent()).trim();
-      must(Number(hero.match(/[\d.]+/)?.[0] ?? 0) > 99, `建物の割合が出ていない: ${hero}`);
-      return `${txt.slice(0, 34)}／水面と建物（${hero}）は従来どおり`;
+      const cap = (await page.locator("#heroCap").textContent()).trim();
+      must(hero.length > 0 && cap.includes("建物の足元") && cap.includes("水域だった建物"),
+        `建物足元の最多区分と水域補足が出ていない: ${hero} / ${cap.slice(0, 80)}`);
+      return `${txt.slice(0, 34)}／土地区分と水域補足（${hero}）は従来どおり`;
     },
   },
   // ---- 検索の入口（掟: 取れなかったを「無い」と言わない やる順番3）----
@@ -2938,7 +2939,7 @@ const CASES = [
           null, { timeout: 60000 });
         // ⚠ パネルは閉じたまま（掟の外へ出ない: スマホで既定表示にはしない）
         must(await page.locator("#panel.hide").count() === 1, `${name}: パネルが閉じて始まっていない`);
-        const o = await effOpacity(page, "#land .land-num");
+        const o = await effOpacity(page, "#land .land-alt, #land .land-num");
         const od = await effOpacity(page, "#land .land-den");
         must(o > 0, `${name}: 答えの実効 opacity が ${o}（読めない）`);
         must(od > 0, `${name}: 分母の実効 opacity が ${od}（読めない）`);
@@ -2949,14 +2950,21 @@ const CASES = [
           hero: document.getElementById("heroNum")?.textContent.trim() ?? "",
           heroCap: (document.getElementById("heroCap")?.textContent ?? "").replace(/\s+/g, " ").trim(),
         }));
-        must(pctRe.test(r.num), `${name}: 割合が読めない: 「${r.num}」`);
-        must(r.what.includes("建物が、明治期には") && r.what.includes("水の上"),
-          `${name}: 何の割合かが書かれていない: 「${r.what}」`);
+        const hasCategory = !!r.hero && !/[\d.]+/.test(r.hero);
+        if(hasCategory){
+          must(r.what.includes("建物の足元") && r.what.includes("最多"),
+            `${name}: 最多区分の説明が書かれていない: 「${r.what}」`);
+          must(r.heroCap.includes("水域だった建物"), `${name}: 水域割合の補足が無い: 「${r.heroCap}」`);
+        } else {
+          must(pctRe.test(r.num), `${name}: 割合が読めない: 「${r.num}」`);
+          must(r.what.includes("建物が、明治期には") && r.what.includes("水の上"),
+            `${name}: 何の割合かが書かれていない: 「${r.what}」`);
+        }
         must(r.den === den, `${name}: 分母が違う: 「${r.den}」（期待 ${den}）`);
-        // ⚠ **同じ画面の中で数字が食い違わないこと。** 計算元は landVerdict の1か所
-        must(r.hero === r.num, `${name}: HUD とパネルで割合が違う: HUD「${r.num}」/ パネル「${r.hero}」`);
+        // ⚠ **同じ画面の中で結果が食い違わないこと。** 計算元は landVerdict の1か所
+        if(!hasCategory) must(r.hero === r.num, `${name}: HUD とパネルで割合が違う: HUD「${r.num}」/ パネル「${r.hero}」`);
         const [a, b] = r.den.match(/(\d+) \/ (\d+)/).slice(1);
-        must(r.heroCap.includes(a === b ? `${b}件すべて` : `${a} / ${b} 件`),
+        must(r.heroCap.includes(`${a} / ${b} 件`) || r.heroCap.includes(`${b}件すべて`),
           `${name}: HUD とパネルで分母が違う: HUD「${r.den}」/ パネル「${r.heroCap.slice(0, 60)}」`);
         out.push(`${name} ${r.num}（${r.den}）`);
       }
