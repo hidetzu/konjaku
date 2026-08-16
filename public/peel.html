@@ -199,6 +199,12 @@
   #timePanel.collapsed .time-axis{display:none}
   #timePanel.collapsed #timeToggle .chevron{transform:rotate(180deg)}
   #timePanelBody{border-top:1px solid rgba(255,255,255,.12);padding:7px 14px 10px}
+  /* 共有された状態を復元できなかったときの1行。
+     ⚠ 警告色にはしない。壊れてはいない。共有元と別のものを見ている、という断り書き */
+  #stateMiss{margin:0 0 7px;padding:6px 9px;border-radius:7px;
+    border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.05);
+    color:var(--ink-dim);font-size:var(--fs-note);line-height:1.5}
+  #stateMiss[hidden]{display:none}
   /* 左端のノブは track の外へ半径ぶん出る。再生ボタンとの間隔は、ノブの外周を含めて空ける。 */
   #bar{width:100%;display:flex;align-items:center;gap:18px}
   #play{flex:none;width:38px;height:38px;border-radius:9px;cursor:pointer;font-size:var(--fs-body);
@@ -534,6 +540,12 @@
         <span id="timeToggleText">閉じる</span><span class="chevron" aria-hidden="true">⌄</span></button>
     </div>
     <div id="timePanelBody">
+      <!-- 共有された年代・建物がこの土地に無かったときの1行。
+           ⚠ **年代を動かす帯のすぐ上**に置く。読んだ人が次にすることは「別の年代を選ぶ」なので、
+             選ぶ場所の隣にないと、何をすればよいか分からない。
+           ⚠ この節は畳める（#timePanel.collapsed）。畳んだ人には見えなくなるが、
+             初期状態は開いている（peel3d.js の timePanelOpen=true）。実描画で見ている。 -->
+      <div id="stateMiss" hidden></div>
       <div id="bar">
         <button id="play" aria-pressed="false" aria-label="年代を自動再生" title="自動再生（Space）">▶</button>
         <!-- ⚠ max は目安の初期値でしかない。**段の数は地点によって変わる**ので

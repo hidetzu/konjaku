@@ -317,6 +317,12 @@
        それは判定ではなく作文になり、この画面のほかの行と格が揃わなくなる。
      ⚠ 出せるのは photos() が実際に読めた年代だけ。読めていない年代は並べない。 */
   .strip{display:flex;align-items:flex-start;gap:4px;margin:0 0 9px}
+  /* 共有された年代がこの土地に無かったときの1行。**年代を選ぶ帯のすぐ上**に置く。
+     ⚠ 判定文の近くではなく、ここ。読んだ人が次にすることは「別の年代を選ぶ」なので、
+       選ぶ場所の隣にないと、何をすればよいか分からない。
+     ⚠ 警告色（err）にはしない。壊れてはいない。共有元と別のものを見ている、という断り書き */
+  .era-miss{margin:0 0 7px;padding:6px 9px;border-radius:7px;border:1px solid var(--line);
+    background:rgba(255,255,255,.04);color:var(--ink-dim);font-size:var(--fs-note);line-height:1.5}
   /* 昔 → 今 の向きを、端に置いた2文字だけで示す。
      枠が狭い端末では年代ラベルを畳むので、向きの手がかりがこれだけになる */
   .strip .end{flex:none;align-self:center;font-size:var(--fs-label);color:var(--ink-dim);padding:0 1px}
@@ -1009,6 +1015,35 @@ const PRESETS=[
 //   変化は見た人が読み取る。こちらが言葉にした瞬間、それは判定ではなく作文になる。
 let frames=[], eraIdx=0;               // frames[eraIdx] がいま大きく出ている年代
 let eraTicked=false;                   // この場所で、年代を動かしたことを数えたか
+// URL から復元したい年代（安定したレイヤID）。段が組み上がってから当てる。
+// ⚠ コマ番号では復元しない。残っている写真は土地ごとに違うので、
+//   同じ番号が別の年代を指す（広島 7 コマ / 豊洲 9 コマ / 出島 4 コマ を実測している）。
+let wantEra=null;
+// 復元できなかったとき、何を求められていたか。⚠ 黙って既定の年代へ落とさないために持つ
+let eraMiss=null;
+
+// 年代の ID を、人が読む名前にする。
+// ⚠ 名前の出どころは verify.js の1か所だけ。ここで年代の一覧を作り直さない
+//   （掟: 同じ問いに答える実装を2つ持たない）。
+const eraLabel=(id)=>id==="swale" ? "明治期"
+  : id===Konjaku.LATEST.id ? Konjaku.LATEST.label
+  : Konjaku.ERAS.find((e)=>e.id===id)?.label ?? null;
+
+// いま見ているものを URL に載せる。共有先が同じ場所・同じ年代から始まるようにする。
+// ⚠ 年代はコマ番号ではなく**安定したレイヤID**で書く（上の理由）。
+// ⚠ q と ll しか無い古い URL も、これまでどおり開ける。era は足すだけで、必須にしない。
+// ⚠ まだ段が組み上がっていないあいだは、復元したい年代（wantEra）を載せたままにする。
+//   ここで落とすと、判定を待っている数百 ms のあいだに共有された URL から年代が消える。
+function syncUrl(){
+  if(!current) return;
+  const id=frames[eraIdx]?.id ?? wantEra;
+  history.replaceState(null,"",
+    `?q=${encodeURIComponent(current.title)}&ll=${current.lat.toFixed(5)},${current.lon.toFixed(5)}`
+    +(id?`&era=${encodeURIComponent(id)}`:""));
+}
+// 他の画面へ渡すときの `&era=…`。渡さないと、行き来しただけで年代が落ちる
+const eraParam=()=>{ const id=frames[eraIdx]?.id ?? wantEra;
+  return id?`&era=${encodeURIComponent(id)}`:""; };
 
 // 判定した画素の位置を「タイルに対する割合」で持つ。
 // ⚠ px の絶対値で切り出すと、枠の大きさを変えた瞬間に印が枠の外へ出る。
@@ -1154,16 +1189,38 @@ function loadingHTML(){
     <div class="v-head"><span class="tx dim">この土地の成り立ちを判定中…</span></div>`;
 }
 
+// URL で指定された年代を、段が組み上がった直後・**描く前**に当てる。
+// ⚠ ここでは DOM を触らない（まだ無い）。決めるのは eraIdx と eraMiss だけ。
+// ⚠ 指定された年代がこの土地に無いとき、黙って既定へ落とさない。
+//   残っている写真は土地ごとに違うので、これは普通に起きる（掟: 取れなかったを「無い」と言わない の同類）。
+function resolveWantEra(){
+  if(!wantEra) return;
+  const want=wantEra; wantEra=null;
+  const i=frames.findIndex((x)=>x.id===want);
+  if(i>=0){ eraIdx=i; return; }
+  // 知らない ID を渡されたら、名前にできないので受け取った文字列のまま見せる。
+  // ⚠ 長さは切る。URL には何でも入れられる
+  eraMiss=eraLabel(want)??want.slice(0,24);
+}
+
 function timeHTML(f){
   frames=buildFrames(f);
   // ⚠ 写真が無くても、判定文だけは必ず出す。ここを空で返すと答えごと消える
   if(!frames.length) return headHTML();
+  // ⚠ 描く前に当てる。描いたあとで差し替えると、共有先で**既定の年代が一瞬見えてから**
+  //   目的の年代に飛ぶ（「戻された」ように見える）。
+  resolveWantEra();
   setMosaic();
   const p=f.byKey.photos, cur=frames[eraIdx];
   // ⚠ 明治期は空中写真ではない。混ぜて数えると「空中写真は 8 年代（7 年代中）」という
   //   ありえない数字になる（実測で出た）。写真のコマだけを数える。
   const past=frames.filter((x)=>!x.now&&!x.meiji).length;
-  return `<div class="strip" id="strip" role="group" aria-label="年代を選ぶ">
+  // ⚠ 復元できなかったことは、**年代を選ぶ場所のすぐ上**で言う。
+  //   黙って別の年代を出すと、共有した人と見た人が違うものを見ていることに誰も気づかない。
+  //   文言に入るのは URL 由来の文字列なので、必ず esc を通す（理由は esc.js）。
+  return (eraMiss?`<div class="era-miss" id="eraMiss">⚠ 共有された年代（${
+      esc(eraMiss)}）は、この土地には残っていません</div>`:"")
+    + `<div class="strip" id="strip" role="group" aria-label="年代を選ぶ">
       <span class="end">昔</span>
       ${frames.map(frameHTML).join("")}
       <span class="end">今</span>
@@ -1219,6 +1276,11 @@ function setEra(i){
   const n=Math.min(Math.max(i,0),frames.length-1);
   if(n===eraIdx) return;
   eraIdx=n;
+  // 自分で年代を選び直したなら、「共有された年代が無かった」の案内は役目を終える。
+  // ⚠ この案内は timeHTML が描くもので、年代を変えても描き直されない。ここで消す
+  if(eraMiss){ eraMiss=null; document.getElementById("eraMiss")?.remove(); }
+  // 選んだ年代を URL に載せる。ここを忘れると、共有先で既定の年代に戻る
+  syncUrl();
   const fr=frames[eraIdx];
   const big=document.getElementById("big");
   const a=document.getElementById("lyrA"), b=document.getElementById("lyrB");
@@ -1927,6 +1989,10 @@ function renderVerdict(){
       通信を確認して、もう一度お試しください。
       <button class="retry" id="retryBtn">再試行</button></div>` : ""}`;
   wireStrip(); wireMix(); wireBadges(); wireSay(); wirePlay(); wireOverlay();
+  // 段が決まったので、URL を**いま出ているもの**に合わせ直す。
+  // ⚠ 指定された年代が無かった場合、ここで URL からその年代が落ちる。
+  //   出ていないものを URL に残すと、共有するたびに同じ空振りが伝播する
+  syncUrl();
   document.getElementById("mixbar")?.classList.toggle("off",!!frames[eraIdx]?.now);
   if(frames.length&&!evState) loadEvents(); else renderEvents();
   const sb=document.getElementById("shareBtn");
@@ -2114,10 +2180,14 @@ function ownLenses(p,facts){
   const enc=encodeURIComponent(p.title);
   // id は「次に調べる語」との重複を避けるための目印。
   // 同じ話題を自前で持っているなら、Google 検索の提案はその劣化版になる。
+  // ⚠ href に年代（eraParam）も載せる。載せないと、立体で見にいっただけで見ていた年代が落ちる。
+  //   ⚠ この行を {id:"peel"…} の**中**に書かない。名乗りの検査が
+  //     `{id:"peel"` から 200 字以内で `}` を探すので、間にコメントを挟むと読めなくなる
+  //     （実際に一度落とした。掟: 検査が読む場所には、コメントを割り込ませない）。
   return [
     {id:"peel",ic:"🌊",label:"立体で見る",sub:"いまの街が、明治期の地面のどこに立っているか",tag:"own",
      kw:["3d","さかのぼる","剥がす","埋立","水","動画","戻す","地盤","昔","むかし","歴史","明治","過去"],
-     href:`./peel?q=${enc}&ll=${ll}`},
+     href:`./peel?q=${enc}&ll=${ll}${eraParam()}`},
     // ⚠ 「1936年〜」を固定で書いていた。バッジは実測した最古の年代を出すので、
     //   新潟では「1945–50年から見られる」の真下に「1936年〜」が並んでいた。
     //   根拠を売りにしていて、同じ画面に2つの数字を出していた。
@@ -2436,12 +2506,15 @@ async function openPlace(lon,lat,title,opt){
     ? {center:mapObj.getCenter(),zoom:mapObj.getZoom()} : null;
   current={lon,lat,title};
   chipName.textContent=title;
-  history.replaceState(null,"",`?q=${encodeURIComponent(title)}&ll=${lat.toFixed(5)},${lon.toFixed(5)}`);
   meiji={loading:true};
   // ⚠ 着いたときに大きく出すのは「最古」。看板は「この土地は、昔なんだったのか？」なので、
   //   その問いに写真で即答している状態から始める。現在は1タップ先にある。
+  //   ⚠ ただし URL で年代を指定されているなら、そちらが優先（共有された状態から始める）。
   stopSay(); stopPlay();
   frames=[]; eraIdx=0; eraTicked=false; evState=null; evTile=null;
+  // ⚠ 段を捨てたあとに置く。先に置くと、前の土地の段を見て URL を書くことになる
+  wantEra=opt?.era??null; eraMiss=null;
+  syncUrl();
   zoomOn=false; mixVal=0;
   dropMap();
   setMode("action");
@@ -2521,7 +2594,7 @@ async function openPlace(lon,lat,title,opt){
     //   帯に9コマ並び、脚注に「残っていた空中写真は 7 年代（7 年代中）」と書き、
     //   バッジにも年代が出ている状態で、根拠に4つ目の言い方を足すと、
     //   利用者は「どれが答えなのか」を数え直すことになる。
-    `<a class="card" href="./peel?q=${enc}&ll=${ll}"><span class="arrow">→</span>
+    `<a class="card" href="./peel?q=${enc}&ll=${ll}${eraParam()}"><span class="arrow">→</span>
       <div class="t">立体で見る</div>
       <div class="d">いまの街が、明治期の地面のどこに立っているか</div></a>`;
   // 再試行はカード側にも置く。根拠を開いた人がそこで詰まらないように。
@@ -2612,9 +2685,11 @@ if(!navigator.geolocation){
 // ============ URL から復元 ============
 const sp=new URLSearchParams(location.search);
 const ll=sp.get("ll"), q0=sp.get("q");
+// ⚠ era が無い古い URL（q と ll だけ）も、これまでどおり開ける。既定の年代で始まるだけ
+const era0=sp.get("era");
 if(ll && /^-?[\d.]+,-?[\d.]+$/.test(ll)){
   const [la,lo]=ll.split(",").map(Number);
-  openPlace(lo,la,q0||`${la.toFixed(4)}, ${lo.toFixed(4)}`);
+  openPlace(lo,la,q0||`${la.toFixed(4)}, ${lo.toFixed(4)}`,{era:era0});
 } else if(q0){ qEl.value=q0; searchPlace(q0); }
 else { renderSaved(); renderKbd(); }
 </script>
