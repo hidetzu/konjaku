@@ -27,6 +27,20 @@ node serve.js   # → http://localhost:8081
 
 依存パッケージのインストールは不要です（MapLibre は `public/vendor/` に同梱）。
 
+## 本番がどの commit から出ているか
+
+配信物には `/version.json` が入っています（`npm run build` が作る生成物。Git には入れません）。
+
+```
+curl -s https://konjaku.hidetzu.work/version.json
+{ "commit": "……40桁……", "branch": "main" }
+```
+
+Cloudflare の Build 画面を開かなくても、`main` の HEAD と突き合わせれば
+**いま出ているものがどの commit か**が分かります。preview では、その PR の branch と commit になります。
+⚠ 手元で `npm run build` を走らせると、**手元の commit** で `public/version.json` ができます。
+本番のものではありません。
+
 ## 検査
 
 ```

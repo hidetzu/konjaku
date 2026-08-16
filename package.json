@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "echo \"静的サイトのためビルド不要\"",
+    "build": "node scripts/version.mjs",
     "serve": "node serve.js",
     "check-tiles": "node check-tiles.js",
     "build-water": "node build-water.js",
