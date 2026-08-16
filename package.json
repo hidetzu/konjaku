@@ -20,6 +20,7 @@
     "export": "node scripts/export-tiles.mjs",
     "ingest:bld": "node scripts/ingest-buildings.mjs",
     "export:bld": "node scripts/export-buildings.mjs",
+    "export:assets": "node scripts/export-assets.mjs",
     "pack:bld": "node scripts/pack-buildings.mjs",
     "db:init": "npx wrangler d1 execute konjaku --remote --file migrations/0001_tick.sql"
   }

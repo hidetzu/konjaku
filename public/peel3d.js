@@ -180,9 +180,19 @@ async function sampleSwale(lon,lat){
 // ⚠ 束ねない。実測で、いちばん重い z14 タイルが 6,510件 / gz 174KB。
 //   z12 に束ねると1束 約3.9MB になり、600m四方を見るために引かせる量ではない。
 let blAt=null, blTrunc=false, blIdxP=null;
-function blIndex(){
-  if(!blIdxP) blIdxP=fetch("./data/bl/index.json",{cache:"no-cache"})
+let assetManifestP=null;
+function assetManifest(){
+  if(!assetManifestP) assetManifestP=fetch("./data/assets.json",{cache:"no-cache"})
     .then(r=>r.ok?r.json():null).catch(()=>null);
+  return assetManifestP;
+}
+function blIndex(){
+  if(!blIdxP) blIdxP=assetManifest().then(m=>{
+    const spec=m?.layers?.buildings;
+    if(!spec?.index||!spec?.tile) return null;
+    return fetch(spec.index,{cache:"no-cache"}).then(r=>r.ok?r.json():null)
+      .then(index=>index?{...index,__tile:spec.tile}:null);
+  }).catch(()=>null);
   return blIdxP;
 }
 const z14of=(lon,lat)=>{ const n=2**14, r=lat*Math.PI/180;
@@ -196,8 +206,11 @@ async function loadBuildingTiles(bbox){
   for(let x=a.x;x<=b.x;x++) for(let y=a.y;y<=b.y;y++) need.push(`${x}/${y}`);
   // 1枚でも見ていなければ、静的では答えない
   for(const k of need) if(!idx.tiles[k]) return null;
-  const got=await Promise.all(need.map(k=>
-    fetch(`./data/bl/14/${k}.json`).then(r=>r.ok?r.json():null).catch(()=>null)));
+  const got=await Promise.all(need.map(k=>{
+    const [x,y]=k.split("/");
+    const path=idx.__tile.replace("{x}",x).replace("{y}",y);
+    return fetch(path).then(r=>r.ok?r.json():null).catch(()=>null);
+  }));
   if(got.some(g=>!g)) return null;
   const features=[]; let at=null, truncated=false;
   for(const g of got){
