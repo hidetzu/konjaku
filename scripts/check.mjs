@@ -12,6 +12,7 @@
 //   7. OGP の欠落・ドメイン誤り    … 共有されないとループが閉じない
 //   8. 事前計算データの索引切れ    … 黙って実行時 Overpass に落ち、作品が本番で成立しなくなる
 //   9. Service Worker の版が古い   … 中身を変えても、一度来た人に古い画面が出続ける
+//  10. 内部語が画面に出る          … 「自前・根拠あり」「直読み」が、説明なしで画面に出ていた
 //
 // 実行: node scripts/check.mjs        （--links を付けると外部URLも検査する）
 
@@ -2125,6 +2126,166 @@ head("8. CI の固定");
           : ok(`CONTRIBUTING.md の Playwright が CI と揃っている（${pin}・${inGuide.length} 箇所）`);
       }
     }
+  }
+}
+
+// ---------- 9. 画面の言葉 ----------
+head("9. 画面の言葉");
+// 画面に出ている語の棚卸し。判断は docs/adr/0029-画面の言葉は利用者の問いから決める.md。
+//
+// ⚠ **散文の表を文書に置かない。** 文言は段階を分けて直すので、表を文書へ書くと、
+//   直した先から表のほうが黙って古くなる（CLAUDE.md「古くなったコメントはコードより強く誤誘導する」）。
+//   ここに置いて、**両方向で**突き合わせる:
+//     ① 表より少ない … 直したのに表に残っている（表が古い）
+//     ② 表より多い   … 増やした（棚卸しを通さずに内部語が増えた）
+{
+  // ⚠ **コメントを先に落とす。** 落とさないと、この棚卸しを説明するコメント自身を数える
+  //   （CLAUDE.md「検査が文書やコメントを読むとき、コメントを先に落とす」。2 回踏んでいる）。
+  //   実測（2026-08-17）: 落とさないと index.html の「直読み」は 3 件見えるが、
+  //   3 件とも CSS と JS のコメントで、**画面には 1 件も出ていない**。
+  //
+  // ⚠ 7 節にも JS を舐める実装があるが、答えている問いが違う
+  //   （あちら「テンプレートの ${…} に何が入るか」／こちら「コメントを消した本文」）。
+  const REGEX_OK = /[(,=:[!&|?{};+\-*%~^<>]$/;
+  const torn = [];        // 改行をまたいだ引用符＝取り違えの証拠（下で 0 件を確かめる）
+  // ⚠ テンプレート文字列の `${…}` は入れ子になる。追わないと、穴の中の ` で
+  //   テンプレートが終わったことにして、そこから先が全部ずれる
+  //   （実測: peel3d.js の pickCard() で起き、L519 以降のコメントが 1 つも落ちなかった）。
+  const stripJs = (s, file) => {
+    const n = s.length;
+    let out = "", i = 0, braces = 0, inTpl = false;
+    const holes = [];
+    while (i < n) {
+      const c = s[i], d = s[i + 1];
+      if (inTpl) {
+        if (c === "\\") { out += s.slice(i, i + 2); i += 2; continue; }
+        if (c === "`") { out += c; i++; inTpl = false; continue; }
+        if (c === "$" && d === "{") { out += "${"; i += 2; holes.push(braces); braces = 0; inTpl = false; continue; }
+        out += c; i++; continue;
+      }
+      if (c === "/" && d === "*") { const e = s.indexOf("*/", i + 2); i = e < 0 ? n : e + 2; out += " "; continue; }
+      if (c === "/" && d === "/") { const e = s.indexOf("\n", i); i = e < 0 ? n : e; out += " "; continue; }
+      if (c === '"' || c === "'") {
+        const q = c, st = i; out += c; i++;
+        while (i < n) {
+          if (s[i] === "\\") { out += s.slice(i, i + 2); i += 2; continue; }
+          out += s[i];
+          if (s[i] === q) { i++; break; }
+          i++;
+        }
+        if (s.slice(st, i).includes("\n")) torn.push(`${file}「${s.slice(st, i).split("\n")[0].slice(0, 40)}…」`);
+        continue;
+      }
+      if (c === "`") { out += c; i++; inTpl = true; continue; }
+      if (c === "{") { braces++; out += c; i++; continue; }
+      if (c === "}") {
+        if (braces === 0 && holes.length) { out += c; i++; braces = holes.pop(); inTpl = true; continue; }
+        if (braces > 0) braces--;
+        out += c; i++; continue;
+      }
+      // 正規表現リテラルは飛ばす。飛ばさないと `/"/g` の " から先を文字列と読む
+      if (c === "/" && REGEX_OK.test(out.replace(/\s+$/, ""))) {
+        let j = i + 1, cls = false, done = -1;
+        while (j < n) {
+          if (s[j] === "\\") { j += 2; continue; }
+          if (s[j] === "[") cls = true;
+          else if (s[j] === "]") cls = false;
+          else if (s[j] === "\n") break;
+          else if (s[j] === "/" && !cls) { done = j; break; }
+          j++;
+        }
+        if (done > 0) { out += s.slice(i, done + 1); i = done + 1; continue; }
+      }
+      out += c; i++;
+    }
+    return out;
+  };
+  // ⚠ HTML の本文に JS の物差しを当てない。`</a>` の `/` の前は `<` で、
+  //   正規表現リテラルの始まりに見える。当てたときは、そこから次の `/` までを飲み込み、
+  //   出典欄のリンク（index.html:831 付近）が丸ごと消えた（実測 2026-08-17）。
+  const stripHtml = (s, file) => s
+    .replace(/<!--[\s\S]*?-->/g, " ")
+    .replace(/(<style\b[^>]*>)([\s\S]*?)(<\/style>)/gi, (_m, a, body, b) => a + body.replace(/\/\*[\s\S]*?\*\//g, " ") + b)
+    .replace(/(<script\b[^>]*>)([\s\S]*?)(<\/script>)/gi, (_m, a, body, b) => a + stripJs(body, file) + b);
+
+  const seen = {};
+  for (const f of [...htmlFiles, ...jsFiles])
+    seen[f] = f.endsWith(".html") ? stripHtml(src[f], f) : stripJs(src[f], f);
+
+  // この検査そのものの健全性。取り違えると、静かに数え落として緑になる
+  torn.length
+    ? bad(`コメント落としが取り違えている（改行をまたぐ引用符 ${torn.length} 件）: ${torn.slice(0, 3).join("、")}`
+        + `（この状態では、語を数え落としても緑になる）`)
+    : ok(`コメント落としが取り違えていない（改行をまたぐ引用符 0 件 / ${Object.keys(seen).length} ファイル）`);
+
+  // 棚卸し（2026-08-17 実測）。
+  //   kind … 分類 = 作り手側の区別で、利用者の問いではない
+  //          状態 = 4つの状態（正常0件 / 対象範囲外 / 取れなかった / 判定できない）を指す語
+  //   live … コメントを落としたあとに残る件数。**0 になったら、この行ごと消す**
+  //   next … どの段で直すか
+  const SCREEN_WORDS = [
+    { word: "自前・根拠あり", kind: "分類", live: 1, next: "#9d",
+      files: ["index.html"], seat: "根拠パネルの見出しのバッジ" },
+    { word: "根拠あり", kind: "分類", live: 2, next: "#9c",
+      files: ["index.html"], seat: "上のバッジと、一覧行のタグ（TAG_LABEL.own）" },
+    { word: "この土地から", kind: "分類", live: 1, next: "#9c",
+      files: ["index.html"], seat: "一覧行のタグ（TAG_LABEL.why）" },
+    { word: "外部↗", kind: "分類", live: 2, next: "#9c",
+      files: ["index.html"], seat: "一覧行のタグ（TAG_LABEL.ext と、その既定値）" },
+    { word: "ベクトル直読み", kind: "分類", live: 1, next: "#9d",
+      files: ["verify.js"], seat: "根拠カードの取得方法バッジ（地形分類）" },
+    { word: "直読み", kind: "分類", live: 4, next: "#9d",
+      files: ["verify.js"], seat: "取得方法バッジ。うち1件は「ベクトル直読み」の一部" },
+    { word: "境目", kind: "分類", live: 5, next: "#9d",
+      files: ["index.html", "verify.js"], seat: "取得方法バッジと、その説明文" },
+    { word: "データについて", kind: "分類", live: 2, next: "#9d",
+      files: ["index.html", "peel.html"], seat: "フッターの畳み見出し。中身は判定方法・位置誤差・提供範囲・限界" },
+    { word: "この範囲にできていたもの", kind: "分類", live: 1, next: "#9d",
+      files: ["index.html"], seat: "フッターの出典欄。年の意味（開業／設立／完成）を区別できない" },
+    { word: "記録のある変化はありません", kind: "状態", live: 1, next: "#9c",
+      files: ["index.html"], seat: "正常0件。Wikidata は読めている" },
+    { word: "記録なし", kind: "状態", live: 3, next: "#9c",
+      files: ["index.html", "verify.js", "share.js"], seat: "正常0件（明治期タイルは読めた）。共有カードにも出る" },
+    { word: "判定できません", kind: "状態", live: 7, next: "#9c",
+      files: ["index.html", "verify.js", "peel3d.js"], seat: "判定できない。「判定できませんでした」も含む" },
+    { word: "未取得", kind: "状態", live: 6, next: "#9e",
+      files: ["index.html", "peel3d.js"], seat: "取得方法バッジと、/peel の台帳。⚠ 2画面にある" },
+  ];
+  {
+    const count = (w, fs) => fs.reduce((a, f) => a + (seen[f] ?? "").split(w).length - 1, 0);
+    const off = [];
+    for (const w of SCREEN_WORDS) {
+      if (w.live === 0) { off.push(`「${w.word}」は live:0（消えたなら行ごと消す）`); continue; }
+      const miss = w.files.filter((f) => seen[f] === undefined);
+      if (miss.length) { off.push(`「${w.word}」の ${miss.join("、")} が読めない`); continue; }
+      const n = count(w.word, w.files);
+      if (n !== w.live) off.push(`「${w.word}」は ${w.live} 件のはずが ${n} 件（${w.files.join("、")}）`);
+    }
+    off.length
+      ? bad(`棚卸しと画面が食い違っている: ${off.join(" / ")}`
+          + `（直したなら表も直す。増やしたなら、その語を画面に出してよいかを先に決める）`)
+      : ok(`画面に出ている作り手側の語 ${SCREEN_WORDS.filter((w) => w.kind === "分類").length} 件・`
+          + `状態を指す語 ${SCREEN_WORDS.filter((w) => w.kind === "状態").length} 件が、棚卸しのとおり`);
+  }
+
+  // ⚠ 短い語（「自分」）は本文の検索で数えられない。宣言そのものを読む。
+  {
+    const m = /const TAG_LABEL\s*=\s*\{([^}]*)\}/.exec(seen["index.html"] ?? "");
+    if (!m) bad("index.html の TAG_LABEL を読めない（一覧行のタグの棚卸しが何も見ていない）");
+    else {
+      const got = [...m[1].matchAll(/:\s*"([^"]*)"/g)].map((x) => x[1]);
+      const want = ["根拠あり", "自分", "この土地から", "外部↗"];
+      got.join("／") === want.join("／")
+        ? ok(`一覧行のタグは棚卸しのとおり（${got.join("・")}）`)
+        : bad(`一覧行のタグが棚卸しと違う: ${got.join("・")}（棚卸しは ${want.join("・")}）`);
+    }
+  }
+  {
+    const got = [...(seen["verify.js"] ?? "").matchAll(/method:\s*"([^"]*)"/g)].map((x) => x[1]);
+    const want = ["直読み", "ベクトル直読み", "直読み", "直読み"];
+    got.join("／") === want.join("／")
+      ? ok(`根拠カードの取得方法は棚卸しのとおり（${[...new Set(got)].join("・")}／${got.length} 件）`)
+      : bad(`根拠カードの取得方法が棚卸しと違う: ${got.join("・")}（棚卸しは ${want.join("・")}）`);
   }
 }
 
