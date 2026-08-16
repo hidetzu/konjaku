@@ -584,6 +584,9 @@ async function loadArea(lon,lat,title){
   // 建物の集計とは独立に取る。集計が出せない土地でも、この土地そのものには答えられる
   loadLandform(lon,lat);
   resultEl.style.display="none";
+  // ⚠ 前の場所の答えを残さない。地図はもう新しい場所へ跳んでいるので、
+  //   ここに古い割合が残ると「この土地の答え」として読まれる
+  renderLand(null);
   statusEl.innerHTML=`<span class="go">明治期の低湿地データを読んでいます…</span>`;
 
   // --- 1. 水域 ---
@@ -750,6 +753,74 @@ function landformLine(){
   return `この土地は <b>${l.value}</b>${art}${l.fine?"":"（広い区分）"}`;
 }
 
+// ============================================================
+// 土地の答え（この画面の中心）
+//   ⚠ **割合と分母を作るのは、ここ1か所だけ。** 情報パネル（#heroNum / #heroCap）と、
+//     常時見える HUD（#land）は、同じ結果を別の見せ方で描く。
+//     2 か所で計算すると、片方だけ直したときに**同じ画面の中で数字が食い違う**
+//     （掟: 同じ問いに答える実装を2つ持たない）。
+//   ⚠ スマホはパネルが閉じて始まる。以前は答えも分母もパネルの中にしかなく、
+//     実測（2026-08-16 / 375×667・タッチ）で豊洲 99.6%・広島 1.4%・出島 3.4% の
+//     **実効 opacity が 0**（祖先の #panel.hide が opacity:0）だった。
+//     初期画面から読めるのは「建物が消える年代は演出です」という但し書きだけで、
+//     **答えより先に注意書きが読める**状態になっていた。
+//   ⚠ ここで割合の作り方を変えない。分母は「足元を判定できた件数」で、
+//     判定できていない建物を分母に入れない（札幌の 0.0% がそれだった）。
+// ============================================================
+function landVerdict(){
+  if(!area) return null;
+  const lf=landformLine();
+  // 足元を1件でも判定できた。割合は**判定できた件数**からしか作らない
+  if(area.classified>0)
+    return { kind:"ratio", pct:(area.wet/area.classified*100).toFixed(1),
+      classified:area.classified, total:area.total, all:area.classified===area.total,
+      unread:area.unread, lf };
+  // 建物は出ているが、足元は1件も判定できない
+  if(area.total>0) return { kind:"none", scope:"building", total:area.total, unread:area.unread, lf };
+  // 建物が無い・取れない。面積比なら出せる
+  if(area.waterRead&&area.waterRatio>0)
+    return { kind:"area", pct:(area.waterRatio*100).toFixed(1), pending:!!area.pending, lf };
+  if(area.waterRead) return { kind:"dry", lf };
+  return { kind:"none", scope:"land", unread:area.waterUnread, lf };
+}
+
+// 常時見える HUD 側の描画。⚠ 数字は landVerdict() が作ったものだけを使う。
+// ⚠ 「データなし（整備対象外）」と「読み込めず」を混ぜない。
+//   混ぜると、通信が落ちただけの土地に「整備対象外」と書くことになる
+//   （掟: 取れなかったを「無い」と言わない）。
+const landEl=document.getElementById("land");
+function renderLand(v){
+  if(!landEl) return;
+  if(!v){ landEl.innerHTML=""; return; }        // 場所を切り替えた直後。前の答えを残さない
+  const sub=(t)=>t?`<div class="land-sub">${t}</div>`:"";
+  if(v.kind==="ratio"||v.kind==="area"){
+    // 数字だけを置かない。**何の割合か**と**分母**を必ず同じ板に出す
+    const what=v.kind==="ratio"
+      ? `の建物が、明治期には<b>水の上</b>だった`
+      : `の面積が、明治期には<b>水</b>だった`;
+    const den=v.kind==="ratio"
+      ? `${v.classified} / ${v.total}件の足元を判定`
+      : (v.pending?"建物を取得中。揃うと建物ごとの割合になる"
+                  :"建物が取れなかったため、面積比で出している");
+    landEl.innerHTML=`<div class="land-line"><b class="land-num">${v.pct}<small>%</small></b>`
+      + `<span class="land-what">${what}</span></div><div class="land-den">${den}</div>`;
+    return;
+  }
+  if(v.kind==="dry"){
+    landEl.innerHTML=`<div class="land-line"><b class="land-alt">水域なし</b></div>`
+      + `<div class="land-den">この範囲は、明治期の低湿地データで水域に該当しません</div>`;
+    return;
+  }
+  // 判定できない。⚠ 数値を作らない（0% は出さない）。何が分からないのかを書く
+  const head=v.lf?"建物ごとには出せません":"判定できません";
+  const why=v.unread
+    ? `明治期の低湿地データを<b>読み込めませんでした</b>`
+    : `明治期の低湿地データは<b>整備対象外</b>です`;
+  landEl.innerHTML=`<div class="land-line"><b class="land-alt">${head}</b></div>`
+    + `<div class="land-den">${why}</div>`
+    + sub(v.scope==="building"?`建物 ${v.total} 件は出ています${v.lf?` ／ ${v.lf}`:""}`:v.lf);
+}
+
 function showResult(){
   if(!area) return;
   resultEl.style.display="";
@@ -759,41 +830,42 @@ function showResult(){
       ? `${area.title}（集計範囲: ${area.areaTitle}）` : area.title;
   const heroEl=document.getElementById("heroNum"), capEl=document.getElementById("heroCap");
 
-  // ヒーローの数字は「実際に判定できたもの」からしか作らない。
-  // 1408件すべてが「データなし」なのに 0.0% と出し、それを
-  // 「1件ずつ判定した実測値」と書いていたのが札幌だった（掟: 取れなかったを「無い」と言わない）。
-  if(area.classified>0){
-    heroEl.innerHTML=`${(area.wet/area.classified*100).toFixed(1)}<small>%</small>`;
-    capEl.innerHTML = area.classified===area.total
+  // ⚠ パネルと HUD は**同じ結果**（landVerdict）を描く。ここで割合を作り直さない。
+  //   ヒーローの数字は「実際に判定できたもの」からしか作らない。
+  //   1408件すべてが「データなし」なのに 0.0% と出し、それを
+  //   「1件ずつ判定した実測値」と書いていたのが札幌だった（掟: 取れなかったを「無い」と言わない）。
+  const v=landVerdict();
+  renderLand(v);
+  if(v.kind==="ratio"){
+    heroEl.innerHTML=`${v.pct}<small>%</small>`;
+    capEl.innerHTML = v.all
       ? `の建物が、明治期には<b>水の上</b>だった<br>
-         <span style="opacity:.7">${area.total}件すべての足元を1件ずつ判定した実測値</span>`
+         <span style="opacity:.7">${v.total}件すべての足元を1件ずつ判定した実測値</span>`
       : `の建物が、明治期には<b>水の上</b>だった<br>
-         <span style="opacity:.7">足元を判定できた ${area.classified} / ${area.total} 件のうちの実測値
-         （残りは明治期のデータが${area.unread?"読み込めていない":"無い"}）</span>`;
-  } else if(area.total>0){
+         <span style="opacity:.7">足元を判定できた ${v.classified} / ${v.total} 件のうちの実測値
+         （残りは明治期のデータが${v.unread?"読み込めていない":"無い"}）</span>`;
+  } else if(v.kind==="none"&&v.scope==="building"){
     // 建物ごとの割合は出せない。だが土地そのものには地形分類が答えられる。
     // 出せないものと、出せるものを、混ぜずに並べる
-    const lf=landformLine();
-    heroEl.innerHTML=`<span class="hero-alt">${lf?"建物ごとには出せません":"判定できません"}</span>`;
-    capEl.innerHTML = (lf?`${lf}<br>`:"") + (area.unread
+    heroEl.innerHTML=`<span class="hero-alt">${v.lf?"建物ごとには出せません":"判定できません"}</span>`;
+    capEl.innerHTML = (v.lf?`${v.lf}<br>`:"") + (v.unread
       ? `明治期の低湿地データを<b>読み込めませんでした</b><br>
-         <span style="opacity:.7">建物 ${area.total} 件は出ていますが、足元は1件も判定できていません</span>`
+         <span style="opacity:.7">建物 ${v.total} 件は出ていますが、足元は1件も判定できていません</span>`
       : `この範囲は明治期の低湿地データの<b>整備対象外</b>です<br>
-         <span style="opacity:.7">建物 ${area.total} 件は出ていますが、建物ごとに明治期の何だったかは分かりません</span>`);
-  } else if(area.waterRead && area.waterRatio>0){
-    heroEl.innerHTML=`${(area.waterRatio*100).toFixed(1)}<small>%</small>`;
+         <span style="opacity:.7">建物 ${v.total} 件は出ていますが、建物ごとに明治期の何だったかは分かりません</span>`);
+  } else if(v.kind==="area"){
+    heroEl.innerHTML=`${v.pct}<small>%</small>`;
     // 「取れなかった」と「まだ取っていない」を書き分ける
     capEl.innerHTML=`この範囲の<b>面積</b>が、明治期には水だった<br>
-       <span style="opacity:.7">${area.pending
+       <span style="opacity:.7">${v.pending
          ? "建物を取得中。揃うと建物ごとの割合に切り替わる"
          : "建物が取れなかったため、面積比で表示している"}</span>`;
-  } else if(area.waterRead){
+  } else if(v.kind==="dry"){
     heroEl.innerHTML=`<span class="hero-alt">水域なし</span>`;
     capEl.innerHTML=`この範囲は、明治期の低湿地データで<b>水域に該当しません</b>`;
   } else {
-    const lf=landformLine();
-    heroEl.innerHTML=`<span class="hero-alt">${lf?"建物ごとには出せません":"判定できません"}</span>`;
-    capEl.innerHTML = (lf?`${lf}<br>`:"") + (area.waterUnread
+    heroEl.innerHTML=`<span class="hero-alt">${v.lf?"建物ごとには出せません":"判定できません"}</span>`;
+    capEl.innerHTML = (v.lf?`${v.lf}<br>`:"") + (v.unread
       ? `明治期の低湿地データを<b>読み込めませんでした</b><br>
          <span style="opacity:.7">通信を確認して、もう一度お試しください</span>`
       : `この範囲は明治期の低湿地データの<b>整備対象外</b>です`);
