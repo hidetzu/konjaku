@@ -39,6 +39,11 @@ const manifest = {
         source: area.source?.water ?? "gsi-swale",
       })),
     },
+    places: {
+      source: "seeds/areas.jsonl",
+      format: "json",
+      asset: "./data/quick-places.json",
+    },
   },
 };
 

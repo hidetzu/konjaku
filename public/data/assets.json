@@ -28,6 +28,11 @@
           "source": "国土地理院「明治期の低湿地」タイルより生成 / build-water.js"
         }
       ]
+    },
+    "places": {
+      "source": "seeds/areas.jsonl",
+      "format": "json",
+      "asset": "./data/quick-places.json"
     }
   }
 }

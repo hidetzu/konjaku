@@ -1249,20 +1249,16 @@ head("6. 外部リンク");
     }
     // ⚠ ピンは入口。押した先が未整備だと、来た人が最初に見るのが
     //   「分かっていません」になる。取り込んだ範囲と、見せている入口を一致させる。
-    //   ⚠ index.html と peel.html の**両方**を見る。以前は index だけを見ていて、
-    //     peel のピンが旧6件のまま取り残され、6件中5件が押すと Overpass 待ちだった。
-    for (const [file, re] of [
-      ["public/index.html", /\["([^"]+)",([\d.]+),([\d.]+)/g],
-      ["public/peel3d.js", /\{n:"([^"]+)",\s*lon:([\d.]+),\s*lat:([\d.]+)/g],
-    ]) {
-      const qm = /const QUICK\s*=\s*\[([\s\S]*?)\];/.exec(rf2(file, "utf8"));
-      if (!qm) { bad(`${file} の QUICK が読めない`); continue; }
-      const pins = [...qm[1].matchAll(re)].map((x) => ({ name: x[1], lon: +x[2], lat: +x[3] }));
+    //   候補地は画面のコードに重複させず、export-places.mjs が生成した公開データを正とする。
+    const quickPath = join(PUB, "data", "quick-places.json");
+    if (!existsSync(quickPath)) bad("quick-places.json が無い（候補地の公開データが生成されていない）");
+    else {
+      const pins = JSON.parse(await readFile(quickPath, "utf8")).places ?? [];
       const outside = pins.filter((p) => !covered(p.lon, p.lat).on);
-      !pins.length ? bad(`${file}: ピンが1つも読めない`)
-        : outside.length ? bad(`${file}: 未整備の土地をピン留めしている: `
+      !pins.length ? bad("quick-places.json に候補地が1つも無い")
+        : outside.length ? bad("未整備の土地をピン留めしている: "
             + outside.map((p) => p.name).join("、"))
-        : ok(`${file.replace("public/", "")} のピン ${pins.length} 件は、すべて取り込み済みの土地`);
+        : ok(`quick-places.json のピン ${pins.length} 件は、すべて取り込み済みの土地`);
     }
     // ⚠ 建物の索引も見る。3D の入口は「建物が取れる」ことに寄りかかっている
     {
@@ -1271,9 +1267,8 @@ head("6. 外部リンク");
       else {
         const bi = JSON.parse(rf2(bp, "utf8"));
         const HALF_LON = 0.0090, HALF_LAT = 0.0070;   // peel3d.js の集計範囲
-        const qm = /const QUICK\s*=\s*\[([\s\S]*?)\];/.exec(rf2("public/peel3d.js", "utf8"));
-        const pins = [...(qm?.[1] ?? "").matchAll(/\{n:"([^"]+)",\s*lon:([\d.]+),\s*lat:([\d.]+)/g)]
-          .map((x) => ({ name: x[1], lon: +x[2], lat: +x[3] }));
+        const quickPath = join(PUB, "data", "quick-places.json");
+        const pins = existsSync(quickPath) ? JSON.parse(await readFile(quickPath, "utf8")).places ?? [] : [];
         const bad2 = pins.filter((p) => {
           const a = tileOf(p.lon - HALF_LON, p.lat + HALF_LAT, 14);
           const b = tileOf(p.lon + HALF_LON, p.lat - HALF_LAT, 14);

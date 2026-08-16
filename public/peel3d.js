@@ -1048,24 +1048,14 @@ setupHere(document.getElementById("here"), document.getElementById("hereMsg"),
 //   押すと Overpass を最大20秒待つ**状態だった（天王洲は seeds/areas.jsonl にも無い）。
 //   3D の入口が、押すと失敗する入口になっていた。
 //   scripts/check.mjs が、両方のピンが取り込み済みの土地であることを見ている。
-const QUICK=[
-  {n:"豊洲",     lon:139.7975, lat:35.6548, t:"東京都江東区豊洲"},
-  {n:"渋谷",     lon:139.7016, lat:35.6586, t:"東京都渋谷区"},
-  {n:"西新宿",   lon:139.6929, lat:35.6905, t:"東京都新宿区西新宿"},
-  {n:"上野",     lon:139.7745, lat:35.7148, t:"東京都台東区上野"},
-  {n:"お台場",   lon:139.7760, lat:35.6300, t:"東京都港区台場"},
-  {n:"札幌",     lon:141.3540, lat:43.0620, t:"北海道札幌市中央区"},
-  {n:"仙台",     lon:140.8720, lat:38.2600, t:"宮城県仙台市青葉区"},
-  {n:"大阪 難波", lon:135.5020, lat:34.6660, t:"大阪市中央区難波"},
-  {n:"広島",     lon:132.4550, lat:34.3950, t:"広島市中区"},
-  {n:"長崎 出島", lon:129.8730, lat:32.7440, t:"長崎市出島町"},
-];
 const quickEl=document.getElementById("quick");
-for(const p of QUICK){
-  const b=document.createElement("button"); b.textContent=p.n;
-  b.onclick=()=>{ qEl.value=p.t; candsEl.innerHTML=""; loadArea(p.lon,p.lat,p.t); };
-  quickEl.appendChild(b);
-}
+fetch("./data/quick-places.json",{cache:"no-cache"}).then(r=>r.ok?r.json():null).then(data=>{
+  for(const p of data?.places??[]){
+    const b=document.createElement("button"); b.textContent=p.name;
+    b.onclick=()=>{ qEl.value=p.title; candsEl.innerHTML=""; loadArea(p.lon,p.lat,p.title); };
+    quickEl.appendChild(b);
+  }
+}).catch(()=>{});
 
 // ============================================================
 // 描画・再生
