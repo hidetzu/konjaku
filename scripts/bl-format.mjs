@@ -8,23 +8,18 @@
 //   スマホに gz 1.9MB を引かせることになっていた。64タイルで 119MB。
 //   豊洲だけ（1枚 730KB）で決めた形が、上野・西新宿のような濃い土地で持たなかった。
 //
-// 何を捨てたか:
-//   name … 書いていたが、**どこも読んでいない**（カードにもラベルにも出していない）
-//   id   … 同じ。OSM の way id は画面のどこにも出ない
-//   ⚠ 捨てたのは「配るデータ」からで、OSM から取るのをやめたわけではない。
-//     必要になったら取り込みを直すだけで戻せる。
-//
-// 何を残したか（peel.html が実際に読んでいるもの）:
-//   height / heightSource / kind / startDate と、輪郭
+// 何を配るか:
+//   name / height / heightSource / kind / startDate / meiji / wasWater と、輪郭。
+//   name と meiji は建物カードで利用する。id はURLに直接出さず、キー生成にだけ使う。
 //
 // 詰め方:
 //   座標は 1e-5 度（約1m）の整数にして、タイル南西の原点からの差分で持つ。
 //   2点目以降は前の点からの差分。閉じる最後の点は書かない（読む側で閉じる）。
 //   実測: 1点 "[139.79751,35.65482]" 21文字 → "12,-8" 5文字前後。
 //   高さは 0.1m 刻みの整数（画面も 0.1m 刻みで出している）。
-//   種別は辞書の番号。建設年は西暦の整数（無ければ 0）。
+//   種別・名称・明治期区分は辞書の番号。建設年は西暦の整数（無ければ 0）。
 
-export const VERSION = 2;
+export const VERSION = 3;
 const Q = 100000;                        // 1e-5 度。約1m
 export const HSRC = ["measured", "levels", "default"];   // ⚠ 順番を変えない
 
@@ -45,6 +40,8 @@ export function pack(feats, tile, at, extra = {}) {
   const oLon = Math.round((tx / n * 360 - 180) * Q);
   const oLat = Math.round(lat0(ty, n) * Q);
   const kinds = [], kIdx = new Map();
+  const names = [null], nIdx = new Map([[null, 0]]);
+  const meijis = [null], mIdx = new Map([[null, 0]]);
   const b = [];
   for (const f of feats) {
     const p = f.properties, ring = f.geometry.coordinates[0];
@@ -57,7 +54,13 @@ export function pack(feats, tile, at, extra = {}) {
     const pts = ring.length > 1
       && ring[0][0] === ring[ring.length - 1][0]
       && ring[0][1] === ring[ring.length - 1][1] ? ring.slice(0, -1) : ring;
-    const row = [Math.round(p.height * 10), si, ki, yearOf(p.startDate)];
+    const name = p.name ?? null;
+    let ni = nIdx.get(name);
+    if (ni == null) { ni = names.length; names.push(name); nIdx.set(name, ni); }
+    const meiji = p.meiji ?? null;
+    let mi = mIdx.get(meiji);
+    if (mi == null) { mi = meijis.length; meijis.push(meiji); mIdx.set(meiji, mi); }
+    const row = [Math.round(p.height * 10), si, ki, yearOf(p.startDate), ni, mi, p.wasWater ? 1 : 0];
     let px = 0, py = 0;
     for (let i = 0; i < pts.length; i++) {
       const x = Math.round(pts[i][0] * Q) - oLon, y = Math.round(pts[i][1] * Q) - oLat;
@@ -66,7 +69,7 @@ export function pack(feats, tile, at, extra = {}) {
     }
     b.push(row);
   }
-  return { v: VERSION, tile, at, ...extra, q: Q, o: [oLon, oLat], k: kinds, b };
+  return { v: VERSION, tile, at, ...extra, q: Q, o: [oLon, oLat], k: kinds, n: names, m: meijis, b };
 }
 
 // タイル y の北端の緯度（slippy）
@@ -84,15 +87,19 @@ export function unpack(d) {
     features: d.b.map((r) => {
       const ring = [];
       let x = 0, y = 0;
-      for (let i = 4; i < r.length; i += 2) {
-        x = i === 4 ? r[i] : x + r[i];
-        y = i === 4 ? r[i + 1] : y + r[i + 1];
+      const start = d.v >= 3 ? 7 : 4;
+      for (let i = start; i < r.length; i += 2) {
+        x = i === start ? r[i] : x + r[i];
+        y = i === start ? r[i + 1] : y + r[i + 1];
         ring.push([(oLon + x) / q, (oLat + y) / q]);
       }
       ring.push(ring[0]);
       return { type: "Feature",
         properties: { height: r[0] / 10, heightSource: HSRC[r[1]], kind: d.k[r[2]],
-          startDate: r[3] ? String(r[3]) : null },
+          startDate: r[3] ? String(r[3]) : null,
+          name: d.v >= 3 ? (d.n?.[r[4]] ?? null) : null,
+          meiji: d.v >= 3 ? (d.m?.[r[5]] ?? null) : null,
+          wasWater: d.v >= 3 ? (r[6] ? 1 : 0) : 0 },
         geometry: { type: "Polygon", coordinates: [ring] } };
     }),
   };

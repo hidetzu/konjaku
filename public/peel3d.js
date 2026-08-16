@@ -214,7 +214,7 @@ async function loadBuildingTiles(bbox){
   if(got.some(g=>!g)) return null;
   const features=[]; let at=null, truncated=false;
   for(const g of got){
-    // ⚠ 詰めた形（v2）でないものは使わない。GeoJSON のまま配っていた古いファイルが
+    // ⚠ 詰めた形（現行版）でないものは使わない。GeoJSON のまま配っていた古いファイルが
     //   残っていたら、静かに混ぜるより Overpass の道に落ちたほうがよい
     if(g.v!==BL_V) return null;
     features.push(...unpackBuildings(g));
@@ -227,20 +227,24 @@ async function loadBuildingTiles(bbox){
 //   片方だけ直すと、建物の形が静かにずれる（画面は何も言わない）。
 //   scripts/check.mjs が、この関数と bl-format.mjs の unpack を同じ入力で
 //   突き合わせている。
-const BL_V=2, BL_HSRC=["measured","levels","default"];   // ⚠ 順番を変えない
+const BL_V=3, BL_HSRC=["measured","levels","default"];   // ⚠ 順番を変えない
 function unpackBuildings(d){
   const [oLon,oLat]=d.o, q=d.q, out=[];
   for(const r of d.b){
     const ring=[]; let x=0,y=0;
-    for(let i=4;i<r.length;i+=2){
-      x = i===4 ? r[i]   : x+r[i];
-      y = i===4 ? r[i+1] : y+r[i+1];
+    const start=d.v>=3?7:4;
+    for(let i=start;i<r.length;i+=2){
+      x = i===start ? r[i]   : x+r[i];
+      y = i===start ? r[i+1] : y+r[i+1];
       ring.push([(oLon+x)/q,(oLat+y)/q]);
     }
     ring.push(ring[0]);                    // 詰めるとき最後の点を落としてある
     out.push({type:"Feature",
       properties:{height:r[0]/10, heightSource:BL_HSRC[r[1]], kind:d.k[r[2]],
-        startDate:r[3]?String(r[3]):null},
+        startDate:r[3]?String(r[3]):null,
+        name:d.v>=3?(d.n?.[r[4]]??null):null,
+        meiji:d.v>=3?(d.m?.[r[5]]??null):null,
+        wasWater:d.v>=3?(r[6]?1:0):0},
       geometry:{type:"Polygon",coordinates:[ring]}});
   }
   return out;
@@ -391,10 +395,7 @@ function toGeoJSON(elements){
       if(lv>0){h=lv*3.2;src="levels"} else {h=DEFAULT_H[t.building]??10;src="default"} }
     feats.push({type:"Feature",geometry:{type:"Polygon",coordinates:[ring]},
       properties:{height:Math.round(h*10)/10,heightSource:src,kind:t.building??"yes",
-        startDate:t["start_date"]??null}});
-        // ⚠ name は持たない。カードにもラベルにも出しておらず、配る側（bl-format.mjs）でも
-        //   落としてある。片方だけ持つと、あとで name を読んだときに
-        //   「静的の土地だけ名前が無い」という気づきにくい差になる
+        name:t.name??null,startDate:t["start_date"]??null}});
   }
   return {type:"FeatureCollection",features:feats};
 }
@@ -406,7 +407,7 @@ const centroid=(ring)=>{let x=0,y=0;const n=ring.length-1;
 // ⚠ OSM の id は使えない。配っているタイル（scripts/bl-format.mjs）も Overpass 経路
 //   （toGeoJSON）も、どちらも id を落としている。片方だけ id を持たせると
 //   「静的の土地と、問い合わせる土地で鍵が違う」という気づきにくい差になる
-//   （name を落としてある理由と同じ。掟: 同じ問いに答える実装を2つ持たない）。
+//   （取り込み済みアセットの名称と実行時経路の名称を揃えるため）。
 // ⚠ 実測データが更新されて建物の形が動けば、この鍵は変わる。そのときは
 //   「復元できませんでした」と言う。黙って別の建物を選ばない。
 // ⚠ 6 桁 ≒ 0.1m。豊洲 533 件では衝突しない。
@@ -503,7 +504,8 @@ function meijiText(p){
 function pickCard(p){
   const src=p.heightSource, made=p.startDate, land=esc(meijiText(p));
   const cls=Number(p.wasWater)===1?"w":"";
-  return `<div class="card">
+  const name=p.name?`<div class="name">${esc(p.name)}</div>`:"";
+  return `<div class="card">${name}
     <div class="v ${cls}">${land}</div>
     <div class="meta"><div>高さ <b>${esc(p.height)}m</b> ─ ${
       src==="default"?`種別「${esc(p.kind)}」の既定値（OSM に高さの記載なし）`
@@ -772,16 +774,20 @@ async function loadArea(lon,lat,title,opt){
     // ⚠ 鍵はここで**1回だけ**作って持たせる。押したときに輪郭から作り直さない。
     //   押した先の輪郭は地図側で切り取られていることがあり、重心が元と揃わない。
     f.properties.k=bldKey(clon,clat);
-    const s=await sampleSwale(clon,clat);
-    f.properties.wasWater=s.water?1:0;
-    // 「読めなかった」を「データなし」と同じ箱に入れない。ここが 0.0% の元だった
-    f.properties.meiji=s.state===UNREACHABLE?"読み込めず"
-      :s.state===ABSENT?"データなし"
-      :s.none?"該当なし":s.unknown?"特定できず":s.cls.name;
-    f.properties.rgba=s.rgba?s.rgba.join(","):"";
+    // 取り込み時に付与済みの明治期区分があれば、それをそのまま使う。
+    // 旧アセットや実行時 Overpass の建物だけラスタをサンプリングする。
+    if(!f.properties.meiji){
+      const s=await sampleSwale(clon,clat);
+      f.properties.wasWater=s.water?1:0;
+      // 「読めなかった」を「データなし」と同じ箱に入れない。ここが 0.0% の元だった
+      f.properties.meiji=s.state===UNREACHABLE?"読み込めず"
+        :s.state===ABSENT?"データなし"
+        :s.none?"該当なし":s.unknown?"特定できず":s.cls.name;
+      f.properties.rgba=s.rgba?s.rgba.join(","):"";
+    }
     const sd=f.properties.startDate?parseInt(String(f.properties.startDate).slice(0,4),10):NaN;
     if(Number.isFinite(sd)){f.properties.vanish=tFromYear(sd);f.properties.exact=1}
-    else{f.properties.vanish=s.water?6.0:7.4;f.properties.exact=0}
+    else{f.properties.vanish=Number(f.properties.wasWater)===1?6.0:7.4;f.properties.exact=0}
   }));
   map.getSource("bld").setData(gj);
   resolveWantBld(feats);

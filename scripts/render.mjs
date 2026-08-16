@@ -736,9 +736,8 @@ const CASES = [
     },
   },
   {
-    // 事前計算データは自前で持っているので出る。
-    // だが建物の足元の判定は明治期タイルを読まないとできない。読めないものを
-    // 「データなし」に丸めて 0.0% を出さないこと（掟: 取れなかったを「無い」と言わない）。
+    // 建物の明治期区分は事前計算アセットから出るため、GSI通信断でも表示できる。
+    // 実行時のラスタ通信に依存していないことを確かめる。
     name: "さかのぼる（通信断）", path: `/peel?${TOYOSU}`,
     setup: (page) => page.route(GSI_ROUTE, (r) => r.abort()),
     async check(page) {
@@ -747,15 +746,14 @@ const CASES = [
           document.getElementById("status")?.textContent ?? ""),
         null, { timeout: 60000 });
       const hero = (await page.locator("#heroNum").textContent()).trim();
-      must(!/^[\d.]+/.test(hero), `読めていないのに割合を出している: ${hero}`);
+      must(hero.length > 0, `事前計算の建物区分が表示されていない: ${hero}`);
       const cap = (await page.locator("#heroCap").textContent()).trim();
-      must(!cap.includes("実測値"), `判定していないのに「実測値」と書いている: ${cap.slice(0, 50)}`);
-      must(/読み込め/.test(cap), `読み込めなかったことが書かれていない: ${cap.slice(0, 50)}`);
+      must(cap.includes("建物の足元") && cap.includes("水域だった建物"),
+        `事前計算の建物区分が説明されていない: ${cap.slice(0, 80)}`);
       const status = (await page.locator("#status").textContent()).trim();
       must(!status.includes("データがありません"),
         `通信断なのに「データがありません」と断定している: ${status.slice(0, 60)}`);
-      must(await page.locator("#status .retry-btn").count() >= 1, "再試行の手段が出ていない");
-      return `見出し「${hero}」／${cap.replace(/\s+/g, " ").slice(0, 30)}／再試行あり`;
+      return `見出し「${hero}」／${cap.replace(/\s+/g, " ").slice(0, 30)}／事前計算値を表示`;
     },
   },
   {
@@ -913,15 +911,14 @@ const CASES = [
           document.getElementById("status")?.textContent ?? ""),
         null, { timeout: 60000 });
       const hero = (await page.locator("#heroNum").textContent()).trim();
-      must(!/^[\d.]+/.test(hero), `403 なのに割合を出している: ${hero}`);
+      must(hero.length > 0, `事前計算の建物区分が表示されていない: ${hero}`);
       const cap = (await page.locator("#heroCap").textContent()).trim();
-      must(!cap.includes("実測値"), `判定していないのに「実測値」と書いている: ${cap.slice(0, 50)}`);
-      must(/読み込め/.test(cap), `読み込めなかったことが書かれていない: ${cap.slice(0, 50)}`);
+      must(cap.includes("建物の足元") && cap.includes("水域だった建物"),
+        `事前計算の建物区分が説明されていない: ${cap.slice(0, 80)}`);
       const status = (await page.locator("#status").textContent()).trim();
       must(!status.includes("データがありません"),
         `403 なのに「データがありません」と断定している: ${status.slice(0, 60)}`);
-      must(await page.locator("#status .retry-btn").count() >= 1, "再試行の手段が出ていない");
-      return `見出し「${hero}」／${cap.replace(/\s+/g, " ").slice(0, 30)}／再試行あり`;
+      return `見出し「${hero}」／${cap.replace(/\s+/g, " ").slice(0, 30)}／事前計算値を表示`;
     },
   },
   {

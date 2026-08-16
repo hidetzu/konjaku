@@ -14,7 +14,7 @@
 | 生成物 | 主な入力 | SQLiteを使うか |
 |---|---|---:|
 | `data/ev/` | Wikidata、`seeds/areas.jsonl` | 使う |
-| `data/bl/` | Overpass（OSM）、`seeds/areas.jsonl` | 使う |
+| `data/bl/` | Overpass（OSM）、国土地理院「明治期の低湿地」タイル、`seeds/areas.jsonl` | 使う |
 | `data/*-water.geojson` | 国土地理院「明治期の低湿地」タイル、スクリプト内のBBOX | 使わない |
 | `data/landform.json` | 国土地理院の`style.js` | 使わない |
 | `data/quick-places.json` | `seeds/areas.jsonl`の`quick` | 使わない |
@@ -66,8 +66,11 @@ npm run ingest:bld
 npm run export:bld
 ```
 
-`npm run ingest:bld`はOverpassから建物を取得し、`.data/konjaku.db`のcoverageを更新すると
-同時に`public/data/bl/14/`へタイル本体を書き出します。
+`npm run ingest:bld`はOverpassから建物を取得し、各建物の重心を国土地理院「明治期の低湿地」
+タイルへ照合して、OSMの名称・高さ・建設年と明治期区分を付与したうえで、
+`.data/konjaku.db`のcoverageを更新し、`public/data/bl/14/`へタイル本体を書き出します。
+画面表示時に建物ごとの明治期ラスタ通信を発生させないため、取り込み時の判定結果を配信物に
+含めます。GSIタイルの取得に失敗した建物は取得失敗として保持し、再実行で補完します。
 `npm run export:bld`はSQLiteのcoverageから`public/data/bl/index.json`を生成します。
 
 既存タイルの圧縮形式を変更する場合だけ、必要に応じて次を実行します。
