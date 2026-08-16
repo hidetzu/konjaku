@@ -1311,6 +1311,17 @@ async function ensureMap(){
       //   任意の1点まで下ろす（/eras にしか無かった機能）。
       //   実測で、同じ豊洲でも 500m 離れると標高が 1.91m → 6.49m と変わる。
       m.on("click",(e)=>{ judgeHere(e.lngLat.lng,e.lngLat.lat); });
+      // ⚠ 層があることと、水域が画面に出ていることは別。
+      //   タイルだけ拒まれても層は残るので、そのままだと「重ねています」と書けてしまう。
+      // ⚠ 404 は失敗にしない。低湿地データの整備範囲の外というだけで、重ねる操作の失敗ではない
+      //   （画面の端が対象外にかかることは普通にある。ADR 0001 の3状態と同じ切り分け）。
+      //   ⚠ 実測（2026-08-16 / MapLibre GL JS v5.24.0）では、**404 でこの error は飛んでこない**。
+      //     つまりこの1行は、いまは効いていない。相手の振る舞いが変わったときの備えとして置く
+      //     （外して試したが、検査は落ちなかった。効いていないことを承知で残している）。
+      m.on("error",(e)=>{
+        if(e.sourceId!=="swale"||e.error?.status===404) return;
+        swaleFail=true; overlayState();
+      });
       m.getCanvas().style.cursor="crosshair";
       mapObj=m; mapOn=true; applyMix(); applyOverlay();
       big?.classList.add("map-on");
@@ -1360,7 +1371,7 @@ function mapSetEra(fr){
 function dropMap(){
   markers.forEach((mk)=>mk.remove()); markers=[];
   if(mapObj){ mapObj.remove(); mapObj=null; }
-  mapOn=false;
+  mapOn=false; swaleFail=false;                    // 別の土地へ移る。前の拒否を持ち越さない
   document.getElementById("big")?.classList.remove("map-on","map-loading");
 }
 
@@ -1407,10 +1418,13 @@ function applyOverlay(){
 //   静止画が地図に変わることが押すまで分からない（掟: 押しても何も起きない導線を置かない）。
 // ⚠ どの文も1行に収める。写真の上に置いているので、折り返したぶんだけ写真が隠れる
 //   （実測 2026-08-16 / 320×640: 折り返すと 61px ＝ 写真の高さの 32% を覆った）。
+// 水域のタイルを取りに行って拒まれた（404 以外）。地図は出ているのに、水域は出ていない状態
+let swaleFail=false;
 function overlayState(){
   const c=document.getElementById("ovSwale"), el=document.getElementById("ovState");
   if(!c||!el) return;
   if(!c.checked) el.textContent="ONで地図に重ねます";
+  else if(swaleFail) el.textContent="水域を読み込めませんでした";
   else if(mapObj?.getLayer("swale")) el.textContent="重ねています";
   else el.textContent=mapLoading?"地図を読み込んでいます…":"地図を読み込めませんでした";
 }
@@ -1430,6 +1444,8 @@ function wireOverlay(){
   //   地図を起こす pointerdown（wake）は通す。押した人は地図を見たいので、そのまま起きてよい。
   document.getElementById("ovRow")?.addEventListener("click",(e)=>e.stopPropagation());
   c.onchange=async()=>{
+    // 入れ直しは、やり直し。前に拒まれたことを引きずらない
+    if(c.checked) swaleFail=false;
     // ⚠ 先に読み込みを始めてから状態を出す。順を逆にすると、まだ始めていない時点で
     //   「読み込めませんでした」と書くことになる（読み込み中と失敗を取り違える）。
     if(!mapObj&&!mapLoading){ const p=ensureMap(); overlayState(); await p; }

@@ -2153,6 +2153,55 @@ const CASES = [
     },
   },
   {
+    // ⚠ 層があることと、水域が画面に出ていることは別（レビューで指摘された）。
+    //   地図も写真も出せるのに、**水域のタイルだけ**拒まれる状態がある。
+    //   ⚠ 逆に 404 は「その範囲は整備対象外」なので、失敗として扱ってはいけない。
+    //     両方をこの1件で見る。
+    name: "水域のタイルだけ拒まれたら、「重ねています」と言わない", path: `/?${TOYOSU}`,
+    viewport: { width: 375, height: 667 }, hasTouch: true,
+    setup: (page) => stubWikidata(page, []),
+    async check(page) {
+      // 判定を先に済ませる（判定できた土地でしか操作は出ない）
+      await waitVerdict(page);
+      await page.waitForSelector("#ovRow", { state: "attached", timeout: 30000 });
+      let denied = 0;
+      await page.route(SWALE_ROUTE, (r) => { denied++;
+        r.fulfill({ status: 403, contentType: "text/html", body: "403 Forbidden" }); });
+      await page.evaluate(() => document.querySelectorAll("#strip .f")[1]?.click());
+      await page.waitForTimeout(900);
+      await page.locator("#ovSwale").check();
+      await page.waitForFunction(() => document.querySelector("#big.map-on"),
+        null, { timeout: 60000 });
+      await page.waitForTimeout(3000);
+      const bad = (await page.locator("#ovState").textContent()).trim();
+      // ⚠ 前提が消えたら落とす。1本も拒めていないなら、この検査は何も確かめていない
+      must(denied > 0, "水域のタイルを1本も拒めていない（検査の前提が消えた）");
+      must(!bad.includes("重ねています"), `水域を取れていないのに、重ねたと言っている: ${bad}`);
+      must(bad.includes("読み込めませんでした"), `水域を取れなかったことを言っていない: ${bad}`);
+      must(await page.locator("#big.map-on").count() === 1,
+        "水域が取れないだけなのに、地図ごと出なくなっている");
+
+      // ⚠ 404（整備対象外）は失敗ではない。入れ直したら「重ねています」に戻ること。
+      //   ⚠ 実測（2026-08-16 / MapLibre GL JS v5.24.0）では 404 で error 自体が飛んでこないので、
+      //     ここが見ているのは**画面が何と言うか**であって、除外の条件式ではない
+      //     （条件式を外しても、この検査は落ちない。確かめた）。
+      await page.unroute(SWALE_ROUTE);
+      let missing = 0;
+      await page.route(SWALE_ROUTE, (r) => { missing++; r.fulfill({ status: 404, body: "" }); });
+      await page.locator("#ovSwale").uncheck();
+      await page.waitForTimeout(500);
+      await page.locator("#ovSwale").check();
+      await page.evaluate(() => mapObj?.jumpTo(
+        { center: [mapObj.getCenter().lng + 0.03, mapObj.getCenter().lat], zoom: 16 }));
+      await page.waitForTimeout(3000);
+      const gone = (await page.locator("#ovState").textContent()).trim();
+      must(missing > 0, "404 を1本も返せていない（検査の前提が消えた）");
+      must(gone === "重ねています",
+        `整備対象外（404）を、読み込めなかったことにしている: ${gone}`);
+      return `403 を ${denied} 本 → 「${bad}」／404 を ${missing} 本 → 「${gone}」`;
+    },
+  },
+  {
     // ⚠ 地図が出せなかったときに「重ねています」と書くと、起きていないことを書くことになる。
     //   OFF と「出せなかった」を同じ顔にしない（掟: 取れなかったを、有ることにしない）。
     name: "地図を読み込めないときに「重ねています」と言わない", path: `/?${TOYOSU}`,
