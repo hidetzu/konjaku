@@ -364,6 +364,16 @@ function toGeoJSON(elements){
 
 const centroid=(ring)=>{let x=0,y=0;const n=ring.length-1;
   for(let i=0;i<n;i++){x+=ring[i][0];y+=ring[i][1]}return [x/n,y/n]};
+
+// 建物を URL で名指しするための鍵。**重心を 6 桁に丸めた文字列**。
+// ⚠ OSM の id は使えない。配っているタイル（scripts/bl-format.mjs）も Overpass 経路
+//   （toGeoJSON）も、どちらも id を落としている。片方だけ id を持たせると
+//   「静的の土地と、問い合わせる土地で鍵が違う」という気づきにくい差になる
+//   （name を落としてある理由と同じ。掟: 同じ問いに答える実装を2つ持たない）。
+// ⚠ 実測データが更新されて建物の形が動けば、この鍵は変わる。そのときは
+//   「復元できませんでした」と言う。黙って別の建物を選ばない。
+// ⚠ 6 桁 ≒ 0.1m。豊洲 533 件では衝突しない。
+const bldKey=(lon,lat)=>`${lon.toFixed(6)},${lat.toFixed(6)}`;
 // 年 → 時間座標（tau）。E の並びは ALL_ERAS と同じ順（現在・1987–90 …・明治期）。
 // ⚠ ここが返すのは**時間座標であって段の番号ではない**。地点によって段は減るが、
 //   この対応は動かさない（広島で 2 段減らしても、建物が消える年は同じ年のまま）。
@@ -411,9 +421,11 @@ map.on("load",()=>{
   // URL から復元。共有できることがループの前提（掟: 唯一の指標は共有率 差分1）
   const sp=new URLSearchParams(location.search);
   const ll=sp.get("ll"), q=sp.get("q");
+  // ⚠ era / b が無い古い URL（q と ll だけ）も、これまでどおり開ける。既定の状態で始まるだけ
+  const opt={ era:sp.get("era"), bld:sp.get("b") };
   if(ll && /^-?[\d.]+,-?[\d.]+$/.test(ll)){
     const [la,lo]=ll.split(",").map(Number);
-    qEl.value=q??""; loadArea(lo,la,q||`${la.toFixed(4)}, ${lo.toFixed(4)}`);
+    qEl.value=q??""; loadArea(lo,la,q||`${la.toFixed(4)}, ${lo.toFixed(4)}`,opt);
   } else {
     loadArea(139.7975,35.6548,"東京都江東区豊洲");   // 既定
   }
@@ -431,6 +443,14 @@ map.on("load",()=>{
 //   **両方の端末で画面の外**だった。利用者役のエージェントによる検証で「押しても何も起きないように見える」
 //   「スマホでは何も起きない」と3体が報告したのは、実際に何も見えていなかったから。
 let pickPop=null, picked=false;
+// いま選んでいる建物の鍵（bldKey）。URL に載せる
+let pickBld=null;
+// URL から復元したいもの。段・建物が揃ってから当てる
+let wantEra=null, wantBld=null;
+// 復元できなかったものの名前。⚠ 黙って既定へ落とさないために持つ
+let missEra=null, missBld=false;
+// いま調べている場所。URL を書き直すのに要る
+let place=null;
 // ⚠ 種別（kind）と建設年（startDate）は OSM のタグそのもの。誰でも編集できる第三者データで、
 //   こちらが中身を保証できない。描くときに esc を通す（理由は esc.js）。
 //   rgba はこちらが画素から読んだ数値、meiji は自前の凡例表（verify.js）から来る。
@@ -457,21 +477,23 @@ function pickSpeech(p){
     + `高さは ${p.height} メートル。${h}。`
     + (p.startDate?`建設年は ${p.startDate} 年です。`:"建設年は分かっていません。");
 }
-map.on("click","bld",(e)=>{
-  // ⚠ 見えていない建物は押せない。明治期では全建物の高さが 0 になるが、
-  //   当たり判定は残るので、海面に見えるところを押すと建物の情報が出ていた
-  if(Number(slider.value)/100 >= photoSteps()-0.02) return;
-  const p=e.features[0].properties;
+// 建物を選んだ結果を出す。
+// ⚠ 押したときと、URL から戻したときで**同じ道を通す**。2つ書くと、
+//   共有先だけ吹き出しの中身が違う、という差が生まれる（掟: 同じ問いに答える実装を2つ持たない）。
+function showPick(p,lngLat){
   // 一度でも押したら、案内は役目を終える
   if(!picked){ picked=true; const t=document.getElementById("tip"); if(t) t.textContent=""; }
   document.getElementById("pick").innerHTML=pickCard(p);
   if(pickPop) pickPop.remove();
   pickPop=new maplibregl.Popup({closeButton:true,closeOnClick:true,maxWidth:"280px",
       className:"pick-pop",offset:12})
-    .setLngLat(e.lngLat)
+    .setLngLat(lngLat)
     .setHTML(pickCard(p)+(("speechSynthesis" in window)
       ? `<button class="pick-say" id="pickSay">🔊 読み上げる</button>`:""))
     .addTo(map);
+  // 吹き出しを閉じたら、URL からも建物を外す。
+  // ⚠ 外さないと、閉じたあとに共有した人の URL が、閉じたはずの建物を開く
+  pickPop.on("close",()=>{ if(pickBld===p.k){ pickBld=null; syncUrl(); } });
   const say=document.getElementById("pickSay");
   if(say) say.onclick=()=>{
     try{
@@ -483,6 +505,15 @@ map.on("click","bld",(e)=>{
       if(navigator.sendBeacon) navigator.sendBeacon("/t","open.speak");
     }catch{ /* 読み上げは落ちてよい。画面の動きは変えない */ }
   };
+}
+map.on("click","bld",(e)=>{
+  // ⚠ 見えていない建物は押せない。明治期では全建物の高さが 0 になるが、
+  //   当たり判定は残るので、海面に見えるところを押すと建物の情報が出ていた
+  if(Number(slider.value)/100 >= photoSteps()-0.02) return;
+  const p=e.features[0].properties;
+  showPick(p,e.lngLat);
+  // 選んだ建物を URL に載せる。共有先が同じ建物から始まる
+  pickBld=p.k??null; syncUrl();
 });
 map.on("mouseenter","bld",()=>map.getCanvas().style.cursor="pointer");
 map.on("mouseleave","bld",()=>map.getCanvas().style.cursor="");
@@ -539,14 +570,22 @@ async function setTimeline(lon,lat,seq){
   steps=failed?allSteps():stepsFrom(ph);
   timelineReady=true;
   buildTicks();
+  // ⚠ 段が確定してから当てる。ここで初めて「この土地にその年代は無い」と言える
+  resolveWantEra(true);
+  syncUrl();
   render();
 }
 
-async function loadArea(lon,lat,title){
+async function loadArea(lon,lat,title,opt){
   stop();
   const seq=++areaSeq;
+  place={lon,lat,title};
+  // ⚠ 復元したいものは、段や建物を捨てる**前**に受け取る。あとから置くと、
+  //   前の場所の段を見て URL を書くことになる
+  wantEra=opt?.era??null; wantBld=opt?.bld??null;
+  missEra=null; missBld=false; pickBld=null;
   // 場所をURLに載せる。これが無いと共有できずループが閉じない（掟: 唯一の指標は共有率 差分1）
-  history.replaceState(null,"",`?q=${encodeURIComponent(title)}&ll=${lat.toFixed(5)},${lon.toFixed(5)}`);
+  syncUrl();
   // ⚠ 戻り先にも、調べていた場所を載せる。以前は href="./" のままで、
   //   ← を押すと**空のトップに戻り、調べていた場所が消えていた**
   //   （利用者役のエージェントによる検証で3体すべてが「最初からになった」と言った）。
@@ -554,9 +593,8 @@ async function loadArea(lon,lat,title){
   //     setAttribute で書くこと（過去に一度踏んでいる）。
   // ⚠ 戻る導線は「← もどる」1つだけ。以前はパネルの中にもロゴ（←今昔）があり、
   //   同じことを2か所で言っていた。探す先を残しておくと、消えたことに気づけない。
-  const back=document.getElementById("back");
-  if(back) back.setAttribute("href",           // ⚠ el.href は絶対URLを返すので setAttribute
-    `./?q=${encodeURIComponent(title)}&ll=${lat.toFixed(5)},${lon.toFixed(5)}`);
+  // ⚠ 戻り先（← もどる）は syncUrl が書く。ここで別に書くと、年代が付いてくるものと
+  //   付いてこないものの2通りができる（掟: 同じ問いに答える実装を2つ持たない）。
   // ⚠ 場所を選び直したら、探す枠は畳み直す。開けっぱなしだと、
   //   選んだ結果（判定の数字）が 214px 下へ押し出される。
   const findBox=document.getElementById("findBox");
@@ -577,7 +615,12 @@ async function loadArea(lon,lat,title){
   //   前の場所の段のまま描くと、この地点に存在しない年代のタイルを取りに行く。
   timelineReady=false;
   steps=allSteps(); buildTicks();
-  slider.value="0"; render();
+  slider.value="0";
+  // ⚠ 段が確定する前に、いったん仮で当てる。判定（最悪 8 秒）を待つあいだ
+  //   「現在」を見せてから飛ぶと、共有先では**一度戻されたように見える**。
+  //   ここではまだ「無い」とは言わない（間引く前の梯子で探しているだけ）
+  resolveWantEra(false);
+  render();
   // 年代の段を組み直す。⚠ ここは待たない。待つと、水域と建物の取得まで
   //   写真の判定（最悪 8 秒のタイムアウト）の後ろに並んでしまう
   setTimeline(lon,lat,seq);
@@ -677,6 +720,9 @@ async function loadArea(lon,lat,title){
   const gj={type:"FeatureCollection",features:feats};
   await Promise.all(feats.map(async(f)=>{
     const [clon,clat]=centroid(f.geometry.coordinates[0]);
+    // ⚠ 鍵はここで**1回だけ**作って持たせる。押したときに輪郭から作り直さない。
+    //   押した先の輪郭は地図側で切り取られていることがあり、重心が元と揃わない。
+    f.properties.k=bldKey(clon,clat);
     const s=await sampleSwale(clon,clat);
     f.properties.wasWater=s.water?1:0;
     // 「読めなかった」を「データなし」と同じ箱に入れない。ここが 0.0% の元だった
@@ -689,6 +735,7 @@ async function loadArea(lon,lat,title){
     else{f.properties.vanish=s.water?6.0:7.4;f.properties.exact=0}
   }));
   map.getSource("bld").setData(gj);
+  resolveWantBld(feats);
 
   const counts={};
   for(const f of feats) counts[f.properties.meiji]=(counts[f.properties.meiji]||0)+1;
@@ -1016,6 +1063,82 @@ const knobEl=trackEl.querySelector(".knob"), gradeEl=document.getElementById("gr
 const mapEl=document.getElementById("map"), panel=document.getElementById("panel");
 const toggle=document.getElementById("toggle");
 
+// ============ 共有された状態を、URL に載せる／URL から戻す ============
+// ⚠ 年代はコマ番号ではなく**安定したレイヤID**で書く。段は地点ごとに間引かれるので
+//   （豊洲 9 段 / 広島 7 段 / 出島 4 段）、同じ位置が別の年代を指す。
+// ⚠ スライダーは連続値だが、URL に載せるのは**段**まで。中間は「見ている途中」であって
+//   共有したい状態ではない。戻すときも段の境界に合わせる。
+function stepNow(){
+  return Math.max(0,Math.min(steps.length-1,Math.round(Number(slider.value)/100)));
+}
+const eraNow=()=>steps[stepNow()]?.id ?? null;
+// ⚠ q と ll しか無い古い URL も、これまでどおり開ける。era / b は足すだけで、必須にしない
+// ⚠ 戻り先（← もどる）も**ここで**書き直す。loadArea で1回書くだけにしていたら、
+//   段が確定する前の「現在」が焼き付き、共有された年代で入った人が
+//   ← を押すと別の年代のトップへ出ていた（実測で捕まえた）。
+function syncUrl(){
+  if(!place) return;
+  const id=eraNow()??wantEra;
+  const q=`?q=${encodeURIComponent(place.title)}&ll=${place.lat.toFixed(5)},${place.lon.toFixed(5)}`
+    +(id?`&era=${encodeURIComponent(id)}`:"");
+  history.replaceState(null,"",q+(pickBld?`&b=${encodeURIComponent(pickBld)}`:""));
+  // ⚠ el.href は絶対URLを返すので setAttribute で書く（過去に一度踏んでいる）。
+  //   建物は持って戻らない。トップに建物という概念が無い
+  document.getElementById("back")?.setAttribute("href","./"+q);
+}
+// 復元できなかったことを、**年代を動かす帯のすぐ上**で言う。
+// ⚠ 黙って別の年代・別の建物を出すと、共有した人と見た人が違うものを見ていることに
+//   誰も気づかない（掟: 取れなかったを「無い」と言わない の同類）。
+// ⚠ 文言に URL 由来の文字列が入るので、必ず esc を通す（理由は esc.js）。
+function showMiss(){
+  const el=document.getElementById("stateMiss");
+  if(!el) return;
+  const lines=[];
+  if(missEra) lines.push(`⚠ 共有された年代（${esc(missEra)}）は、この土地には残っていません`);
+  if(missBld) lines.push("⚠ 共有された建物は、この範囲では見つかりませんでした");
+  el.innerHTML=lines.join("<br>");
+  el.hidden=!lines.length;
+}
+// 年代の ID を、人が読む名前にする。
+// ⚠ 名前の出どころは verify.js の1か所だけ。ここで年代の一覧を作り直さない
+const eraLabel=(id)=>id==="swale" ? MEIJI.label
+  : ALL_ERAS.find((e)=>e.id===id)?.label ?? null;
+// URL で指定された年代を、段が組み上がってから当てる。
+// ⚠ 指定された年代がこの土地に無いことは普通に起きる（残っている写真は土地ごとに違う）。
+//   黙って「現在」へ落とさない。
+// URL で指定された建物を、建物が揃ってから当てる。
+// ⚠ 建物が見えない年代（明治期の端）では吹き出しを出さない。押せない建物の情報を出さない、
+//   という既存の門番（map.on("click","bld") の先頭）と同じ扱いにする。
+// ⚠ 見つからないことは普通に起きる（取り込み直しで形が動く／別の範囲を見ている）。
+//   黙って別の建物を選ばず、見つからなかったと言う。
+function resolveWantBld(feats){
+  if(!wantBld) return;
+  const want=wantBld; wantBld=null;
+  const f=feats.find((x)=>x.properties.k===want);
+  if(!f){ missBld=true; showMiss(); syncUrl(); return; }
+  const [clon,clat]=centroid(f.geometry.coordinates[0]);
+  pickBld=want;
+  showPick(f.properties,[clon,clat]);
+  syncUrl();
+}
+
+// final=false は、段を間引く前の仮当て。**まだ「無い」とは言わない**
+// （間引く前の梯子に無いだけかもしれない。掟: 取れなかったを「無い」と言わない）。
+// final=true は、この地点の段が確定したあと。ここで初めて「無い」と言える。
+function resolveWantEra(final){
+  if(!wantEra) return;
+  const want=wantEra;
+  const k=steps.findIndex((s)=>s.id===want);
+  // ⚠ 段の境界ちょうどに置く。中途半端な値だと、**年代の名前は出ても場面が入りきらない**。
+  //   実測（2026-08-16 / 375×667 / 豊洲）: 値 769/800 では表示も目盛りも「明治期」なのに、
+  //   建物を消す条件（value/100 >= 段数-0.02）に入らず、建物が立ったままだった。
+  if(k>=0){ slider.value=String(k*100); if(final){ wantEra=null; } return; }
+  if(!final) return;
+  wantEra=null;
+  missEra=eraLabel(want)??want.slice(0,24);
+  showMiss();
+}
+
 // ⚠ 端の文字は、目盛りの中心に置くと枠の外へ出る（中心そろえなので左右に半分ずつはみ出す）。
 //   9px のうちは偶然収まっていたが、読める大きさにしたら 375px で 3px はみ出した
 //   （実測 2026-08-15。横スクロールが出る）。端だけ内側へ寄せる印を付ける。
@@ -1266,7 +1389,15 @@ function render(){
   // ⚠ exact（建設年が分かっている印）は、ここまで**描画に一度も使われていなかった**
   peek("peekY",["case",["==",["get","exact"],1],"#e6c47a","#5b6470"]);
 }
-slider.addEventListener("input",()=>{stop();render()});
+// ⚠ URL を書くのは**段が変わったときだけ**。input は引いているあいだ連続で飛ぶので、
+//   毎回 replaceState すると 1 回の操作で数十回書くことになる。
+//   載せたいのは段までなので、段が同じあいだは書く必要も無い。
+let urlStep=null;
+slider.addEventListener("input",()=>{
+  stop(); render();
+  const k=stepNow();
+  if(k!==urlStep){ urlStep=k; syncUrl(); }
+});
 
 // 端の年代ラベルは、見た目の中心が range の最大・最小位置からずれる。
 // そのまま押すと「明治期」と表示されても値が最大に届かず、場面が切り替わりきらないため、
