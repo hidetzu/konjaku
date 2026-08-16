@@ -24,3 +24,8 @@ artifacts/
 
 # 取り込みの「正」。書き出した public/data/ev だけを配信する
 .data/
+
+# 配信中の版。npm run build（scripts/version.mjs）が作る生成物。
+# ⚠ commit すると、**手元の版が配信物の版として名乗られる**。
+#   「本番がどの commit から出たか」を確かめるための仕組みが、そこで嘘になる。
+public/version.json
