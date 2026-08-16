@@ -7,7 +7,12 @@
 import { open } from "./db.mjs";
 import { mkdirSync, writeFileSync, rmSync, existsSync } from "node:fs";
 
-const OUT = "public/data/ev";
+// ⚠ **書き出し先を差せるようにしてある**（既定は配信物そのもの）。
+//   この下で `rmSync(OUT)` しているので、検査が本物の DB 以外で走らせると
+//   **配信中の public/data/ev を消す**。一時ディレクトリを渡せる形にして、
+//   dropped_at の回帰検査（scripts/check.mjs）が安全に走れるようにする。
+//   DB 側の KONJAKU_DB（scripts/db.mjs）と同じ作法。
+const OUT = process.env.KONJAKU_EV_OUT ?? "public/data/ev";
 const db = open();
 const at = new Date().toISOString().slice(0, 10);
 
