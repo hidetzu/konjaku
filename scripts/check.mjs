@@ -38,6 +38,15 @@ const bad  = (m) => { failed++; console.log(`  \x1b[31m✗\x1b[0m ${m}`); };
 const warn = (m) => { warned++; console.log(`  \x1b[33m!\x1b[0m ${m}`); };
 const head = (m) => console.log(`\n\x1b[1m${m}\x1b[0m`);
 
+// 事物の索引の読み方。⚠ **ここ1か所**にする（z12 の束ごとに、中の z14 を1ビットずつ）。
+//   写すと、索引の持ち方を変えたときに片方だけ直して、同じ問いに違う答えが出る。
+const evCovered = (idx, tileOf) => (lon, lat) => {
+  const t = tileOf(lon, lat, 14), S = Math.log2(idx.sub);
+  const bx = t.x >> S, by = t.y >> S;
+  const bit = 1 << (((t.y - by * idx.sub) * idx.sub) + (t.x - bx * idx.sub));
+  return { t, on: !!((idx.tiles[`${bx}/${by}`] ?? 0) & bit) };
+};
+
 const pubFiles = await readdir(PUB);
 const htmlFiles = pubFiles.filter((f) => extname(f) === ".html");
 const jsFiles = pubFiles.filter((f) => extname(f) === ".js");
@@ -1329,13 +1338,8 @@ head("6. 外部リンク");
   if (!ex2(ip)) bad("事物の索引が無い");
   else {
     const idx = JSON.parse(rf2(ip, "utf8"));
-    // 索引は z12 の束ごとに、中の z14 タイルを1ビットずつ立てて持っている
-    const covered = (lon, lat) => {
-      const t = tileOf(lon, lat, 14), S = Math.log2(idx.sub);
-      const bx = t.x >> S, by = t.y >> S;
-      const bit = 1 << (((t.y - by * idx.sub) * idx.sub) + (t.x - bx * idx.sub));
-      return { t, on: !!((idx.tiles[`${bx}/${by}`] ?? 0) & bit) };
-    };
+    // 索引は z12 の束ごとに、中の z14 タイルを1ビットずつ立てて持っている（読み方は evCovered）
+    const covered = evCovered(idx, tileOf);
     const m = /const UNSURVEYED = "ll=([\d.]+),([\d.]+)/.exec(rf2("scripts/render.mjs", "utf8"));
     if (!m) bad("render.mjs の UNSURVEYED が読めない（未整備の検査が土地を失っている）");
     else {
@@ -1694,6 +1698,142 @@ head("6. 外部リンク");
         ? bad(`manifest の行き先が実在しない: ${dead.join("、")}（押すと 404 になる）`)
         : ok(`manifest の行き先は全部実在する（${targets.length} 件）`);
     }
+  }
+}
+
+// 配布している年つき事物の**意味**を見る。
+// ⚠ ここまでの検査は「索引と本体が揃っているか」（＝形）だけで、
+//   中身の値どうしが矛盾していないかは1件も見ていなかった。値を壊しても CI は緑になる。
+// ⚠ 数え上げは**対象件数と違反件数の両方**を出す。0 件だけ見せると、
+//   「見て 0 件」と「そもそも見ていない」が同じ顔になる。
+{
+  const { readFileSync: rfe, readdirSync: rde, statSync: ste, existsSync: exe } = await import("node:fs");
+  const { tileOf } = await import("./db.mjs");
+  const ip = join(PUB, "data", "ev", "index.json");
+  if (!exe(ip)) bad("事物の索引が無い（意味検査が何も見ていない）");
+  else {
+    const idx = JSON.parse(rfe(ip, "utf8"));
+    const covered = evCovered(idx, tileOf);
+    const files = [];
+    (function walk(d) {
+      if (!exe(d)) return;
+      for (const e of rde(d)) {
+        const q = `${d}/${e}`;
+        ste(q).isDirectory() ? walk(q) : (e.endsWith(".json") && files.push(q));
+      }
+    })(join(PUB, "data", "ev", String(idx.z)));
+    const PREC = ["year", "decade", "century"];
+    const v = { 終了年が開始年より前: [], 精度が3種以外: [], 桁が精度と矛盾: [],
+      タイルの外: [], 索引が見ていない場所: [], ID重複: [], 必須項目が無い: [] };
+    const seen = new Map();
+    let n = 0;
+    for (const f of files) {
+      let j; try { j = JSON.parse(rfe(f, "utf8")); } catch { bad(`事物の本体が壊れている: ${f}`); continue; }
+      const [z, tx, ty] = j.tile ?? [];
+      for (const x of j.f ?? []) {
+        n++;
+        const at = `${x.id ?? "(idなし)"}`;
+        if (!x.id || !x.l || !Array.isArray(x.c) || !Array.isArray(x.y) || !x.p) v.必須項目が無い.push(at);
+        const [from, to] = x.y ?? [];
+        // ⚠ to は「分かっていない」で null になる（＝まだ在る、ではない）。null は違反ではない
+        if (to != null && from != null && to < from) v.終了年が開始年より前.push(`${at} ${from}→${to}`);
+        if (!PREC.includes(x.p)) v.精度が3種以外.push(`${at} ${x.p}`);
+        // decade は開始年〜+9、century は開始年〜+99 として扱う。開始年の桁が合っていないと、
+        // 幅の当て方（yspan）がそのままずれる
+        if (x.p === "decade" && from % 10 !== 0) v.桁が精度と矛盾.push(`${at} decade ${from}`);
+        if (x.p === "century" && from % 100 !== 0) v.桁が精度と矛盾.push(`${at} century ${from}`);
+        if (Array.isArray(x.c) && x.c.length === 2) {
+          const t = tileOf(x.c[0], x.c[1], z);
+          if (t.x !== tx || t.y !== ty) v.タイルの外.push(`${at} ${t.x}/${t.y}≠${tx}/${ty}`);
+          // ⚠ 索引が「見た」と言っていない場所のものを配らない。配ると、
+          //   問い合わせていない地面について「これで全部」と言うことになる
+          if (!covered(x.c[0], x.c[1]).on) v.索引が見ていない場所.push(`${at} ${x.c.join(",")}`);
+        }
+        if (x.id) { if (seen.has(x.id)) v.ID重複.push(`${at}（${seen.get(x.id)} と ${f}）`); else seen.set(x.id, f); }
+      }
+    }
+    if (!files.length || !n) bad("配布している事物が1件も読めない（この検査が何も見ていない）");
+    else {
+      const hit = Object.entries(v).filter(([, a]) => a.length);
+      hit.length
+        ? bad(`配布データの意味に違反: ${hit.map(([k, a]) => `${k} ${a.length}件（${a.slice(0, 2).join(" / ")}）`).join("／")}`
+            + `（対象 ${n} 件）`)
+        : ok(`配布している事物 ${n} 件（${files.length} ファイル）に意味の違反なし`
+            + `（範囲 ${Object.keys(v).length} 種を全件走査）`);
+    }
+  }
+}
+
+// 年の精度の決め方が、取り込み側（静的配布）と実行時（Wikidata 直）で同じであること。
+// ⚠ 実際にずれていた（2026-08-16 に発見）。Wikidata の精度（dateP）が無いとき、
+//   取り込み側は Number(undefined) が NaN になって "century"、実行時側は "year" を返していた。
+//   同じ項目が、静的では 99年幅・実行時では 0年幅になり、**経路によって出る年代が変わる**。
+//   ⚠ 字面を比べるのではなく、**両方の式を実際に動かして**突き合わせる。
+{
+  const ing = await readFile(join(ROOT, "scripts", "ingest-wikidata.mjs"), "utf8");
+  const ev = await readFile(join(PUB, "events.js"), "utf8");
+  const e1 = /const prec = \(p\) => \(([\s\S]*?)\);/.exec(ing)?.[1];
+  // ⚠ 式の書き方に強くしておく。以前は `…"century"),` で終わる形しか拾えず、
+  //   実行時側を古い形に戻すと**照合そのものをやめて**「式を読めない」で落ちていた
+  //   （落ちるだけましだが、食い違いとして検出できていない）。
+  //   precision: から次の url: までを丸ごと取る。
+  //   ⚠ events.js には precision: が2つある（静的タイル側と Wikidata 直側）。
+  //     row.dateP で始まるほう（＝実行時）に固定して拾う。
+  const e2 = /precision:\s*(Number\(row\.dateP[\s\S]*?),\s*\n\s*(?:\/\/[^\n]*\n\s*)*url:/.exec(ev)?.[1];
+  if (!e1 || !e2) bad(`年の精度の式を読めない（取り込み ${!!e1} / 実行時 ${!!e2}。この検査が何も見ていない）`);
+  else {
+    const f1 = new Function("p", `return (${e1});`);
+    const f2 = new Function("p", `return (${e2.replaceAll("row.dateP?.value", "p")});`);
+    // SPARQL は文字列で返す。⚠ 値が無い場合（undefined・空文字）が、まさにずれていた側
+    const IN = ["11", "10", "9", "8", "7", "6", "0", "", undefined, null];
+    const off = IN.filter((x) => f1(x) !== f2(x));
+    off.length
+      ? bad(`年の精度の決め方が経路で違う: ${off.map((x) => `${JSON.stringify(x)} → 取り込み ${f1(x)} / 実行時 ${f2(x)}`).join("、")}`)
+      : ok(`年の精度の決め方が、取り込みと実行時で一致（${IN.length} 通りで照合。精度なし → ${f1(undefined)}）`);
+  }
+}
+
+// 上流から消えた行（dropped_at）が、配布物に出ないこと。
+// ⚠ 除外は Exporter の WHERE 1か所だけに依存している。落ちても配布物を見て気づけない
+//   （消えた行が「まだ在る」として配られるので、画面はむしろ静かになる）。
+// ⚠ **一時 DB と一時の書き出し先で走らせる。** Exporter は書き出し先を rmSync するので、
+//   本物の public/data/ev を消さないよう KONJAKU_EV_OUT を渡す。
+{
+  const { mkdtempSync, rmSync: rmt, readFileSync: rft, existsSync: ext } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const dir = mkdtempSync(join(tmpdir(), "konjaku-ev-"));
+  try {
+    const { SCHEMA } = await import("./db.mjs");            // ⚠ スキーマは写さない
+    const { DatabaseSync } = await import("node:sqlite");
+    const dbPath = join(dir, "t.db"), out = join(dir, "ev");
+    const db = new DatabaseSync(dbPath);
+    db.exec(SCHEMA);
+    db.exec(`INSERT INTO coverage (z14x,z14y,layer,source,at,n,truncated)
+             VALUES (14552,6451,'ev','wikidata','2026-08-16',2,0)`);
+    const ins = db.prepare(`INSERT INTO feature
+      (id,source,source_url,retrieved_at,label,kind,lon,lat,year_from,year_to,precision,dropped_at,z14x,z14y)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
+    ins.run("wd:QLIVE", "wikidata", "https://example.invalid/live", "2026-08-16",
+      "生きている記録", "building", 139.79, 35.65, 1930, null, "year", null, 14552, 6451);
+    ins.run("wd:QDROP", "wikidata", "https://example.invalid/drop", "2026-08-16",
+      "上流から消えた記録", "building", 139.79, 35.65, 1931, null, "year", "2026-08-16", 14552, 6451);
+    db.close();
+    execFileSync(process.execPath, ["scripts/export-tiles.mjs"],
+      { cwd: ROOT, encoding: "utf8", env: { ...process.env, KONJAKU_DB: dbPath, KONJAKU_EV_OUT: out } });
+    const idx = JSON.parse(rft(join(out, "index.json"), "utf8"));
+    const key = Object.keys(idx.tiles)[0];
+    const body = ext(join(out, String(idx.z), `${key}.json`))
+      ? JSON.parse(rft(join(out, String(idx.z), `${key}.json`), "utf8")) : null;
+    const ids = (body?.f ?? []).map((x) => x.id);
+    !ids.includes("wd:QLIVE")
+      ? bad(`Exporter が生きている行を配っていない（この検査が何も見ていない）: ${JSON.stringify(ids)}`)
+      : ids.includes("wd:QDROP")
+        ? bad("上流から消えた行（dropped_at）が配布物に入っている")
+        : ok(`上流から消えた行は配布物に入らない（一時 DB で 2 件中 1 件を除外）`);
+  } catch (e) {
+    bad(`dropped_at の除外を確かめられなかった: ${String(e.message).split("\n")[0]}`);
+  } finally {
+    rmt(dir, { recursive: true, force: true });
   }
 }
 

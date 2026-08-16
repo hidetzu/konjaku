@@ -2461,19 +2461,30 @@ const CASES = [
         `世紀の記録を、1936年に在ったものとして出している: ${JSON.stringify(rows)}`);
       // ⚠ 1950年代（1950〜1959）も同様
       must(!has("1950年代の館"), `年代の記録を、1936年に在ったものとして出している`);
-      // 出てくる年代では、年の書き方が精度どおりであること（1961–69 → 1974–78 の差分）
-      await photoFrames(page).nth(3).click();
-      await page.waitForFunction(() => !/調べています/.test(
-        document.getElementById("ev")?.textContent ?? ""), null, { timeout: 20000 });
-      await page.waitForTimeout(400);
-      const now = await page.$$eval(".ev-row", (els) => els.map((e) => ({
-        y: e.querySelector(".ev-y")?.textContent.trim() ?? "",
-        l: e.querySelector(".ev-l")?.textContent.trim() ?? "" })));
+      // ⚠ **差分でも、幅の終端まで見ること。**
+      //   「1970年代」は 1970〜1979 のどこか。1961–69 → 1974–78 の差分に出すと
+      //   「1978年までに確実にできた」と言い切ることになる（1979年の記録かもしれない）。
+      //   以前ここは `must(d, "1974–78 の差分に 1970年代の記録が出ていない")` で、
+      //   **誤った配置のほうを正として固定していた**。
+      const rowsAt = async (n) => {
+        await photoFrames(page).nth(n).click();
+        await page.waitForFunction(() => !/調べています/.test(
+          document.getElementById("ev")?.textContent ?? ""), null, { timeout: 20000 });
+        await page.waitForTimeout(400);
+        return page.$$eval(".ev-row", (els) => els.map((e) => ({
+          y: e.querySelector(".ev-y")?.textContent.trim() ?? "",
+          l: e.querySelector(".ev-l")?.textContent.trim() ?? "" })));
+      };
+      const early = await rowsAt(3);                       // 1961–69 → 1974–78
+      must(!early.find((r) => r.l.includes("1970年代の駅")),
+        `1970年代（1970〜1979）を、1974–78 までに確定した変化として出している: ${JSON.stringify(early)}`);
+      // 幅の終端（1979）が入るコマで、初めて出る。消えるのではなく後ろへずれる
+      const now = await rowsAt(4);                         // 1974–78 → 1979–83
       const d = now.find((r) => r.l.includes("1970年代の駅"));
-      must(d, `1974–78 の差分に 1970年代の記録が出ていない: ${JSON.stringify(now)}`);
+      must(d, `1979–83 の差分に 1970年代の記録が出ていない（幅の終端で出るはず）: ${JSON.stringify(now)}`);
       must(/年代/.test(d.y), `10年の記録を「${d.y}」と書いている（精度どおりでない）`);
       return `1936年: ${rows.map((r) => r.y).join(",") || "なし"}／`
-        + `1974–78: ${now.map((r) => r.y).join(",")}`;
+        + `1974–78: ${early.map((r) => r.y).join(",") || "なし"}／1979–83: ${now.map((r) => r.y).join(",")}`;
     },
   },
   {
