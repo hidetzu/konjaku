@@ -1744,16 +1744,16 @@ head("6. 外部リンク");
 // 取り込み側・トップ・3D側が同じ明治期凡例と許容差を使うこと。
 // 3か所に残るのはブラウザ用とNode用の実行環境が違うためで、内容は機械的に照合する。
 {
-  const legend = (src) => [...src.matchAll(/\{\s*rgb:\s*\[\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\]\s*,\s*name:\s*"([^"]+)"(?:\s*,\s*water:\s*true)?\s*\}/g)]
-    .map((m) => m.slice(1).join("|"));
+  const legend = (src) => [...src.matchAll(/\{\s*rgb:\s*\[\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\]\s*,\s*name:\s*"([^"]+)"(,\s*water:\s*true)?\s*\}/g)]
+    .map((m) => [...m.slice(1, 5), m[5] ? "water" : "land"].join("|"));
   const threshold = (src) => src.match(/Math\.sqrt\(bd\)\s*<=\s*(\d+)/)?.[1] ?? null;
   const files = ["scripts/swale-sample.mjs", "public/verify.js", "public/peel3d.js"];
   const sources = await Promise.all(files.map((f) => readFile(join(ROOT, f), "utf8")));
   const legends = sources.map(legend), thresholds = sources.map(threshold);
   const sameLegend = legends.every((x) => JSON.stringify(x) === JSON.stringify(legends[0]));
   const sameThreshold = thresholds.every((x) => x === thresholds[0]);
-  !sameLegend || !sameThreshold
-    ? bad(`明治期凡例の照合失敗（凡例=${sameLegend ? "一致" : "不一致"} / 閾値=${thresholds.join(",")})`)
+  !sameLegend || !sameThreshold || legends[0].length !== 14
+    ? bad(`明治期凡例の照合失敗（凡例=${sameLegend ? "一致" : "不一致"} / 色数=${legends[0].length} / 閾値=${thresholds.join(",")})`)
     : ok(`明治期凡例・許容差を3実装で照合（${legends[0].length} 色 / 閾値 ${thresholds[0]})`);
 }
 
