@@ -231,10 +231,14 @@
     border-radius:50%;background:var(--ink);margin-left:-12.5px;
     box-shadow:0 0 0 2px rgba(255,255,255,.48),0 3px 14px rgba(0,0,0,.75);transition:background .2s}
   #track.meiji .knob{background:var(--water)}
-  /* 目盛りとノブは指を横取りしない。以前は飾りが input を覆って年代帯の操作が
-     できなかったため、操作は range input に一本化する。ラベルだけは段を明示選択する。 */
-  #track .rail,#track .fill,#track .tick,#track .knob{pointer-events:none}
-  #track .lab{pointer-events:auto}
+  /* ⚠ 飾りは指を受け取らない。**年代の文字も含めて**、操作は range input に一本化する。
+     実測（2026-08-14・375px）: 飾りが input を覆っていた頃は、年代の文字5つは全滅、
+     目盛りも大半が無反応、ノブは掴めなかった。**いちばん押したくなる的が、全部死んでいた。**
+     ⚠ 文字だけを pointer-events:auto に戻さない。押下が input に届かず range が
+     ドラッグを始めないので、**文字の上から引いても値が段に貼り付いて動かない**
+     （実測 2026-08-16・375×667・豊洲: 右へ 120px 引いて 200 → 200 → 200 …）。
+     「文字を押したらその段へ寄せる」は peel3d.js が pointerup で行う（既定動作を止めない）。 */
+  #track .rail,#track .fill,#track .tick,#track .lab,#track .knob{pointer-events:none}
   #track input{position:absolute;inset:0;width:100%;height:100%;
     opacity:0;cursor:pointer;margin:0}
 

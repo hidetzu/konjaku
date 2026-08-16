@@ -1401,16 +1401,42 @@ slider.addEventListener("input",()=>{
 
 // 端の年代ラベルは、見た目の中心が range の最大・最小位置からずれる。
 // そのまま押すと「明治期」と表示されても値が最大に届かず、場面が切り替わりきらないため、
-// ラベルを押したときは、その段を明示的に選ぶ。
+// 文字を押したときは、その段を明示的に選ぶ。
+//
+// ⚠ **既定動作を止めない。** 以前は文字だけ pointer-events:auto にして pointerdown を
+//   preventDefault/stopPropagation していたが、そうすると range がドラッグを始めないので、
+//   **文字の上から引いても値がその段に貼り付いて動かなかった**
+//   （実測 2026-08-16・375×667・豊洲: 右へ 120px 引いて 200 → 200 → 200 …。
+//    ノブの上・レールの上からは連続して動いていた）。
+//   そこで、押した点がどの文字の箱の中かだけを覚えておき、
+//   **ほとんど動かずに離したとき**＝タップのときだけ、その段へ寄せる。
+// ⚠ 引いた結果は寄せない。引き終えてから段へ吸うと、指を離した瞬間に値が飛ぶ。
+const TAP_SLOP=6;         // これ以下の移動はタップ。指で押すと数 px は動く
+let labFrom=null;
+// ⚠ 文字は pointer-events:none なので e.target には出てこない。箱で当てる。
+//   文字を間引いた（空の）ラベルは的にしない（押しても何が選ばれたのか読めない）
+const labAt=(x,y)=>{
+  for(const el of trackEl.querySelectorAll(".lab")){
+    if(!el.textContent.trim()) continue;
+    const r=el.getBoundingClientRect();
+    if(x>=r.left&&x<=r.right&&y>=r.top&&y<=r.bottom) return el;
+  }
+  return null;
+};
 trackEl.addEventListener("pointerdown",(e)=>{
-  const mark=e.target.closest(".lab");
-  if(!mark||!trackEl.contains(mark)) return;
-  e.preventDefault(); e.stopPropagation();
-  const k=Number(mark.dataset.i);
-  if(!Number.isFinite(k)) return;
-  slider.value=String(k*100);
+  const mark=labAt(e.clientX,e.clientY);
+  const k=mark?Number(mark.dataset.i):NaN;
+  labFrom=Number.isFinite(k)?{x:e.clientX,y:e.clientY,k}:null;
+});
+trackEl.addEventListener("pointerup",(e)=>{
+  const f=labFrom; labFrom=null;
+  if(!f) return;
+  if(Math.hypot(e.clientX-f.x,e.clientY-f.y)>TAP_SLOP) return;   // 引いた。連続移動の結果を残す
+  slider.value=String(f.k*100);
   slider.dispatchEvent(new Event("input",{bubbles:true}));
 });
+// 押しかけたまま取り消されたものを、次の操作へ持ち越さない
+trackEl.addEventListener("pointercancel",()=>{ labFrom=null; });
 
 const playBtn=document.getElementById("play");
 const eraDetails=document.getElementById("eraDetails");

@@ -2790,6 +2790,65 @@ const CASES = [
     },
   },
   {
+    // ⚠ 年代帯の操作は <input type=range> **一本**で受けている。
+    //   ラベルだけを pointer-events:auto にして pointerdown を止めると、
+    //   range がドラッグを始めないので、文字の上から引いても値が段に貼り付いたまま動かない。
+    //   実測（2026-08-16 / 375×667・タッチ / 豊洲 max=800 / 右へ 20px ずつ）:
+    //     文字の上   200 → 200 → 200 → 200 → 200 → 200 → 200  ← 動かない
+    //     ノブの上     0 →  37 →  98 → 160 → 222 → 283 → 345
+    //     レールの上 188 → 249 → 311 → 372 → 434 → 495 → 557
+    //   「押せば段へ寄る」と「引けば連続して動く」は**同じ的の上で両方**成り立つ必要がある。
+    name: "年代帯の文字は、押せば段へ寄り、引けば連続して動く", path: `/peel?${TOYOSU}`,
+    viewport: { width: 375, height: 667 }, hasTouch: true,
+    async check(page) {
+      await peelReady(page);
+      await page.waitForFunction(() => document.querySelectorAll("#track .tick").length > 1,
+        null, { timeout: 60000 });
+      // 文字は1つおきに間引かれているので、**文字のあるラベル**だけを見る
+      const labs = await page.$$eval("#track .lab", (els) => els.map((e) => {
+        const r = e.getBoundingClientRect();
+        return { i: Number(e.dataset.i), text: e.textContent.trim(),
+          cx: Math.round(r.x + r.width / 2), cy: Math.round(r.y + r.height / 2) };
+      }).filter((l) => l.text));
+      const val = () => page.$eval("#t", (e) => Number(e.value));
+      const reset = () => page.$eval("#t", (e) => { e.value = "0"; e.dispatchEvent(new Event("input")); });
+      // 端は既存ケースが見ている。ここは**中間**の文字で見る
+      const mid = labs.find((l) => l.i > 0 && l.i < Math.max(...labs.map((x) => x.i)));
+      must(mid, `中間の年代ラベルが無い: ${labs.map((l) => l.text).join("・")}`);
+
+      // ---- 押す（段へ寄る）----
+      await reset();
+      await page.mouse.click(mid.cx, mid.cy);
+      await page.waitForTimeout(250);
+      const tapped = await val();
+      must(tapped === mid.i * 100,
+        `文字「${mid.text}」を押しても段 ${mid.i} にならない: ${tapped}（期待 ${mid.i * 100}）`);
+
+      // ---- 引く（連続して動く）----
+      await reset();
+      await page.mouse.move(mid.cx, mid.cy);
+      await page.mouse.down();
+      const trace = [await val()];
+      for (let dx = 20; dx <= 120; dx += 20) {
+        await page.mouse.move(mid.cx + dx, mid.cy);
+        await page.waitForTimeout(60);
+        trace.push(await val());
+      }
+      await page.mouse.up();
+      await page.waitForTimeout(150);
+      const ended = await val();
+      // 段に貼り付いていないこと。**途中の値**が増えていく（段の値だけを飛ぶのではない）
+      const steps = new Set(trace).size;
+      must(steps >= 4, `文字の上から引いても動かない: ${trace.join(" → ")}`);
+      for (let i = 1; i < trace.length; i++)
+        must(trace[i] > trace[i - 1], `右へ引いたのに値が戻る: ${trace.join(" → ")}`);
+      // 離したあとに段へ吸い戻されないこと（引いた結果を尊重する）
+      must(ended === trace[trace.length - 1],
+        `引き終えてから段へ吸い戻された: ${trace[trace.length - 1]} → ${ended}`);
+      return `文字「${mid.text}」押下 → ${tapped}／引くと ${trace[0]} → ${ended}（${steps} 段階）`;
+    },
+  },
+  {
     // ⚠ 年代を動かせることが、航空写真の上で見えなければ操作は存在しないのと同じ。
     //   文字・2px の線・14px のノブを背景へ直接置いていたときは、明るい地面でも
     //   暗い水面でも読みづらかった。板・見出し・指で分かるノブを実寸で見る。
