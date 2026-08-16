@@ -93,6 +93,35 @@
   /* ============ HUD ============ */
   #hud{position:absolute;left:0;right:0;bottom:0;z-index:12;pointer-events:none;
     padding:0 26px 22px;display:flex;flex-direction:column;align-items:center;gap:13px}
+  /* ============ 土地の答え（常時見える） ============ */
+  /* ⚠ 年代（60px）より小さく、但し書き（12px）より大きい。この画面の中心の主張。
+     ⚠ **画面の上に置く。** 下の HUD に足すと、板のぶんだけ HUD が上へ伸び、
+       実測（2026-08-16 / 375×667）で **画面中央 y=333 ＝ いま調べている地点そのもの**が
+       板の下に隠れた（HUD の上端 354 → 280）。中央を空けるには追加分を 21px 未満に
+       抑えるしかなく、3 行の板では不可能。だから上へ置く。
+     ⚠ 右上のズーム操作と重ねない。幅を空けてある（下の right の値）。
+     ⚠ 数字だけを置かない。**何の割合か**と**分母**を同じ板に出す（掟: 数字は主張範囲の分母で書く）。 */
+  #land{position:absolute;z-index:11;left:14px;right:76px;top:62px;max-width:520px;
+    pointer-events:auto;padding:8px 12px 9px;border-radius:13px;
+    border:1px solid rgba(255,255,255,.18);background:rgba(8,12,18,.86);
+    box-shadow:0 9px 30px rgba(0,0,0,.38);backdrop-filter:blur(14px);text-align:left}
+  /* 答えが出るまでは何も置かない（空の板を出すと「まだ何も無い」が見えない） */
+  #land:empty{display:none}
+  .land-line{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+  .land-num{font-size:var(--fs-hero-sm);font-weight:600;line-height:1.15;color:var(--ink);
+    font-variant-numeric:tabular-nums}
+  .land-num small{font-size:var(--fs-body);margin-left:1px}
+  /* 数値を作れないとき（「建物ごとには出せません」）。0% を出さない */
+  .land-alt{font-size:var(--fs-badge);font-weight:600;line-height:1.35;color:var(--ink)}
+  .land-what{font-size:var(--fs-note);line-height:1.5;color:#cbd3dc}
+  .land-what b{color:var(--water);font-weight:600}
+  .land-den{margin-top:3px;font-size:var(--fs-note);line-height:1.5;color:var(--ink-dim)}
+  .land-den b{color:#cbd3dc;font-weight:600}
+  .land-sub{margin-top:2px;font-size:var(--fs-note);line-height:1.5;color:var(--ink-faint)}
+  /* ⚠ パネルを開いている間は出さない。同じ答えを同じ画面で2度言わない
+     （☰ ボタンと同じ手。`~` は後続の兄弟にしか効かないが、#panel は #hud より前にある）。 */
+  #panel:not(.hide) ~ #land{display:none}
+
   /* 年代と、その読み方を1枚にまとめる。別々の板を縦に積むと、どれが同じ表示の
      説明なのか分からず地図も細切れになる。初期状態では全部を見せ、読んだ後は畳める。 */
   #era{pointer-events:auto;width:min(580px,100%);padding:9px 12px 11px;border-radius:13px;
@@ -468,6 +497,18 @@
   <a id="back" href="./" title="今昔にもどる">← <span>もどる</span></a>
   <button id="toggle" title="情報を開く">☰ <span>この土地について</span></button>
 </div>
+<!-- ⚠ この画面の中心の答え（建物の何%が明治期には水の上だったか）と、その分母。
+     **情報パネルを開かなくても読める場所**に置く。スマホはパネルが閉じて始まるので、
+     ここに無いと初期画面から答えが読めない（実測 2026-08-16 / 375×667: 豊洲 99.6%、
+     広島 1.4%、出島 3.4% とも計算済みなのに**実効 opacity 0**。読めるのは
+     「建物が消える年代は演出です」という但し書きだけだった）。
+     ⚠ 割合と分母の出どころは peel3d.js の landVerdict() **1か所**。
+       パネルの #heroNum / #heroCap と同じ結果を描いている。
+     ⚠ 年代パネル（#era）の中に入れない。あれは利用者が畳めるので、畳んだ瞬間に
+       土地の答えまで消える。
+     ⚠ **#hud の中に入れない。** #hud は画面の下端に貼り付く箱なので、そこに足すと
+       箱が上へ伸び、いま調べている地点（画面中央の印）が板の下に隠れる（実測で確認）。 -->
+<div id="land" aria-live="polite"></div>
 <div id="hud">
   <div id="era">
     <div class="era-panel-head"><span class="era-kicker">表示中</span>
