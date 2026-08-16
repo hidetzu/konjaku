@@ -684,7 +684,7 @@ const CASES = [
         `事前に取り込んだデータを使っていない（${status.slice(0, 80)}）`);
       const hero = await page.locator("#heroNum").textContent({ timeout: 45000 });
       const cap = await page.locator("#heroCap").textContent();
-      must(hero.trim().length > 0 && cap.includes("建物の足元") && cap.includes("水域だった建物"),
+      must(hero.trim().length > 0 && ((cap.includes("建物の足元") && cap.includes("水域だった建物")) || cap.includes("水の上")),
         `建物足元の最多区分と水域補足が出ていない: ${hero} / ${cap.trim().slice(0, 80)}`);
       // ⚠ ここは長いあいだ、読んで報告に印字するだけで assert が無かった。
       //   08ce46f で潰した「測っていないことを報告する」と同じ形が、
@@ -748,7 +748,7 @@ const CASES = [
       const hero = (await page.locator("#heroNum").textContent()).trim();
       must(hero.length > 0, `事前計算の建物区分が表示されていない: ${hero}`);
       const cap = (await page.locator("#heroCap").textContent()).trim();
-      must(cap.includes("建物の足元") && cap.includes("水域だった建物"),
+      must((cap.includes("建物の足元") && cap.includes("水域だった建物")) || cap.includes("水の上"),
         `事前計算の建物区分が説明されていない: ${cap.slice(0, 80)}`);
       const status = (await page.locator("#status").textContent()).trim();
       must(!status.includes("データがありません"),
@@ -913,7 +913,7 @@ const CASES = [
       const hero = (await page.locator("#heroNum").textContent()).trim();
       must(hero.length > 0, `事前計算の建物区分が表示されていない: ${hero}`);
       const cap = (await page.locator("#heroCap").textContent()).trim();
-      must(cap.includes("建物の足元") && cap.includes("水域だった建物"),
+      must((cap.includes("建物の足元") && cap.includes("水域だった建物")) || cap.includes("水の上"),
         `事前計算の建物区分が説明されていない: ${cap.slice(0, 80)}`);
       const status = (await page.locator("#status").textContent()).trim();
       must(!status.includes("データがありません"),
@@ -948,7 +948,7 @@ const CASES = [
       must(prov.includes("実際の水域"), `水面の行まで落ちている: ${prov.replace(/\s+/g, " ").slice(0, 60)}`);
       const hero = (await page.locator("#heroNum").textContent()).trim();
       const cap = (await page.locator("#heroCap").textContent()).trim();
-      must(hero.length > 0 && cap.includes("建物の足元") && cap.includes("水域だった建物"),
+      must(hero.length > 0 && ((cap.includes("建物の足元") && cap.includes("水域だった建物")) || cap.includes("水の上")),
         `建物足元の最多区分と水域補足が出ていない: ${hero} / ${cap.slice(0, 80)}`);
       return `${txt.slice(0, 34)}／土地区分と水域補足（${hero}）は従来どおり`;
     },

@@ -903,6 +903,7 @@ function renderLand(v){
   if(!v){ landEl.innerHTML=""; return; }        // 場所を切り替えた直後。前の答えを残さない
   const sub=(t)=>t?`<div class="land-sub">${t}</div>`:"";
   if(v.kind==="ratio"||v.kind==="area"){
+    const landIsWater=v.land&&SWALE.find(c=>c.name===v.land.name)?.water;
     // 数字だけを置かない。**何の割合か**と**分母**を必ず同じ板に出す
     const what=v.kind==="ratio"
       ? (v.land
@@ -918,7 +919,7 @@ function renderLand(v){
       : (v.land?`<div class="land-sub">この範囲で最も多い区分: <b>${esc(v.land.name)}</b>（${v.land.pct}%）</div>`:"");
     const water=v.kind==="ratio"&&v.land
       ? `<div class="land-sub">水域だった建物: ${v.pct}%</div>` : "";
-    landEl.innerHTML=v.kind==="ratio"&&v.land
+    landEl.innerHTML=v.kind==="ratio"&&v.land&&!landIsWater
       ? `<div class="land-line"><b class="land-alt">${esc(v.land.name)}</b><span class="land-what">${what}</span></div><div class="land-den">${den}</div>${land}${water}`
       : `<div class="land-line"><b class="land-num">${v.pct}<small>%</small></b>`
         + `<span class="land-what">${what}</span></div><div class="land-den">${den}</div>${land}`;
@@ -957,7 +958,8 @@ function showResult(){
   const v=landVerdict();
   renderLand(v);
   if(v.kind==="ratio"){
-    if(v.land){
+    const landIsWater=v.land&&SWALE.find(c=>c.name===v.land.name)?.water;
+    if(v.land&&!landIsWater){
       heroEl.innerHTML=`<span class="hero-alt">${esc(v.land.name)}</span>`;
       capEl.innerHTML=`建物の足元は、明治期には<b>${esc(v.land.name)}</b>が最多でした<br>
         <span style="opacity:.7">区分を特定できた ${v.land.count} / ${v.land.classified} 件（${v.land.pct}%）</span><br>
