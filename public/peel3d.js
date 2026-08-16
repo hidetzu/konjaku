@@ -1268,6 +1268,18 @@ function render(){
 }
 slider.addEventListener("input",()=>{stop();render()});
 
+// 年代ラベルは端の中心がrangeの値の途中に当たることがある。
+// ラベルを押したときは、その段を明示的に選び、地図へイベントを抜けさせない。
+trackEl.addEventListener("pointerdown",(e)=>{
+  const mark=e.target.closest(".lab");
+  if(!mark||!trackEl.contains(mark)) return;
+  e.preventDefault(); e.stopPropagation();
+  const k=Number(mark.dataset.i);
+  if(!Number.isFinite(k)) return;
+  slider.value=String(k*100);
+  slider.dispatchEvent(new Event("input",{bubbles:true}));
+});
+
 const playBtn=document.getElementById("play");
 const eraDetails=document.getElementById("eraDetails");
 const eraToggle=document.getElementById("eraToggle");

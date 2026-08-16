@@ -225,14 +225,14 @@
     border-radius:50%;background:var(--ink);margin-left:-12.5px;
     box-shadow:0 0 0 2px rgba(255,255,255,.48),0 3px 14px rgba(0,0,0,.75);transition:background .2s}
   #track.meiji .knob{background:var(--water)}
-  /* ⚠ 飾りは指を受け取らない。
-     目盛り・年代の文字・ノブ・レールは insertAdjacentHTML("beforeend") で
-     <input type=range> の**後ろ**に挿さるので、そのままだと入力を覆う。
-     実測（2026-08-14・375px）: 年代の文字5つは全滅、目盛りも大半が無反応、
-     ノブは掴めなかった。**いちばん押したくなる的が、全部死んでいた。**
-     CSS の意図（input を最前面）を DOM 順が覆していた。 */
-  #track .rail,#track .fill,#track .tick,#track .lab,#track .knob{pointer-events:none}
-  #track input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;margin:0}
+  /* 飾りは指を横取りしない。inputを後ろから覆うと、選択中の目盛りがノブのドラッグを
+     奪うため、操作はrange inputに一本化する。端の中心が境界に乗っても受けられるよう、
+     inputのヒット領域だけを1px外へ出す。 */
+  #track .rail,#track .fill,#track .tick,#track .knob{pointer-events:none}
+  #track .lab{pointer-events:auto}
+  /* input の端を1pxだけ外へ出し、最大・最小ノブの中心が境界に乗っても受ける。 */
+  #track input{position:absolute;top:0;bottom:0;left:-1px;right:-1px;width:auto;height:100%;
+    opacity:0;cursor:pointer;margin:0}
 
   /* ============ パネル ============ */
   #panel{position:absolute;top:14px;left:14px;z-index:11;width:300px;

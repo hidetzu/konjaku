@@ -2759,6 +2759,42 @@ const CASES = [
     },
   },
   {
+    // ⚠ 端の文字中心は input の境界ちょうどになり、以前は地図キャンバスへ抜けていた。
+    //   実際の座標を押し、年代が変わることと、押下先が canvas でないことを確認する。
+    name: "年代帯の端の文字を押しても地図へ抜けない", path: `/peel?${TOYOSU}`,
+    viewport: { width: 375, height: 667 }, hasTouch: true,
+    async check(page) {
+      await peelReady(page);
+      await page.waitForFunction(() => document.querySelectorAll("#track .tick").length > 1,
+        null, { timeout: 60000 });
+      const max = await page.$eval("#t", (e) => Number(e.max));
+      await page.$eval("#t", (e) => { e.value="0"; e.dispatchEvent(new Event("input")); });
+      const target = await page.locator("#track .lab.at-end").boundingBox();
+      must(target, "年代帯の右端ラベルが無い");
+      const cx=Math.round(target.x+target.width/2), cy=Math.round(target.y+target.height/2);
+      const before = await page.$eval("#t", (e) => Number(e.value));
+      const hitBefore = await page.evaluate(([x,y]) => {
+        const e=document.elementFromPoint(x,y);
+        return e ? { tag:e.tagName, id:e.id, cls:e.className } : null;
+      }, [cx,cy]);
+      await page.mouse.click(cx,cy);
+      await page.waitForTimeout(300);
+      const after = await page.$eval("#t", (e) => Number(e.value));
+      must(after===max, `右端「明治期」を押しても最大値にならない: ${before} → ${after}/${max}`);
+      must(!(hitBefore?.tag==="CANVAS"), `右端ラベルの押下先が地図キャンバス: ${JSON.stringify(hitBefore)}`);
+      // ノブ中心の押下も、地図へ抜けず現在値を保つこと。
+      const mid=Math.round(max/2);
+      await page.$eval("#t", (e, v) => { e.value=String(v); e.dispatchEvent(new Event("input")); }, mid);
+      const knob = await page.locator("#track .knob").boundingBox();
+      must(knob, "ノブが無い");
+      const kx=Math.round(knob.x+knob.width/2), ky=Math.round(knob.y+knob.height/2);
+      await page.mouse.click(kx,ky);
+      const kept = await page.$eval("#t", (e) => Number(e.value));
+      must(kept===mid, `ノブ中心の押下で値が変わった: ${kept}`);
+      return `右端ラベル ${cx},${cy}: ${before}→${after}／ノブ中心は地図へ抜けない`;
+    },
+  },
+  {
     // ⚠ 年代を動かせることが、航空写真の上で見えなければ操作は存在しないのと同じ。
     //   文字・2px の線・14px のノブを背景へ直接置いていたときは、明るい地面でも
     //   暗い水面でも読みづらかった。板・見出し・指で分かるノブを実寸で見る。
