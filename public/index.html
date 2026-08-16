@@ -269,6 +269,9 @@
   .share-msg{margin-top:8px;padding:6px 9px;border-radius:7px;font-size:var(--fs-note);
     background:rgba(126,224,165,.10);border-left:2px solid var(--evidence);color:#9ed3b4}
   .quick{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+  /* 「例から見てみる」。行を独り占めさせて、地名の帯の見出しにする。
+     ⚠ 押せる見た目にしない（span のまま。掟: 押しても何も起きない導線を置かない） */
+  .quick .q-lead{flex:0 0 100%;font-size:var(--fs-note);color:var(--ink-faint);margin-bottom:-1px}
   /* 地名の例は「何を打てばいいか分からない」を越えさせるためのもの。
      場所が確定したら役目は終わっている。出し続けると一覧の全下（実測 y≈1183、
      ファーストビューの外）に居座り、押しても画面は動かないので何が起きたか見えない。
@@ -2364,9 +2367,18 @@ const markSel=()=>{
 // キーヒントは実際の挙動から作る。
 // 「決定」では何が決まるか分からないので、行き先の名前をそのまま入れる。
 const kEnter=document.getElementById("kEnter"), kMove=document.getElementById("kMove"),
-      kEsc=document.getElementById("kEsc");
+      kEsc=document.getElementById("kEsc"), kbdEl=document.querySelector("#listbox .kbd");
 function renderKbd(){
   const it=sel>=0?items[sel]:null;
+  // ⚠ **どのキーもまだ効かないうちは、キーの説明を出さない。**
+  //   実測（2026-08-17 / 1280×800 / 地名を打つ前）: 3 つとも薄字のまま 37px 出ていた。
+  //   薄字は「いま使えません」の意味なので、**使えない案内を 3 つ並べて**
+  //   検索欄のすぐ下を占めていたことになる（UI/UX レビュー 原則4「説明より操作」）。
+  //   ⚠ 消す条件は**見た目ではなく、効くかどうか**から生やす。
+  //     ↑↓ は候補があるとき、Esc は入力があるか場所が決まっているときに効く。
+  //     ここが挙動とずれると、「出ているのに効かない」か「効くのに出ない」になる。
+  //   ⚠ 指の端末では、そもそも CSS が丸ごと隠している（@media (hover:none)）。
+  if(kbdEl) kbdEl.style.display=(items.length||mode==="action"||qEl.value)?"":"none";
   kMove.classList.toggle("off",!items.length);
   kEnter.classList.toggle("off",!it);
   kEnter.querySelector("b").textContent = it
@@ -2662,7 +2674,17 @@ function loadQuickPlaces(){
     if(!r.ok) throw new Error(`quick places ${r.status}`);
     return r.json();
   }).then(data=>{
-    for(const p of data?.places??[]){
+    const places=data?.places??[];
+    // ⚠ **例であることを名乗る。** 名乗らないと、10 個の地名が検索欄と同じ強さの
+    //   主ボタンとして並んで見える（UI/UX レビュー 原則2「主役は1つ」。実測 10 個・144px）。
+    //   ⚠ **中に入れる**（#quick の子）。外に置くと、取得に失敗したときに
+    //     見出しだけが残り、例が1つも無いのに「例から見てみる」と言うことになる。
+    //     ここなら、成功した経路でしか作られない。
+    if(places.length){
+      const lead=document.createElement("span"); lead.className="q-lead";
+      lead.textContent="例から見てみる"; quickEl.appendChild(lead);
+    }
+    for(const p of places){
       const b=document.createElement("button"); b.textContent=p.name;
       b.onclick=()=>openPlace(p.lon,p.lat,p.title);
       quickEl.appendChild(b);

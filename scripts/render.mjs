@@ -1008,6 +1008,21 @@ const CASES = [
   {
     name: "検索（確度が低いので選ばない）", path: "/",
     async check(page) {
+      // ⚠ **効かないキーの説明を、打つ前に出さない。**
+      //   実測（2026-08-17 / 1280×800 / 地名を打つ前）: ↑↓・Enter・Esc が 3 つとも
+      //   薄字（＝いま使えません）のまま 37px 出ていて、検索欄のすぐ下を占めていた。
+      //   ⚠ ここは**キーが効く端末**（既定の 1200×780）。375px で見ると
+      //     @media (hover:none) が丸ごと隠すので、何も見ずに緑になる。
+      const kbdVis = () => page.evaluate(() => {
+        const e = document.querySelector("#listbox .kbd");
+        if (!e) return null;
+        return { vis: e.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true }),
+          h: Math.round(e.getBoundingClientRect().height) };
+      });
+      const kbd0 = await kbdVis();
+      must(kbd0, "キーヒントの要素が無い（この検査が何も見ていない）");
+      must(!kbd0.vis,
+        `地名を打つ前からキーヒントが出ている（高さ ${kbd0.h}px・どのキーもまだ効かない）`);
       // 梅田は足立区と大阪市北区がどちらも「区の町字」で並び、応答からは決められない
       await page.fill("#q", "梅田");
       await page.waitForSelector("#list .it", { timeout: 30000 });
@@ -1026,7 +1041,12 @@ const CASES = [
       must((await selected()) === 0, "↑↓ で先頭が選ばれない");
       const txt = await page.$eval("#kEnter", (e) => e.textContent.replace(/\s+/g, " ").trim());
       must(/を調べる$/.test(txt), `Enter に行き先が入っていない: ${txt}`);
-      return `未選択のまま／hover でも武装せず／↓ 後に「${txt}」`;
+      // ⚠ **隠しただけで緑にしない。** 候補が出てキーが効くようになったら、必ず出ること。
+      //   片側（打つ前は出ない）だけ見ていると、丸ごと消しても通ってしまう。
+      const kbd1 = await kbdVis();
+      must(kbd1.vis, "候補が出てキーが効くのに、キーヒントが出ない（丸ごと消えている）");
+      return `未選択のまま／hover でも武装せず／↓ 後に「${txt}」`
+        + `／キーヒントは打つ前 非表示 → 候補あり ${kbd1.h}px`;
     },
   },
   {
@@ -1198,6 +1218,22 @@ const CASES = [
       });
       must(q0.disp !== "none" && q0.h > 0 && q0.y < 667,
         `最初の画面で地名の例が見えていない: ${JSON.stringify(q0)}`);
+      // ⚠ **地名の帯が「例」だと名乗っていること。**
+      //   名乗らないと、10 個の地名が検索欄と同じ強さの主ボタンとして並んで見える
+      //   （実測 10 個・144px。UI/UX レビュー 原則2「主役は1つ」）。
+      //   ⚠ 見出しは #quick の**中**に作る。外に置くと、取得に失敗したときに
+      //     見出しだけが残り、例が 1 つも無いのに「例から見てみる」と言うことになる。
+      const qLead = await page.evaluate(() => {
+        const e = document.querySelector("#quick .q-lead");
+        if (!e) return null;
+        return { text: e.textContent.trim(), tag: e.tagName,
+          chips: document.querySelectorAll("#quick button").length,
+          focusable: e.tabIndex >= 0 };
+      });
+      must(qLead, "地名の帯が「例」だと名乗っていない（主ボタンが 10 個並んで見える）");
+      must(qLead.chips > 0, `例が 1 つも無いのに「${qLead.text}」と言っている`);
+      must(qLead.tag !== "BUTTON" && !qLead.focusable,
+        `見出しが押せる見た目になっている: ${qLead.tag}（掟: 押しても何も起きない導線を置かない）`);
       // ⚠ **主操作（場所を検索する）が、説明に押し下げられていないこと。**
       //   実測（2026-08-17 / 375×667）: 説明文が 2 つで 119px あり、検索欄は y=240
       //   （画面の 36% 地点）にいた。1 行にまとめて y=164 になっている。
@@ -1218,6 +1254,9 @@ const CASES = [
           text: e.textContent.replace(/\s+/g, " ").trim() };
       });
       must(steps.rows === 1, `導入の絵が ${steps.rows} 行に折り返している（高さ ${steps.h}px）: ${steps.text}`);
+      // ⚠ 「効かないキーの説明を打つ前に出さない」は、ここでは見ない。
+      //   375px は @media (hover:none) が .kbd を丸ごと隠すので、**何も見ずに緑になる**。
+      //   キーが効く端末（PC 幅）で見る。→「検索（確度が低いので選ばない）」の冒頭。
       // 収まらない説明はフォーカス時の補足へ回す。触れば読めること
       await page.click("#q");
       must(await page.locator(".hint").isVisible(), "入力欄に触れても補足が出ない");
