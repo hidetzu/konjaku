@@ -2251,7 +2251,11 @@ const CASES = [
     //   ラベルが overpass なので `*.` の前に置くものが無い）。
     //   実際には Overpass が応答して 6,439件取れており、この検査は
     //   「待たせ続けない」を一度も確かめていなかった。URL で見る。
-    setup: (page) => page.route((u) => /overpass/i.test(u.href), () => { /* 無応答 */ }),
+    setup: (page) => Promise.all([
+      // 現在の静的タイル範囲に浦安が含まれても、Overpassの失敗経路を検査する。
+      page.route("**/data/bl/index.json", (r) => r.abort()),
+      page.route((u) => /overpass/i.test(u.href), () => { /* 無応答 */ }),
+    ]),
     async check(page) {
       // ⚠ 起点はページ読み込みではなく「建物を待ち始めた瞬間」。
       //   先に水域の判定（亀戸で1048面）があり、混んだ環境ではそこだけで時間を食う。
@@ -2931,7 +2935,7 @@ const CASES = [
     async check(page) {
       const places = [
         ["豊洲", `/peel?${TOYOSU}`, /^99\.\d%$/, "533 / 533件の足元を判定"],
-        ["広島", "/peel?ll=34.39500,132.45500&q=%E5%BA%83%E5%B3%B6", /^\d\.\d%$/, "3261 / 3555件の足元を判定"],
+        ["広島", "/peel?ll=34.39500,132.45500&q=%E5%BA%83%E5%B3%B6", /^\d\.\d%$/, "3260 / 3552件の足元を判定"],
         ["長崎 出島", "/peel?ll=32.74400,129.87300&q=%E9%95%B7%E5%B4%8E%20%E5%87%BA%E5%B3%B6",
           /^\d\.\d%$/, "3895 / 3895件の足元を判定"],
       ];
@@ -4144,6 +4148,8 @@ const CASES = [
             tags: { building: `yes${XSS}`, start_date: `1968${XSS}` },
           })) }) });
       }),
+      // 静的タイルを迂回して、注入したOSMタグがカードに届く経路を検査する。
+      page.route("**/data/bl/index.json", (r) => r.abort()),
     ]),
     async check(page) {
       await page.waitForFunction(() => /件を判定しました/.test(document.body.innerText),
