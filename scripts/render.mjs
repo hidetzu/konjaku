@@ -3004,11 +3004,22 @@ const CASES = [
     name: "スマホの初期画面で、土地の答えと分母が読める",
     path: `/peel?${TOYOSU}`, viewport: { width: 375, height: 667 }, hasTouch: true,
     async check(page) {
+      // ⚠ **内陸を入れておく。** 下の hasCategory（区分名が主見出し）の分岐は
+      //   前から書いてあったが、ここが埋立・デルタの3地点しか回していなかったので
+      //   **一度も通っていなかった**（＝分岐が検査されていなかった）。
+      //   内陸では、足元の最多区分が水域ではないので区分名が主見出しになる。
+      //   実測 2026-08-16（1280×800／375×667 とも同じ）:
+      //     渋谷 田（水域だった建物 1.5%）／上野 田（1.3%）／西新宿 田（1.3%）
       const places = [
         ["豊洲", `/peel?${TOYOSU}`, /^99\.\d%$/, "533 / 533件の足元を判定"],
         ["広島", "/peel?ll=34.39500,132.45500&q=%E5%BA%83%E5%B3%B6", /^\d\.\d%$/, "3260 / 3552件の足元を判定"],
         ["長崎 出島", "/peel?ll=32.74400,129.87300&q=%E9%95%B7%E5%B4%8E%20%E5%87%BA%E5%B3%B6",
           /^\d\.\d%$/, "3895 / 3895件の足元を判定"],
+        ["お台場", "/peel?ll=35.63000,139.77600&q=%E3%81%8A%E5%8F%B0%E5%A0%B4",
+          /^97\.\d%$/, "103 / 103件の足元を判定"],
+        ["渋谷", "/peel?ll=35.65860,139.70160&q=%E6%B8%8B%E8%B0%B7", null, "4785 / 5017件の足元を判定"],
+        ["上野", "/peel?ll=35.71480,139.77450&q=%E4%B8%8A%E9%87%8E", null, "2731 / 5673件の足元を判定"],
+        ["西新宿", "/peel?ll=35.69050,139.69290&q=%E8%A5%BF%E6%96%B0%E5%AE%BF", null, "3402 / 4258件の足元を判定"],
       ];
       const out = [];
       for (const [name, path, pctRe, den] of places) {
@@ -3029,14 +3040,29 @@ const CASES = [
           den: document.querySelector("#land .land-den")?.textContent.trim() ?? "",
           hero: document.getElementById("heroNum")?.textContent.trim() ?? "",
           heroCap: (document.getElementById("heroCap")?.textContent ?? "").replace(/\s+/g, " ").trim(),
+          landAll: (document.getElementById("land")?.textContent ?? "").replace(/\s+/g, " ").trim(),
         }));
         const hasCategory = !!r.hero && !/[\d.]+/.test(r.hero);
         if(hasCategory){
           must(r.what.includes("建物の足元") && r.what.includes("最多"),
             `${name}: 最多区分の説明が書かれていない: 「${r.what}」`);
           must(r.heroCap.includes("水域だった建物"), `${name}: 水域割合の補足が無い: 「${r.heroCap}」`);
+          // ⚠ **小さい割合を消さない。** 主見出しを区分名にしたぶん、割合は
+          //   意味と分母を伴って残っていること（隠したり別の数字へ置き換えたりしない）。
+          const pct = (t) => t.match(/水域だった建物[：:]\s*([\d.]+)%/)?.[1] ?? null;
+          const [pc, hud] = [pct(r.heroCap), pct(r.landAll)];
+          must(pc !== null, `${name}: パネルに水域割合の数字が無い: 「${r.heroCap.slice(0, 80)}」`);
+          must(hud !== null, `${name}: HUD に水域割合の数字が無い: 「${r.landAll.slice(0, 80)}」`);
+          // ⚠ 同じ画面の中で食い違わないこと（計算元は landVerdict の1か所）
+          must(pc === hud, `${name}: HUD とパネルで水域割合が違う: HUD「${hud}%」/ パネル「${pc}%」`);
+          // ⚠ 主見出しの区分名も、HUD とパネルで同じであること
+          must(r.landAll.startsWith(r.hero),
+            `${name}: HUD とパネルで主見出しが違う: HUD「${r.landAll.slice(0, 20)}」/ パネル「${r.hero}」`);
         } else {
-          must(pctRe.test(r.num), `${name}: 割合が読めない: 「${r.num}」`);
+          // ⚠ pctRe が無い地点（区分名が主見出しのはず）でここへ来たら、
+          //   規則が変わって低い割合が主見出しに戻ったということ。落とす。
+          must(pctRe && pctRe.test(r.num),
+            `${name}: 割合が主見出しになっている（区分名のはず）／読めない: 「${r.num}」`);
           must(r.what.includes("建物が、明治期には") && r.what.includes("水の上"),
             `${name}: 何の割合かが書かれていない: 「${r.what}」`);
         }
@@ -3046,7 +3072,7 @@ const CASES = [
         const [a, b] = r.den.match(/(\d+) \/ (\d+)/).slice(1);
         must(r.heroCap.includes(`${a} / ${b} 件`) || r.heroCap.includes(`${b}件すべて`),
           `${name}: HUD とパネルで分母が違う: HUD「${r.den}」/ パネル「${r.heroCap.slice(0, 60)}」`);
-        out.push(`${name} ${r.num}（${r.den}）`);
+        out.push(`${name} ${hasCategory ? r.hero : r.num}（${r.den}）`);
       }
       // ⚠ 3D と操作を覆わない。答えの板が、上の導線・年代・操作パネルと重ならないこと
       const geo = await page.evaluate(() => {
