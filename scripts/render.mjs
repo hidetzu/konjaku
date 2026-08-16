@@ -3452,6 +3452,139 @@ const CASES = [
     // ⚠ 3D から戻ったとき、調べていた場所が消えないこと。
     //   以前は href="./" のままで、← を押すと空のトップに戻っていた
     //   （利用者役のエージェントによる検証で3体すべてが「最初からになった」と言った）。
+    // ⚠ 共有先は**別の入れ物**で開く。同じ入れ物で開き直すと、画面に残っている状態で
+    //   通ってしまい、URL が状態を運べているのかを何も確かめていないことになる
+    //   （実測 2026-08-16: 直す前は トップ data-i=8 → 共有先 0、/peel t=400 → 0 に戻っていた）。
+    name: "選んだ年代が URL に載り、共有先でもそこから始まる", path: `/?${TOYOSU}`,
+    async check(page) {
+      await waitVerdict(page);
+      await page.waitForFunction(() => document.querySelectorAll("#strip .f").length > 0,
+        null, { timeout: 60000 });
+      const n = await page.locator("#strip .f").count();
+      // いちばん右（現在）を選ぶ。着いたときの既定は最古なので、必ず動く
+      await page.evaluate(() => [...document.querySelectorAll("#strip .f")].at(-1).click());
+      await page.waitForTimeout(700);
+      const url = page.url();
+      must(/[?&]era=seamlessphoto/.test(url), `選んだ年代が URL に載っていない: ${url}`);
+
+      // --- 共有先（別の入れ物） ---
+      const ctx = await page.context().browser().newContext({
+        viewport: { width: 390, height: 844 }, serviceWorkers: "block" });
+      const p2 = await ctx.newPage();
+      let top = null, peel = null;
+      try {
+        await p2.goto(url, { waitUntil: "domcontentloaded", timeout: 45000 });
+        await p2.waitForFunction(() => document.querySelectorAll("#strip .f").length > 0,
+          null, { timeout: 60000 });
+        await p2.waitForTimeout(700);
+        top = await p2.evaluate(() => [...document.querySelectorAll("#strip .f")]
+          .findIndex((e) => e.classList.contains("on")));
+        must(top === n - 1, `共有先で年代が既定に戻っている: ${top} / ${n - 1}`);
+
+        // /peel も同じ約束。段は土地ごとに間引かれるので、位置ではなく年代IDで運ぶ
+        await p2.goto(`${BASE}/peel?${TOYOSU}`, { waitUntil: "domcontentloaded", timeout: 45000 });
+        await peelReady(p2);
+        await p2.waitForTimeout(1200);
+        await p2.$eval("#t", (e) => { e.value = "400";
+          e.dispatchEvent(new Event("input", { bubbles: true })); });
+        await p2.waitForTimeout(500);
+        const purl = p2.url();
+        must(/[?&]era=gazo1/.test(purl), `/peel の年代が URL に載っていない: ${purl}`);
+        const p3 = await ctx.newPage();
+        await p3.goto(purl, { waitUntil: "domcontentloaded", timeout: 45000 });
+        await peelReady(p3);
+        await p3.waitForTimeout(1500);
+        peel = await p3.$eval("#t", (e) => e.value);
+        // ⚠ 段の境界ちょうどで戻ること。中途半端な値だと年代名は出ても場面が入りきらない
+        must(peel === "400", `/peel の共有先で段が戻っていない: ${peel}`);
+      } finally { await ctx.close(); }
+      return `トップ ${n} コマ中 ${top} 番目／/peel t=${peel}（どちらも別の入れ物で復元）`;
+    },
+  },
+  {
+    // ⚠ 指定された年代がその土地に無いことは普通に起きる（残っている写真は土地ごとに違う）。
+    //   黙って別の年代を出すと、共有した人と見た人が違うものを見ていることに誰も気づかない。
+    //   長崎 出島には 1936–42（ort_riku10）が残っていない。
+    name: "共有された年代がその土地に無いとき、黙って別の年代にしない",
+    path: `/?ll=32.74400,129.87300&q=%E9%95%B7%E5%B4%8E%20%E5%87%BA%E5%B3%B6&era=ort_riku10`,
+    viewport: { width: 375, height: 667 }, hasTouch: true,
+    async check(page) {
+      await waitVerdict(page);
+      await page.waitForFunction(() => document.querySelectorAll("#strip .f").length > 0,
+        null, { timeout: 60000 });
+      await page.waitForTimeout(700);
+      must(await page.locator("#eraMiss").count() === 1,
+        "復元できなかったことを、画面で言っていない");
+      const t = (await page.locator("#eraMiss").textContent()).replace(/\s+/g, " ").trim();
+      must(/1936/.test(t), `求められた年代の名前が出ていない: ${t}`);
+      // ⚠ 畳んだ中や画面外に置かない（過去に「判定の結果を畳んだ中に入れた」を踏んでいる）
+      const shown = await page.locator("#eraMiss").evaluate((e) => {
+        const r = e.getBoundingClientRect();
+        return r.height > 0 && r.top >= 0 && r.bottom <= innerHeight
+          && getComputedStyle(e).opacity !== "0"; });
+      must(shown, "復元できなかったことが画面に見えていない");
+      // ⚠ 年代を選ぶ帯より上にあること。選ぶ場所から離すと、次に何をすればよいか分からない
+      const order = await page.evaluate(() => {
+        const a = document.getElementById("eraMiss"), b = document.getElementById("strip");
+        return a && b ? a.getBoundingClientRect().bottom <= b.getBoundingClientRect().top + 1 : false;
+      });
+      must(order, "案内が、年代を選ぶ帯の上に無い");
+      // 出ていない年代を URL に残さない。残すと同じ空振りが共有のたびに伝播する
+      must(!/era=ort_riku10/.test(page.url()), `出ていない年代が URL に残っている: ${page.url()}`);
+      // 自分で選び直したら、案内は役目を終える
+      await page.evaluate(() => [...document.querySelectorAll("#strip .f")].at(-1).click());
+      await page.waitForTimeout(500);
+      must(await page.locator("#eraMiss").count() === 0,
+        "年代を選び直しても、案内が残っている");
+      return `「${t.slice(0, 34)}」／帯の上に見えている／選び直すと消える`;
+    },
+  },
+  {
+    // ⚠ 建物には安定した ID が無い（配るタイルも Overpass 経路も OSM の id を落としている）。
+    //   重心を鍵にしているので、**見つからないこと**が普通に起きる。
+    //   そのとき黙って別の建物を選ぶと、共有先だけ違う建物の話になる。
+    name: "共有された建物を復元し、見つからなければ別の建物を選ばない", path: `/peel?${TOYOSU}`,
+    async check(page) {
+      await peelReady(page);
+      await page.waitForFunction(() => /件を判定しました/.test(document.body.innerText),
+        null, { timeout: 90000 });
+      await page.waitForTimeout(2000);
+      // ⚠ 内部フィールドに触らない。描かれている素性から鍵を読む
+      const key = await page.evaluate(() =>
+        map.querySourceFeatures("bld").find((f) => f.properties.k)?.properties.k ?? null);
+      must(key, "建物に鍵が付いていない（URL で名指しできない）");
+      const ctx = await page.context().browser().newContext({
+        viewport: { width: 1200, height: 780 }, serviceWorkers: "block" });
+      let pop = 0, card = "", pop2 = 0, miss = "";
+      try {
+        const p2 = await ctx.newPage();
+        await p2.goto(`${BASE}/peel?${TOYOSU}&b=${encodeURIComponent(key)}`,
+          { waitUntil: "domcontentloaded", timeout: 45000 });
+        await peelReady(p2);
+        await p2.waitForTimeout(2500);
+        pop = await p2.locator(".pick-pop").count();
+        card = (await p2.locator("#pick").textContent()).replace(/\s+/g, " ").trim();
+        must(pop >= 1, "共有された建物の吹き出しが出ていない");
+        must(card.length > 0, "共有された建物のカードが出ていない");
+        // --- 見つからない鍵 ---
+        const p3 = await ctx.newPage();
+        await p3.goto(`${BASE}/peel?${TOYOSU}&b=1.000000,1.000000`,
+          { waitUntil: "domcontentloaded", timeout: 45000 });
+        await peelReady(p3);
+        await p3.waitForTimeout(2500);
+        pop2 = await p3.locator(".pick-pop").count();
+        must(pop2 === 0, "見つからない鍵なのに、別の建物を選んでいる");
+        const m = await p3.locator("#stateMiss").evaluate((e) =>
+          ({ hidden: e.hidden, t: e.textContent.replace(/\s+/g, " ").trim() }));
+        must(!m.hidden && /見つかりませんでした/.test(m.t),
+          `見つからなかったことを言っていない: ${JSON.stringify(m)}`);
+        miss = m.t;
+      } finally { await ctx.close(); }
+      return `鍵 ${key} → 吹き出し ${pop} 個「${card.slice(0, 22)}」`
+        + `／無い鍵 → ${pop2} 個・「${miss.slice(0, 24)}」`;
+    },
+  },
+  {
     name: "3D から戻っても、調べていた場所が残る", path: `/peel?${TOYOSU}`,
     // ⚠ 指で押す端末で見る。スマホはパネルが閉じて始まるので、
     //   パネルの中にしか戻る手段が無いと**画面から戻れなくなる**
@@ -3479,6 +3612,9 @@ const CASES = [
       const href = await page.locator("#back").getAttribute("href");
       must(/[?&]q=/.test(href) && /[&?]ll=/.test(href),
         `戻り先が場所を落としている: ${href}`);
+      // ⚠ 年代も持って戻る。以前は場所だけで、← を押すと見ていた年代が落ちていた。
+      //   ⚠ 段が確定する前の「現在」が焼き付かないこと（loadArea で1回書くだけにして踏んだ）
+      must(/[&?]era=/.test(href), `戻り先が年代を落としている: ${href}`);
       await page.locator("#back").click();
       await page.waitForFunction(() => {
         const t = document.getElementById("verdict")?.textContent ?? "";
