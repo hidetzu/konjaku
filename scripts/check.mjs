@@ -20,6 +20,7 @@ import { existsSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { join, extname, basename, dirname } from "node:path";
 import { VERSION_RE, hashOf, readSw } from "./sw-hash.mjs";
+import { VERSION as BL_VERSION } from "./bl-format.mjs";
 
 const ROOT = new URL("..", import.meta.url).pathname;
 const PUB = join(ROOT, "public");
@@ -1635,13 +1636,29 @@ head("6. 外部リンク");
     const tilePath = tile.replace(/^\.\//, "").replace("{x}", String(Object.keys(idx?.tiles ?? {})[0]?.split("/")[0] ?? ""))
       .replace("{y}", String(Object.keys(idx?.tiles ?? {})[0]?.split("/")[1] ?? ""));
     const errors = [];
-    if (!b || b.format !== "packed-geojson-v3") errors.push(`建物format=${b?.format ?? "なし"}`);
+    if (!b || b.format !== `packed-geojson-v${BL_VERSION}`) errors.push(`建物format=${b?.format ?? "なし"}`);
     if (!idx) errors.push("建物索引が無い");
     if (idx && b.at !== idx.at) errors.push(`建物at=${b.at} / 索引at=${idx.at}`);
     if (idx && (!Object.keys(idx.tiles ?? {}).length || !existsSync(join(PUB, tilePath)))) errors.push("建物タイルが無い");
     errors.length ? bad(`assets.json の建物参照が不正: ${errors.join("、")}`)
       : ok(`assets.json の建物参照が索引・タイルと一致（${Object.keys(idx.tiles).length} 区画）`);
   }
+}
+
+// 取り込み側・トップ・3D側が同じ明治期凡例と許容差を使うこと。
+// 3か所に残るのはブラウザ用とNode用の実行環境が違うためで、内容は機械的に照合する。
+{
+  const legend = (src) => [...src.matchAll(/\{\s*rgb:\s*\[\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\]\s*,\s*name:\s*"([^"]+)"(?:\s*,\s*water:\s*true)?\s*\}/g)]
+    .map((m) => m.slice(1).join("|"));
+  const threshold = (src) => src.match(/Math\.sqrt\(bd\)\s*<=\s*(\d+)/)?.[1] ?? null;
+  const files = ["scripts/swale-sample.mjs", "public/verify.js", "public/peel3d.js"];
+  const sources = await Promise.all(files.map((f) => readFile(join(ROOT, f), "utf8")));
+  const legends = sources.map(legend), thresholds = sources.map(threshold);
+  const sameLegend = legends.every((x) => JSON.stringify(x) === JSON.stringify(legends[0]));
+  const sameThreshold = thresholds.every((x) => x === thresholds[0]);
+  !sameLegend || !sameThreshold
+    ? bad(`明治期凡例の照合失敗（凡例=${sameLegend ? "一致" : "不一致"} / 閾値=${thresholds.join(",")})`)
+    : ok(`明治期凡例・許容差を3実装で照合（${legends[0].length} 色 / 閾値 ${thresholds[0]})`);
 }
 
 // ---------- 7. 外部から来た文字列を HTML として実行させない ----------

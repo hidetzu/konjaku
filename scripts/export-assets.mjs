@@ -5,6 +5,7 @@
 // land のタイル化が完了するまでは、土地情報だけ areas の事前生成GeoJSONを指す。
 // 実行: node scripts/export-assets.mjs
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
+import { VERSION as BL_VERSION } from "./bl-format.mjs";
 
 const PUB = "public";
 const readJSON = (path) => JSON.parse(readFileSync(path, "utf8"));
@@ -19,7 +20,7 @@ const manifest = {
   layers: {
     buildings: {
       source: "osm",
-      format: "packed-geojson-v3",
+      format: `packed-geojson-v${BL_VERSION}`,
       zoom: buildingIndex?.z ?? 14,
       index: "./data/bl/index.json",
       tile: "./data/bl/14/{x}/{y}.json",

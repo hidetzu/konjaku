@@ -2271,6 +2271,7 @@ const CASES = [
       // 期限内に、取れなかったと言い切ること
       await page.waitForFunction(() => /取得できませんでした/.test(document.body.innerText),
         null, { timeout: 60000 });
+      must(await page.locator("#status .retry-btn").count() === 1, "建物取得失敗時の再試行が出ていない");
       const ms = Date.now() - t0;
       must(ms < 30000, `諦めるのが遅い: 待ち始めてから ${ms}ms`);
       const t = (await page.evaluate(() => document.body.innerText)).replace(/\s+/g, " ");
