@@ -957,9 +957,15 @@ function buildTicks(){
   steps.forEach((s,k)=>{
     const pc=k/n*100;
     const edge=k===0?" at-start":k===n?" at-end":"";
+    // ⚠ **両端は必ず出す。** 中間は狭い画面で密集するので1つおきに間引くが、
+    //   端まで間引くと「このつまみを端まで送ると何になるのか」が読めなくなる。
+    //   段が固定 9 段だった頃は両端が k=0 と k=8 でどちらも偶数だったため、
+    //   `k%2===0` だけで**たまたま**成立していた。段数が地点ごとに変わるいまは、
+    //   長崎 出島（4 段）で終端が k=3 になり、「明治期」が空欄になっていた。
+    const show=k===0||k===n||k%2===0;
     trackEl.insertAdjacentHTML("beforeend",
       `<div class="tick" data-i="${k}" style="left:${pc}%"></div>
-       <div class="lab${edge}" style="left:${pc}%">${k%2===0?s.label:""}</div>`);
+       <div class="lab${edge}" style="left:${pc}%">${show?s.label:""}</div>`);
   });
   // スライダーの目盛りと上限を、段の数に合わせる（1段 = 100）
   slider.max=String(n*100);

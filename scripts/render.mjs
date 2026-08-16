@@ -2558,6 +2558,56 @@ const CASES = [
     },
   },
   {
+    // ⚠ **両端の文字が、段の数で消えないこと。**
+    //   中間のラベルは狭い画面で密集するので1つおきに間引いているが、
+    //   段が固定 9 段だった頃は両端が k=0 と k=8 でどちらも偶数だったため、
+    //   `k%2===0` の間引きで**たまたま**両端が残っていた。段数が地点ごとに変わると、
+    //   長崎 出島（4 段）は終端が k=3 になり「明治期」が空欄になる（レビューで指摘）。
+    //   ⚠ 大きい年代表示（#era .y）を読む検査では捕まらない。年代の切り替え自体は
+    //     正しく動いているため。**目盛りの文字そのもの**を読むこと。
+    name: "つまみの両端が、何の年代かを必ず名乗る",
+    path: `/peel?ll=32.74400,129.87300&q=%E9%95%B7%E5%B4%8E%20%E5%87%BA%E5%B3%B6`,
+    viewport: { width: 375, height: 667 }, hasTouch: true,
+    async check(page) {
+      // 段の数が違う3地点で見る（出島 4 段・広島 7 段・豊洲 9 段）。
+      // ⚠ 偶数段・奇数段の両方を通すこと。片方だけだと、また偶然で通る
+      const places = [
+        ["長崎 出島", "/peel?ll=32.74400,129.87300&q=%E9%95%B7%E5%B4%8E%20%E5%87%BA%E5%B3%B6", 4],
+        ["広島", "/peel?ll=34.39500,132.45500&q=%E5%BA%83%E5%B3%B6", 7],
+        ["豊洲", `/peel?${TOYOSU}`, 9],
+      ];
+      const out = [];
+      for (const [name, path, want] of places) {
+        if (page.url() !== BASE + path)
+          await page.goto(BASE + path, { waitUntil: "domcontentloaded", timeout: 45000 });
+        await peelReady(page);
+        await page.waitForFunction((n) => document.querySelectorAll("#track .tick").length === n,
+          want, { timeout: 60000 });
+        const geo = await page.evaluate(() => {
+          const box = (e) => { const r = e.getBoundingClientRect();
+            return { left: r.left, right: r.right, text: e.textContent.trim() }; };
+          const labs = [...document.querySelectorAll("#track .lab")].map(box);
+          return { start: document.querySelector("#track .lab.at-start")?.textContent.trim() ?? "",
+            end: document.querySelector("#track .lab.at-end")?.textContent.trim() ?? "",
+            labs, track: box(document.getElementById("track")) };
+        });
+        must(geo.start === "現在", `${name}: 開始端が現在でない: 「${geo.start}」`);
+        must(geo.end === "明治期", `${name}: 終了端が明治期でない: 「${geo.end}」`);
+        // ⚠ 端の文字が枠からはみ出さないこと（横スクロールが出る。一度踏んでいる）
+        const over = geo.labs.filter((l) => l.text
+          && (l.left < geo.track.left - 0.5 || l.right > geo.track.right + 0.5));
+        must(!over.length, `${name}: 目盛りの文字が枠の外に出ている: `
+          + over.map((l) => `${l.text}(${l.left.toFixed(0)}〜${l.right.toFixed(0)}px)`).join("、"));
+        // ⚠ 間引いたうえで、なお隣どうしが重ならないこと（375px）
+        const shown = geo.labs.filter((l) => l.text).sort((a, b) => a.left - b.left);
+        const hit = shown.filter((l, i) => i > 0 && l.left < shown[i - 1].right - 0.5);
+        must(!hit.length, `${name}: 目盛りの文字が重なっている: ${hit.map((l) => l.text).join("、")}`);
+        out.push(`${name} ${want}段「${shown.map((l) => l.text).join("/")}」`);
+      }
+      return out.join(" ／ ");
+    },
+  },
+  {
     // ⚠ 場所を変えたら段も変わる。組み直しを忘れると、前の場所の段のまま
     //   別の土地のタイルを引く（＝また存在しない年代を取りに行く）。
     name: "場所を変えるたびに、年代の段を組み直す",
