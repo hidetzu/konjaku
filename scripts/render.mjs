@@ -1301,6 +1301,18 @@ const CASES = [
       return `帯なし／再試行あり／断定なし`;
     },
   },
+  {
+    name: "クイック候補の通信断を黙って空にしない", path: "/",
+    setup: (page) => page.route("**/data/quick-places.json", (r) => r.abort()),
+    async check(page) {
+      await page.waitForFunction(() => /候補地を読み込めませんでした/.test(
+        document.getElementById("quick")?.textContent ?? ""), null, { timeout: 20000 });
+      must(await page.locator("#quick .quick-error").count() === 1, "候補地の失敗表示が無い");
+      must(await page.locator("#quick .quick-error button", { hasText: "再試行" }).count() === 1,
+        "候補地の再試行が無い");
+      return "候補地の失敗を表示／再試行あり";
+    },
+  },
   // ---- 入口が塞がっていないこと ----
   // ⚠ 実測で見つけた事故。スマホ幅で **1タップ目が必ず空振り**していた。
   //   入力欄がフォーカスを失うと補足文（.hint）が消え、下にあるものが 42px 上へずれる。

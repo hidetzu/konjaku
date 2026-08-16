@@ -1118,13 +1118,25 @@ setupHere(document.getElementById("here"), document.getElementById("hereMsg"),
 //   3D の入口が、押すと失敗する入口になっていた。
 //   scripts/check.mjs が、両方のピンが取り込み済みの土地であることを見ている。
 const quickEl=document.getElementById("quick");
-fetch("./data/quick-places.json",{cache:"no-cache"}).then(r=>r.ok?r.json():null).then(data=>{
-  for(const p of data?.places??[]){
-    const b=document.createElement("button"); b.textContent=p.name;
-    b.onclick=()=>{ qEl.value=p.title; candsEl.innerHTML=""; loadArea(p.lon,p.lat,p.title); };
-    quickEl.appendChild(b);
-  }
-}).catch(()=>{});
+function loadQuickPlaces(){
+  quickEl.replaceChildren();
+  fetch("./data/quick-places.json",{cache:"no-cache"}).then(r=>{
+    if(!r.ok) throw new Error(`quick places ${r.status}`);
+    return r.json();
+  }).then(data=>{
+    for(const p of data?.places??[]){
+      const b=document.createElement("button"); b.textContent=p.name;
+      b.onclick=()=>{ qEl.value=p.title; candsEl.innerHTML=""; loadArea(p.lon,p.lat,p.title); };
+      quickEl.appendChild(b);
+    }
+  }).catch(()=>{
+    const msg=document.createElement("span"); msg.className="quick-error";
+    msg.textContent="候補地を読み込めませんでした。";
+    const retry=document.createElement("button"); retry.type="button"; retry.textContent="再試行";
+    retry.onclick=loadQuickPlaces; msg.append(" ",retry); quickEl.appendChild(msg);
+  });
+}
+loadQuickPlaces();
 
 // ============================================================
 // 描画・再生
