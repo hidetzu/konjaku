@@ -1593,10 +1593,21 @@ function hitsAt(i,all){
   const year=KonjakuEvents.yearOf(f.label);
   const prev=i>0 ? KonjakuEvents.yearOf(frames[i-1]?.label) : null;
   if(year==null) return [];
+  // ⚠ **最初の年代と差分で、同じ判定を使う。**
+  //   以前は最初の年代だけ幅の終端（+yspan）を見て、差分は開始年だけを見ていた。
+  //   そのため「1970年代」（1970〜1979 のどこか）が **1974–78 までにできた**ものとして
+  //   出ていた。1979年の記録かもしれないので、そこまでは言い切れない
+  //   （掟: 推定を実測のように見せない）。幅の終端が入ったコマで初めて出す。
+  //   → 消えるのではなく、言い切れる年代（1979–83）へ後ろにずれる。
+  // ⚠ **「無くなった」側（until）には yspan を当てない。** precision は year（開始年）の
+  //   精度であって、until の精度ではない。実データにその例がある:
+  //   白髪橋 p=century y=[1600,1919]。1919 は年精度の値で、ここに 99年幅を当てると
+  //   **データに無い精度を作る**ことになる。
+  const done=(x)=>x.year+yspan(x);
   return prev==null
-    ? all.filter((x)=>x.year+yspan(x)<=year&&(x.until==null||x.until>=year))
+    ? all.filter((x)=>done(x)<=year&&(x.until==null||x.until>=year))
         .map((x)=>({...x,kind:"あった"}))
-    : [...all.filter((x)=>x.year>prev&&x.year<=year).map((x)=>({...x,kind:"できた"})),
+    : [...all.filter((x)=>done(x)>prev&&done(x)<=year).map((x)=>({...x,kind:"できた"})),
        // ⚠ 無くなったものも出す。実測で「へぇ」と言われたのは、消えたもののほうだった
        ...all.filter((x)=>x.until!=null&&x.until>prev&&x.until<=year)
              .map((x)=>({...x,kind:"無くなった"}))];
