@@ -375,7 +375,12 @@ async function fetchBuildings(bbox,onTry){
         if(!r.ok) continue;
         const t=await r.text();
         if(!t.trimStart().startsWith("{")) continue;
-        return JSON.parse(t).elements;
+        const j=JSON.parse(t);
+        // ⚠ `elements` が無い応答は「0 件」ではない。次のエンドポイントへ行く。
+        //   `[]`（正常に0件）と `undefined`（壊れた応答）を同じ顔にすると、
+        //   壊れた応答が画面で「建物は 0 件です」に化ける。
+        if(!Array.isArray(j.elements)) continue;
+        return j.elements;
       }catch{}
     }
   }
@@ -713,7 +718,7 @@ async function loadArea(lon,lat,title,opt){
   // 建物を待たずに、いま言えることだけで一度出す。
   // 判定できない土地では「判定できません」がここで出る。以前はここで初期値の
   // 「–%」が残り、Overpass が返った瞬間に「0.0% ── 実測値」へ化けていた（掟: 取れなかったを「無い」と言わない）。
-  area={ title, areaTitle:pre?.title??null, source:w.pre?"pre":"tiles", pending:true,
+  area={ title, areaTitle:pre?.title??null, bldState:"loading",
     total:0, wet:0, classified:0, unread:0, counts:{}, dated:0,
     waterRatio:w.ratio, waterRead, waterUnread,
     landSummary:summarizeLand(w.classCounts,w.classifiedPixels), buildingLand:null };
@@ -722,7 +727,14 @@ async function loadArea(lon,lat,title,opt){
   // --- 2. 建物 ---
   // 事前計算データがある範囲では Overpass を叩かない。
   // 本番で 504／無応答が常態のものを、作品の成立条件に置かない（掟: 取れなかったを「無い」と言わない）。
-  let feats=null, viaPre=false;
+  //
+  // ⚠ **`null`（取れていない）と `[]`（正常に0件）を混ぜない。**
+  //   以前は「この範囲に1件も無い」を `feats=null` に潰していたので、
+  //   正常に 0 件と確認できた事実が「未取得」に化け、画面は同時に
+  //   「建物 0 件を判定しました」「建物を取得中…」「欠落 取得できていない」を出していた。
+  //   状態は area.bldState（loading / ok / fail）が1つだけ持つ
+  //   （掟: 同じ問いに答える実装を2つ持たない。以前は pending と source:"none" の2つで表していた）。
+  let feats=null, viaPre=false, bldSource=null;
   // ⚠ まずタイル索引を見る。取り込んであれば Overpass に出ない。
   //   索引に無いタイルが1枚でもあれば静的では答えない（欠けたまま「これで全部」と言わない）。
   //   索引の単位は z14 で、ev（年つきの事物）とは**別の索引**。潰すと
@@ -739,14 +751,18 @@ async function loadArea(lon,lat,title,opt){
       return c[0]>=bbox.w&&c[0]<=bbox.e&&c[1]>=bbox.s&&c[1]<=bbox.n;
     };
     feats=bl.features.filter(inBox);
-    viaPre=true; blAt=bl.at; blTrunc=bl.truncated;
-    if(!feats.length) feats=null;          // この範囲に1件も無いなら、無いものとして扱う
+    viaPre=true; blAt=bl.at; blTrunc=bl.truncated; bldSource="tiles";
+    // ⚠ ここで 0 件でも `null` に戻さない。索引が「見た」と言っている区画を全部読めたなら、
+    //   **0 件がこの範囲の答え**。別のソースで上書きしない（掟: 索引は見た範囲）。
   }
-  if(!feats && pre?.buildings){
+  // ⚠ `feats===null`（＝タイルで答えられなかった）ときだけ、次のソースへ行く。
+  //   `!feats` にすると `[]` でも通ってしまい、上の判断が無かったことになる。
+  if(feats===null && pre?.buildings){
     const gj=await loadJSON(pre.buildings);
-    if(gj?.features?.length){ feats=gj.features; viaPre=true; }
+    // ⚠ 0 件の GeoJSON も「読めた」。読めたかどうかは features の有無で見る（長さで見ない）
+    if(gj?.features){ feats=gj.features; viaPre=true; bldSource="pre"; }
   }
-  if(!feats){
+  if(feats===null){
     statusEl.innerHTML+=`<div style="margin-top:5px">建物を取得中…</div>`;
     const els=await fetchBuildings(bbox,(m)=>{
       // ⚠ 何を待っていて、**駄目だったらどうなるか**を先に言う。
@@ -754,13 +770,13 @@ async function loadArea(lon,lat,title,opt){
       statusEl.querySelector("div").textContent=
         m+"（最大20秒。取れなければ水域と写真だけで表示します）";
     });
-    if(els) feats=toGeoJSON(els).features;
+    if(els){ feats=toGeoJSON(els).features; bldSource="overpass"; }
   }
 
-  if(!feats){
+  if(feats===null){
     map.getSource("bld").setData({type:"FeatureCollection",features:[]});
     area={ title, total:0, wet:0, classified:0, unread:0, counts:{}, dated:0,
-      waterRatio:w.ratio, waterRead, waterUnread, source:"none",
+      waterRatio:w.ratio, waterRead, waterUnread, bldState:"fail",
       landSummary:summarizeLand(w.classCounts,w.classifiedPixels), buildingLand:null };
     statusEl.innerHTML=`<span class="err">建物データを取得できませんでした（Overpass 混雑）。</span>
       <span style="color:var(--ink-dim)">水域と空中写真だけで表示しています。</span> ${retryBtn(lon,lat,title)}`;
@@ -796,8 +812,9 @@ async function loadArea(lon,lat,title,opt){
   for(const f of feats) counts[f.properties.meiji]=(counts[f.properties.meiji]||0)+1;
   // 足元を実際に判定できた件数。ここが 0 なら % は出さない（掟: 取れなかったを「無い」と言わない 札幌の 0.0%）
   const classified=feats.length-(counts["データなし"]??0)-(counts["読み込めず"]??0);
-  area={ title, areaTitle:viaPre?(pre?.title??null):null, source:viaPre?"pre":"overpass",
-    blAt, blTrunc,
+  area={ title, areaTitle:viaPre?(pre?.title??null):null,
+    // ⚠ 0 件でも「取れた」。bldState は取得の成否だけを持ち、件数は total が持つ
+    bldState:"ok", bldSource, blAt, blTrunc,
     total:feats.length, wet:feats.filter(f=>f.properties.wasWater).length,
     classified, unread:counts["読み込めず"]??0,
     counts, dated:feats.filter(f=>f.properties.exact).length,
@@ -823,8 +840,14 @@ async function loadArea(lon,lat,title,opt){
     buildingLand:summarizeBuildingLand(counts,classified) };
 
   // 水域が読めていないのに「水域 0 面を判定しました」とは書かない
-  statusEl.innerHTML=`<span style="color:var(--ink-dim)">${waterRead?`水域 ${w.rects} 面 ／ `:""}建物 ${
-    area.total} 件を判定しました${viaPre?"（事前に取り込んだデータ）":""}。</span>${
+  // ⚠ 0 件のときは「判定しました」で終わらせない。**何が 0 件なのか**を書く。
+  //   「建物 0 件」だけだと「この場所に建物は無い」と読める。
+  //   言えるのは **OSM に登録された建物が 0 件**であることまで（掟: データにない ≠ 現実にない）。
+  statusEl.innerHTML=`<span style="color:var(--ink-dim)">${waterRead?`水域 ${w.rects} 面 ／ `:""}${
+    area.total===0
+      ? `この範囲に、<b>OSM に登録された建物は 0 件</b>です${viaPre?"（事前に取り込んだデータ）":""}。`
+        + `水域と空中写真で表示しています。`
+      : `建物 ${area.total} 件を判定しました${viaPre?"（事前に取り込んだデータ）":""}。`}</span>${
       blAt?`<span style="color:var(--ink-dim)"> 建物を取り込んだのは ${blAt}。</span>`:""}${
       blTrunc?`<span class="err"> この範囲は建物が多く、取りきれていない可能性があります。</span>`:""}`;
   if(!waterRead) statusEl.innerHTML = (waterUnread
@@ -886,9 +909,12 @@ function landVerdict(){
       unread:area.unread, land, lf };
   // 建物は出ているが、足元は1件も判定できない
   if(area.total>0) return { kind:"none", scope:"building", total:area.total, unread:area.unread, land, lf };
-  // 建物が無い・取れない。面積比なら出せる
+  // 建物が0件・取れない・まだ待っている。面積比なら出せる
+  // ⚠ **なぜ面積比なのか**は3つある（待っている／0件だった／取れなかった）。
+  //   以前は真偽値1つ（pending）だったので、正常に0件だった土地に
+  //   「建物が取れなかったため」と書いていた（掟: 取れなかったを「無い」と言わない の裏返し）。
   if(area.waterRead&&area.waterRatio>0)
-    return { kind:"area", pct:(area.waterRatio*100).toFixed(1), pending:!!area.pending, land, lf };
+    return { kind:"area", pct:(area.waterRatio*100).toFixed(1), bldState:area.bldState, land, lf };
   if(area.waterRead) return { kind:"dry", land, lf };
   return { kind:"none", scope:"land", unread:area.waterUnread, land, lf };
 }
@@ -897,6 +923,14 @@ function landVerdict(){
 // ⚠ 「データなし（整備対象外）」と「読み込めず」を混ぜない。
 //   混ぜると、通信が落ちただけの土地に「整備対象外」と書くことになる
 //   （掟: 取れなかったを「無い」と言わない）。
+// 面積比を出している理由。⚠ HUD（#land）と情報パネル（#heroCap）が同じ文を出すので、
+//   **ここ1か所**で作る（掟: 同じ問いに答える実装を2つ持たない。
+//   以前は2か所に同じ三項演算子が書いてあり、片方だけ直すと同じ画面で言うことが食い違った）。
+const bldWhyArea=(bldState)=>
+  bldState==="loading" ? "建物を取得中。揃うと建物ごとの割合になる"
+  : bldState==="ok"    ? "OSM に登録された建物が 0 件のため、面積比で出している"
+                       : "建物が取れなかったため、面積比で出している";
+
 const landEl=document.getElementById("land");
 function renderLand(v){
   if(!landEl) return;
@@ -912,8 +946,7 @@ function renderLand(v){
       : `の面積が、明治期には<b>水</b>だった`;
     const den=v.kind==="ratio"
       ? `${v.classified} / ${v.total}件の足元を判定`
-      : (v.pending?"建物を取得中。揃うと建物ごとの割合になる"
-                  :"建物が取れなかったため、面積比で出している");
+      : bldWhyArea(v.bldState);
     const land=v.kind==="ratio"&&v.land
       ? `<div class="land-sub">区分を特定できた足元のうち ${esc(v.land.name)} ${v.land.count} / ${v.land.classified}件（${v.land.pct}%）</div>`
       : (v.land?`<div class="land-sub">この範囲で最も多い区分: <b>${esc(v.land.name)}</b>（${v.land.pct}%）</div>`:"");
@@ -986,9 +1019,7 @@ function showResult(){
     heroEl.innerHTML=`${v.pct}<small>%</small>`;
     // 「取れなかった」と「まだ取っていない」を書き分ける
     capEl.innerHTML=`この範囲の<b>面積</b>が、明治期には水だった<br>
-       <span style="opacity:.7">${v.pending
-         ? "建物を取得中。揃うと建物ごとの割合に切り替わる"
-         : "建物が取れなかったため、面積比で表示している"}</span>`;
+       <span style="opacity:.7">${bldWhyArea(v.bldState)}</span>`;
   } else if(v.kind==="dry"){
     heroEl.innerHTML=`<span class="hero-alt">水域なし</span>`;
     capEl.innerHTML=`この範囲は、明治期の低湿地データで<b>水域に該当しません</b>`;
@@ -1010,10 +1041,13 @@ function showResult(){
     //   「建設年が分かる 8 / 533」「高さが実測 42 / 533」は分割ではなく**素性**なので、
     //   同じ表に混ぜていた。素性は #est（常時見える）と #prov（台帳）が持つ。
     //   実測（2026-08-15）: 8 / 533 が #est・#prov・内訳 の 3 か所にあった。
-    // 取得できていない段階と、取得に失敗した状態を書き分ける
-    : `<div class="hint">${area.source==="none"
-        ? "建物データを取得できませんでした（上の再試行から取り直せます）"
-        : "建物を取得中…"}</div>`;
+    // ⚠ 取得中・正常に0件・取得失敗を書き分ける。
+    //   以前は2状態しか無く、**正常に0件だった土地に「建物を取得中…」**が出続けていた
+    //   （ステータスは「0 件を判定しました」と言っているのに、ここは待っている顔をしていた）。
+    : `<div class="hint">${
+        area.bldState==="loading" ? "建物を取得中…"
+        : area.bldState==="ok"    ? "OSM に登録された建物は 0 件です"
+                                  : "建物データを取得できませんでした（上の再試行から取り直せます）"}</div>`;
 }
 
 // ============================================================
@@ -1420,8 +1454,22 @@ function render(){
   else
     rows.push(`<div class="prov no"><span class="t">${area.waterUnread?"未取得":"欠落"}</span>${
       area.waterUnread?"明治期の低湿地データを読み込めていない":"この範囲に明治期の低湿地データが無い"}</div>`);
-  if(!area || !area.total)
-    rows.push(`<div class="prov no"><span class="t">欠落</span>建物データを取得できていない</div>`);
+  // ⚠ 台帳の語彙は「未取得＝読めなかった／欠落＝本当に無い／実測＝読んだ」。
+  //   以前は件数の真偽（`!area.total`）だけで分岐していたので、
+  //   **待っている間も、正常に0件だったときも「欠落 取得できていない」**と書いていた。
+  //   0 件は「無い」ではなく**読んだ結果**なので、実測の側に置く。
+  //   ⚠ どの資料で 0 件だったかまで書く（台帳は出所を書く欄）。
+  if(!area || area.bldState==="loading")
+    rows.push(`<div class="prov no"><span class="t">未取得</span>建物データを<b>取得中</b>
+      <span class="d">まだ届いていないだけで、この範囲の建物の有無は分かっていない</span></div>`);
+  else if(area.bldState==="fail")
+    rows.push(`<div class="prov no"><span class="t">未取得</span>建物データを<b>取得できていない</b>
+      <span class="d">届いていないだけで、この範囲の建物の有無は分かっていない</span></div>`);
+  else if(!area.total)
+    rows.push(`<div class="prov ok"><span class="t">実測</span>${
+      area.bldSource==="overpass" ? "OSM への問い合わせで<b>建物 0 件</b>"
+                                  : "取り込み済みの建物データで<b>建物 0 件</b>"}
+      <span class="d">OSM に登録が無いだけで、現地に建物が無いとは限らない</span></div>`);
   else {
     // ⚠ 高さは「いま見えている形」そのもの。消える年代の演出より手前の事実なので先に置く。
     //   ここに無いことのほうが嘘になる（この節の存在意義が「出ているものの出所を全部言う」）

@@ -2282,6 +2282,76 @@ const CASES = [
       return `${Math.round(ms / 1000)} 秒で諦めて「取得できませんでした」／水域と写真は出ている`;
     },
   },
+  // ---- 建物 0 件を、取得中・取得失敗と混ぜない ----
+  // ⚠ 正常に 0 件と確認できた状態が、同じ画面で「取得中」とも「欠落」とも見えていた。
+  //   直したのは表示だけではなく取得側で、`[]`（正常に 0 件）と `null`（取れていない）を
+  //   分けたこと。**3 つの状態を、それぞれ別の経路で再現して**確かめる。
+  {
+    name: "取り込み済みで 0 件なら、Overpass に出ない", path: `/peel?${TOYOSU}`,
+    // 索引はそのまま（＝「この区画は見た」）にして、中身だけ 0 件のタイルに差し替える。
+    // ⚠ **詰めた形（v=3）で返す。** 形が違うと読む側が捨てて Overpass へ落ちるので、
+    //   この検査は何も確かめないまま緑になる（実際に v=2 で試して確認した）。
+    setup: (page) => page.route("**/data/bl/14/**", (r) => r.fulfill({
+      status: 200, contentType: "application/json",
+      body: JSON.stringify({ v: 3, tile: [0, 0], at: "2026-08-16", q: 100000,
+        o: [0, 0], k: [], n: [null], m: [null], b: [] }),
+    })),
+    async check(page, reqs) {
+      await page.waitForFunction(() => /OSM に登録された建物は 0 件/.test(
+        document.getElementById("status")?.textContent ?? ""), null, { timeout: 60000 });
+      must(reqs.filter((u) => /overpass/i.test(u)).length === 0,
+        "取り込み済みで 0 件と分かっているのに、Overpass へ出ている");
+      must(reqs.filter((u) => /toyosu-buildings\.geojson/.test(u)).length === 0,
+        "取り込み済みで 0 件と分かっているのに、別の事前生成データで上書きしようとしている");
+      const bd = (await page.locator("#breakdown").textContent()).replace(/\s+/g, " ");
+      const prov = (await page.locator("#prov").textContent()).replace(/\s+/g, " ");
+      for (const [where, t] of [["内訳", bd], ["台帳", prov]])
+        for (const w of ["取得中", "取得できませんでした", "欠落"])
+          must(!t.includes(w), `正常に 0 件なのに${where}が「${w}」と出している: ${t.slice(0, 90)}`);
+      must(/取り込み済みの建物データで/.test(prov), `台帳に 0 件の出所が無い: ${prov.slice(0, 90)}`);
+      return `Overpass 0 本／台帳「取り込み済みの建物データで建物 0 件」`;
+    },
+  },
+  {
+    name: "Overpass が 0 件を返したら、取れなかったと言わない", path: `/peel?${URAYASU}`,
+    setup: (page) => Promise.all([
+      // 取り込み済みの経路を塞ぐ。⚠ 塞がないと静的で答えてしまい、Overpass の経路を通らない
+      page.route("**/data/bl/index.json", (r) => r.abort()),
+      page.route((u) => /overpass/i.test(u.href), (r) => r.fulfill({
+        status: 200, contentType: "application/json", body: JSON.stringify({ elements: [] }) })),
+    ]),
+    async check(page) {
+      await page.waitForFunction(() => /OSM に登録された建物は 0 件/.test(
+        document.getElementById("status")?.textContent ?? ""), null, { timeout: 60000 });
+      const bd = (await page.locator("#breakdown").textContent()).replace(/\s+/g, " ");
+      const prov = (await page.locator("#prov").textContent()).replace(/\s+/g, " ");
+      for (const [where, t] of [["内訳", bd], ["台帳", prov]])
+        for (const w of ["取得中", "取得できませんでした", "欠落"])
+          must(!t.includes(w), `正常に 0 件なのに${where}が「${w}」と出している: ${t.slice(0, 90)}`);
+      must(/OSM への問い合わせで/.test(prov), `台帳に 0 件の出所が無い: ${prov.slice(0, 90)}`);
+      return `「OSM に登録された建物は 0 件」／台帳「OSM への問い合わせで建物 0 件」`;
+    },
+  },
+  {
+    name: "建物を待っている間は、取得中と言う", path: `/peel?${URAYASU}`,
+    setup: (page) => Promise.all([
+      page.route("**/data/bl/index.json", (r) => r.abort()),
+      page.route((u) => /overpass/i.test(u.href), () => { /* 無応答 */ }),
+    ]),
+    async check(page) {
+      // 待ち始めたことを、出るべき文言そのもので待つ（一瞬の状態をスナップショットで読まない）
+      await page.waitForFunction(() => /最大20秒|取れなければ/.test(
+        document.getElementById("status")?.textContent ?? ""), null, { timeout: 60000 });
+      const bd = (await page.locator("#breakdown").textContent()).replace(/\s+/g, " ");
+      const prov = (await page.locator("#prov").textContent()).replace(/\s+/g, " ");
+      must(/建物を取得中/.test(bd), `待っている間に内訳が「取得中」と言っていない: ${bd.slice(0, 90)}`);
+      // ⚠ 台帳の語彙は「未取得＝読めなかった／欠落＝本当に無い」。待っている間に「欠落」は嘘
+      must(!/欠落/.test(prov), `待っているだけなのに台帳が「欠落」と言っている: ${prov.slice(0, 90)}`);
+      must(/建物データを取得中/.test(prov), `台帳が待っていることを言っていない: ${prov.slice(0, 90)}`);
+      must(!/0 件/.test(bd), `まだ取れていないのに件数を言っている: ${bd.slice(0, 90)}`);
+      return `内訳「建物を取得中…」／台帳「未取得 建物データを取得中」`;
+    },
+  },
   // ---- 取り込み済みの土地では、外へ出ない ----
   // ⚠ 実行時に Wikidata を叩くのをやめるための取り込み。効いていることを機械で見る。
   {
