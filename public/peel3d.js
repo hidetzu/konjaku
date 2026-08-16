@@ -1268,6 +1268,19 @@ function render(){
 }
 slider.addEventListener("input",()=>{stop();render()});
 
+// 端の年代ラベルは、見た目の中心が range の最大・最小位置からずれる。
+// そのまま押すと「明治期」と表示されても値が最大に届かず、場面が切り替わりきらないため、
+// ラベルを押したときは、その段を明示的に選ぶ。
+trackEl.addEventListener("pointerdown",(e)=>{
+  const mark=e.target.closest(".lab");
+  if(!mark||!trackEl.contains(mark)) return;
+  e.preventDefault(); e.stopPropagation();
+  const k=Number(mark.dataset.i);
+  if(!Number.isFinite(k)) return;
+  slider.value=String(k*100);
+  slider.dispatchEvent(new Event("input",{bubbles:true}));
+});
+
 const playBtn=document.getElementById("play");
 const eraDetails=document.getElementById("eraDetails");
 const eraToggle=document.getElementById("eraToggle");
