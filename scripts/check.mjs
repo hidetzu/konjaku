@@ -1015,32 +1015,66 @@ head("6. 外部リンク");
 //   「check.mjs が確かめている」と書いてあるだけで、LOOKAHEAD=0 にしても全件緑だった。
 //   測っていないことを書かない、を検査自身が破っていた。書いたなら、作る。
 //   ⚠ 写しではなく peel3d.js の本体を取り出して動かす（bl-format の照合と同じ手）。
+//   ⚠ **段の数は地点によって変わる**ようになった（2026-08-16）。その地点に残っている
+//     空中写真だけを段にするため、写真の段（明治期を除く）は
+//     豊洲 8 / 広島 6 / 長崎 出島 3 になる。
+//     → 段の数を1つ決め打ちして確かめるのではなく、**ありうる段数すべて**で見る。
 {
   const { readFileSync: rfv } = await import("node:fs");
   const html = rfv("public/peel3d.js", "utf8");
-  const m = /const LOOKAHEAD = (\d+)[\s\S]*?function visibleEras\(t\)\{([\s\S]*?)\n\}/.exec(html);
-  const sw = /const swaleVisible = \(t\) => ([^;]+);/.exec(html);
-  if (!m) bad("peel3d.js の visibleEras が読めない");
+  const m = /const LOOKAHEAD = (\d+)[\s\S]*?function visibleEras\(t, nPhoto\)\{([\s\S]*?)\n\}/.exec(html);
+  const sw = /const swaleVisible = \(t, nPhoto\) => ([^;]+);/.exec(html);
+  if (!m) bad("peel3d.js の visibleEras が読めない（この検査が何も見ていない）");
   else {
-    const LAST = (html.match(/const ERAS = \[([\s\S]*?)\];/)?.[1].match(/\{ id:/g) ?? []).length;
     // ⚠ 本体に return がある。さらに包むと構文エラーになる
-    const fn = new Function("t", "LAST", "LOOKAHEAD", "preloadAll", "ERAS", m[2]);
-    const holes = [];
-    for (let v = 0; v <= 800; v++) {
-      const t = v / 100, i = Math.min(Math.floor(t), LAST - 1);
-      const s = fn(t, LAST, +m[1], false, { map: () => [] });
-      // 不透明度が 0 より大きい年代（k===i と k===i+1）は必ず含まれること
-      if (!s.has(i) || (i + 1 < LAST && !s.has(i + 1))) holes.push(v);
+    const fn = new Function("t", "nPhoto", "LOOKAHEAD", "preloadAll", m[2]);
+    // 写真が1年代も残っていない地点（現在だけ）から、全年代が残っている地点まで。
+    // ⚠ 年代の定義は verify.js の1か所だけなので、上限もそこから読む
+    const vf = rfv("public/verify.js", "utf8");
+    const nEras = (vf.match(/const ERAS = \[([\s\S]*?)\];/)?.[1].match(/\{ id:/g) ?? []).length;
+    if (!nEras) bad("verify.js の ERAS を読めない（この検査が何も見ていない）");
+    const holes = [], counts = [];
+    for (let nPhoto = 1; nPhoto <= nEras + 1; nPhoto++) {
+      const max = nPhoto * 100;      // 明治期は nPhoto 段目（＝写真の段の次）
+      for (let v = 0; v <= max; v++) {
+        const t = v / 100, i = Math.min(Math.floor(t), nPhoto - 1);
+        const s = fn(t, nPhoto, +m[1], false);
+        // 不透明度が 0 より大きい段（k===i と k===i+1）は必ず含まれること
+        if (!s.has(i) || (i + 1 < nPhoto && !s.has(i + 1))) holes.push(`${nPhoto}段:${v}`);
+        counts.push(s.size);
+      }
     }
-    const worst = Math.max(...Array.from({ length: 801 }, (_, v) =>
-      fn(v / 100, LAST, +m[1], false, { map: () => [] }).size));
+    const worst = Math.max(...counts);
     holes.length
       ? bad(`送っている途中で画面が抜ける位置がある（${holes.length} 箇所。例 ${holes.slice(0, 5)}）`)
       : worst > 2 + (+m[1])
-        ? bad(`先読みが増えている（同時に ${worst} 年代。上限 ${2 + (+m[1])}）。`
+        ? bad(`先読みが増えている（同時に ${worst} 段。上限 ${2 + (+m[1])}）。`
             + "国土地理院への枚数が静かに戻る")
-        : ok(`年代の先読みが、全 801 位置で必要十分（LOOKAHEAD=${m[1]}／同時 最大${worst} 年代`
-            + `${sw ? "／明治期の重ねも定義あり" : ""}）`);
+        : ok(`年代の先読みが、1〜${nEras + 1} 段のすべて（${counts.length} 位置）で必要十分`
+            + `（LOOKAHEAD=${m[1]}／同時 最大${worst} 段${sw ? "／明治期の重ねも定義あり" : ""}）`);
+  }
+
+  // ⚠ **年代の定義（id・ラベル・拡張子・ズーム範囲）を2か所に置かない。**
+  //   置いていたときは、トップが「広島に残っているのは 5 年代」と正しく答えている横で、
+  //   /peel が固定 8 段を出し、存在しない年代の写真タイルへ 404 を 202 件送っていた
+  //   （2026-08-16 実測。長崎 出島では 491 件）。掟: 同じ問いに答える実装を2つ持たない。
+  //   ⚠ コメントを先に落とす（説明に書いた年代IDを検査自身が拾うため）。
+  {
+    const bare = (s) => s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/[^\n]*/g, "$1");
+    const ids = ["ort_riku10", "ort_USA10", "ort_old10", "gazo1", "gazo2", "gazo3", "gazo4"];
+    const vf = bare(rfv("public/verify.js", "utf8"));
+    const missing = ids.filter((id) => !vf.includes(id));
+    if (missing.length) bad(`verify.js に年代の定義が無い: ${missing.join("、")}（この検査が何も見ていない）`);
+    const dup = [];
+    for (const f of ["peel3d.js", "index.html"]) {
+      const s = bare(rfv(`public/${f}`, "utf8"));
+      const hit = ids.filter((id) => s.includes(id));
+      if (hit.length) dup.push(`${f}（${hit.join("、")}）`);
+    }
+    dup.length
+      ? bad(`年代の定義が verify.js の外にもある: ${dup.join(" / ")}`
+          + "（写しを持つと、トップと /peel が同じ地点に別の答えを出す）")
+      : ok(`年代の定義は verify.js の1か所だけ（${ids.length} 年代）`);
   }
 }
 

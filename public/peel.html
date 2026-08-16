@@ -423,6 +423,9 @@
     <div id="est"></div><div id="tip"></div></div>
   <div id="bar">
     <button id="play" aria-pressed="false" title="再生（Space）">▶</button>
+    <!-- ⚠ max は目安の初期値でしかない。**段の数は地点によって変わる**ので
+         （その地点に残っている空中写真だけを段にする）、peel3d.js の buildTicks() が
+         100 × 段数 に書き換える。ここに書いた数を当てにしない -->
     <div id="track"><div class="rail"></div><div class="fill"></div><div class="knob"></div>
       <input type="range" id="t" min="0" max="800" value="0" step="1"></div>
   </div>

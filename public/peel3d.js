@@ -22,18 +22,27 @@ const ATTR = '<a href="https://maps.gsi.go.jp/development/ichiran.html">国土�
 // ⚠ 読み上げ（pickSpeech）には通さない。あちらは HTML ではない（理由は esc.js）
 const {esc} = KonjakuEsc;
 
-const ERAS = [
-  { id:"seamlessphoto", label:"現在",    sub:"空中写真", ext:"jpg", min:2,  max:18 },
-  { id:"gazo4",         label:"1987–90", sub:"空中写真", ext:"jpg", min:10, max:17 },
-  { id:"gazo3",         label:"1984–86", sub:"空中写真", ext:"jpg", min:10, max:17 },
-  { id:"gazo2",         label:"1979–83", sub:"空中写真", ext:"jpg", min:10, max:17 },
-  { id:"gazo1",         label:"1974–78", sub:"空中写真", ext:"jpg", min:10, max:17 },
-  { id:"ort_old10",     label:"1961–69", sub:"空中写真", ext:"png", min:10, max:17 },
-  { id:"ort_USA10",     label:"1945–50", sub:"米軍撮影", ext:"png", min:10, max:17 },
-  { id:"ort_riku10",    label:"1936–42", sub:"陸軍撮影", ext:"png", min:13, max:18 },
-];
-const LAST = ERAS.length;
-const MEIJI = { label:"明治期", sub:"低湿地データ ─ 写真は存在しない" };
+// 年代の定義（id・ラベル・拡張子・ズーム範囲）は **verify.js の1か所だけ**。
+// ここは並べ替えるだけで、写しを持たない（掟: 同じ問いに答える実装を2つ持たない）。
+//
+// ⚠ 以前はここに固定 8 段の写しがあり、**その地点に存在しない年代まで地図に出していた**。
+//   実測（2026-08-16）: 広島で写真タイルの 404 を 202 件、長崎 出島で 491 件送っていた。
+//   トップは同じ地点で「残っている写真は 広島 5 年代 / 出島 2 年代」と正しく答えており、
+//   同じ問いに 2 つの実装が別の答えを出していた。
+//
+// ALL_ERAS は新しい順（現在 → 1936–42）。**この並びの位置がそのまま時間座標**になる。
+const ALL_ERAS = [Konjaku.LATEST, ...[...Konjaku.ERAS].reverse()];
+// 時間座標（tau）。現在=0 / 1987–90=1 / … / 1936–42=7 / 明治期=8。
+// ⚠ **段を間引いても、この座標は動かさない。** 建物が消える年（tFromYear）・水位・
+//   建物のフェードは全部この座標で決まっている。表示から 2 段抜いたぶんだけ詰めると、
+//   広島では建物の消える年代が別の年へずれる。
+const TAU = new Map(ALL_ERAS.map((e, i) => [e.id, i]));
+const TAU_MEIJI = ALL_ERAS.length;
+const MEIJI = { id:"swale", label:"明治期", sub:"低湿地データ ─ 写真は存在しない", meiji:true };
+// 年代の副題。verify.js は「陸軍撮影」「米軍撮影」だけを持ち、残りは空。
+// ⚠ 空欄にすると年代の箱の2行目が消えて高さが跳ねるので、既定の語をここで補う。
+//   ラベル・年の範囲そのものは verify.js のものを使う（こちらで作らない）。
+const subOf = (e) => e.sub || "空中写真";
 
 // ⚠ 年代の写真は、そこへ行くまで読まない。
 //   以前は8年代ぶんを最初に全部 addLayer していた。raster-opacity:0 にしてあったが、
@@ -55,22 +64,46 @@ const LOOKAHEAD = 1;
 // ▶ で通しで送るときだけ、全部を先に読む（押した人だけが払う）。
 //   1段あたり約1.4秒しかないので、隣1段では間に合わない
 let preloadAll = false;
-// t は slider の位置（0〜LAST）。読んでよい年代の番号を返す。
-// ⚠ 不透明度が 0 より大きい年代（k===i と k===i+1）は必ず含めること。
+
+// 全段（まだ地点が決まっていないとき用）。⚠ 段の作り方はここ1か所だけにする
+const allSteps = () => [...ALL_ERAS.map((e) => ({ ...e, tau:TAU.get(e.id), state:"ok" })),
+                        { ...MEIJI, tau:TAU_MEIJI, state:"ok" }];
+// いま画面が持っている段。**地点ごとに loadArea() が組み直す。**
+//   steps[k] … k 段目（右端の「現在」が 0、左端が明治期）
+//   .tau     … 時間座標。段を間引いても動かない
+// ⚠ 既定は全段。地点の写真が分かるまでは timelineReady=false のあいだ先読みを止める。
+//   止めないと、まだ存在を確かめていない年代のタイルを取りに行ってしまう。
+let steps = allSteps();
+let timelineReady = false;
+// 写真の段数（＝明治期を除いた段の数）。明治期の位置は steps.length-1
+const photoSteps = () => steps.length - 1;
+
+// t は slider の位置（0〜段数）。読んでよい**段の番号**を返す。
+// ⚠ 不透明度が 0 より大きい段（k===i と k===i+1）は必ず含めること。
 //   外すと、送っている途中で画面が抜ける。scripts/check.mjs が全位置で確かめている。
-function visibleEras(t){
-  if(preloadAll) return new Set(ERAS.map((_,k)=>k));
-  const i=Math.min(Math.floor(t),LAST-1);
+// ⚠ 番号は「年代」ではなく「段」。地点によって中身が変わる（広島では 7 段）。
+function visibleEras(t, nPhoto){
   const s=new Set();
+  if(preloadAll){ for(let k=0;k<nPhoto;k++) s.add(k); return s; }
+  const i=Math.min(Math.floor(t),nPhoto-1);
   // ⚠ i と i+1 は、送っている途中に両方が描かれる（k===i が 1-f、k===i+1 が f）。
   //   LOOKAHEAD=1 は「いま描いている i の、1段先まで」＝ {i, i+1}。
   //   i+1 の区間に入った瞬間に i+2 を読み始めるので、次の1段は必ず先に載っている。
-  for(let k=i;k<=i+LOOKAHEAD;k++) if(k>=0&&k<LAST) s.add(k);
+  for(let k=i;k<=i+LOOKAHEAD;k++) if(k>=0&&k<nPhoto) s.add(k);
   return s;
 }
 // 明治期の重ねも同じ。最後の1区間でしか見えないのに 60 枚引いていた。
 // ⚠ 判定に使う画素読み（実測16枚）はこれとは別の経路なので、止まらない
-const swaleVisible = (t) => preloadAll || t >= LAST-1-LOOKAHEAD;
+const swaleVisible = (t, nPhoto) => preloadAll || t >= nPhoto-1-LOOKAHEAD;
+
+// 段の位置（pos）から時間座標（tau）へ。段のあいだは線形に補間する。
+// ⚠ ここが分離の本体。**pos は「何段目か」、tau は「いつか」。**
+//   広島では 1936–42 と 1984–86 が無いので 7 段しか無いが、
+//   建物が消える年（tFromYear が返すのは tau）はこの補間を通すことで動かない。
+function tauAt(pos){
+  const i=Math.max(0,Math.min(Math.floor(pos),steps.length-2)), f=pos-i;
+  return steps[i].tau + f*(steps[i+1].tau - steps[i].tau);
+}
 
 const SWALE = [
   {rgb:[254,227,200],name:"砂礫地"},{rgb:[254,200,200],name:"泥地"},
@@ -331,10 +364,13 @@ function toGeoJSON(elements){
 
 const centroid=(ring)=>{let x=0,y=0;const n=ring.length-1;
   for(let i=0;i<n;i++){x+=ring[i][0];y+=ring[i][1]}return [x/n,y/n]};
+// 年 → 時間座標（tau）。E の並びは ALL_ERAS と同じ順（現在・1987–90 …・明治期）。
+// ⚠ ここが返すのは**時間座標であって段の番号ではない**。地点によって段は減るが、
+//   この対応は動かさない（広島で 2 段減らしても、建物が消える年は同じ年のまま）。
 function tFromYear(y){
   const E=[2026,1990,1986,1983,1978,1969,1950,1942,1868];
   for(let i=0;i<E.length-1;i++) if(y<=E[i]&&y>E[i+1]) return i+(E[i]-y)/(E[i]-E[i+1]);
-  return y>E[0]?0:LAST;
+  return y>E[0]?0:TAU_MEIJI;
 }
 
 // ============================================================
@@ -342,18 +378,20 @@ function tFromYear(y){
 // ============================================================
 let ready=false;
 map.on("load",()=>{
-  // ⚠ 見ない年代は visibility:"none" で足す。paint だけ 0 にしても読みに行く
-  const vis0=visibleEras(0);
-  for(let k=0;k<ERAS.length;k++){
-    const e=ERAS[k];
+  // ⚠ 見ない年代は visibility:"none" で足す。paint だけ 0 にしても読みに行く。
+  // ⚠ レイヤは全年代ぶん作ってよい（作るだけでは取りに行かない）。
+  //   取りに行くかどうかを決めるのは、**段に載っているか**だけ。
+  //   地点の写真が分かるまでは「現在」以外を可視にしない。
+  for(const e of ALL_ERAS){
+    const now=e.id===ALL_ERAS[0].id;
     map.addSource(e.id,raster(e));
     map.addLayer({id:`g-${e.id}`,type:"raster",source:e.id,
-      layout:{visibility:vis0.has(k)?"visible":"none"},
-      paint:{"raster-opacity":k===0?1:0,"raster-opacity-transition":{duration:0}}});
+      layout:{visibility:now?"visible":"none"},
+      paint:{"raster-opacity":now?1:0,"raster-opacity-transition":{duration:0}}});
   }
   map.addSource("swale",raster({id:"swale",ext:"png",min:10,max:16}));
   map.addLayer({id:"g-swale",type:"raster",source:"swale",
-    layout:{visibility:swaleVisible(0)?"visible":"none"},
+    layout:{visibility:"none"},
     paint:{"raster-opacity":0,"raster-opacity-transition":{duration:0},
            "raster-saturation":.25,"raster-brightness-max":.92}});
 
@@ -422,7 +460,7 @@ function pickSpeech(p){
 map.on("click","bld",(e)=>{
   // ⚠ 見えていない建物は押せない。明治期では全建物の高さが 0 になるが、
   //   当たり判定は残るので、海面に見えるところを押すと建物の情報が出ていた
-  if(Number(slider.value)/100 >= LAST-0.02) return;
+  if(Number(slider.value)/100 >= photoSteps()-0.02) return;
   const p=e.features[0].properties;
   // 一度でも押したら、案内は役目を終える
   if(!picked){ picked=true; const t=document.getElementById("tip"); if(t) t.textContent=""; }
@@ -468,8 +506,45 @@ function wireRetry(lon,lat,title){
   statusEl.querySelectorAll(".retry-btn").forEach((b)=>{ b.onclick=()=>loadArea(lon,lat,title); });
 }
 
+// ============================================================
+// 年代の段を、この地点に合わせて組み直す
+//   どの年代の写真が残っているかを答えるのは Konjaku.photos（トップと同じもの）。
+//   ここでは並べるだけで、判定をやり直さない（掟: 同じ問いに答える実装を2つ持たない）。
+// ============================================================
+// ⚠ 「現在」は判定の対象ではない（photos が答えるのは**残っている**＝過去の写真）。
+//   常に右端に置く。ここに現在を混ぜると、年代の数の意味が変わる。
+function stepsFrom(ph){
+  const out=[{...ALL_ERAS[0], tau:0, state:"ok"}];
+  const byId=new Map((ph?.eras??[]).map((e)=>[e.id,e]));
+  for(const e of ALL_ERAS.slice(1)){
+    const r=byId.get(e.id);
+    if(!r) continue;
+    // 読めなかった（通信断・タイムアウト・403 などの拒否）… **段に残す**。
+    // 消すと「取れなかった」が「無い」になる（掟: 取れなかったを「無い」と言わない）
+    if(r.state==="unreachable"){ out.push({...e, tau:TAU.get(e.id), state:"unreachable"}); continue; }
+    // 404（この年代の写真は無い）と、白紙（タイルはあるが撮影範囲の外）は出さない
+    if(r.state==="ok"&&!r.blank) out.push({...e, tau:TAU.get(e.id), state:"ok"});
+  }
+  out.push({...MEIJI, tau:TAU_MEIJI, state:"ok"});
+  return out;
+}
+// 場所を切り替えたときの取り違え防止。遅れて返った前の場所の応答で段を組み替えない
+let areaSeq=0;
+async function setTimeline(lon,lat,seq){
+  let ph=null, failed=false;
+  try{ ph=await Konjaku.photos(lon,lat); }catch{ failed=true; }
+  if(seq!==areaSeq) return;                 // 別の場所へ移ったあと。触らない
+  // ⚠ 判定そのものが落ちたときは、**何も間引かない**。
+  //   「確かめられなかった」を「無い」に変えてはいけない
+  steps=failed?allSteps():stepsFrom(ph);
+  timelineReady=true;
+  buildTicks();
+  render();
+}
+
 async function loadArea(lon,lat,title){
   stop();
+  const seq=++areaSeq;
   // 場所をURLに載せる。これが無いと共有できずループが閉じない（掟: 唯一の指標は共有率 差分1）
   history.replaceState(null,"",`?q=${encodeURIComponent(title)}&ll=${lat.toFixed(5)},${lon.toFixed(5)}`);
   // ⚠ 戻り先にも、調べていた場所を載せる。以前は href="./" のままで、
@@ -498,7 +573,14 @@ async function loadArea(lon,lat,title){
   // ⚠ 場所を変えたら先読みも戻す。1つ前の場所で ▶ を押した人が、
   //   次に調べる場所でも8年代ぶんを引いてしまう（払った覚えのない支払い）
   preloadAll=false;
+  // ⚠ 段が決まるまでは「現在」だけを出す（timelineReady=false）。
+  //   前の場所の段のまま描くと、この地点に存在しない年代のタイルを取りに行く。
+  timelineReady=false;
+  steps=allSteps(); buildTicks();
   slider.value="0"; render();
+  // 年代の段を組み直す。⚠ ここは待たない。待つと、水域と建物の取得まで
+  //   写真の判定（最悪 8 秒のタイムアウト）の後ろに並んでしまう
+  setTimeline(lon,lat,seq);
   // 建物の集計とは独立に取る。集計が出せない土地でも、この土地そのものには答えられる
   loadLandform(lon,lat);
   resultEl.style.display="none";
@@ -865,13 +947,31 @@ const toggle=document.getElementById("toggle");
 // ⚠ 端の文字は、目盛りの中心に置くと枠の外へ出る（中心そろえなので左右に半分ずつはみ出す）。
 //   9px のうちは偶然収まっていたが、読める大きさにしたら 375px で 3px はみ出した
 //   （実測 2026-08-15。横スクロールが出る）。端だけ内側へ寄せる印を付ける。
-[...ERAS.map(e=>e.label),MEIJI.label].forEach((lab,k)=>{
-  const pc=k/LAST*100;
-  const edge=k===0?" at-start":k===LAST?" at-end":"";
-  trackEl.insertAdjacentHTML("beforeend",
-    `<div class="tick" data-i="${k}" style="left:${pc}%"></div>
-     <div class="lab${edge}" style="left:${pc}%">${k%2===0?lab:""}</div>`);
-});
+//
+// ⚠ 目盛りは**地点ごとに引き直す**。段の数が場所によって変わるため
+//   （豊洲 9 段 / 広島 7 段 / 長崎 出島 4 段）。スライダーの上限も一緒に動かす。
+//   ⚠ .rail / .fill / .knob / <input> は消さない。消すと操作できなくなる。
+function buildTicks(){
+  trackEl.querySelectorAll(".tick,.lab").forEach((el)=>el.remove());
+  const n=steps.length-1;
+  steps.forEach((s,k)=>{
+    const pc=k/n*100;
+    const edge=k===0?" at-start":k===n?" at-end":"";
+    // ⚠ **両端は必ず出す。** 中間は狭い画面で密集するので1つおきに間引くが、
+    //   端まで間引くと「このつまみを端まで送ると何になるのか」が読めなくなる。
+    //   段が固定 9 段だった頃は両端が k=0 と k=8 でどちらも偶数だったため、
+    //   `k%2===0` だけで**たまたま**成立していた。段数が地点ごとに変わるいまは、
+    //   長崎 出島（4 段）で終端が k=3 になり、「明治期」が空欄になっていた。
+    const show=k===0||k===n||k%2===0;
+    trackEl.insertAdjacentHTML("beforeend",
+      `<div class="tick" data-i="${k}" style="left:${pc}%"></div>
+       <div class="lab${edge}" style="left:${pc}%">${show?s.label:""}</div>`);
+  });
+  // スライダーの目盛りと上限を、段の数に合わせる（1段 = 100）
+  slider.max=String(n*100);
+  if(Number(slider.value)>n*100) slider.value=String(n*100);
+}
+buildTicks();
 
 // ============================================================
 // 地表のラスタが本当に届いたか（掟: 取れなかったを「無い」と言わない の根）
@@ -915,57 +1015,69 @@ function rasterArrived(id){
 
 function render(){
   if(!ready) return;
-  const t=Number(slider.value)/100, i=Math.min(Math.floor(t),LAST-1), f=t-i;
+  // pos は「何段目か」、tau は「いつか」。**混ぜない。**
+  //   目盛り・不透明度の混ぜ・ノブの位置は pos。
+  //   建物が消える年・水位・建物のフェードは tau（段を間引いても動かない）。
+  const nPhoto=photoSteps();
+  const pos=Number(slider.value)/100, i=Math.min(Math.floor(pos),nPhoto-1), f=pos-i;
+  const tau=tauAt(pos);
 
   // ⚠ 可視を先に決める。不透明度を上げてから可視にすると、1フレーム抜ける
-  const vis=visibleEras(t);
-  for(let k=0;k<ERAS.length;k++){
-    const want=vis.has(k)?"visible":"none";
-    if(map.getLayoutProperty(`g-${ERAS[k].id}`,"visibility")!==want)
-      map.setLayoutProperty(`g-${ERAS[k].id}`,"visibility",want);
+  // ⚠ 段に載っていない年代は**一度も可視にしない**。ここが 404 を 202 件送っていた元。
+  const vis=timelineReady?visibleEras(pos,nPhoto):new Set([0]);
+  const visIds=new Set([...vis].map((k)=>steps[k]?.id));
+  for(const e of ALL_ERAS){
+    const want=visIds.has(e.id)?"visible":"none";
+    if(map.getLayoutProperty(`g-${e.id}`,"visibility")!==want)
+      map.setLayoutProperty(`g-${e.id}`,"visibility",want);
   }
-  const sw=swaleVisible(t)?"visible":"none";
+  const sw=(timelineReady&&swaleVisible(pos,nPhoto))?"visible":"none";
   if(map.getLayoutProperty("g-swale","visibility")!==sw)
     map.setLayoutProperty("g-swale","visibility",sw);
 
-  for(let k=0;k<ERAS.length;k++)
-    map.setPaintProperty(`g-${ERAS[k].id}`,"raster-opacity",k===i?1-f:k===i+1?f:0);
-  map.setPaintProperty("g-swale","raster-opacity",i===LAST-1?f:0);
+  for(const e of ALL_ERAS) map.setPaintProperty(`g-${e.id}`,"raster-opacity",0);
+  for(const k of [i,i+1]){
+    const s=steps[k];
+    if(s&&!s.meiji) map.setPaintProperty(`g-${s.id}`,"raster-opacity",k===i?1-f:f);
+  }
+  map.setPaintProperty("g-swale","raster-opacity",i===nPhoto-1?f:0);
 
   map.setPaintProperty("bld","fill-extrusion-height",
-    ["*",["get","height"],["max",0,["min",1,["/",["-",["get","vanish"],t],1.1]]]]);
+    ["*",["get","height"],["max",0,["min",1,["/",["-",["get","vanish"],tau],1.1]]]]);
   // ⚠ 半透明で薄れさせない。実測（利用者役のエージェントによる検証 2026-08-14）:
   //   1945–50 の不透明度 0.80 で**焼け跡の瓦礫が建物ごしに透け**、
   //   広島の利用者は「消えかけの幽霊」「これは広島の人間には見せられない」と言った。
   //   「消えかけている」ように見せるのが最悪で、「はっきり別物として重ねている」ほうがよい。
   //   → 明治期の端で消えるところ以外は、薄れさせない。
-  map.setPaintProperty("bld","fill-extrusion-opacity",Math.max(0,.94-Math.max(0,t-7.0)*.94));
+  map.setPaintProperty("bld","fill-extrusion-opacity",Math.max(0,.94-Math.max(0,tau-7.0)*.94));
 
-  const wr=Math.max(0,Math.min(1,(t-5.4)/(LAST-5.4)));
+  const wr=Math.max(0,Math.min(1,(tau-5.4)/(TAU_MEIJI-5.4)));
   map.setPaintProperty("water","fill-extrusion-height",0.4+wr*4.2);
   map.setPaintProperty("water","fill-extrusion-opacity",wr*.78);
 
   gradeEl.style.opacity=String(wr*.95);
   mapEl.style.filter=`saturate(${1-wr*.42}) contrast(${1+wr*.10}) brightness(${1-wr*.10})`;
 
-  const near=f<.5?ERAS[i]:(ERAS[i+1]??null), cur=near??MEIJI;
+  // いま主に見えている段。明治期の段は写真ではないので near には入れない
+  const sNear=f<.5?steps[i]:(steps[i+1]??null);
+  const near=(sNear&&!sNear.meiji)?sNear:null, cur=near??MEIJI;
   // ⚠ 建物が見えているか。**下の3か所（重ね・案内・但し書き）が同じ判定を使う。**
   //   ⚠ 使う場所より前で定義すること。以前これを下に置いたまま上で参照して
   //     TDZ で例外になり、**そこから下の描画が丸ごと止まった**（画面は何も言わない）。
-  const bldVisible = !!(area && area.total) && t < LAST - 0.02;
+  const bldVisible = !!(area && area.total) && pos < nPhoto - 0.02;
   eraEl.querySelector(".y").textContent=cur.label;
   // ⚠ 過去の年代に入ったら、年と同じ強さで「重ねている」と言う。
   //   建物は現在のもので、地面だけが過去。そこを画面が言わないと、
   //   利用者は自分の知識でしか判別できない（知識が無ければ判別できない）。
   const overEl=document.getElementById("over");
-  if(overEl) overEl.innerHTML = (bldVisible && t > 0.02)
+  if(overEl) overEl.innerHTML = (bldVisible && pos > 0.02)
     ? `この街並みは<b>いまのもの</b>です。地面だけが ${cur.label} です。` : "";
-  eraEl.querySelector(".s").textContent=cur.sub;
+  eraEl.querySelector(".s").textContent=near?subOf(near):MEIJI.sub;
   eraEl.classList.toggle("meiji",!near); trackEl.classList.toggle("meiji",!near);
 
-  const pc=t/LAST*100;
+  const pc=pos/nPhoto*100;
   fillEl.style.width=pc+"%"; knobEl.style.left=pc+"%";
-  trackEl.querySelectorAll(".tick").forEach(el=>el.classList.toggle("on",Number(el.dataset.i)<=t+.5));
+  trackEl.querySelectorAll(".tick").forEach(el=>el.classList.toggle("on",Number(el.dataset.i)<=pos+.5));
 
   // ⚠ 建物についての但し書きを、畳まれない場所に出す。
   //   空になるのは「建物が1件も立っていないとき」だけ。無いものは説明しない。
@@ -1073,7 +1185,10 @@ function render(){
 slider.addEventListener("input",()=>{stop();render()});
 
 const playBtn=document.getElementById("play");
-let raf=null; const DUR=11000;
+// 1段あたりの所要時間。全 8 段で 11 秒だったものを、段あたりに直した。
+// ⚠ 段の数は地点によって変わる（豊洲 8 / 広島 6 / 長崎 出島 3 段の写真）。
+//   総時間を固定すると、段が少ない地点ほど1段が長くなって間延びする。
+let raf=null; const DUR_PER_STEP=11000/8;
 // パネルの開閉を1つの状態で持つ。
 // 再生中は一時的に隠し、終わったら「利用者が望んだ状態」に戻す。
 // stop() が毎回 setChrome(false) を呼ぶので、状態を持たないと
@@ -1091,18 +1206,22 @@ function stop(){ if(raf)cancelAnimationFrame(raf); raf=null;
 playBtn.onclick=()=>{
   if(raf) return stop();
   // ⚠ 通しで送るときだけ、全年代を先に読む。**押した人だけが払う。**
-  //   1段あたり約1.4秒（DUR 11秒 ÷ 8段）しかないので、隣1段では間に合わない。
-  //   押していない人は 136 枚のまま（実測）。
+  //   1段あたり約1.4秒しかないので、隣1段では間に合わない。
+  //   押していない人は隣1段のまま（実測 136 枚）。
+  // ⚠ 終点も所要時間も**段の数から出す**。8 段を決め打ちすると、
+  //   広島（7 段）では端まで行かないまま止まる／速すぎる、のどちらかになる。
   preloadAll=true; render();
   playBtn.textContent="❚❚"; playBtn.setAttribute("aria-pressed","true"); setChrome(true);
-  const from=Number(slider.value)>=795?0:Number(slider.value);
+  const end=(steps.length-1)*100;
+  const from=Number(slider.value)>=end-5?0:Number(slider.value);
+  const dur=DUR_PER_STEP*(steps.length-1);
   const c=map.getCenter(), z0=map.getZoom(), b0=map.getBearing(), p0=map.getPitch();
   const t0=performance.now();
   const step=(now)=>{
-    const p=Math.min(1,(now-t0)/(DUR*(1-from/800)));
+    const p=Math.min(1,(now-t0)/(dur*(1-from/end)));
     const e=p<.82?p/.82*.74:.74+(p-.82)/.18*.26;
-    const v=from+(800-from)*e; slider.value=String(v);
-    const u=v/800;
+    const v=from+(end-from)*e; slider.value=String(v);
+    const u=v/end;
     map.jumpTo({center:c,zoom:z0-u*.55,bearing:b0+u*46,pitch:Math.min(78,p0+u*10)});
     render();
     if(p<1) raf=requestAnimationFrame(step); else stop();

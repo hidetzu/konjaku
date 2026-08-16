@@ -399,6 +399,16 @@
   // ---- 残っている空中写真 ----
   // タイルが存在しても、その地点が真っ白（撮影範囲外）のことがある。
   // タイルの有無だけでは見抜けないので、画素まで見る（掟: 確率を出さない。実測値そのものを出す）。
+  //
+  // 返り値は2段になっている。
+  //   value … 「この地点に**残っている**写真」だけ。帯（トップ）と年代の数はこれで数える
+  //   eras  … 7年代**全部**の結末（ok / absent / unreachable と、白紙だったか）
+  //
+  // ⚠ eras を足したのは、`/peel` が年代の段を自前の固定表で組んでいたから
+  //   （掟: 同じ問いに答える実装を2つ持たない）。固定 8 段のうち、この地点に存在しない
+  //   年代まで地図レイヤとして可視にしていたため、広島で写真タイルの 404 を
+  //   **202 件**送っていた（2026-08-16 実測。長崎 出島では 491 件）。
+  //   「どの年代を段に出すか」に答えるのは、ここ1か所にする。
   async function photos(lon, lat) {
     // 7年代を順番に待つと、無応答のときタイムアウト×7 まで伸びる。
     // 独立した取得なので並べる。通常時も速くなる。
@@ -409,9 +419,16 @@
       return { e, t, tile, res: await loadImage(tile) };
     });
 
-    const found = [], unread = [];
+    const found = [], unread = [], eras = [];
     // canvas は1枚を使い回すので、画素の判定は同期のループでまとめてやる
     for (const { e, t, tile, res } of await Promise.all(jobs)) {
+      // 年代ごとの結末は、どの枝を通っても必ず1件残す。
+      // ⚠ ここで push を落とすと、`/peel` の段からその年代が黙って消える
+      //   （「取れなかった」が「無い」になる経路がもう1本できる）。
+      const era = { id: e.id, label: e.label, sub: e.sub, ext: e.ext,
+        min: e.min, max: e.max, tile, px: t.px, py: t.py, z: t.z,
+        state: res.state, status: res.status ?? null, blank: false };
+      eras.push(era);
       if (res.state === UNREACHABLE) { unread.push(e); continue; }
       if (res.state === ABSENT) continue;      // その年代の写真は存在しない
       let blank = false;
@@ -434,13 +451,19 @@
       // tile / px / py は「この年代の写真を、実際にどこの画素で確かめたか」。
       // 判定のためにもう取得してある画像なので、これを画面に出すのに再取得は要らない
       // （同じURLなのでブラウザのキャッシュから出る）。
+      era.blank = blank;
       if (!blank) found.push({ ...e, tile, px: t.px, py: t.py, z: t.z });
     }
+    // ⚠ 並べて取ったので、返る順は取得の速さで変わる。時系列（古い順）に直す。
+    //   ここを揃えないと、同じ地点でも読むたびに段の並びが入れ替わる
+    const order = new Map(ERAS.map((e, i) => [e.id, i]));
+    eras.sort((a, b) => order.get(a.id) - order.get(b.id));
+    found.sort((a, b) => order.get(a.id) - order.get(b.id));
     // 「1本も取れていないのに 7年代を確認」と書いていたのがここ。
     // 確認できた年代の数しか evidence に載せず、読めなかった分は隠さず数える。
     const checked = ERAS.length - unread.length;
     const fact = { key: "photos", label: "残っている空中写真", method: "直読み",
-      value: found, unread: unread.length, caveat: null,
+      value: found, eras, unread: unread.length, caveat: null,
       evidence: checked ? { checked } : {} };
     if (unread.length && !found.length)
       return { ...fact, ok: false, state: UNREACHABLE,
