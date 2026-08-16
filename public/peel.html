@@ -93,23 +93,43 @@
   /* ============ HUD ============ */
   #hud{position:absolute;left:0;right:0;bottom:0;z-index:12;pointer-events:none;
     padding:0 26px 22px;display:flex;flex-direction:column;align-items:center;gap:13px}
-  #era{text-align:center;line-height:1;text-shadow:0 3px 24px rgba(0,0,0,.85)}
+  /* 年代と、その読み方を1枚にまとめる。別々の板を縦に積むと、どれが同じ表示の
+     説明なのか分からず地図も細切れになる。初期状態では全部を見せ、読んだ後は畳める。 */
+  #era{pointer-events:auto;width:min(580px,100%);padding:9px 12px 11px;border-radius:13px;
+    border:1px solid rgba(255,255,255,.18);background:rgba(8,12,18,.86);
+    box-shadow:0 9px 30px rgba(0,0,0,.38);backdrop-filter:blur(14px);
+    text-align:center;line-height:1;text-shadow:0 3px 24px rgba(0,0,0,.85)}
+  .era-panel-head{position:relative;min-height:80px;display:flex;align-items:center;justify-content:center}
+  .era-kicker{position:absolute;left:1px;top:3px;font-size:var(--fs-note);color:#b8c2cd;
+    letter-spacing:.08em;text-shadow:none}
+  #era .era-readout{display:inline-block;min-width:148px;padding:0 76px}
   #era .y{font-size:var(--fs-hero-lg);letter-spacing:.02em;font-weight:200;font-variant-numeric:tabular-nums}
-  #era .s{display:block;margin-top:7px;font-size:var(--fs-note);letter-spacing:.22em;color:var(--ink-dim)}
-  /* ⚠ 建物についての但し書きは、**畳まれない場所**に置く。
-     以前は左パネルの中にしか無く、スマホは panelOpen=!isNarrow で閉じて始まるので
-     **初期状態で1文字も見えなかった**。利用者役のエージェント3体のうち2体が
-     「高さと建設年は実データだ」と思ったまま操作した（2026-08-14）。
-     絵は文字よりはるかに強いので、誤解を生む絵が出ている間は必ず一緒に出す。 */
+  #era .s{display:block;margin-top:7px;font-size:var(--fs-note);letter-spacing:.16em;color:#cbd3dc}
+  #eraToggle{position:absolute;right:-5px;top:-4px;min-width:68px;min-height:var(--tap);padding:0 7px;
+    border:0;border-radius:8px;background:transparent;color:#cbd3dc;font:inherit;cursor:pointer;text-shadow:none}
+  #eraToggle:hover{background:rgba(255,255,255,.08);color:var(--ink)}
+  #eraToggle .chevron{display:inline-block;margin-left:5px;transition:transform .18s}
+  #eraSummaryNote{display:none;font-size:var(--fs-note);color:var(--estimate);white-space:nowrap;text-shadow:none}
+  #era.collapsed{width:auto;max-width:100%;padding:0 5px 0 11px}
+  #era.collapsed .era-panel-head{min-height:var(--tap);justify-content:flex-start;gap:8px}
+  #era.collapsed .era-kicker{position:static;flex:none}
+  #era.collapsed .era-readout{min-width:0;padding:0}
+  #era.collapsed .y{font-size:var(--fs-era);font-weight:600}
+  #era.collapsed .s,#era.collapsed #eraDetails{display:none}
+  #era.collapsed #eraSummaryNote{display:inline;overflow:hidden;text-overflow:ellipsis}
+  #era.collapsed #eraToggle{position:static;flex:none;margin-left:auto}
+  #era.collapsed #eraToggle .chevron{transform:rotate(180deg)}
+  /* ⚠ 建物についての但し書きは、**初期状態で見える場所**に置く。
+     以前は左パネルの中にしか無く、スマホでは初期状態で1文字も見えなかった。
+     今回は利用者が読んだあと自分で畳めるが、勝手には畳まず、入口と要点を残す。 */
   /* ⚠ 板を敷く。板なしで出したときは、10.5px・薄い色・影だけで航空写真の上に置いており、
      読めるのは琥珀色の数字だけだった（UI/UX の実測）。
      年が 60px、誤解を止める文が 10.5px で **5.7倍**。一瞥した人が受け取るのは
      「オレンジの数字が2つある」だけになる。出したのに読めないなら、出していないのと同じ。
      ⚠ 3D のジオメトリにも既定の色にも触らない。敷きと文字の大きさだけで直す。 */
-  #est{margin:9px auto 0;font-size:var(--fs-note);line-height:1.65;color:#c3ccd6;
-    max-width:min(560px,92vw);letter-spacing:.01em;text-align:left;
-    padding:7px 10px;border-radius:7px;border-left:2px solid var(--estimate);
-    background:rgba(10,14,20,.72);backdrop-filter:blur(8px);text-shadow:none}
+  #est{margin:7px auto 0;font-size:var(--fs-note);line-height:1.65;color:#c3ccd6;
+    max-width:100%;letter-spacing:.01em;text-align:left;padding:5px 8px;
+    border-left:2px solid var(--estimate);text-shadow:none}
   #est:empty{display:none}
   /* ⚠ 年（60px）に対して、これが 12px では「言い切っている」ことにならない。
      利用者の言葉:「写真の横に『これは今の街を重ねた絵です』と、写真と同じ大きさで書いてほしい」 */
@@ -121,31 +141,60 @@
      以前は左パネルの中に「建物をクリックすると、その足元を判定する。」と書いてあったが、
      スマホはパネルが閉じて始まり、PC は内スクロールの外だったので、**誰も読んでいなかった**。
      3D で 100% 言えるのは足元だけなので、そこへ誘う1行は出す価値がある。 */
-  #tip{margin:8px auto 0;font-size:var(--fs-note);line-height:1.5;color:var(--action);
-    max-width:min(560px,92vw);padding:6px 10px;border-radius:999px;
-    border:1px solid rgba(111,195,255,.35);background:rgba(10,14,20,.72);
-    backdrop-filter:blur(8px);text-shadow:none;display:inline-block}
+  #tip{margin:7px auto 0;font-size:var(--fs-note);line-height:1.5;color:var(--action);
+    max-width:100%;padding:5px 9px;border-radius:999px;
+    border:1px solid rgba(111,195,255,.28);background:rgba(111,195,255,.07);
+    text-shadow:none;display:inline-block}
   #tip:empty{display:none}
   #est b{color:#eef1f5;font-weight:600}
   #est .k{color:var(--estimate)}
   #era.meiji .y{color:var(--water)}
-  #bar{pointer-events:auto;width:min(660px,100%);display:flex;align-items:center;gap:13px}
-  #play{flex:none;width:42px;height:42px;border-radius:50%;cursor:pointer;font-size:var(--fs-body);
-    border:1px solid rgba(255,255,255,.28);background:rgba(10,14,20,.6);color:var(--ink);
-    backdrop-filter:blur(10px);transition:.15s}
+
+  /* ============ 年代の操作パネル ============ */
+  #timePanel{pointer-events:auto;width:min(720px,100%);border:1px solid rgba(255,255,255,.22);
+    border-radius:14px;background:rgba(8,12,18,.88);box-shadow:0 12px 38px rgba(0,0,0,.42);
+    backdrop-filter:blur(16px);overflow:hidden}
+  .time-panel-head{min-height:var(--tap);padding:0 10px 0 14px;display:flex;align-items:center;
+    justify-content:space-between;gap:10px}
+  .time-panel-name{min-width:0;display:flex;align-items:baseline;gap:9px;white-space:nowrap}
+  #timePanelTitle{font-size:var(--fs-body);font-weight:600;letter-spacing:.05em;color:var(--ink)}
+  .time-axis{font-size:var(--fs-note);color:#b8c2cd;letter-spacing:.04em}
+  #timeSummary{display:none;font-size:var(--fs-body);color:var(--action);font-weight:600;
+    overflow:hidden;text-overflow:ellipsis}
+  #timeToggle{flex:none;min-width:68px;min-height:var(--tap);padding:0 8px;border:0;background:transparent;
+    color:#cbd3dc;font:inherit;cursor:pointer;border-radius:8px}
+  #timeToggle:hover{background:rgba(255,255,255,.08);color:var(--ink)}
+  #timeToggle .chevron{display:inline-block;margin-left:5px;transition:transform .18s}
+  #timePanel.collapsed #timePanelBody{display:none}
+  #timePanel.collapsed #timeSummary{display:inline;max-width:120px}
+  #timePanel.collapsed .time-axis{display:none}
+  #timePanel.collapsed #timeToggle .chevron{transform:rotate(180deg)}
+  #timePanelBody{border-top:1px solid rgba(255,255,255,.12);padding:7px 14px 10px}
+  /* 左端のノブは track の外へ半径ぶん出る。再生ボタンとの間隔は、ノブの外周を含めて空ける。 */
+  #bar{width:100%;display:flex;align-items:center;gap:18px}
+  #play{flex:none;width:38px;height:38px;border-radius:9px;cursor:pointer;font-size:var(--fs-body);
+    border:1px solid rgba(255,255,255,.22);background:rgba(255,255,255,.06);color:#cbd3dc;
+    transition:.15s}
   #play:hover{border-color:var(--action);color:var(--action)}
   #play[aria-pressed="true"]{background:var(--action);color:#07121c;border-color:var(--action)}
-  #track{position:relative;flex:1;height:42px;cursor:pointer}
-  #track .rail{position:absolute;top:20px;left:0;right:0;height:2px;background:rgba(255,255,255,.18)}
-  #track .fill{position:absolute;top:20px;left:0;height:2px;background:var(--action)}
-  #track .tick{position:absolute;top:15px;width:1px;height:8px;background:rgba(255,255,255,.3)}
-  #track .tick.on{background:var(--action);height:12px;top:13px}
-  #track .lab{position:absolute;top:28px;font-size:var(--fs-label);color:var(--ink-dim);transform:translateX(-50%);white-space:nowrap}
+  #track{position:relative;flex:1;height:56px;cursor:pointer}
+  #track .rail{position:absolute;top:19px;left:0;right:0;height:5px;border-radius:999px;
+    background:rgba(255,255,255,.32)}
+  #track .fill{position:absolute;top:19px;left:0;height:5px;border-radius:999px;background:var(--action)}
+  /* 1本が steps の1層。ラベルは狭い画面で間引いても、層の区切り自体は全て残す。 */
+  #track .tick{position:absolute;top:14px;width:2px;height:15px;margin-left:-1px;
+    border-radius:999px;background:#8995a2}
+  #track .tick.on{background:var(--action)}
+  #track .tick.selected{top:10px;height:23px;background:var(--ink)}
+  #track .lab{position:absolute;top:34px;font-size:var(--fs-note);color:#bec8d3;
+    text-shadow:0 1px 5px #000;transform:translateX(-50%);white-space:nowrap}
+  #track .lab.selected{color:var(--ink);font-weight:600}
   /* ⚠ 端の2つは中心そろえにしない。枠の外へ出て横スクロールが生まれる（peel3d.js に実測） */
   #track .lab.at-start{transform:none}
   #track .lab.at-end{transform:translateX(-100%)}
-  #track .knob{position:absolute;top:14px;width:14px;height:14px;border-radius:50%;background:var(--ink);
-    margin-left:-7px;box-shadow:0 2px 10px rgba(0,0,0,.6);transition:background .2s}
+  #track .knob{position:absolute;top:9px;width:25px;height:25px;border:3px solid #07121c;
+    border-radius:50%;background:var(--ink);margin-left:-12.5px;
+    box-shadow:0 0 0 2px rgba(255,255,255,.48),0 3px 14px rgba(0,0,0,.75);transition:background .2s}
   #track.meiji .knob{background:var(--water)}
   /* ⚠ 飾りは指を受け取らない。
      目盛り・年代の文字・ノブ・レールは insertAdjacentHTML("beforeend") で
@@ -296,7 +345,17 @@
   .maplibregl-ctrl-group button{width:var(--tap)!important;height:var(--tap)!important}
   @media(max-width:680px){
     #panel{width:calc(100% - 28px);max-height:58%}
-    #era .y{font-size:var(--fs-hero)}#hud{padding:0 14px 16px}
+    #era .y{font-size:var(--fs-hero)}#hud{padding:0 12px 12px;gap:9px}
+    #era{padding:7px 10px 9px}
+    .era-panel-head{min-height:60px}
+    #era .era-readout{min-width:128px;padding:0 68px}
+    #era.collapsed{padding:0 5px 0 10px}
+    #era.collapsed .era-readout{min-width:0;padding:0}
+    #timePanelBody{padding-left:10px;padding-right:10px}
+    #bar{gap:17px}
+    #play{width:36px;height:36px}
+    #timePanelTitle{font-size:var(--fs-lead)}
+    .time-panel-head{padding-left:11px;padding-right:5px}
     #chrome a span,#toggle span{display:none}
   }
 </style>
@@ -410,7 +469,14 @@
   <button id="toggle" title="情報を開く">☰ <span>この土地について</span></button>
 </div>
 <div id="hud">
-  <div id="era"><div class="y">現在</div><span class="s">&nbsp;</span>
+  <div id="era">
+    <div class="era-panel-head"><span class="era-kicker">表示中</span>
+      <div class="era-readout"><div class="y">現在</div><span class="s">&nbsp;</span></div>
+      <span id="eraSummaryNote"></span>
+      <button id="eraToggle" type="button" aria-expanded="true" aria-controls="eraDetails">
+        <span id="eraToggleText">閉じる</span><span class="chevron" aria-hidden="true">⌄</span></button>
+    </div>
+    <div id="eraDetails">
     <!-- ⚠ 過去の年代では、**年と同じ強さで**「重ねている」と言う。
          実測（2026-08-14 利用者役のエージェントによる検証）: 広島 1945–50（原爆直後の焼け野原）の上に
          現在の3,555棟が立ち、広島の利用者は最初の3秒「1945年の広島」だと読んだ。
@@ -420,15 +486,25 @@
          → 年のすぐ下に、独立した文として置く。 -->
     <div id="over"></div>
     <!-- ⚠ 空のまま置かない。建物が立っていないときは何も書かない（無いものを説明しない） -->
-    <div id="est"></div><div id="tip"></div></div>
-  <div id="bar">
-    <button id="play" aria-pressed="false" title="再生（Space）">▶</button>
-    <!-- ⚠ max は目安の初期値でしかない。**段の数は地点によって変わる**ので
-         （その地点に残っている空中写真だけを段にする）、peel3d.js の buildTicks() が
-         100 × 段数 に書き換える。ここに書いた数を当てにしない -->
-    <div id="track"><div class="rail"></div><div class="fill"></div><div class="knob"></div>
-      <input type="range" id="t" min="0" max="800" value="0" step="1"></div>
-  </div>
+    <div id="est"></div><div id="tip"></div></div></div>
+  <section id="timePanel" aria-labelledby="timePanelTitle">
+    <div class="time-panel-head">
+      <div class="time-panel-name"><span id="timePanelTitle">年代を動かす</span>
+        <span class="time-axis">現在 → 昔</span><strong id="timeSummary">現在</strong></div>
+      <button id="timeToggle" type="button" aria-expanded="true" aria-controls="timePanelBody">
+        <span id="timeToggleText">閉じる</span><span class="chevron" aria-hidden="true">⌄</span></button>
+    </div>
+    <div id="timePanelBody">
+      <div id="bar">
+        <button id="play" aria-pressed="false" aria-label="年代を自動再生" title="自動再生（Space）">▶</button>
+        <!-- ⚠ max は目安の初期値でしかない。**段の数は地点によって変わる**ので
+             （その地点に残っている空中写真だけを段にする）、peel3d.js の buildTicks() が
+             100 × 段数 に書き換える。ここに書いた数を当てにしない -->
+        <div id="track"><div class="rail"></div><div class="fill"></div><div class="knob"></div>
+          <input type="range" id="t" min="0" max="800" value="0" step="1" aria-label="空中写真の年代"></div>
+      </div>
+    </div>
+  </section>
 </div>
 
 <script src="./vendor/maplibre-gl.js"></script>

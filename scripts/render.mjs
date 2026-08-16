@@ -2439,7 +2439,7 @@ const CASES = [
 
       // 明治期は建物が消えるので、建物の話をしない
       const meiji = await at(max);
-      must(meiji.year === "明治期", `左端が明治期でない: ${meiji.year}`);
+      must(meiji.year === "明治期", `右端が明治期でない: ${meiji.year}`);
       must(meiji.over === "", `建物が1棟も無いのに重ねていると言っている: ${meiji.over}`);
       return `現在=無／${past.year}=「${past.over.slice(0, 28)}」${past.yFs}:${past.oFs}px／端=${max}`;
     },
@@ -2454,8 +2454,8 @@ const CASES = [
     async check(page, reqs) {
       await peelReady(page);
       const labels = await stepLabels(page);
-      must(labels[0] === "現在", `右端が現在でない: ${labels[0]}`);
-      must(labels[labels.length - 1] === "明治期", `左端が明治期でない: ${labels.at(-1)}`);
+      must(labels[0] === "現在", `左端が現在でない: ${labels[0]}`);
+      must(labels[labels.length - 1] === "明治期", `右端が明治期でない: ${labels.at(-1)}`);
       for (const gone of ["1936–42", "1984–86"])
         must(!labels.includes(gone), `広島に存在しない ${gone} を段に出している: ${labels.join("/")}`);
       for (const keep of ["1945–50", "1961–69", "1974–78", "1979–83", "1987–90"])
@@ -2555,6 +2555,70 @@ const CASES = [
         `同じ 1945–50 なのに水位が違う: 広島 ${a.water} / 豊洲 ${b.water}`);
       return `1945–50 は 広島 ${k1} 段目 / 豊洲 ${k2} 段目、時間座標はどちらも ${a.tau}`
         + `（水位 ${a.water.toFixed(3)}m で一致）`;
+    },
+  },
+  {
+    // ⚠ 年代を動かせることが、航空写真の上で見えなければ操作は存在しないのと同じ。
+    //   文字・2px の線・14px のノブを背景へ直接置いていたときは、明るい地面でも
+    //   暗い水面でも読みづらかった。板・見出し・指で分かるノブを実寸で見る。
+    // ⚠ 畳んだあとも入口と選択中の年代は残す。閉じた結果、開き方まで消してはいけない。
+    name: "年代を動かす操作パネルが、見えて畳める",
+    path: `/peel?ll=34.39500,132.45500&q=%E5%BA%83%E5%B3%B6`,
+    viewport: { width: 375, height: 667 }, hasTouch: true,
+    async check(page) {
+      await peelReady(page);
+      await page.waitForFunction(() => document.querySelectorAll("#track .tick").length === 7,
+        null, { timeout: 60000 });
+      const opened = await page.evaluate(() => {
+        const box = (e) => { const r = e.getBoundingClientRect();
+          return { left: r.left, right: r.right, width: r.width, height: r.height }; };
+        const panel = document.getElementById("timePanel");
+        const eraPanel = document.getElementById("era");
+        return { panel: box(panel), readout: box(document.querySelector("#era .era-readout")),
+          panelBg: getComputedStyle(panel).backgroundColor,
+          eraBg: getComputedStyle(eraPanel).backgroundColor,
+          play: box(document.getElementById("play")),
+          rail: box(document.querySelector("#track .rail")),
+          knob: box(document.querySelector("#track .knob")),
+          ticks: document.querySelectorAll("#track .tick").length,
+          selected: document.querySelectorAll("#track .tick.selected").length,
+          expanded: document.getElementById("timeToggle").getAttribute("aria-expanded"),
+          viewport: document.documentElement.clientWidth };
+      });
+      must(opened.panel.left >= 0 && opened.panel.right <= opened.viewport,
+        `操作パネルが画面からはみ出す: ${opened.panel.left}〜${opened.panel.right}px`);
+      must(opened.panel.height >= 100, `開いた操作パネルが小さすぎる: ${opened.panel.height}px`);
+      must(opened.panelBg !== "rgba(0, 0, 0, 0)" && opened.eraBg !== "rgba(0, 0, 0, 0)",
+        "年代または操作パネルに背景板が無い");
+      must(opened.rail.height >= 4, `レールが細い: ${opened.rail.height}px`);
+      must(opened.knob.width >= 22 && opened.knob.height >= 22,
+        `ノブが小さい: ${opened.knob.width}×${opened.knob.height}px`);
+      must(opened.play.right + 2 <= opened.knob.left,
+        `再生ボタンと左端のノブが重なる: ${opened.play.right} / ${opened.knob.left}px`);
+      must(opened.ticks === 7, `広島の7層と目盛りが一致しない: ${opened.ticks}本`);
+      must(opened.selected === 1, `選択中の区切りが1本でない: ${opened.selected}本`);
+      must(opened.expanded === "true", "初期状態で操作パネルが開いていない");
+
+      // 地点ごとに組んだ steps の3段目を選ぶ。閉じた見出しも、その層のラベルを名乗ること。
+      await page.$eval("#t", (e) => { e.value = "200"; e.dispatchEvent(new Event("input")); });
+      await page.click("#timeToggle");
+      const closed = await page.evaluate(() => ({
+        height: document.getElementById("timePanel").getBoundingClientRect().height,
+        hidden: document.getElementById("timePanelBody").hidden,
+        expanded: document.getElementById("timeToggle").getAttribute("aria-expanded"),
+        action: document.getElementById("timeToggleText").textContent.trim(),
+        summary: document.getElementById("timeSummary").textContent.trim(),
+      }));
+      must(closed.hidden && closed.expanded === "false" && closed.action === "開く",
+        `畳めていない: hidden=${closed.hidden} expanded=${closed.expanded} action=${closed.action}`);
+      must(closed.height >= 44 && closed.height <= 52,
+        `畳んだ入口が指で押せる高さでない: ${closed.height}px`);
+      must(closed.summary === "1979–83",
+        `畳むと選択中の年代層が分からない: 「${closed.summary}」`);
+      await page.click("#timeToggle");
+      must(await page.locator("#timePanelBody").isVisible(), "操作パネルをもう一度開けない");
+      return `広島 ${opened.ticks}層／レール ${opened.rail.height}px／ノブ ${opened.knob.width}px`
+        + `／開 ${opened.panel.height}px → 閉 ${closed.height}px（${closed.summary}）`;
     },
   },
   {
@@ -2875,12 +2939,13 @@ const CASES = [
     },
   },
   {
-    // ⚠ 建物の但し書きは、**畳まれない場所**に出ていること。
+    // ⚠ 建物の但し書きは、**初期状態で見える場所**に出ていること。
     //   以前は左パネルの中にしかなく、スマホは panelOpen=!isNarrow で閉じて始まるので
     //   初期状態で1文字も見えなかった。利用者役のエージェント3体のうち2体が
     //   「高さと建設年は実データだ」と思ったまま操作した（2026-08-14）。
+    //   初めから隠すのは不可。ただし読んだ利用者が地図を広くするため、自分で畳める。
     //   ⚠ スマホ幅で見ること。PC ではパネルが開くので、この壊れ方は再現しない。
-    name: "建物の但し書きが、スマホでも最初から見えている", path: `/peel?${TOYOSU}`,
+    name: "建物の但し書きが、スマホで最初から見えて、あとで畳める", path: `/peel?${TOYOSU}`,
     viewport: { width: 375, height: 667 }, hasTouch: true,
     async check(page) {
       await page.waitForFunction(() => /件を判定しました/.test(document.body.innerText),
@@ -2890,22 +2955,25 @@ const CASES = [
         const e = document.getElementById("est"), rc = e?.getBoundingClientRect();
         return { text: (e?.textContent ?? "").replace(/\s+/g, " ").trim(),
           panelHidden: document.getElementById("panel")?.classList.contains("hide"),
+          eraExpanded: document.getElementById("eraToggle")?.getAttribute("aria-expanded"),
           shown: !!rc && rc.height > 0 && rc.top >= 0 && rc.bottom <= innerHeight
             && getComputedStyle(e).visibility !== "hidden" && getComputedStyle(e).display !== "none" };
       });
       // 前提が崩れていたら、この検査は何も確かめていない
       must(r.panelHidden, "スマホなのにパネルが開いている（この検査の前提が消えた）");
+      must(r.eraExpanded === "true", "但し書きが初期状態から畳まれている");
       must(r.shown, `但し書きが折り返しの中に見えていない: ${JSON.stringify(r)}`);
       // ⚠ 「出ている」だけでは足りない。**読めること**。板なしで出したときは
       //   10.5px・薄い色・影だけで航空写真の上に置いており、読めるのは数字だけだった。
       //   年の見出しが 60px なのに但し書きが 10.5px で 5.7倍（UI/UX の実測）。
       const look = await page.evaluate(() => {
         const e = document.getElementById("est"), c = getComputedStyle(e);
+        const panel = getComputedStyle(document.getElementById("era"));
         const y = document.querySelector("#era .y");
         const a = (s) => (s.match(/[\d.]+/g) ?? []).map(Number);
         return { fs: parseFloat(c.fontSize),
           yearFs: parseFloat(getComputedStyle(y).fontSize),
-          bgA: (a(c.backgroundColor)[3] ?? 0) };
+          bgA: (a(panel.backgroundColor)[3] ?? 0) };
       });
       must(look.fs >= 12, `但し書きが小さすぎる: ${look.fs}px（12px 以上）`);
       must(look.bgA >= 0.5,
@@ -2919,7 +2987,27 @@ const CASES = [
       must(+m[1] > 0 && +m[1] <= +m[2], `推定の件数がおかしい: ${m[0]}`);
       for (const w of ["再現", "当時の街並み", "この年に建った"])
         must(!r.text.includes(w), `断定・再現を名乗る語がある: 「${w}」`);
-      return r.text;
+
+      // 過去へ動かしてから畳む。閉じても、選択年代と最低限の誤解止めは残す。
+      await page.$eval("#t", (e) => { e.value = "500"; e.dispatchEvent(new Event("input")); });
+      await page.click("#eraToggle");
+      const closed = await page.evaluate(() => {
+        const era = document.getElementById("era"), rc = era.getBoundingClientRect();
+        return { height: rc.height, detailsHidden: document.getElementById("eraDetails").hidden,
+          expanded: document.getElementById("eraToggle").getAttribute("aria-expanded"),
+          action: document.getElementById("eraToggleText").textContent.trim(),
+          year: document.querySelector("#era .y").textContent.trim(),
+          note: document.getElementById("eraSummaryNote").textContent.trim() };
+      });
+      must(closed.detailsHidden && closed.expanded === "false" && closed.action === "開く",
+        `年代情報を畳めない: ${JSON.stringify(closed)}`);
+      must(closed.height >= 44 && closed.height <= 52,
+        `畳んだ年代情報が指で押せる高さでない: ${closed.height}px`);
+      must(closed.year.length > 0 && /いまの街/.test(closed.note),
+        `畳むと年代または重ねの注意が消える: ${closed.year} / ${closed.note}`);
+      await page.click("#eraToggle");
+      must(await page.locator("#est").isVisible(), "年代情報をもう一度開けない");
+      return `${r.text}／畳むと ${closed.height}px「${closed.year}・${closed.note}」`;
     },
   },
   {
