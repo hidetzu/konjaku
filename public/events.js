@@ -149,7 +149,10 @@ LIMIT 120`;
     for (const g of got) for (const f of g.f) {
       if (f.c[0] < b.w || f.c[0] > b.e || f.c[1] < b.s || f.c[1] > b.n) continue;
       seen.set(f.id, { id: f.id, label: f.l, kind: f.k, lon: f.c[0], lat: f.c[1],
-        year: f.y[0], until: f.y[1] ?? null, precision: f.p ?? "year", url: f.u,
+        // ⚠ 精度が入っていないタイルは「年精度」ではない。**分からない**。
+        //   持っていない精度を与えないほうへ倒す（実行時側・取り込み側と同じ扱い）。
+        //   ⚠ 配布物に p が必ず入っていることは scripts/check.mjs が全件で見ている。
+        year: f.y[0], until: f.y[1] ?? null, precision: f.p ?? "century", url: f.u,
         note: f.n ?? null, from: "static" });
     }
     return { items: [...seen.values()].sort((a, c) => a.year - c.year), at, truncated };
@@ -203,9 +206,17 @@ LIMIT 120`;
           const cur = seen.get(id);
           if (!cur || cur.year > year)
             seen.set(id, { id, label, year, until: until ?? cur?.until ?? null,
+              // ⚠ **取り込み側（scripts/ingest-wikidata.mjs の prec）と同じ表にする。**
+              //   以前ここだけ「dateP が無ければ year」で、取り込み側は「century」だった。
+              //   同じ項目が、静的経路では 99年幅・実行時経路では 0年幅になり、
+              //   **経路によって出る年代が変わる**（掟: 同じ問いに答える実装を2つ持たない）。
+              //   持っていない精度を与えないほうへ倒す（＝ year ではなく century）。
+              //   実測 2026-08-16: 配布 2,367 件のうち century は 7 件で、すべて下2桁 00。
+              //   つまりこの既定は実データでは一度も効いていない。
+              //   ⚠ 2つの表が一致していることは scripts/check.mjs が突き合わせている。
               precision: Number(row.dateP?.value) >= 9 ? "year"
                 : Number(row.dateP?.value) === 8 ? "decade"
-                : row.dateP?.value ? "century" : "year",
+                : "century",
               url: `https://www.wikidata.org/wiki/${id.split("/").pop()}`,
               // 静的タイルの n と同じ中身（取れたまま。短くするのは描くとき）
               note: row.desc?.value || null,
