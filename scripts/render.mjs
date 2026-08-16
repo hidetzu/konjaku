@@ -2064,7 +2064,19 @@ const CASES = [
     async check(page) {
       await waitVerdict(page);
       await waitStrip(page);
-      await page.waitForSelector("#ovRow", { timeout: 30000 });
+      await page.waitForSelector("#ovRow", { state: "attached", timeout: 30000 });
+      // 明治期のコマは空中写真ではない。幅のある見出しの側で、そう名乗る
+      const yr = await page.locator("#yrBig").textContent();
+      must(yr.includes("空中写真ではありません"),
+        `明治期の見出しが、空中写真と区別できない: ${yr}`);
+      const cell = await page.locator("#strip .f.meiji .yr").textContent();
+      must(cell.trim() === "明治期", `帯のコマの見出しが変わっている: ${cell}`);
+      // ⚠ 明治期のコマには重ねる相手（空中写真）が無い。ここでは操作を出さない
+      must(await effOpacity(page, "#ovRow") === 0,
+        "明治期のコマなのに、重ねる操作が出ている（押しても絵は変わらない）");
+      // 写真の年代（1936–42）へ移ると、出る
+      await page.evaluate(() => document.querySelectorAll("#strip .f")[1]?.click());
+      await page.waitForTimeout(900);
       const geom = () => page.evaluate(() => {
         const R = (s) => {
           const e = document.querySelector(s); if (!e) return null;
@@ -2099,13 +2111,7 @@ const CASES = [
         must(!g.overflowX, `${w}×${h}: 横にあふれている`);
         out.push(`${w}×${h}: y=${g.ov.t}〜${g.ov.b}（写真の ${Math.round(g.ov.h / g.big.h * 100)}%）`);
       }
-      // 明治期のコマは空中写真ではない。幅のある見出しの側で、そう名乗る
-      const yr = await page.locator("#yrBig").textContent();
-      must(yr.includes("空中写真ではありません"),
-        `明治期の見出しが、空中写真と区別できない: ${yr}`);
-      const cell = await page.locator("#strip .f.meiji .yr").textContent();
-      must(cell.trim() === "明治期", `帯のコマの見出しが変わっている: ${cell}`);
-      return out.join(" ／ ");
+      return `明治期では出さない ／ ${out.join(" ／ ")}`;
     },
   },
   {
@@ -2116,13 +2122,16 @@ const CASES = [
     setup: (page) => stubWikidata(page, []),
     async check(page) {
       await waitVerdict(page);
-      await page.waitForSelector("#ovRow", { timeout: 30000 });
+      await page.waitForSelector("#ovRow", { state: "attached", timeout: 30000 });
       // 層の不透明度は、画面の言葉ではなく地図そのものに聞く
       const op = () => page.evaluate(() =>
         (typeof mapObj !== "undefined" && mapObj?.getLayer("swale"))
           ? mapObj.getPaintProperty("swale", "raster-opacity") : null);
       const st = () => page.locator("#ovState").textContent();
 
+      // 重ねる相手は空中写真なので、写真の年代へ移ってから見る（明治期では出さない）
+      await page.evaluate(() => document.querySelectorAll("#strip .f")[1]?.click());
+      await page.waitForTimeout(900);
       const before = (await st()).trim();
       must(before === "ONで地図に重ねます", `切っているときの言い方が違う: ${before}`);
       must(await op() === null, "押していないのに、もう地図の層がある");
@@ -2154,7 +2163,10 @@ const CASES = [
     },
     async check(page) {
       await waitVerdict(page);
-      await page.waitForSelector("#ovRow", { timeout: 30000 });
+      await page.waitForSelector("#ovRow", { state: "attached", timeout: 30000 });
+      // 重ねる相手は空中写真なので、写真の年代へ移ってから押す（明治期では出さない）
+      await page.evaluate(() => document.querySelectorAll("#strip .f")[1]?.click());
+      await page.waitForTimeout(900);
       await page.locator("#ovSwale").check();
       // ⚠ 「読み込んでいます…」のまま止まるのも失敗。**終わったと言うところ**まで待つ。
       //   待ち切れなかったときに Timeout とだけ出ると、何が起きたのか読めないので、

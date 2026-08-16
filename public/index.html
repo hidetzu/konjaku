@@ -408,7 +408,9 @@
   .big.map-on .big-in{display:none}
   .big.map-on .bl{z-index:3}
   .big:active{cursor:grabbing}
-  .big .zoombar{position:absolute;right:8px;bottom:8px;z-index:4;display:flex;flex-direction:column;gap:4px}
+  /* ⚠ 右下は地図の帰属表示（国土地理院）が使う。実測（2026-08-16 / 375×667）で
+     ＋− がその上に乗り、「国土地理院」が途中で切れて読めなかった。出典は隠さない。 */
+  .big .zoombar{position:absolute;right:8px;bottom:34px;z-index:4;display:flex;flex-direction:column;gap:4px}
   .big .zoombar button{width:32px;height:32px;border-radius:8px;cursor:pointer;
     border:1px solid var(--line);background:rgba(11,14,19,.75);color:var(--ink);
     font:inherit;font-size:var(--fs-claim);line-height:1;backdrop-filter:blur(6px)}
@@ -531,13 +533,20 @@
         実測（2026-08-16 / 豊洲）で 1280×800 では y=831 と**初期画面の外**、
         375×667 でも 552px と写真の下だった。固定値で位置を決めると隣と重なるので、
         年バッジ・寄せた先の名前と同じ積み上げに入れて、写真と一緒に動かす。 */
-  .ov{display:flex;align-items:flex-start;gap:7px;max-width:100%;
-    padding:5px 10px;border-radius:8px;cursor:pointer;
-    background:rgba(11,14,19,.72);backdrop-filter:blur(6px);border:1px solid var(--line);
-    font-size:var(--fs-note);line-height:1.35;color:var(--ink)}
-  .ov input{accent-color:var(--action);margin:2px 0 0;flex:none}
+  /* ⚠ 主役は年代（yr-big）。同じ強さの板を2つ縦に並べない。
+     この操作は補助なので、地色も文字も一段引く。ただし**押せる大きさは削らない**（44px）。 */
+  .ov{display:flex;align-items:center;gap:7px;max-width:100%;min-height:44px;
+    box-sizing:border-box;padding:5px 10px;border-radius:8px;cursor:pointer;
+    /* ⚠ 一段引くのは大きさと色。地色まで薄くすると、明るい写真や水色の上で読めなくなる
+       （実測 2026-08-16: .55 では重ねた直後の水色の上で「重ねています」が沈んだ） */
+    background:rgba(11,14,19,.78);backdrop-filter:blur(6px);border:1px solid var(--line);
+    font-size:var(--fs-evidence);line-height:1.35;color:var(--ink-dim)}
+  .ov input{accent-color:var(--action);flex:none}
   /* いま重ねているのかどうかを、言葉で出す（チェックの形だけに頼らない） */
-  .ov-st{display:block;font-size:var(--fs-evidence);color:var(--ink-dim)}
+  /* ⚠ 小さくはするが、薄くはしすぎない。ここは「いまどうなっているか」そのもの */
+  .ov-st{display:block;font-size:var(--fs-label);color:var(--ink-dim)}
+  /* 明治期のコマでは、重ねる相手（空中写真）が無い。JS がここを付け外しする */
+  .ov.none{display:none}
   .mixbar input[type=range]{flex:1;min-width:0;accent-color:var(--action);height:22px}
   .mixbar .mixv{flex:none;width:34px;text-align:right;font-variant-numeric:tabular-nums}
   .strip-foot{margin:-3px 0 11px;font-size:var(--fs-note);color:var(--ink-dim)}
@@ -1022,9 +1031,11 @@ function buildFrames(f){
   //   ⚠ 判定できたときだけ。整備対象外・通信断のときは足さない（無いものを並べない）。
   const m=f.byKey.meiji;
   if(m?.ok&&m.value)
-    // ⚠ subBig は写真の上の見出しだけで使う。帯の 1 コマは幅が無く、入れると読めなくなる
+    // ⚠ subBig は写真の上の見出しだけで使う。帯の 1 コマは幅が無く、入れると読めなくなる。
+    //   ⚠ 改行は自分で入れる。任せると 375px で「空中写真ではありま／せん」と語の途中で割れた
+    //     （2026-08-16 実測・豊洲）。
     out.push({ id:"swale", label:"明治期", sub:"低湿地データ",
-      subBig:"低湿地データ（空中写真ではありません）", ext:"png", min:6, max:16,
+      subBig:"低湿地データ<br>（空中写真ではありません）", ext:"png", min:6, max:16,
       // 低湿地は区分の塗りだけなので、下に淡色地図を敷かないと何も見えない
       under:"pale", px:t.px, py:t.py, meiji:true });
   out.push(...p.value);
@@ -1221,6 +1232,7 @@ function setEra(i){
   layoutBig();
   big?.classList.remove("err");
   document.getElementById("yrBig").innerHTML=bigSub(fr);
+  syncOverlayRow();
   document.querySelectorAll("#strip .f").forEach((el,j)=>{
     el.classList.toggle("on",j===eraIdx);
     el.setAttribute("aria-pressed",String(j===eraIdx));
@@ -1402,10 +1414,18 @@ function overlayState(){
   else if(mapObj?.getLayer("swale")) el.textContent="重ねています";
   else el.textContent=mapLoading?"地図を読み込んでいます…":"地図を読み込めませんでした";
 }
+// ⚠ 明治期のコマでは、重ねる相手（空中写真）が無い。
+//   出したままにすると、着いた瞬間のいちばん押しやすいところに
+//   「押しても絵がほとんど変わらない操作」が置かれる（掟: 押しても何も起きない導線を置かない）。
+//   実測（2026-08-16 / 375×667 / 豊洲）: 明治期のコマで入り切りしても、見えている絵は低湿地データのまま。
+function syncOverlayRow(){
+  const r=document.getElementById("ovRow");
+  if(r) r.classList.toggle("none",!!frames[eraIdx]?.meiji);
+}
 function wireOverlay(){
   const c=document.getElementById("ovSwale");
   if(!c) return;
-  overlayState();
+  overlayState(); syncOverlayRow();
   // ⚠ 写真の上に置いた操作なので、写真側の「押したら寄りを解除」に飲まれないようにする。
   //   地図を起こす pointerdown（wake）は通す。押した人は地図を見たいので、そのまま起きてよい。
   document.getElementById("ovRow")?.addEventListener("click",(e)=>e.stopPropagation());
