@@ -126,6 +126,10 @@ for (const a of areas) {
       // 建物の重心で明治期の区分を取り込み時に判定する。
       // 画面表示時に建物ごとへラスタ通信を発生させず、配信アセットに根拠を持たせる。
       const meiji = await sampleSwale(c[0], c[1]);
+      // 一時的な通信失敗を恒久的な「読み込めず」として配らない。
+      // 取り込みを止め、再実行で全件を判定できたことを確認してから公開する。
+      if (meiji.state === "読み込めず")
+        throw new Error(`明治期ラスタを読み込めないため取り込みを中止: ${c[0]},${c[1]}`);
       feats.push({ type: "Feature",
         properties: { id: el.id, height: h, heightSource: src,
           kind: tags["building"] ?? "yes", name: tags["name"] ?? null,

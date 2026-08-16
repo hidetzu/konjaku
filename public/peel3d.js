@@ -906,7 +906,7 @@ function renderLand(v){
     const landIsWater=v.land&&SWALE.find(c=>c.name===v.land.name)?.water;
     // 数字だけを置かない。**何の割合か**と**分母**を必ず同じ板に出す
     const what=v.kind==="ratio"
-      ? (v.land
+      ? (v.land && !landIsWater
         ? `建物の足元は、明治期には<b>${esc(v.land.name)}</b>が最多でした`
         : `の建物が、明治期には<b>水の上</b>だった`)
       : `の面積が、明治期には<b>水</b>だった`;

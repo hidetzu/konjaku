@@ -38,6 +38,10 @@
 # 取り直しの確認が4回増えるだけ（中身が変わっていなければ 304）
 /data/bl/*
   Cache-Control: public, max-age=0, must-revalidate
+/data/assets.json
+  Cache-Control: public, max-age=0, must-revalidate
+/data/quick-places.json
+  Cache-Control: public, max-age=0, must-revalidate
 # 取り込みで書き換わらない、置きっぱなしのもの
 /data/areas.json
   Cache-Control: public, max-age=86400
