@@ -20,6 +20,7 @@ import { existsSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { join, extname, basename, dirname } from "node:path";
 import { VERSION_RE, hashOf, readSw } from "./sw-hash.mjs";
+import { VERSION as BL_VERSION } from "./bl-format.mjs";
 
 const ROOT = new URL("..", import.meta.url).pathname;
 const PUB = join(ROOT, "public");
@@ -1345,20 +1346,16 @@ head("6. 外部リンク");
     }
     // ⚠ ピンは入口。押した先が未整備だと、来た人が最初に見るのが
     //   「分かっていません」になる。取り込んだ範囲と、見せている入口を一致させる。
-    //   ⚠ index.html と peel.html の**両方**を見る。以前は index だけを見ていて、
-    //     peel のピンが旧6件のまま取り残され、6件中5件が押すと Overpass 待ちだった。
-    for (const [file, re] of [
-      ["public/index.html", /\["([^"]+)",([\d.]+),([\d.]+)/g],
-      ["public/peel3d.js", /\{n:"([^"]+)",\s*lon:([\d.]+),\s*lat:([\d.]+)/g],
-    ]) {
-      const qm = /const QUICK\s*=\s*\[([\s\S]*?)\];/.exec(rf2(file, "utf8"));
-      if (!qm) { bad(`${file} の QUICK が読めない`); continue; }
-      const pins = [...qm[1].matchAll(re)].map((x) => ({ name: x[1], lon: +x[2], lat: +x[3] }));
+    //   候補地は画面のコードに重複させず、export-places.mjs が生成した公開データを正とする。
+    const quickPath = join(PUB, "data", "quick-places.json");
+    if (!existsSync(quickPath)) bad("quick-places.json が無い（候補地の公開データが生成されていない）");
+    else {
+      const pins = JSON.parse(await readFile(quickPath, "utf8")).places ?? [];
       const outside = pins.filter((p) => !covered(p.lon, p.lat).on);
-      !pins.length ? bad(`${file}: ピンが1つも読めない`)
-        : outside.length ? bad(`${file}: 未整備の土地をピン留めしている: `
+      !pins.length ? bad("quick-places.json に候補地が1つも無い")
+        : outside.length ? bad("未整備の土地をピン留めしている: "
             + outside.map((p) => p.name).join("、"))
-        : ok(`${file.replace("public/", "")} のピン ${pins.length} 件は、すべて取り込み済みの土地`);
+        : ok(`quick-places.json のピン ${pins.length} 件は、すべて取り込み済みの土地`);
     }
     // ⚠ 建物の索引も見る。3D の入口は「建物が取れる」ことに寄りかかっている
     {
@@ -1367,9 +1364,8 @@ head("6. 外部リンク");
       else {
         const bi = JSON.parse(rf2(bp, "utf8"));
         const HALF_LON = 0.0090, HALF_LAT = 0.0070;   // peel3d.js の集計範囲
-        const qm = /const QUICK\s*=\s*\[([\s\S]*?)\];/.exec(rf2("public/peel3d.js", "utf8"));
-        const pins = [...(qm?.[1] ?? "").matchAll(/\{n:"([^"]+)",\s*lon:([\d.]+),\s*lat:([\d.]+)/g)]
-          .map((x) => ({ name: x[1], lon: +x[2], lat: +x[3] }));
+        const quickPath = join(PUB, "data", "quick-places.json");
+        const pins = existsSync(quickPath) ? JSON.parse(await readFile(quickPath, "utf8")).places ?? [] : [];
         const bad2 = pins.filter((p) => {
           const a = tileOf(p.lon - HALF_LON, p.lat + HALF_LAT, 14);
           const b = tileOf(p.lon + HALF_LON, p.lat - HALF_LAT, 14);
@@ -1699,6 +1695,66 @@ head("6. 外部リンク");
         : ok(`manifest の行き先は全部実在する（${targets.length} 件）`);
     }
   }
+}
+
+// 共通アセットの入口と、生成元の候補地が食い違わないこと。
+// seeds を変更して export を忘れると、画面は古い候補を静かに出し続けるため、
+// 公開JSONを生成元と突き合わせる。
+{
+  const seedLines = (await readFile(join(ROOT, "seeds", "areas.jsonl"), "utf8"))
+    .trim().split("\n").filter(Boolean).map((line) => JSON.parse(line)).filter((a) => a.quick);
+  const quickPath = join(PUB, "data", "quick-places.json");
+  if (!existsSync(quickPath)) bad("quick-places.json が無く、候補地の生成結果を照合できない");
+  else {
+    const places = JSON.parse(await readFile(quickPath, "utf8")).places ?? [];
+    const key = (p) => `${p.id}|${p.lon}|${p.lat}|${p.title ?? ""}`;
+    const want = new Set(seedLines.map((a) => key({id:a.id,lon:a.ll[0],lat:a.ll[1],title:a.quickTitle ?? a.title})));
+    const got = new Set(places.map(key));
+    const missing = [...want].filter((x) => !got.has(x));
+    const extra = [...got].filter((x) => !want.has(x));
+    missing.length || extra.length
+      ? bad(`候補地の生成結果が seeds と不一致（不足 ${missing.length} / 余分 ${extra.length}）`)
+      : ok(`候補地の生成結果が seeds/areas.jsonl と一致（${places.length} 件）`);
+  }
+}
+
+// 共通アセットマニフェストの参照先が実在し、建物索引の版・日付と一致すること。
+// 壊れた assets.json は建物だけ実行時取得へ落ちる入口になるため、存在確認だけで終わらせない。
+{
+  const path = join(PUB, "data", "assets.json");
+  if (!existsSync(path)) bad("assets.json が無い（共通アセットの入口が生成されていない）");
+  else {
+    const m = JSON.parse(await readFile(path, "utf8"));
+    const b = m.layers?.buildings;
+    const idxPath = join(PUB, String(b?.index ?? "").replace(/^\.\//, ""));
+    const tile = String(b?.tile ?? "");
+    const idx = existsSync(idxPath) ? JSON.parse(await readFile(idxPath, "utf8")) : null;
+    const tilePath = tile.replace(/^\.\//, "").replace("{x}", String(Object.keys(idx?.tiles ?? {})[0]?.split("/")[0] ?? ""))
+      .replace("{y}", String(Object.keys(idx?.tiles ?? {})[0]?.split("/")[1] ?? ""));
+    const errors = [];
+    if (!b || b.format !== `packed-geojson-v${BL_VERSION}`) errors.push(`建物format=${b?.format ?? "なし"}`);
+    if (!idx) errors.push("建物索引が無い");
+    if (idx && b.at !== idx.at) errors.push(`建物at=${b.at} / 索引at=${idx.at}`);
+    if (idx && (!Object.keys(idx.tiles ?? {}).length || !existsSync(join(PUB, tilePath)))) errors.push("建物タイルが無い");
+    errors.length ? bad(`assets.json の建物参照が不正: ${errors.join("、")}`)
+      : ok(`assets.json の建物参照が索引・タイルと一致（${Object.keys(idx.tiles).length} 区画）`);
+  }
+}
+
+// 取り込み側・トップ・3D側が同じ明治期凡例と許容差を使うこと。
+// 3か所に残るのはブラウザ用とNode用の実行環境が違うためで、内容は機械的に照合する。
+{
+  const legend = (src) => [...src.matchAll(/\{\s*rgb:\s*\[\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\]\s*,\s*name:\s*"([^"]+)"(,\s*water:\s*true)?\s*\}/g)]
+    .map((m) => [...m.slice(1, 5), m[5] ? "water" : "land"].join("|"));
+  const threshold = (src) => src.match(/Math\.sqrt\(bd\)\s*<=\s*(\d+)/)?.[1] ?? null;
+  const files = ["scripts/swale-sample.mjs", "public/verify.js", "public/peel3d.js"];
+  const sources = await Promise.all(files.map((f) => readFile(join(ROOT, f), "utf8")));
+  const legends = sources.map(legend), thresholds = sources.map(threshold);
+  const sameLegend = legends.every((x) => JSON.stringify(x) === JSON.stringify(legends[0]));
+  const sameThreshold = thresholds.every((x) => x === thresholds[0]);
+  !sameLegend || !sameThreshold || legends[0].length !== 14
+    ? bad(`明治期凡例の照合失敗（凡例=${sameLegend ? "一致" : "不一致"} / 色数=${legends[0].length} / 閾値=${thresholds.join(",")})`)
+    : ok(`明治期凡例・許容差を3実装で照合（${legends[0].length} 色 / 閾値 ${thresholds[0]})`);
 }
 
 // ---------- 7. 外部から来た文字列を HTML として実行させない ----------

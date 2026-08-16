@@ -345,8 +345,11 @@
   .pick-say:hover{border-color:var(--action)}
   #pick .card{padding:9px 10px;border-radius:6px;background:rgba(255,255,255,.05);
     border:1px solid var(--line);line-height:1.6;font-size:var(--fs-note)}
+  #pick .name,.pick-pop .name{font-weight:700;font-size:var(--fs-body);line-height:1.35;margin-bottom:5px}
   #pick .v{font-size:var(--fs-lead)}#pick .v.w{color:var(--water)}
-  #pick .meta{color:var(--ink-dim);font-size:var(--fs-evidence);margin-top:5px}
+  #pick .meta{color:var(--ink-dim);font-size:var(--fs-evidence);margin-top:8px}
+  #pick .meta>div+div{margin-top:3px}
+  .pick-pop .meta{margin-top:8px}.pick-pop .meta>div+div{margin-top:3px}
   .hint{font-size:var(--fs-note);color:var(--ink-dim);line-height:1.55}
   /* パネルは主役（3Dの絵）を隠すので、いつでも畳めるようにする。
      スマホでは画面の4割を占めるため、既定で閉じる。 */
@@ -443,7 +446,7 @@
     </div>
     <div class="sec s-prov"><div class="label">いま画面に出ているもの</div><div id="prov"></div></div>
     <div class="sec"><div class="label">内訳</div><div id="breakdown"></div></div>
-    <div class="sec"><div class="label">建物を調べる</div>
+    <div class="sec">
       <!-- ⚠ 「建物をクリックすると〜」は HUD の #tip にある（常時見える・押したら消える）。
            ここに置くと、パネルを開いた人にだけ二度言うことになる。 -->
       <div id="pick"></div></div>

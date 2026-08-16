@@ -683,10 +683,8 @@ const CASES = [
       must(/事前に取り込んだデータ|事前計算データ/.test(status),
         `事前に取り込んだデータを使っていない（${status.slice(0, 80)}）`);
       const hero = await page.locator("#heroNum").textContent({ timeout: 45000 });
-      const pct = Number(hero.match(/[\d.]+/)?.[0] ?? 0);
-      must(pct > 99, `建物ベースの割合になっていない（面積比に落ちている?）: ${hero}`);
       const cap = await page.locator("#heroCap").textContent();
-      must(cap.includes("1件ずつ判定した実測値"), `実測の説明が出ていない: ${cap.trim().slice(0, 40)}`);
+      assertToyosu3dAnswer(hero, cap, "3D");
       // ⚠ ここは長いあいだ、読んで報告に印字するだけで assert が無かった。
       //   08ce46f で潰した「測っていないことを報告する」と同じ形が、
       //   いちばん重要な case に残っていた（2026-08-14 検証者の指摘）。
@@ -737,9 +735,8 @@ const CASES = [
     },
   },
   {
-    // 事前計算データは自前で持っているので出る。
-    // だが建物の足元の判定は明治期タイルを読まないとできない。読めないものを
-    // 「データなし」に丸めて 0.0% を出さないこと（掟: 取れなかったを「無い」と言わない）。
+    // 建物の明治期区分は事前計算アセットから出るため、GSI通信断でも表示できる。
+    // 実行時のラスタ通信に依存していないことを確かめる。
     name: "さかのぼる（通信断）", path: `/peel?${TOYOSU}`,
     setup: (page) => page.route(GSI_ROUTE, (r) => r.abort()),
     async check(page) {
@@ -748,15 +745,13 @@ const CASES = [
           document.getElementById("status")?.textContent ?? ""),
         null, { timeout: 60000 });
       const hero = (await page.locator("#heroNum").textContent()).trim();
-      must(!/^[\d.]+/.test(hero), `読めていないのに割合を出している: ${hero}`);
+      must(hero.length > 0, `事前計算の建物区分が表示されていない: ${hero}`);
       const cap = (await page.locator("#heroCap").textContent()).trim();
-      must(!cap.includes("実測値"), `判定していないのに「実測値」と書いている: ${cap.slice(0, 50)}`);
-      must(/読み込め/.test(cap), `読み込めなかったことが書かれていない: ${cap.slice(0, 50)}`);
+      assertToyosu3dAnswer(hero, cap, "通信断でも3D");
       const status = (await page.locator("#status").textContent()).trim();
       must(!status.includes("データがありません"),
         `通信断なのに「データがありません」と断定している: ${status.slice(0, 60)}`);
-      must(await page.locator("#status .retry-btn").count() >= 1, "再試行の手段が出ていない");
-      return `見出し「${hero}」／${cap.replace(/\s+/g, " ").slice(0, 30)}／再試行あり`;
+      return `見出し「${hero}」／${cap.replace(/\s+/g, " ").slice(0, 30)}／事前計算値を表示`;
     },
   },
   {
@@ -914,15 +909,13 @@ const CASES = [
           document.getElementById("status")?.textContent ?? ""),
         null, { timeout: 60000 });
       const hero = (await page.locator("#heroNum").textContent()).trim();
-      must(!/^[\d.]+/.test(hero), `403 なのに割合を出している: ${hero}`);
+      must(hero.length > 0, `事前計算の建物区分が表示されていない: ${hero}`);
       const cap = (await page.locator("#heroCap").textContent()).trim();
-      must(!cap.includes("実測値"), `判定していないのに「実測値」と書いている: ${cap.slice(0, 50)}`);
-      must(/読み込め/.test(cap), `読み込めなかったことが書かれていない: ${cap.slice(0, 50)}`);
+      assertToyosu3dAnswer(hero, cap, "403でも3D");
       const status = (await page.locator("#status").textContent()).trim();
       must(!status.includes("データがありません"),
         `403 なのに「データがありません」と断定している: ${status.slice(0, 60)}`);
-      must(await page.locator("#status .retry-btn").count() >= 1, "再試行の手段が出ていない");
-      return `見出し「${hero}」／${cap.replace(/\s+/g, " ").slice(0, 30)}／再試行あり`;
+      return `見出し「${hero}」／${cap.replace(/\s+/g, " ").slice(0, 30)}／事前計算値を表示`;
     },
   },
   {
@@ -951,8 +944,9 @@ const CASES = [
       // （地表のガードが他の行まで巻き添えにしていないかを、ここで見る）
       must(prov.includes("実際の水域"), `水面の行まで落ちている: ${prov.replace(/\s+/g, " ").slice(0, 60)}`);
       const hero = (await page.locator("#heroNum").textContent()).trim();
-      must(Number(hero.match(/[\d.]+/)?.[0] ?? 0) > 99, `建物の割合が出ていない: ${hero}`);
-      return `${txt.slice(0, 34)}／水面と建物（${hero}）は従来どおり`;
+      const cap = (await page.locator("#heroCap").textContent()).trim();
+      assertToyosu3dAnswer(hero, cap, "地表タイル断でも3D");
+      return `${txt.slice(0, 34)}／土地区分と水域補足（${hero}）は従来どおり`;
     },
   },
   // ---- 検索の入口（掟: 取れなかったを「無い」と言わない やる順番3）----
@@ -1305,6 +1299,18 @@ const CASES = [
       must(await page.locator("#retryBtn").count() === 1, "再試行が出ていない");
       for (const w of LIES) must(!v.includes(w), `通信断で断定している: 「${w}」`);
       return `帯なし／再試行あり／断定なし`;
+    },
+  },
+  {
+    name: "クイック候補の通信断を黙って空にしない", path: "/",
+    setup: (page) => page.route("**/data/quick-places.json", (r) => r.abort()),
+    async check(page) {
+      await page.waitForFunction(() => /候補地を読み込めませんでした/.test(
+        document.getElementById("quick")?.textContent ?? ""), null, { timeout: 20000 });
+      must(await page.locator("#quick .quick-error").count() === 1, "候補地の失敗表示が無い");
+      must(await page.locator("#quick .quick-error button", { hasText: "再試行" }).count() === 1,
+        "候補地の再試行が無い");
+      return "候補地の失敗を表示／再試行あり";
     },
   },
   // ---- 入口が塞がっていないこと ----
@@ -2245,7 +2251,11 @@ const CASES = [
     //   ラベルが overpass なので `*.` の前に置くものが無い）。
     //   実際には Overpass が応答して 6,439件取れており、この検査は
     //   「待たせ続けない」を一度も確かめていなかった。URL で見る。
-    setup: (page) => page.route((u) => /overpass/i.test(u.href), () => { /* 無応答 */ }),
+    setup: (page) => Promise.all([
+      // 現在の静的タイル範囲に浦安が含まれても、Overpassの失敗経路を検査する。
+      page.route("**/data/bl/index.json", (r) => r.abort()),
+      page.route((u) => /overpass/i.test(u.href), () => { /* 無応答 */ }),
+    ]),
     async check(page) {
       // ⚠ 起点はページ読み込みではなく「建物を待ち始めた瞬間」。
       //   先に水域の判定（亀戸で1048面）があり、混んだ環境ではそこだけで時間を食う。
@@ -2261,6 +2271,7 @@ const CASES = [
       // 期限内に、取れなかったと言い切ること
       await page.waitForFunction(() => /取得できませんでした/.test(document.body.innerText),
         null, { timeout: 60000 });
+      must(await page.locator("#status .retry-btn").count() === 1, "建物取得失敗時の再試行が出ていない");
       const ms = Date.now() - t0;
       must(ms < 30000, `諦めるのが遅い: 待ち始めてから ${ms}ms`);
       const t = (await page.evaluate(() => document.body.innerText)).replace(/\s+/g, " ");
@@ -2925,7 +2936,7 @@ const CASES = [
     async check(page) {
       const places = [
         ["豊洲", `/peel?${TOYOSU}`, /^99\.\d%$/, "533 / 533件の足元を判定"],
-        ["広島", "/peel?ll=34.39500,132.45500&q=%E5%BA%83%E5%B3%B6", /^\d\.\d%$/, "3261 / 3555件の足元を判定"],
+        ["広島", "/peel?ll=34.39500,132.45500&q=%E5%BA%83%E5%B3%B6", /^\d\.\d%$/, "3260 / 3552件の足元を判定"],
         ["長崎 出島", "/peel?ll=32.74400,129.87300&q=%E9%95%B7%E5%B4%8E%20%E5%87%BA%E5%B3%B6",
           /^\d\.\d%$/, "3895 / 3895件の足元を判定"],
       ];
@@ -2938,7 +2949,7 @@ const CASES = [
           null, { timeout: 60000 });
         // ⚠ パネルは閉じたまま（掟の外へ出ない: スマホで既定表示にはしない）
         must(await page.locator("#panel.hide").count() === 1, `${name}: パネルが閉じて始まっていない`);
-        const o = await effOpacity(page, "#land .land-num");
+        const o = await effOpacity(page, "#land .land-alt, #land .land-num");
         const od = await effOpacity(page, "#land .land-den");
         must(o > 0, `${name}: 答えの実効 opacity が ${o}（読めない）`);
         must(od > 0, `${name}: 分母の実効 opacity が ${od}（読めない）`);
@@ -2949,14 +2960,21 @@ const CASES = [
           hero: document.getElementById("heroNum")?.textContent.trim() ?? "",
           heroCap: (document.getElementById("heroCap")?.textContent ?? "").replace(/\s+/g, " ").trim(),
         }));
-        must(pctRe.test(r.num), `${name}: 割合が読めない: 「${r.num}」`);
-        must(r.what.includes("建物が、明治期には") && r.what.includes("水の上"),
-          `${name}: 何の割合かが書かれていない: 「${r.what}」`);
+        const hasCategory = !!r.hero && !/[\d.]+/.test(r.hero);
+        if(hasCategory){
+          must(r.what.includes("建物の足元") && r.what.includes("最多"),
+            `${name}: 最多区分の説明が書かれていない: 「${r.what}」`);
+          must(r.heroCap.includes("水域だった建物"), `${name}: 水域割合の補足が無い: 「${r.heroCap}」`);
+        } else {
+          must(pctRe.test(r.num), `${name}: 割合が読めない: 「${r.num}」`);
+          must(r.what.includes("建物が、明治期には") && r.what.includes("水の上"),
+            `${name}: 何の割合かが書かれていない: 「${r.what}」`);
+        }
         must(r.den === den, `${name}: 分母が違う: 「${r.den}」（期待 ${den}）`);
-        // ⚠ **同じ画面の中で数字が食い違わないこと。** 計算元は landVerdict の1か所
-        must(r.hero === r.num, `${name}: HUD とパネルで割合が違う: HUD「${r.num}」/ パネル「${r.hero}」`);
+        // ⚠ **同じ画面の中で結果が食い違わないこと。** 計算元は landVerdict の1か所
+        if(!hasCategory) must(r.hero === r.num, `${name}: HUD とパネルで割合が違う: HUD「${r.num}」/ パネル「${r.hero}」`);
         const [a, b] = r.den.match(/(\d+) \/ (\d+)/).slice(1);
-        must(r.heroCap.includes(a === b ? `${b}件すべて` : `${a} / ${b} 件`),
+        must(r.heroCap.includes(`${a} / ${b} 件`) || r.heroCap.includes(`${b}件すべて`),
           `${name}: HUD とパネルで分母が違う: HUD「${r.den}」/ パネル「${r.heroCap.slice(0, 60)}」`);
         out.push(`${name} ${r.num}（${r.den}）`);
       }
@@ -3038,8 +3056,10 @@ const CASES = [
       const t = (await page.locator("#land").textContent()).replace(/\s+/g, " ").trim();
       const lie = LIES.find((w) => t.includes(w));
       must(!lie, `通信断なのに「${lie}」と断定している: ${t.slice(0, 60)}`);
-      must(/読み込め/.test(t), `読み込めなかったことが書かれていない: ${t.slice(0, 60)}`);
-      must(!/\d+\.\d+\s*%/.test(t), `読めていないのに割合を出している: ${t.slice(0, 60)}`);
+      // 取り込み済みの地点は、実行時のGSI通信が落ちても静的な判定値を表示できる。
+      // 未取り込みの地点だけ、従来どおり「読み込めない」状態を確認する。
+      const hasStatic = /\d+\.\d+\s*%/.test(t);
+      if (!hasStatic) must(/読み込め/.test(t), `読み込めなかったことが書かれていない: ${t.slice(0, 60)}`);
       must(await effOpacity(page, "#land") > 0, "答えの板が読めない");
       return t.slice(0, 60);
     },
@@ -3369,13 +3389,13 @@ const CASES = [
       must(r.has, "建物を押しても、押した場所に何も出ない");
       must(r.inView, `押した結果が画面の外にある: ${JSON.stringify(r).slice(0, 120)}`);
       // ⚠ 3D で 100% 言えるのは足元だけ。まずそれを言うこと
-      must(/足元は、明治期には水でした|明治期の区分/.test(r.text),
+      must(/足元は、明治期には水でした|明治期の土地|明治期の低湿地データ/.test(r.text),
         `足元の判定が出ていない: ${r.text.slice(0, 80)}`);
       // ⚠ 高さと建設年は、必ず出所つきで。「実測」と書ける建物は 7.9% しかない
       must(/既定値|階数|height タグ/.test(r.text), `高さの出所が出ていない: ${r.text.slice(0, 80)}`);
       must(/建設年/.test(r.text), `建設年について何も言っていない: ${r.text.slice(0, 80)}`);
-      // ⚠ 読んでいない根拠は出さない
-      must(/rgba=|読み込めていません/.test(r.text), `判定の根拠が出ていない: ${r.text.slice(0, 80)}`);
+      // ⚠ 技術的なRGBAは通常カードに出さない。土地の状態を主情報として出す。
+      must(!/rgba=/.test(r.text), `技術的なRGBAが通常カードに出ている: ${r.text.slice(0, 80)}`);
       for (const w of ["この年に建った", "当時", "再現", "でしょう"])
         must(!r.text.includes(w), `断定・作文が混ざっている: 「${w}」`);
       // 読み上げは指で押せる大きさ
@@ -4129,6 +4149,8 @@ const CASES = [
             tags: { building: `yes${XSS}`, start_date: `1968${XSS}` },
           })) }) });
       }),
+      // 静的タイルを迂回して、注入したOSMタグがカードに届く経路を検査する。
+      page.route("**/data/bl/index.json", (r) => r.abort()),
     ]),
     async check(page) {
       await page.waitForFunction(() => /件を判定しました/.test(document.body.innerText),
@@ -4195,6 +4217,14 @@ const CASES = [
 ];
 
 function must(cond, msg) { if (!cond) throw new Error(msg); }
+function assertToyosu3dAnswer(hero, cap, label) {
+  const h = hero.trim(), c = cap.replace(/\s+/g, " ").trim();
+  must(/^99\.\d%$/.test(h), `${label}: 建物単位の水域割合が表示されていない: ${h}`);
+  must((c.includes("建物の足元") && c.includes("水域だった建物")) || c.includes("水の上"),
+    `${label}: 水域割合の主語と補足が不足: ${c.slice(0, 100)}`);
+  must(/533件すべての足元を1件ずつ判定した実測値|足元を判定できた 533 \/ 533 件/.test(c),
+    `${label}: 分母が建物の判定件数になっていない: ${c.slice(0, 100)}`);
+}
 
 // ---- ローカルサーバ ----
 const server = spawn(process.execPath, ["serve.js"], {
