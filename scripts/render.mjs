@@ -2046,7 +2046,191 @@ const CASES = [
         `この土地に明治期のデータが出ている。検査の前提が消えた（バッジ: ${m.join(" / ")}）`);
       must(await page.locator("#ovSwale").count() === 0,
         "明治期のデータが無いのに、重ねる操作が出ている");
+      // ⚠ 操作を黙って消すだけだと「壊れている」と読める。なぜ出せないかは画面が言う。
+      //   整備対象外（404）と、読み込めなかった（通信断・403）は別の言葉でなければならない。
+      must(m.some((t) => /明治期のデータ(なし|を読み込めませんでした)/.test(t)),
+        `重ねる操作を出さない理由が、画面のどこにも無い（バッジ: ${m.join(" / ")}）`);
       return `明治期なし（バッジ ${m.length} 個）／重ねる操作を出していない`;
+    },
+  },
+  {
+    // ⚠ 重ねる相手は写真なのに、操作は写真・判定文・▶ の下にあった。
+    //   実測（2026-08-16 / 豊洲）で 1280×800 では y=831 と**初期画面の外**、
+    //   375×667 でも 552px（写真の下）。写真が見えているのに操作が見えない状態を作らない。
+    //   → 年バッジと同じ積み上げ（.bl）に入れた。固定値で位置を決めない。
+    name: "重ねる操作が、写真と一緒に初期画面に見える", path: `/?${TOYOSU}`,
+    viewport: { width: 1280, height: 800 },
+    setup: (page) => stubWikidata(page, []),
+    async check(page) {
+      await waitVerdict(page);
+      await waitStrip(page);
+      await page.waitForSelector("#ovRow", { state: "attached", timeout: 30000 });
+      // 明治期のコマは空中写真ではない。幅のある見出しの側で、そう名乗る
+      const yr = await page.locator("#yrBig").textContent();
+      must(yr.includes("空中写真ではありません"),
+        `明治期の見出しが、空中写真と区別できない: ${yr}`);
+      const cell = await page.locator("#strip .f.meiji .yr").textContent();
+      must(cell.trim() === "明治期", `帯のコマの見出しが変わっている: ${cell}`);
+      // ⚠ 明治期のコマには重ねる相手（空中写真）が無い。ここでは操作を出さない
+      must(await effOpacity(page, "#ovRow") === 0,
+        "明治期のコマなのに、重ねる操作が出ている（押しても絵は変わらない）");
+      // 写真の年代（1936–42）へ移ると、出る
+      await page.evaluate(() => document.querySelectorAll("#strip .f")[1]?.click());
+      await page.waitForTimeout(900);
+      const geom = () => page.evaluate(() => {
+        const R = (s) => {
+          const e = document.querySelector(s); if (!e) return null;
+          const b = e.getBoundingClientRect();
+          return { t: Math.round(b.top), b: Math.round(b.bottom),
+                   l: Math.round(b.left), r: Math.round(b.right), h: Math.round(b.height) };
+        };
+        // 重なりは矩形の交差で見る（見えているつもりを、座標で潰す）
+        const hit = (a, x) => !!a && !!x && a.l < x.r && x.l < a.r && a.t < x.b && x.t < a.b;
+        const ov = R("#ovRow"), big = R("#big");
+        return { ov, big, h: innerHeight,
+          inViewport: !!ov && ov.t >= 0 && ov.b <= innerHeight,
+          inBig: !!ov && !!big && ov.t >= big.t && ov.b <= big.b && ov.l >= big.l && ov.r <= big.r,
+          overZoom: hit(ov, R(".zoombar")), overYr: hit(ov, R(".yr-big")), overSay: hit(ov, R(".say")),
+          overflowX: document.documentElement.scrollWidth > document.documentElement.clientWidth };
+      });
+      const out = [];
+      // ⚠ PC でも見えることが今回の要点。スマホだけ見ると、直したつもりで直っていない
+      for (const [w, h] of [[1280, 800], [375, 667], [320, 640]]) {
+        await page.setViewportSize({ width: w, height: h });
+        await page.waitForTimeout(600);
+        const g = await geom();
+        must(g.inViewport,
+          `${w}×${h}: 重ねる操作が初期画面の外にある（y=${g.ov?.t}〜${g.ov?.b} / 画面 ${g.h}）`);
+        must(g.inBig, `${w}×${h}: 重ねる操作が写真の外に出ている`);
+        must(await effOpacity(page, "#ovRow") > 0, `${w}×${h}: 重ねる操作が読めない`);
+        must(!g.overZoom && !g.overYr && !g.overSay,
+          `${w}×${h}: 隣と重なっている（ズーム ${g.overZoom} / 年代 ${g.overYr} / 読み上げ ${g.overSay}）`);
+        // 写真の上に置いた以上、覆う量そのものを見る（文言が伸びると写真が消える）
+        must(g.ov.h <= g.big.h * 0.3,
+          `${w}×${h}: 操作が写真の ${Math.round(g.ov.h / g.big.h * 100)}% を覆っている（${g.ov.h}px / ${g.big.h}px）`);
+        must(!g.overflowX, `${w}×${h}: 横にあふれている`);
+        out.push(`${w}×${h}: y=${g.ov.t}〜${g.ov.b}（写真の ${Math.round(g.ov.h / g.big.h * 100)}%）`);
+      }
+      return `明治期では出さない ／ ${out.join(" ／ ")}`;
+    },
+  },
+  {
+    // ⚠ チェックが入っていることと、画面に重なっていることは別。
+    //   「重ねています」と書いてある横で、層の不透明度が 0 という状態を作らない。
+    name: "重ねているかどうかを、言葉と層で食い違わせない", path: `/?${TOYOSU}`,
+    viewport: { width: 375, height: 667 }, hasTouch: true,
+    setup: (page) => stubWikidata(page, []),
+    async check(page) {
+      await waitVerdict(page);
+      await page.waitForSelector("#ovRow", { state: "attached", timeout: 30000 });
+      // 層の不透明度は、画面の言葉ではなく地図そのものに聞く
+      const op = () => page.evaluate(() =>
+        (typeof mapObj !== "undefined" && mapObj?.getLayer("swale"))
+          ? mapObj.getPaintProperty("swale", "raster-opacity") : null);
+      const st = () => page.locator("#ovState").textContent();
+
+      // 重ねる相手は空中写真なので、写真の年代へ移ってから見る（明治期では出さない）
+      await page.evaluate(() => document.querySelectorAll("#strip .f")[1]?.click());
+      await page.waitForTimeout(900);
+      const before = (await st()).trim();
+      must(before === "ONで地図に重ねます", `切っているときの言い方が違う: ${before}`);
+      must(await op() === null, "押していないのに、もう地図の層がある");
+
+      await page.locator("#ovSwale").check();
+      await page.waitForFunction(() => document.querySelector("#big.map-on"), null, { timeout: 60000 });
+      await page.waitForFunction(() =>
+        document.getElementById("ovState")?.textContent.trim() === "重ねています",
+        null, { timeout: 20000 });
+      const onOp = await op();
+      must(onOp > 0, `「重ねています」と書いてあるのに、層は ${onOp}`);
+
+      await page.locator("#ovSwale").uncheck();
+      await page.waitForTimeout(600);
+      const offTx = (await st()).trim();
+      must(offTx === "ONで地図に重ねます", `切ったのに言い方が変わらない: ${offTx}`);
+      must(await op() === 0, `切ったのに、層が ${await op()} のまま`);
+      return `切: 層 0／入: 層 ${onOp}（言葉と一致）`;
+    },
+  },
+  {
+    // ⚠ 層があることと、水域が画面に出ていることは別（レビューで指摘された）。
+    //   地図も写真も出せるのに、**水域のタイルだけ**拒まれる状態がある。
+    //   ⚠ 逆に 404 は「その範囲は整備対象外」なので、失敗として扱ってはいけない。
+    //     両方をこの1件で見る。
+    name: "水域のタイルだけ拒まれたら、「重ねています」と言わない", path: `/?${TOYOSU}`,
+    viewport: { width: 375, height: 667 }, hasTouch: true,
+    setup: (page) => stubWikidata(page, []),
+    async check(page) {
+      // 判定を先に済ませる（判定できた土地でしか操作は出ない）
+      await waitVerdict(page);
+      await page.waitForSelector("#ovRow", { state: "attached", timeout: 30000 });
+      let denied = 0;
+      await page.route(SWALE_ROUTE, (r) => { denied++;
+        r.fulfill({ status: 403, contentType: "text/html", body: "403 Forbidden" }); });
+      await page.evaluate(() => document.querySelectorAll("#strip .f")[1]?.click());
+      await page.waitForTimeout(900);
+      await page.locator("#ovSwale").check();
+      await page.waitForFunction(() => document.querySelector("#big.map-on"),
+        null, { timeout: 60000 });
+      await page.waitForTimeout(3000);
+      const bad = (await page.locator("#ovState").textContent()).trim();
+      // ⚠ 前提が消えたら落とす。1本も拒めていないなら、この検査は何も確かめていない
+      must(denied > 0, "水域のタイルを1本も拒めていない（検査の前提が消えた）");
+      must(!bad.includes("重ねています"), `水域を取れていないのに、重ねたと言っている: ${bad}`);
+      must(bad.includes("読み込めませんでした"), `水域を取れなかったことを言っていない: ${bad}`);
+      must(await page.locator("#big.map-on").count() === 1,
+        "水域が取れないだけなのに、地図ごと出なくなっている");
+
+      // ⚠ 404（整備対象外）は失敗ではない。入れ直したら「重ねています」に戻ること。
+      //   ⚠ 実測（2026-08-16 / MapLibre GL JS v5.24.0）では 404 で error 自体が飛んでこないので、
+      //     ここが見ているのは**画面が何と言うか**であって、除外の条件式ではない
+      //     （条件式を外しても、この検査は落ちない。確かめた）。
+      await page.unroute(SWALE_ROUTE);
+      let missing = 0;
+      await page.route(SWALE_ROUTE, (r) => { missing++; r.fulfill({ status: 404, body: "" }); });
+      await page.locator("#ovSwale").uncheck();
+      await page.waitForTimeout(500);
+      await page.locator("#ovSwale").check();
+      await page.evaluate(() => mapObj?.jumpTo(
+        { center: [mapObj.getCenter().lng + 0.03, mapObj.getCenter().lat], zoom: 16 }));
+      await page.waitForTimeout(3000);
+      const gone = (await page.locator("#ovState").textContent()).trim();
+      must(missing > 0, "404 を1本も返せていない（検査の前提が消えた）");
+      must(gone === "重ねています",
+        `整備対象外（404）を、読み込めなかったことにしている: ${gone}`);
+      return `403 を ${denied} 本 → 「${bad}」／404 を ${missing} 本 → 「${gone}」`;
+    },
+  },
+  {
+    // ⚠ 地図が出せなかったときに「重ねています」と書くと、起きていないことを書くことになる。
+    //   OFF と「出せなかった」を同じ顔にしない（掟: 取れなかったを、有ることにしない）。
+    name: "地図を読み込めないときに「重ねています」と言わない", path: `/?${TOYOSU}`,
+    viewport: { width: 375, height: 667 }, hasTouch: true,
+    setup: async (page) => {
+      await stubWikidata(page, []);
+      await page.route("**/vendor/maplibre-gl.js", (r) => r.abort());
+    },
+    async check(page) {
+      await waitVerdict(page);
+      await page.waitForSelector("#ovRow", { state: "attached", timeout: 30000 });
+      // 重ねる相手は空中写真なので、写真の年代へ移ってから押す（明治期では出さない）
+      await page.evaluate(() => document.querySelectorAll("#strip .f")[1]?.click());
+      await page.waitForTimeout(900);
+      await page.locator("#ovSwale").check();
+      // ⚠ 「読み込んでいます…」のまま止まるのも失敗。**終わったと言うところ**まで待つ。
+      //   待ち切れなかったときに Timeout とだけ出ると、何が起きたのか読めないので、
+      //   いま画面に出ている言葉を添えて落とす。
+      const done = await page.waitForFunction(() =>
+        /読み込めませんでした|重ねています/.test(document.getElementById("ovState")?.textContent ?? ""),
+        null, { timeout: 30000 }).catch(() => null);
+      const tx = (await page.locator("#ovState").textContent()).trim();
+      must(done, `地図の読み込みは終わっているのに、状態が「${tx}」のまま止まっている`);
+      must(!tx.includes("重ねています"), `地図が出せていないのに、重ねたと言っている: ${tx}`);
+      must(tx.includes("読み込めませんでした"), `地図が出せなかったことを言っていない: ${tx}`);
+      // 判定そのものは巻き添えにしない
+      const v = await page.locator("#verdict").textContent();
+      must(v.includes("明治期"), "地図が出せないことで、判定まで消えている");
+      return `地図を出せないとき: 「${tx}」／判定は残る`;
     },
   },
   {
@@ -2940,7 +3124,13 @@ const CASES = [
       await page.waitForTimeout(1800);
       const after = await seen();
       must(after.zoom, "押しても寄っていない");
-      // ⚠ ここが本体。寄っただけで見えていなければ、押しても何も起きないのと同じ
+      // ⚠ ここが本体。寄っただけで見えていなければ、押しても何も起きないのと同じ。
+      //   ⚠ 実装が「半分見えていれば動かさない」、検査が「8割見えていること」で食い違っていた。
+      //     写真の下から操作を1つ外して版面が 20px 縮んだだけで表に出た（広島 65%・2026-08-16）。
+      //     → 要求（8割）はここに置いたまま、画面側の約束が下がっていないことも見る。
+      //       定数を読むだけにすると、実装を下げたときに検査も一緒に下がって気づけない。
+      const promised = await page.evaluate(() => SEEN_ENOUGH);
+      must(promised >= 0.8, `画面側が約束している割合が下がっている（SEEN_ENOUGH=${promised}）`);
       must(after.pct >= 80, `寄った結果が画面に入っていない（見えているのは ${after.pct}%）`);
       // ⚠ 「寄った」だけでは足りない。実測（2026-08-14・利用者役のエージェント3体）: 押した行は
       //   画面から出ていき、17行中15行で**名前がどこにも残らなかった**。

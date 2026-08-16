@@ -408,7 +408,9 @@
   .big.map-on .big-in{display:none}
   .big.map-on .bl{z-index:3}
   .big:active{cursor:grabbing}
-  .big .zoombar{position:absolute;right:8px;bottom:8px;z-index:4;display:flex;flex-direction:column;gap:4px}
+  /* ⚠ 右下は地図の帰属表示（国土地理院）が使う。実測（2026-08-16 / 375×667）で
+     ＋− がその上に乗り、「国土地理院」が途中で切れて読めなかった。出典は隠さない。 */
+  .big .zoombar{position:absolute;right:8px;bottom:34px;z-index:4;display:flex;flex-direction:column;gap:4px}
   .big .zoombar button{width:32px;height:32px;border-radius:8px;cursor:pointer;
     border:1px solid var(--line);background:rgba(11,14,19,.75);color:var(--ink);
     font:inherit;font-size:var(--fs-claim);line-height:1;backdrop-filter:blur(6px)}
@@ -526,10 +528,25 @@
   .mixbar{display:flex;flex:1;min-width:0;align-items:center;gap:9px;font-size:var(--fs-note);color:var(--ink-dim)}
   /* 「現在」を選んでいるときは、重ねるものが無い（自分と自分を比べることになる） */
   .mixbar.off{visibility:hidden}
-  /* 明治期の水域を写真に重ねる。判定の裏取りとして、面で見える */
-  .ov{display:flex;align-items:center;gap:7px;margin:0 0 10px;font-size:var(--fs-note);color:var(--ink-dim);cursor:pointer}
-  .ov input{accent-color:var(--action)}
-  .ov-src{font-size:var(--fs-evidence);color:var(--ink-faint)}
+  /* 明治期の水域を写真に重ねる。判定の裏取りとして、面で見える。
+     ⚠ 写真の左下の積み上げ（.bl）に入れる。以前は写真・判定文・▶ の下にあり、
+        実測（2026-08-16 / 豊洲）で 1280×800 では y=831 と**初期画面の外**、
+        375×667 でも 552px と写真の下だった。固定値で位置を決めると隣と重なるので、
+        年バッジ・寄せた先の名前と同じ積み上げに入れて、写真と一緒に動かす。 */
+  /* ⚠ 主役は年代（yr-big）。同じ強さの板を2つ縦に並べない。
+     この操作は補助なので、地色も文字も一段引く。ただし**押せる大きさは削らない**（44px）。 */
+  .ov{display:flex;align-items:center;gap:7px;max-width:100%;min-height:44px;
+    box-sizing:border-box;padding:5px 10px;border-radius:8px;cursor:pointer;
+    /* ⚠ 一段引くのは大きさと色。地色まで薄くすると、明るい写真や水色の上で読めなくなる
+       （実測 2026-08-16: .55 では重ねた直後の水色の上で「重ねています」が沈んだ） */
+    background:rgba(11,14,19,.78);backdrop-filter:blur(6px);border:1px solid var(--line);
+    font-size:var(--fs-evidence);line-height:1.35;color:var(--ink-dim)}
+  .ov input{accent-color:var(--action);flex:none}
+  /* いま重ねているのかどうかを、言葉で出す（チェックの形だけに頼らない） */
+  /* ⚠ 小さくはするが、薄くはしすぎない。ここは「いまどうなっているか」そのもの */
+  .ov-st{display:block;font-size:var(--fs-label);color:var(--ink-dim)}
+  /* 明治期のコマでは、重ねる相手（空中写真）が無い。JS がここを付け外しする */
+  .ov.none{display:none}
   .mixbar input[type=range]{flex:1;min-width:0;accent-color:var(--action);height:22px}
   .mixbar .mixv{flex:none;width:34px;text-align:right;font-variant-numeric:tabular-nums}
   .strip-foot{margin:-3px 0 11px;font-size:var(--fs-note);color:var(--ink-dim)}
@@ -1014,13 +1031,25 @@ function buildFrames(f){
   //   ⚠ 判定できたときだけ。整備対象外・通信断のときは足さない（無いものを並べない）。
   const m=f.byKey.meiji;
   if(m?.ok&&m.value)
-    out.push({ id:"swale", label:"明治期", sub:"低湿地データ", ext:"png", min:6, max:16,
+    // ⚠ subBig は写真の上の見出しだけで使う。帯の 1 コマは幅が無く、入れると読めなくなる。
+    //   ⚠ 改行は自分で入れる。任せると 375px で「空中写真ではありま／せん」と語の途中で割れた
+    //     （2026-08-16 実測・豊洲）。
+    out.push({ id:"swale", label:"明治期", sub:"低湿地データ",
+      subBig:"低湿地データ<br>（空中写真ではありません）", ext:"png", min:6, max:16,
       // 低湿地は区分の塗りだけなので、下に淡色地図を敷かないと何も見えない
       under:"pale", px:t.px, py:t.py, meiji:true });
   out.push(...p.value);
   // 右端の「現在」だけは判定の材料ではないので、facts ではなくここで組み立てる
   out.push({...L,tile:`${GSI}/${L.id}/16/${t.x}/${t.y}.${L.ext}`,px:t.px,py:t.py,now:true});
   return out;
+}
+
+// 写真の上に置く見出し。
+// ⚠ 明治期のコマは空中写真ではない。ここは幅があるので、そう名乗らせる
+//   （帯の小さなコマは幅が足りないので label だけ）。
+function bigSub(fr){
+  const s=fr.subBig??fr.sub;
+  return `${fr.label}${s?`<small>${s}</small>`:""}`;
 }
 
 function frameHTML(fr,i){
@@ -1146,8 +1175,12 @@ function timeHTML(f){
         <div id="pins"></div>
       </div>
       <div class="bl">
-        <span class="yr-big" id="yrBig">${cur.label}${cur.sub?`<small>${cur.sub}</small>`:""}</span>
+        <span class="yr-big" id="yrBig">${bigSub(cur)}</span>
         <div class="fx" id="fx"></div>
+        ${f.byKey.meiji?.ok ? `<label class="ov" id="ovRow">
+          <input type="checkbox" id="ovSwale">
+          <span>明治期の水域を重ねる<small class="ov-st" id="ovState"></small></span>
+        </label>` : ""}
       </div>
       <button class="unzoom" id="unzoom" type="button">全体に戻す</button>
       <button class="say" id="sayBtn" type="button" title="この年代を読み上げる">🔊</button>
@@ -1168,9 +1201,8 @@ function timeHTML(f){
     + `<div class="ops">
         <button type="button" id="playBtn" class="op" title="年代を順に流す">▶</button>
       </div>`
-    + (f.byKey.meiji?.ok ? `<label class="ov" id="ovRow">
-        <input type="checkbox" id="ovSwale"> 明治期の水域を写真に重ねる
-        <span class="ov-src">国土地理院「明治期の低湿地」</span></label>` : "")
+    // ⚠ 明治期の水域を重ねる操作は、写真の中（.bl）へ移した。ここには置かない。
+    //   重ねる相手は写真なので、操作も写真と一緒に見えている必要がある（上の .ov のコメント）。
     // ⚠ 🔊 のプライバシーは footer の .f-priv へ寄せた（同じ主題が2か所にあった）。
     //   ⚠ 「残っていた空中写真は N 年代」は残す。**調べた範囲**の申告で、帯を見ても
     //   分母（7年代中）は分からない。ここを消すと「取れなかった」が言えなくなる。
@@ -1199,8 +1231,8 @@ function setEra(i){
   el2.classList.add("on"); hide.classList.remove("on");
   layoutBig();
   big?.classList.remove("err");
-  document.getElementById("yrBig").innerHTML=
-    `${fr.label}${fr.sub?`<small>${fr.sub}</small>`:""}`;
+  document.getElementById("yrBig").innerHTML=bigSub(fr);
+  syncOverlayRow();
   document.querySelectorAll("#strip .f").forEach((el,j)=>{
     el.classList.toggle("on",j===eraIdx);
     el.setAttribute("aria-pressed",String(j===eraIdx));
@@ -1279,6 +1311,17 @@ async function ensureMap(){
       //   任意の1点まで下ろす（/eras にしか無かった機能）。
       //   実測で、同じ豊洲でも 500m 離れると標高が 1.91m → 6.49m と変わる。
       m.on("click",(e)=>{ judgeHere(e.lngLat.lng,e.lngLat.lat); });
+      // ⚠ 層があることと、水域が画面に出ていることは別。
+      //   タイルだけ拒まれても層は残るので、そのままだと「重ねています」と書けてしまう。
+      // ⚠ 404 は失敗にしない。低湿地データの整備範囲の外というだけで、重ねる操作の失敗ではない
+      //   （画面の端が対象外にかかることは普通にある。ADR 0001 の3状態と同じ切り分け）。
+      //   ⚠ 実測（2026-08-16 / MapLibre GL JS v5.24.0）では、**404 でこの error は飛んでこない**。
+      //     つまりこの1行は、いまは効いていない。相手の振る舞いが変わったときの備えとして置く
+      //     （外して試したが、検査は落ちなかった。効いていないことを承知で残している）。
+      m.on("error",(e)=>{
+        if(e.sourceId!=="swale"||e.error?.status===404) return;
+        swaleFail=true; overlayState();
+      });
       m.getCanvas().style.cursor="crosshair";
       mapObj=m; mapOn=true; applyMix(); applyOverlay();
       big?.classList.add("map-on");
@@ -1289,6 +1332,9 @@ async function ensureMap(){
       return null;
     }finally{
       big?.classList.remove("map-loading"); mapLoading=null;
+      // ⚠ 出せたか出せなかったかを、重ねる操作の脇に反映する。
+      //   ここを忘れると「地図を読み込んでいます…」のまま止まり、失敗が読み込み中に見える
+      overlayState();
     }
   })();
   return mapLoading;
@@ -1325,7 +1371,7 @@ function mapSetEra(fr){
 function dropMap(){
   markers.forEach((mk)=>mk.remove()); markers=[];
   if(mapObj){ mapObj.remove(); mapObj=null; }
-  mapOn=false;
+  mapOn=false; swaleFail=false;                    // 別の土地へ移る。前の拒否を持ち越さない
   document.getElementById("big")?.classList.remove("map-on","map-loading");
 }
 
@@ -1361,14 +1407,48 @@ function wirePlay(){
 //   説明できない色を画面に置くのは、この画面の他の部分と格が揃わない。
 function applyOverlay(){
   const on=document.getElementById("ovSwale")?.checked;
-  if(!mapObj||!mapObj.getLayer("swale")) return;
-  mapObj.setPaintProperty("swale","raster-opacity",on?0.75:0);
+  if(mapObj?.getLayer("swale"))
+    mapObj.setPaintProperty("swale","raster-opacity",on?0.75:0);
+  overlayState();
+}
+// いま重ねているのかどうかを、言葉で出す。
+// ⚠ チェックが入っていることと、画面に重なっていることは別。地図が出せていないのに
+//   「重ねています」と書くと、起きていないことを書くことになる。
+// ⚠ 切っているときは「押すと何が起きるか」を言う。「重ねていません」とだけ書くと、
+//   静止画が地図に変わることが押すまで分からない（掟: 押しても何も起きない導線を置かない）。
+// ⚠ どの文も1行に収める。写真の上に置いているので、折り返したぶんだけ写真が隠れる
+//   （実測 2026-08-16 / 320×640: 折り返すと 61px ＝ 写真の高さの 32% を覆った）。
+// 水域のタイルを取りに行って拒まれた（404 以外）。地図は出ているのに、水域は出ていない状態
+let swaleFail=false;
+function overlayState(){
+  const c=document.getElementById("ovSwale"), el=document.getElementById("ovState");
+  if(!c||!el) return;
+  if(!c.checked) el.textContent="ONで地図に重ねます";
+  else if(swaleFail) el.textContent="水域を読み込めませんでした";
+  else if(mapObj?.getLayer("swale")) el.textContent="重ねています";
+  else el.textContent=mapLoading?"地図を読み込んでいます…":"地図を読み込めませんでした";
+}
+// ⚠ 明治期のコマでは、重ねる相手（空中写真）が無い。
+//   出したままにすると、着いた瞬間のいちばん押しやすいところに
+//   「押しても絵がほとんど変わらない操作」が置かれる（掟: 押しても何も起きない導線を置かない）。
+//   実測（2026-08-16 / 375×667 / 豊洲）: 明治期のコマで入り切りしても、見えている絵は低湿地データのまま。
+function syncOverlayRow(){
+  const r=document.getElementById("ovRow");
+  if(r) r.classList.toggle("none",!!frames[eraIdx]?.meiji);
 }
 function wireOverlay(){
   const c=document.getElementById("ovSwale");
   if(!c) return;
+  overlayState(); syncOverlayRow();
+  // ⚠ 写真の上に置いた操作なので、写真側の「押したら寄りを解除」に飲まれないようにする。
+  //   地図を起こす pointerdown（wake）は通す。押した人は地図を見たいので、そのまま起きてよい。
+  document.getElementById("ovRow")?.addEventListener("click",(e)=>e.stopPropagation());
   c.onchange=async()=>{
-    if(!mapObj&&!mapLoading){ await ensureMap(); }
+    // 入れ直しは、やり直し。前に拒まれたことを引きずらない
+    if(c.checked) swaleFail=false;
+    // ⚠ 先に読み込みを始めてから状態を出す。順を逆にすると、まだ始めていない時点で
+    //   「読み込めませんでした」と書くことになる（読み込み中と失敗を取り違える）。
+    if(!mapObj&&!mapLoading){ const p=ensureMap(); overlayState(); await p; }
     applyOverlay();
   };
 }
@@ -1392,7 +1472,7 @@ function applyMix(){
     const fr=frames[eraIdx];
     yb.innerHTML=mixVal>0
       ? `${fr.label}<small>現在を ${mixVal}% 重ねています</small>`
-      : `${fr.label}${fr.sub?`<small>${fr.sub}</small>`:""}`;
+      : bigSub(fr);
   }
   if(!mapObj||!mapObj.getLayer("now")) return;
   mapObj.setPaintProperty("now","raster-opacity",mixVal/100);
@@ -1670,6 +1750,9 @@ function markFocus(x,i){
     gone?"（無くなった）":""}`;
 }
 
+// 押した結果が「画面に入っている」と言える割合。
+// ⚠ 実装と検査で同じ数字を使う（検査はこの値を読む）。別々に持つと静かにずれる。
+const SEEN_ENOUGH=0.8;
 function focusOn(x,i){
   markFocus(x,i);
   // ⚠ 押したときは地図で寄せる。静止した写真のままだと、枠の端にあるものが
@@ -1687,11 +1770,15 @@ function focusOn(x,i){
     //   利用者役のエージェント3体とも「何も起きない」「押せてないのかと思った」と言った。
     //   すぐ下のコメントが同じ症状を過去に直したと書いているのに、
     //   地図の経路だけ return していて、その手当てに届いていなかった。
-    //   ⚠ 既に見えているときは動かさない（読んでいる位置を勝手に奪わない）。
+    //   ⚠ 既に**十分に**見えているときだけ動かさない（読んでいる位置を勝手に奪わない）。
+    //   ⚠ ここは長いあいだ「半分見えていれば動かさない」で、検査は「8割見えていること」を
+    //     見ていた。その隙間は、写真の下から操作を1つ外して版面が 20px 縮んだだけで表に出た
+    //     （2026-08-16 実測・広島 375×667: 65% しか見えないまま動かさず、検査が落ちた）。
+    //     約束する側と確かめる側で、同じ数字を使う。
     if(big){
       const r=big.getBoundingClientRect();
       const seen=Math.max(0,Math.min(r.bottom,innerHeight)-Math.max(r.top,0));
-      if(seen<r.height*0.5) big.scrollIntoView({behavior:"smooth",block:"center"});
+      if(seen<r.height*SEEN_ENOUGH) big.scrollIntoView({behavior:"smooth",block:"center"});
     }
     return;
   }
@@ -1898,6 +1985,9 @@ function sayText(){
     : `${fr.label.replace("–","年から")}年の空中写真です。${fr.sub?fr.sub+"。":""}`);
   // ⚠ 重ねているあいだは、見えている絵が違う。声だけ言い切らない
   if(mixVal>0) parts.push(`いまは現在の写真を ${mixVal} パーセント重ねています。`);
+  // 明治期の水域も同じ。⚠ 押しただけでなく、実際に地図へ重なっているときだけ言う
+  if(document.getElementById("ovSwale")?.checked&&mapObj?.getLayer("swale"))
+    parts.push("いまは明治期の水域を重ねています。");
   parts.push(meiji.text);
   // 差分。画面に出ている行と同じものだけを、同じ順で読む
   for(const x of evShown.slice(0,3))
