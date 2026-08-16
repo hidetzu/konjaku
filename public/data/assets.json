@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "layers": {
+    "buildings": {
+      "source": "osm",
+      "format": "packed-geojson-v3",
+      "zoom": 14,
+      "index": "./data/bl/index.json",
+      "tile": "./data/bl/14/{x}/{y}.json",
+      "at": "2026-08-16"
+    },
+    "land": {
+      "source": "gsi-swale",
+      "format": "area-geojson-legacy",
+      "zoom": 16,
+      "index": "./data/areas.json",
+      "areas": [
+        {
+          "id": "toyosu",
+          "title": "東京都江東区豊洲",
+          "bbox": {
+            "s": 35.648,
+            "w": 139.788,
+            "n": 35.662,
+            "e": 139.806
+          },
+          "asset": "./data/toyosu-water.geojson",
+          "source": "国土地理院「明治期の低湿地」タイルより生成 / build-water.js"
+        }
+      ]
+    },
+    "places": {
+      "source": "seeds/areas.jsonl",
+      "format": "json",
+      "asset": "./data/quick-places.json"
+    }
+  }
+}

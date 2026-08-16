@@ -180,9 +180,19 @@ async function sampleSwale(lon,lat){
 // ⚠ 束ねない。実測で、いちばん重い z14 タイルが 6,510件 / gz 174KB。
 //   z12 に束ねると1束 約3.9MB になり、600m四方を見るために引かせる量ではない。
 let blAt=null, blTrunc=false, blIdxP=null;
-function blIndex(){
-  if(!blIdxP) blIdxP=fetch("./data/bl/index.json",{cache:"no-cache"})
+let assetManifestP=null;
+function assetManifest(){
+  if(!assetManifestP) assetManifestP=fetch("./data/assets.json",{cache:"no-cache"})
     .then(r=>r.ok?r.json():null).catch(()=>null);
+  return assetManifestP;
+}
+function blIndex(){
+  if(!blIdxP) blIdxP=assetManifest().then(m=>{
+    const spec=m?.layers?.buildings;
+    if(!spec?.index||!spec?.tile) return null;
+    return fetch(spec.index,{cache:"no-cache"}).then(r=>r.ok?r.json():null)
+      .then(index=>index?{...index,__tile:spec.tile}:null);
+  }).catch(()=>null);
   return blIdxP;
 }
 const z14of=(lon,lat)=>{ const n=2**14, r=lat*Math.PI/180;
@@ -196,12 +206,15 @@ async function loadBuildingTiles(bbox){
   for(let x=a.x;x<=b.x;x++) for(let y=a.y;y<=b.y;y++) need.push(`${x}/${y}`);
   // 1枚でも見ていなければ、静的では答えない
   for(const k of need) if(!idx.tiles[k]) return null;
-  const got=await Promise.all(need.map(k=>
-    fetch(`./data/bl/14/${k}.json`).then(r=>r.ok?r.json():null).catch(()=>null)));
+  const got=await Promise.all(need.map(k=>{
+    const [x,y]=k.split("/");
+    const path=idx.__tile.replace("{x}",x).replace("{y}",y);
+    return fetch(path).then(r=>r.ok?r.json():null).catch(()=>null);
+  }));
   if(got.some(g=>!g)) return null;
   const features=[]; let at=null, truncated=false;
   for(const g of got){
-    // ⚠ 詰めた形（v2）でないものは使わない。GeoJSON のまま配っていた古いファイルが
+    // ⚠ 詰めた形（現行版）でないものは使わない。GeoJSON のまま配っていた古いファイルが
     //   残っていたら、静かに混ぜるより Overpass の道に落ちたほうがよい
     if(g.v!==BL_V) return null;
     features.push(...unpackBuildings(g));
@@ -214,20 +227,24 @@ async function loadBuildingTiles(bbox){
 //   片方だけ直すと、建物の形が静かにずれる（画面は何も言わない）。
 //   scripts/check.mjs が、この関数と bl-format.mjs の unpack を同じ入力で
 //   突き合わせている。
-const BL_V=2, BL_HSRC=["measured","levels","default"];   // ⚠ 順番を変えない
+const BL_V=3, BL_HSRC=["measured","levels","default"];   // ⚠ 順番を変えない
 function unpackBuildings(d){
   const [oLon,oLat]=d.o, q=d.q, out=[];
   for(const r of d.b){
     const ring=[]; let x=0,y=0;
-    for(let i=4;i<r.length;i+=2){
-      x = i===4 ? r[i]   : x+r[i];
-      y = i===4 ? r[i+1] : y+r[i+1];
+    const start=d.v>=3?7:4;
+    for(let i=start;i<r.length;i+=2){
+      x = i===start ? r[i]   : x+r[i];
+      y = i===start ? r[i+1] : y+r[i+1];
       ring.push([(oLon+x)/q,(oLat+y)/q]);
     }
     ring.push(ring[0]);                    // 詰めるとき最後の点を落としてある
     out.push({type:"Feature",
       properties:{height:r[0]/10, heightSource:BL_HSRC[r[1]], kind:d.k[r[2]],
-        startDate:r[3]?String(r[3]):null},
+        startDate:r[3]?String(r[3]):null,
+        name:d.v>=3?(d.n?.[r[4]]??null):null,
+        meiji:d.v>=3?(d.m?.[r[5]]??null):null,
+        wasWater:d.v>=3?(r[6]?1:0):0},
       geometry:{type:"Polygon",coordinates:[ring]}});
   }
   return out;
@@ -264,7 +281,8 @@ async function buildWater(bbox){
   const y0=Math.floor(lat2yf(bbox.n)), y1=Math.floor(lat2yf(bbox.s));
   const TW=(x1-x0+1)*256, TH=(y1-y0+1)*256;
   const mask=new Uint8Array(TW*TH);
-  let waterPx=0;
+  let waterPx=0, classifiedPixels=0, transparentPixels=0, unknownPixels=0;
+  const classCounts=Object.fromEntries(SWALE.map((c)=>[c.name,0]));
   // タイルごとの結末を数える。1枚も読めていないのに「データがありません」と
   // 書かないために、absent（404）と unreachable（読めず）を分けて持つ。
   const tiles={ok:0,absent:0,unreachable:0};
@@ -278,9 +296,11 @@ async function buildWater(bbox){
     const ox=(tx-x0)*256, oy=(ty-y0)*256;
     for(let y=0;y<256;y++) for(let x=0;x<256;x++){
       const i=(y*256+x)*4;
-      if(d[i+3]===0) continue;
+      if(d[i+3]===0){ transparentPixels++; continue; }
       const c=classify(d[i],d[i+1],d[i+2]);
-      if(c?.water){ mask[(oy+y)*TW+(ox+x)]=1; waterPx++; }
+      if(!c){ unknownPixels++; continue; }
+      classCounts[c.name]++; classifiedPixels++;
+      if(c.water){ mask[(oy+y)*TW+(ox+x)]=1; waterPx++; }
     }
   }
 
@@ -302,7 +322,28 @@ async function buildWater(bbox){
       coordinates:[[[lonA,latA],[lonB,latA],[lonB,latB],[lonA,latB],[lonA,latA]]]}});
   }
   return { geojson:{type:"FeatureCollection",features:feats},
-           ratio: TW*TH ? waterPx/(TW*TH) : 0, tiles, rects:feats.length };
+           ratio: TW*TH ? waterPx/(TW*TH) : 0, tiles, rects:feats.length,
+           classCounts, classifiedPixels, transparentPixels, unknownPixels };
+}
+
+function summarizeLand(counts, classifiedPixels){
+  if(!counts || !(classifiedPixels>0)) return null;
+  const entries=Object.entries(counts).filter(([,n])=>n>0).sort((a,b)=>b[1]-a[1]);
+  if(!entries.length) return null;
+  const [name,count]=entries[0];
+  return {name,count,classifiedPixels,pct:(count/classifiedPixels*100).toFixed(1)};
+}
+
+// 建物の足元に付いた明治期区分の最多値。「該当なし」「特定できず」は
+// 土地区分名ではないため、最多区分の候補から除く。
+function summarizeBuildingLand(counts, classified){
+  if(!counts || !(classified>0)) return null;
+  const entries=Object.entries(counts)
+    .filter(([name,n])=>n>0 && SWALE.some(c=>c.name===name))
+    .sort((a,b)=>b[1]-a[1]);
+  if(!entries.length) return null;
+  const [name,count]=entries[0];
+  return {name,count,classified,pct:(count/classified*100).toFixed(1)};
 }
 
 // ============================================================
@@ -354,10 +395,7 @@ function toGeoJSON(elements){
       if(lv>0){h=lv*3.2;src="levels"} else {h=DEFAULT_H[t.building]??10;src="default"} }
     feats.push({type:"Feature",geometry:{type:"Polygon",coordinates:[ring]},
       properties:{height:Math.round(h*10)/10,heightSource:src,kind:t.building??"yes",
-        startDate:t["start_date"]??null}});
-        // ⚠ name は持たない。カードにもラベルにも出しておらず、配る側（bl-format.mjs）でも
-        //   落としてある。片方だけ持つと、あとで name を読んだときに
-        //   「静的の土地だけ名前が無い」という気づきにくい差になる
+        name:t.name??null,startDate:t["start_date"]??null}});
   }
   return {type:"FeatureCollection",features:feats};
 }
@@ -369,7 +407,7 @@ const centroid=(ring)=>{let x=0,y=0;const n=ring.length-1;
 // ⚠ OSM の id は使えない。配っているタイル（scripts/bl-format.mjs）も Overpass 経路
 //   （toGeoJSON）も、どちらも id を落としている。片方だけ id を持たせると
 //   「静的の土地と、問い合わせる土地で鍵が違う」という気づきにくい差になる
-//   （name を落としてある理由と同じ。掟: 同じ問いに答える実装を2つ持たない）。
+//   （取り込み済みアセットの名称と実行時経路の名称を揃えるため）。
 // ⚠ 実測データが更新されて建物の形が動けば、この鍵は変わる。そのときは
 //   「復元できませんでした」と言う。黙って別の建物を選ばない。
 // ⚠ 6 桁 ≒ 0.1m。豊洲 533 件では衝突しない。
@@ -453,29 +491,36 @@ let missEra=null, missBld=false;
 let place=null;
 // ⚠ 種別（kind）と建設年（startDate）は OSM のタグそのもの。誰でも編集できる第三者データで、
 //   こちらが中身を保証できない。描くときに esc を通す（理由は esc.js）。
-//   rgba はこちらが画素から読んだ数値、meiji は自前の凡例表（verify.js）から来る。
+//   rgba はこちらが画素から読んだ根拠値、meiji は自前の凡例表（verify.js）から来る。
+//   rgbaは通常のカードには出さず、利用者が読む主情報を優先する。
+function meijiText(p){
+  if(Number(p.wasWater)===1) return "足元は、明治期には水でした";
+  if(p.meiji==="該当なし") return "この建物の足元では、明治期の土地の区分を確認できませんでした";
+  if(p.meiji==="データなし") return "明治期の低湿地データの対象外です";
+  if(p.meiji==="読み込めず") return "明治期の低湿地データを読み込めませんでした";
+  if(p.meiji==="特定できず") return "明治期の土地の区分を判定できませんでした";
+  return `明治期には、${p.meiji}でした`;
+}
 function pickCard(p){
-  const w=Number(p.wasWater)===1;
-  // 読めていない建物では rgba の行を出さない（読んでいない根拠は出さない）
-  const read=p.rgba?`低湿地データ rgba=${esc(p.rgba)}`:"低湿地データは読み込めていません";
-  const src=p.heightSource, made=p.startDate;
-  return `<div class="card">
-    <div class="v ${w?"w":""}">${w?"足元は、明治期には水でした":`明治期の区分: ${esc(p.meiji)}`}</div>
-    <div class="meta">高さ ${esc(p.height)}m ─ ${
-      src==="default"?`種別「${esc(p.kind)}」の既定値。OSM に高さの記載なし`
-      :src==="levels"?"OSM の階数 × 3.2m（1階を3.2mとみなした換算）"
-      :"OSM の height タグ"}<br>
-    ${made?`建設年 <b>${esc(made)}</b>`:"建設年は不明"}<br>
-    ${read}</div></div>`;
+  const src=p.heightSource, made=p.startDate, land=esc(meijiText(p));
+  const cls=Number(p.wasWater)===1?"w":"";
+  const name=p.name?`<div class="name">${esc(p.name)}</div>`:"";
+  return `<div class="card">${name}
+    <div class="v ${cls}">${land}</div>
+    <div class="meta"><div>高さ <b>${esc(p.height)}m</b> ─ ${
+      src==="default"?`種別「${esc(p.kind)}」の既定値（OSM に高さの記載なし）`
+      :src==="levels"?"OSM の階数から換算（1階を3.2mとして計算）"
+      :"OSM の height タグ"}</div>
+    <div>${made?`建設年 <b>${esc(made)}</b>`:"建設年 <b>不明</b>（OSM に記載なし）"}</div></div></div>`;
 }
 // 読み上げ。⚠ 画面に出ている文だけを読む。作文を混ぜない（トップの 🔊 と同じ掟）
 function pickSpeech(p){
-  const w=Number(p.wasWater)===1;
   const h=p.heightSource==="default"?"種別ごとの既定値です"
     :p.heightSource==="levels"?"階数からの換算です":"OSM の記載です";
-  return (w?"足元は、明治期には水でした。":`明治期の区分は、${p.meiji}です。`)
+  const land=meijiText(p);
+  return (Number(p.wasWater)===1?`${land}。`:`${land}。`)
     + `高さは ${p.height} メートル。${h}。`
-    + (p.startDate?`建設年は ${p.startDate} 年です。`:"建設年は分かっていません。");
+    + (p.startDate?`建設年は ${p.startDate} 年です。`:"建設年は分かっていません（OSMに記載がありません）。");
 }
 // 建物を選んだ結果を出す。
 // ⚠ 押したときと、URL から戻したときで**同じ道を通す**。2つ書くと、
@@ -639,7 +684,11 @@ async function loadArea(lon,lat,title,opt){
   if(pre?.water){
     const gj=await loadJSON(pre.water);
     if(gj) w={ geojson:gj, ratio:gj.metadata?.waterRatio??0, rects:gj.features.length,
-               tiles:{ok:1,absent:0,unreachable:0}, pre:true };
+               tiles:{ok:1,absent:0,unreachable:0}, pre:true,
+               classCounts:gj.metadata?.classCounts??null,
+               classifiedPixels:gj.metadata?.classifiedPixels??0,
+               transparentPixels:gj.metadata?.transparentPixels??0,
+               unknownPixels:gj.metadata?.unknownPixels??0 };
   }
   if(!w) w=await buildWater(bbox);
   map.getSource("water").setData(w.geojson);
@@ -666,7 +715,8 @@ async function loadArea(lon,lat,title,opt){
   // 「–%」が残り、Overpass が返った瞬間に「0.0% ── 実測値」へ化けていた（掟: 取れなかったを「無い」と言わない）。
   area={ title, areaTitle:pre?.title??null, source:w.pre?"pre":"tiles", pending:true,
     total:0, wet:0, classified:0, unread:0, counts:{}, dated:0,
-    waterRatio:w.ratio, waterRead, waterUnread };
+    waterRatio:w.ratio, waterRead, waterUnread,
+    landSummary:summarizeLand(w.classCounts,w.classifiedPixels), buildingLand:null };
   showResult(); render();
 
   // --- 2. 建物 ---
@@ -710,7 +760,8 @@ async function loadArea(lon,lat,title,opt){
   if(!feats){
     map.getSource("bld").setData({type:"FeatureCollection",features:[]});
     area={ title, total:0, wet:0, classified:0, unread:0, counts:{}, dated:0,
-      waterRatio:w.ratio, waterRead, waterUnread, source:"none" };
+      waterRatio:w.ratio, waterRead, waterUnread, source:"none",
+      landSummary:summarizeLand(w.classCounts,w.classifiedPixels), buildingLand:null };
     statusEl.innerHTML=`<span class="err">建物データを取得できませんでした（Overpass 混雑）。</span>
       <span style="color:var(--ink-dim)">水域と空中写真だけで表示しています。</span> ${retryBtn(lon,lat,title)}`;
     wireRetry(lon,lat,title);
@@ -723,16 +774,20 @@ async function loadArea(lon,lat,title,opt){
     // ⚠ 鍵はここで**1回だけ**作って持たせる。押したときに輪郭から作り直さない。
     //   押した先の輪郭は地図側で切り取られていることがあり、重心が元と揃わない。
     f.properties.k=bldKey(clon,clat);
-    const s=await sampleSwale(clon,clat);
-    f.properties.wasWater=s.water?1:0;
-    // 「読めなかった」を「データなし」と同じ箱に入れない。ここが 0.0% の元だった
-    f.properties.meiji=s.state===UNREACHABLE?"読み込めず"
-      :s.state===ABSENT?"データなし"
-      :s.none?"該当なし":s.unknown?"特定できず":s.cls.name;
-    f.properties.rgba=s.rgba?s.rgba.join(","):"";
+    // 取り込み時に付与済みの明治期区分があれば、それをそのまま使う。
+    // 旧アセットや実行時 Overpass の建物だけラスタをサンプリングする。
+    if(!f.properties.meiji){
+      const s=await sampleSwale(clon,clat);
+      f.properties.wasWater=s.water?1:0;
+      // 「読めなかった」を「データなし」と同じ箱に入れない。ここが 0.0% の元だった
+      f.properties.meiji=s.state===UNREACHABLE?"読み込めず"
+        :s.state===ABSENT?"データなし"
+        :s.none?"該当なし":s.unknown?"特定できず":s.cls.name;
+      f.properties.rgba=s.rgba?s.rgba.join(","):"";
+    }
     const sd=f.properties.startDate?parseInt(String(f.properties.startDate).slice(0,4),10):NaN;
     if(Number.isFinite(sd)){f.properties.vanish=tFromYear(sd);f.properties.exact=1}
-    else{f.properties.vanish=s.water?6.0:7.4;f.properties.exact=0}
+    else{f.properties.vanish=Number(f.properties.wasWater)===1?6.0:7.4;f.properties.exact=0}
   }));
   map.getSource("bld").setData(gj);
   resolveWantBld(feats);
@@ -763,7 +818,9 @@ async function loadArea(lon,lat,title,opt){
       }
       return c;
     })(),
-    waterRatio:w.ratio, waterRead, waterUnread };
+    waterRatio:w.ratio, waterRead, waterUnread,
+    landSummary:summarizeLand(w.classCounts,w.classifiedPixels),
+    buildingLand:summarizeBuildingLand(counts,classified) };
 
   // 水域が読めていないのに「水域 0 面を判定しました」とは書かない
   statusEl.innerHTML=`<span style="color:var(--ink-dim)">${waterRead?`水域 ${w.rects} 面 ／ `:""}建物 ${
@@ -817,18 +874,23 @@ function landformLine(){
 function landVerdict(){
   if(!area) return null;
   const lf=landformLine();
+  // 建物がある場合は、足元のラスタ判定が成立したときだけ範囲集計も見せる。
+  // 通信断で建物の判定が0件なのに、事前生成GeoJSONの割合だけ出すと、
+  // 「読めていないのに割合が出た」状態になる。
+  const land=(area.classified>0||area.total===0)
+    ? (area.total>0 ? area.buildingLand : area.landSummary) : null;
   // 足元を1件でも判定できた。割合は**判定できた件数**からしか作らない
   if(area.classified>0)
     return { kind:"ratio", pct:(area.wet/area.classified*100).toFixed(1),
       classified:area.classified, total:area.total, all:area.classified===area.total,
-      unread:area.unread, lf };
+      unread:area.unread, land, lf };
   // 建物は出ているが、足元は1件も判定できない
-  if(area.total>0) return { kind:"none", scope:"building", total:area.total, unread:area.unread, lf };
+  if(area.total>0) return { kind:"none", scope:"building", total:area.total, unread:area.unread, land, lf };
   // 建物が無い・取れない。面積比なら出せる
   if(area.waterRead&&area.waterRatio>0)
-    return { kind:"area", pct:(area.waterRatio*100).toFixed(1), pending:!!area.pending, lf };
-  if(area.waterRead) return { kind:"dry", lf };
-  return { kind:"none", scope:"land", unread:area.waterUnread, lf };
+    return { kind:"area", pct:(area.waterRatio*100).toFixed(1), pending:!!area.pending, land, lf };
+  if(area.waterRead) return { kind:"dry", land, lf };
+  return { kind:"none", scope:"land", unread:area.waterUnread, land, lf };
 }
 
 // 常時見える HUD 側の描画。⚠ 数字は landVerdict() が作ったものだけを使う。
@@ -841,21 +903,32 @@ function renderLand(v){
   if(!v){ landEl.innerHTML=""; return; }        // 場所を切り替えた直後。前の答えを残さない
   const sub=(t)=>t?`<div class="land-sub">${t}</div>`:"";
   if(v.kind==="ratio"||v.kind==="area"){
+    const landIsWater=v.land&&SWALE.find(c=>c.name===v.land.name)?.water;
     // 数字だけを置かない。**何の割合か**と**分母**を必ず同じ板に出す
     const what=v.kind==="ratio"
-      ? `の建物が、明治期には<b>水の上</b>だった`
+      ? (v.land && !landIsWater
+        ? `建物の足元は、明治期には<b>${esc(v.land.name)}</b>が最多でした`
+        : `の建物が、明治期には<b>水の上</b>だった`)
       : `の面積が、明治期には<b>水</b>だった`;
     const den=v.kind==="ratio"
       ? `${v.classified} / ${v.total}件の足元を判定`
       : (v.pending?"建物を取得中。揃うと建物ごとの割合になる"
                   :"建物が取れなかったため、面積比で出している");
-    landEl.innerHTML=`<div class="land-line"><b class="land-num">${v.pct}<small>%</small></b>`
-      + `<span class="land-what">${what}</span></div><div class="land-den">${den}</div>`;
+    const land=v.kind==="ratio"&&v.land
+      ? `<div class="land-sub">区分を特定できた足元のうち ${esc(v.land.name)} ${v.land.count} / ${v.land.classified}件（${v.land.pct}%）</div>`
+      : (v.land?`<div class="land-sub">この範囲で最も多い区分: <b>${esc(v.land.name)}</b>（${v.land.pct}%）</div>`:"");
+    const water=v.kind==="ratio"&&v.land
+      ? `<div class="land-sub">水域だった建物: ${v.pct}%</div>` : "";
+    landEl.innerHTML=v.kind==="ratio"&&v.land&&!landIsWater
+      ? `<div class="land-line"><b class="land-alt">${esc(v.land.name)}</b><span class="land-what">${what}</span></div><div class="land-den">${den}</div>${land}${water}`
+      : `<div class="land-line"><b class="land-num">${v.pct}<small>%</small></b>`
+        + `<span class="land-what">${what}</span></div><div class="land-den">${den}</div>${land}`;
     return;
   }
   if(v.kind==="dry"){
     landEl.innerHTML=`<div class="land-line"><b class="land-alt">水域なし</b></div>`
-      + `<div class="land-den">この範囲は、明治期の低湿地データで水域に該当しません</div>`;
+      + `<div class="land-den">この範囲は、明治期の低湿地データで水域に該当しません</div>`
+      + (v.land?`<div class="land-sub">この範囲で最も多い区分: <b>${esc(v.land.name)}</b>（${v.land.pct}%）</div>`:"");
     return;
   }
   // 判定できない。⚠ 数値を作らない（0% は出さない）。何が分からないのかを書く
@@ -865,7 +938,8 @@ function renderLand(v){
     : `明治期の低湿地データは<b>整備対象外</b>です`;
   landEl.innerHTML=`<div class="land-line"><b class="land-alt">${head}</b></div>`
     + `<div class="land-den">${why}</div>`
-    + sub(v.scope==="building"?`建物 ${v.total} 件は出ています${v.lf?` ／ ${v.lf}`:""}`:v.lf);
+    + sub(v.scope==="building"?`建物 ${v.total} 件は出ています${v.lf?` ／ ${v.lf}`:""}`:v.lf)
+    + (v.land?`<div class="land-sub">この範囲で最も多い区分: <b>${esc(v.land.name)}</b>（${v.land.pct}%）</div>`:"");
 }
 
 function showResult(){
@@ -884,13 +958,21 @@ function showResult(){
   const v=landVerdict();
   renderLand(v);
   if(v.kind==="ratio"){
-    heroEl.innerHTML=`${v.pct}<small>%</small>`;
-    capEl.innerHTML = v.all
-      ? `の建物が、明治期には<b>水の上</b>だった<br>
-         <span style="opacity:.7">${v.total}件すべての足元を1件ずつ判定した実測値</span>`
-      : `の建物が、明治期には<b>水の上</b>だった<br>
-         <span style="opacity:.7">足元を判定できた ${v.classified} / ${v.total} 件のうちの実測値
-         （残りは明治期のデータが${v.unread?"読み込めていない":"無い"}）</span>`;
+    const landIsWater=v.land&&SWALE.find(c=>c.name===v.land.name)?.water;
+    if(v.land&&!landIsWater){
+      heroEl.innerHTML=`<span class="hero-alt">${esc(v.land.name)}</span>`;
+      capEl.innerHTML=`建物の足元は、明治期には<b>${esc(v.land.name)}</b>が最多でした<br>
+        <span style="opacity:.7">区分を特定できた ${v.land.count} / ${v.land.classified} 件（${v.land.pct}%）</span><br>
+        <span style="opacity:.7">水域だった建物：${v.pct}%（足元を判定できた ${v.classified} / ${v.total} 件）</span>`;
+    } else {
+      heroEl.innerHTML=`${v.pct}<small>%</small>`;
+      capEl.innerHTML = v.all
+        ? `の建物が、明治期には<b>水の上</b>だった<br>
+           <span style="opacity:.7">${v.total}件すべての足元を1件ずつ判定した実測値</span>`
+        : `の建物が、明治期には<b>水の上</b>だった<br>
+           <span style="opacity:.7">足元を判定できた ${v.classified} / ${v.total} 件のうちの実測値
+           （残りは明治期のデータが${v.unread?"読み込めていない":"無い"}）</span>`;
+    }
   } else if(v.kind==="none"&&v.scope==="building"){
     // 建物ごとの割合は出せない。だが土地そのものには地形分類が答えられる。
     // 出せないものと、出せるものを、混ぜずに並べる
@@ -1030,29 +1112,31 @@ function setupHere(btn,msg,label,onOk){
 setupHere(document.getElementById("here"), document.getElementById("hereMsg"),
   "現在地から調べる", (lo,la)=>loadArea(lo,la,"現在地"));
 
-// ⚠ トップ（index.html の QUICK）と同じ土地にする。
+// ⚠ トップと3Dで同じ公開候補地を使う。
 //   以前はここだけ旧6件のままで、実測すると **6件中5件が建物の索引に無く、
 //   押すと Overpass を最大20秒待つ**状態だった（天王洲は seeds/areas.jsonl にも無い）。
 //   3D の入口が、押すと失敗する入口になっていた。
 //   scripts/check.mjs が、両方のピンが取り込み済みの土地であることを見ている。
-const QUICK=[
-  {n:"豊洲",     lon:139.7975, lat:35.6548, t:"東京都江東区豊洲"},
-  {n:"渋谷",     lon:139.7016, lat:35.6586, t:"東京都渋谷区"},
-  {n:"西新宿",   lon:139.6929, lat:35.6905, t:"東京都新宿区西新宿"},
-  {n:"上野",     lon:139.7745, lat:35.7148, t:"東京都台東区上野"},
-  {n:"お台場",   lon:139.7760, lat:35.6300, t:"東京都港区台場"},
-  {n:"札幌",     lon:141.3540, lat:43.0620, t:"北海道札幌市中央区"},
-  {n:"仙台",     lon:140.8720, lat:38.2600, t:"宮城県仙台市青葉区"},
-  {n:"大阪 難波", lon:135.5020, lat:34.6660, t:"大阪市中央区難波"},
-  {n:"広島",     lon:132.4550, lat:34.3950, t:"広島市中区"},
-  {n:"長崎 出島", lon:129.8730, lat:32.7440, t:"長崎市出島町"},
-];
 const quickEl=document.getElementById("quick");
-for(const p of QUICK){
-  const b=document.createElement("button"); b.textContent=p.n;
-  b.onclick=()=>{ qEl.value=p.t; candsEl.innerHTML=""; loadArea(p.lon,p.lat,p.t); };
-  quickEl.appendChild(b);
+function loadQuickPlaces(){
+  quickEl.replaceChildren();
+  fetch("./data/quick-places.json",{cache:"no-cache"}).then(r=>{
+    if(!r.ok) throw new Error(`quick places ${r.status}`);
+    return r.json();
+  }).then(data=>{
+    for(const p of data?.places??[]){
+      const b=document.createElement("button"); b.textContent=p.name;
+      b.onclick=()=>{ qEl.value=p.title; candsEl.innerHTML=""; loadArea(p.lon,p.lat,p.title); };
+      quickEl.appendChild(b);
+    }
+  }).catch(()=>{
+    const msg=document.createElement("span"); msg.className="quick-error";
+    msg.textContent="候補地を読み込めませんでした。";
+    const retry=document.createElement("button"); retry.type="button"; retry.textContent="再試行";
+    retry.onclick=loadQuickPlaces; msg.append(" ",retry); quickEl.appendChild(msg);
+  });
 }
+loadQuickPlaces();
 
 // ============================================================
 // 描画・再生

@@ -2611,22 +2611,26 @@ const showResult=()=>{};
 //   seeds/areas.jsonl に入っていること（scripts/check.mjs が突き合わせている）。
 //   選び方は scripts/survey.mjs の実測から。判定がばらけるように選んである
 //   （全部「昔は水」だと、どこを押しても同じ話になり、判定を疑えない）。
-const QUICK=[["豊洲",139.7975,35.6548,"東京都江東区豊洲"],
-  ["渋谷",139.7016,35.6586,"東京都渋谷区"],
-  ["西新宿",139.6929,35.6905,"東京都新宿区西新宿"],
-  ["上野",139.7745,35.7148,"東京都台東区上野"],
-  ["お台場",139.7760,35.6300,"東京都港区台場"],
-  ["札幌",141.3540,43.0620,"北海道札幌市中央区"],
-  ["仙台",140.8720,38.2600,"宮城県仙台市青葉区"],
-  ["大阪 難波",135.5020,34.6660,"大阪市中央区難波"],
-  ["広島",132.4550,34.3950,"広島市中区"],
-  ["長崎 出島",129.8730,32.7440,"長崎市出島町"]];
 const quickEl=document.getElementById("quick");
-for(const [n,lo,la,t] of QUICK){
-  const b=document.createElement("button"); b.textContent=n;
-  b.onclick=()=>openPlace(lo,la,t);
-  quickEl.appendChild(b);
+function loadQuickPlaces(){
+  quickEl.replaceChildren();
+  fetch("./data/quick-places.json",{cache:"no-cache"}).then(r=>{
+    if(!r.ok) throw new Error(`quick places ${r.status}`);
+    return r.json();
+  }).then(data=>{
+    for(const p of data?.places??[]){
+      const b=document.createElement("button"); b.textContent=p.name;
+      b.onclick=()=>openPlace(p.lon,p.lat,p.title);
+      quickEl.appendChild(b);
+    }
+  }).catch(()=>{
+    const msg=document.createElement("span"); msg.className="quick-error";
+    msg.textContent="候補地を読み込めませんでした。";
+    const retry=document.createElement("button"); retry.type="button"; retry.textContent="再試行";
+    retry.onclick=loadQuickPlaces; msg.append(" ",retry); quickEl.appendChild(msg);
+  });
 }
+loadQuickPlaces();
 
 // ============ 現在地 ============
 // スマホでの入口。街歩き中に、その場の土地を調べられるようにする（掟: 場所のランチャーとして作る 差分5）

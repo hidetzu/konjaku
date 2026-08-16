@@ -20,6 +20,7 @@
 import { readFileSync, mkdirSync, writeFileSync, existsSync } from "node:fs";
 import { open, tileOf, tileBounds } from "./db.mjs";
 import { pack } from "./bl-format.mjs";
+import { sampleSwale } from "./swale-sample.mjs";
 
 const OUT = "public/data/bl";
 const OVERPASS = ["https://overpass-api.de/api/interpreter",
@@ -122,10 +123,18 @@ for (const a of areas) {
       if (ct.x !== t.x || ct.y !== t.y) continue;
       const tags = el.tags ?? {};
       const { h, src } = heightOf(tags);
+      // 建物の重心で明治期の区分を取り込み時に判定する。
+      // 画面表示時に建物ごとへラスタ通信を発生させず、配信アセットに根拠を持たせる。
+      const meiji = await sampleSwale(c[0], c[1]);
+      // 一時的な通信失敗を恒久的な「読み込めず」として配らない。
+      // 取り込みを止め、再実行で全件を判定できたことを確認してから公開する。
+      if (meiji.state === "読み込めず")
+        throw new Error(`明治期ラスタを読み込めないため取り込みを中止: ${c[0]},${c[1]}`);
       feats.push({ type: "Feature",
         properties: { id: el.id, height: h, heightSource: src,
           kind: tags["building"] ?? "yes", name: tags["name"] ?? null,
-          startDate: tags["start_date"] ?? null },
+          startDate: tags["start_date"] ?? null,
+          meiji: meiji.state, wasWater: meiji.water ? 1 : 0 },
         geometry: { type: "Polygon", coordinates: [ring] } });
     }
     const truncated = res.els.length >= LIMIT ? 1 : 0;
