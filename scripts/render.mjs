@@ -215,6 +215,23 @@ const tauNow = (page) => page.evaluate(() => {
   return { tau: found ? Number(found[1]) : null,
     water: map.getPaintProperty("water", "fill-extrusion-height") };
 });
+// ⚠ **祖先まで辿った実効 opacity。** `checkVisibility()` は祖先の opacity を見ない。
+//   実際、答えと分母は座標もテキストも持っていたのに、祖先（#panel.hide）が
+//   opacity:0 だったせいでスマホの初期画面から1文字も読めていなかった
+//   （2026-08-16 実測。豊洲 99.6% / 広島 1.4% / 出島 3.4% の3地点とも）。
+//   display:none・visibility:hidden もここで一緒に見る。
+const effOpacity = (page, sel) => page.evaluate((s) => {
+  const el = document.querySelector(s);
+  if (!el) return null;
+  let o = 1;
+  for (let n = el; n && n !== document.documentElement; n = n.parentElement) {
+    const st = getComputedStyle(n);
+    if (st.display === "none" || st.visibility === "hidden") return 0;
+    o *= Number(st.opacity);
+  }
+  return +o.toFixed(3);
+}, sel);
+
 const peelReady = (page) => page.waitForFunction(
   () => /件|ありません|読み込めませんでした/.test(document.getElementById("status")?.textContent ?? ""),
   null, { timeout: 60000 });
@@ -2619,6 +2636,159 @@ const CASES = [
       must(await page.locator("#timePanelBody").isVisible(), "操作パネルをもう一度開けない");
       return `広島 ${opened.ticks}層／レール ${opened.rail.height}px／ノブ ${opened.knob.width}px`
         + `／開 ${opened.panel.height}px → 閉 ${closed.height}px（${closed.summary}）`;
+    },
+  },
+  {
+    // ⚠ **スマホの初期画面で、土地の答えと分母が読めること。**
+    //   実測（2026-08-16 / 375×667・タッチ）: 答えも分母も計算済みで座標も持っていたのに、
+    //   祖先の #panel.hide が opacity:0 のため**実効 opacity が 0**。
+    //   初期画面から読めるのは「建物が消える年代は演出です」という但し書きだけで、
+    //   **答えより先に注意書きが読める**状態だった。
+    //   ⚠ 数字だけでは足りない。**何の割合か**と**分母**が同じ画面にあることまで見る
+    //     （掟: 数字は主張範囲の分母で書く）。
+    name: "スマホの初期画面で、土地の答えと分母が読める",
+    path: `/peel?${TOYOSU}`, viewport: { width: 375, height: 667 }, hasTouch: true,
+    async check(page) {
+      const places = [
+        ["豊洲", `/peel?${TOYOSU}`, /^99\.\d%$/, "533 / 533件の足元を判定"],
+        ["広島", "/peel?ll=34.39500,132.45500&q=%E5%BA%83%E5%B3%B6", /^\d\.\d%$/, "3261 / 3555件の足元を判定"],
+        ["長崎 出島", "/peel?ll=32.74400,129.87300&q=%E9%95%B7%E5%B4%8E%20%E5%87%BA%E5%B3%B6",
+          /^\d\.\d%$/, "3895 / 3895件の足元を判定"],
+      ];
+      const out = [];
+      for (const [name, path, pctRe, den] of places) {
+        if (page.url() !== BASE + path)
+          await page.goto(BASE + path, { waitUntil: "domcontentloaded", timeout: 45000 });
+        await peelReady(page);
+        await page.waitForFunction(() => (document.getElementById("land")?.textContent ?? "").includes("%"),
+          null, { timeout: 60000 });
+        // ⚠ パネルは閉じたまま（掟の外へ出ない: スマホで既定表示にはしない）
+        must(await page.locator("#panel.hide").count() === 1, `${name}: パネルが閉じて始まっていない`);
+        const o = await effOpacity(page, "#land .land-num");
+        const od = await effOpacity(page, "#land .land-den");
+        must(o > 0, `${name}: 答えの実効 opacity が ${o}（読めない）`);
+        must(od > 0, `${name}: 分母の実効 opacity が ${od}（読めない）`);
+        const r = await page.evaluate(() => ({
+          num: document.querySelector("#land .land-num")?.textContent.trim() ?? "",
+          what: document.querySelector("#land .land-what")?.textContent.trim() ?? "",
+          den: document.querySelector("#land .land-den")?.textContent.trim() ?? "",
+          hero: document.getElementById("heroNum")?.textContent.trim() ?? "",
+          heroCap: (document.getElementById("heroCap")?.textContent ?? "").replace(/\s+/g, " ").trim(),
+        }));
+        must(pctRe.test(r.num), `${name}: 割合が読めない: 「${r.num}」`);
+        must(r.what.includes("建物が、明治期には") && r.what.includes("水の上"),
+          `${name}: 何の割合かが書かれていない: 「${r.what}」`);
+        must(r.den === den, `${name}: 分母が違う: 「${r.den}」（期待 ${den}）`);
+        // ⚠ **同じ画面の中で数字が食い違わないこと。** 計算元は landVerdict の1か所
+        must(r.hero === r.num, `${name}: HUD とパネルで割合が違う: HUD「${r.num}」/ パネル「${r.hero}」`);
+        const [a, b] = r.den.match(/(\d+) \/ (\d+)/).slice(1);
+        must(r.heroCap.includes(a === b ? `${b}件すべて` : `${a} / ${b} 件`),
+          `${name}: HUD とパネルで分母が違う: HUD「${r.den}」/ パネル「${r.heroCap.slice(0, 60)}」`);
+        out.push(`${name} ${r.num}（${r.den}）`);
+      }
+      // ⚠ 3D と操作を覆わない。答えの板が、上の導線・年代・操作パネルと重ならないこと
+      const geo = await page.evaluate(() => {
+        const box = (s) => { const e = document.querySelector(s); if (!e) return null;
+          const b = e.getBoundingClientRect();
+          return { top: b.top, bottom: b.bottom, left: b.left, right: b.right }; };
+        return { land: box("#land"), chrome: box("#chrome"), era: box("#era"),
+          time: box("#timePanel"), zoom: box(".maplibregl-ctrl-top-right"),
+          vw: document.documentElement.clientWidth, vh: document.documentElement.clientHeight };
+      });
+      const hits = (a, b) => a && b && a.left < b.right && b.left < a.right
+        && a.top < b.bottom && b.top < a.bottom;
+      for (const [k, other] of [["戻る・☰", geo.chrome], ["年代表示", geo.era],
+        ["操作パネル", geo.time], ["拡大縮小", geo.zoom]])
+        must(!hits(geo.land, other), `答えの板が${k}と重なっている`);
+      must(geo.land.top >= 0 && geo.land.bottom <= geo.vh,
+        `答えの板が初期ビューポートの外にある: ${Math.round(geo.land.top)}〜${Math.round(geo.land.bottom)}px`);
+      // ⚠ 320px でも横にあふれない
+      await page.setViewportSize({ width: 320, height: 667 });
+      await page.waitForTimeout(400);
+      const w = await page.evaluate(() => ({ sw: document.documentElement.scrollWidth,
+        cw: document.documentElement.clientWidth,
+        land: document.getElementById("land").getBoundingClientRect() }));
+      must(w.sw <= w.cw, `320px で横にあふれる: scrollWidth=${w.sw} / ${w.cw}`);
+      must(w.land.left >= 0 && w.land.right <= w.cw,
+        `320px で答えの板がはみ出す: ${Math.round(w.land.left)}〜${Math.round(w.land.right)}px`);
+      return `${out.join(" ／ ")}／320px あふれなし`;
+    },
+  },
+  {
+    // ⚠ 判定できない土地で**割合を作らない**（掟: 取れなかったを「無い」と言わない）。
+    //   札幌は明治期の低湿地データが整備対象外。建物は出ているので、
+    //   「建物ごとには出せません」と、その理由と、建物の件数を出す。0% は出さない。
+    name: "判定できない土地では、初期画面に割合を出さない（札幌）",
+    path: "/peel?ll=43.06800,141.35070&q=%E6%9C%AD%E5%B9%8C%E9%A7%85",
+    viewport: { width: 375, height: 667 }, hasTouch: true,
+    async check(page) {
+      await peelReady(page);
+      // ⚠ 建物の集計が届くまで待つ。⚠ この検査は最初 peelReady だけで読んでいて落ちた。
+      //   札幌は水域が無いので #status が先に「低湿地データがありません」を出し、
+      //   **建物を数え終える前に**条件を満たしてしまう。実装ではなく検査が早すぎた。
+      await page.waitForFunction(() => /件を判定しました/.test(document.body.innerText),
+        null, { timeout: 60000 });
+      const t = (await page.locator("#land").textContent()).replace(/\s+/g, " ").trim();
+      must(!/\d+\.\d+\s*%/.test(t), `判定できないのに割合を出している: ${t.slice(0, 60)}`);
+      must(t.includes("整備対象外"), `理由（整備対象外）が書かれていない: ${t.slice(0, 60)}`);
+      must(/建物 \d+ 件/.test(t), `建物の件数が書かれていない: ${t.slice(0, 60)}`);
+      const o = await effOpacity(page, "#land .land-alt");
+      must(o > 0, `答えの実効 opacity が ${o}（読めない）`);
+      // ⚠ 地形分類は**別経路で遅れて届く**。届く前は「判定できません」、届いたら
+      //   「建物ごとには出せません」＋その土地の区分に変わる。
+      //   ⚠ この検査は最初「建物ごとには出せません」を最初から要求していて落ちた。
+      //     実装ではなく検査のほうが早すぎた。届く前の「判定できません」も
+      //     要件（数値を作らない・何が分からないかを書く）は満たしている。
+      //   ⚠ 地形分類は止まりうる依存なので、**届くことを前提にしない**（届いたときだけ見る）。
+      must(/建物ごとには出せません|判定できません/.test(t), `何が出せないのかが書かれていない: ${t.slice(0, 60)}`);
+      const gotLf = await page.waitForFunction(
+        () => (document.getElementById("land")?.textContent ?? "").includes("扇状地"),
+        null, { timeout: 20000 }).then(() => true).catch(() => false);
+      const t2 = (await page.locator("#land").textContent()).replace(/\s+/g, " ").trim();
+      if (gotLf) must(t2.includes("建物ごとには出せません"),
+        `地形分類が届いたのに「建物ごとには出せません」になっていない: ${t2.slice(0, 60)}`);
+      return `${t2.slice(0, 56)}${gotLf ? "" : "（⚠ 地形分類は届かなかった）"}`;
+    },
+  },
+  {
+    // ⚠ 取得に失敗したときは「整備対象外」と言わない（掟: 取れなかったを「無い」と言わない）。
+    //   HUD にも同じ規律を通す。ここを外すと、通信が落ちただけの豊洲に
+    //   「整備対象外」と、しかも常時見える場所で書くことになる。
+    name: "通信が落ちたとき、初期画面で整備対象外と言わない",
+    path: `/peel?${TOYOSU}`, viewport: { width: 375, height: 667 }, hasTouch: true,
+    setup: (page) => page.route(GSI_ROUTE, (r) => r.abort()),
+    async check(page) {
+      await peelReady(page);
+      await page.waitForFunction(() => (document.getElementById("land")?.textContent ?? "").length > 0,
+        null, { timeout: 60000 });
+      const t = (await page.locator("#land").textContent()).replace(/\s+/g, " ").trim();
+      const lie = LIES.find((w) => t.includes(w));
+      must(!lie, `通信断なのに「${lie}」と断定している: ${t.slice(0, 60)}`);
+      must(/読み込め/.test(t), `読み込めなかったことが書かれていない: ${t.slice(0, 60)}`);
+      must(!/\d+\.\d+\s*%/.test(t), `読めていないのに割合を出している: ${t.slice(0, 60)}`);
+      must(await effOpacity(page, "#land") > 0, "答えの板が読めない");
+      return t.slice(0, 60);
+    },
+  },
+  {
+    // ⚠ PC では情報パネルが開いて始まる。同じ答えを同じ画面で2度言わない
+    //   （☰ ボタンと同じ手）。パネルを閉じたら、HUD 側が答えを引き受ける。
+    name: "PC ではパネルが答えを持ち、閉じると HUD が引き継ぐ", path: `/peel?${TOYOSU}`,
+    async check(page) {
+      await peelReady(page);
+      await page.waitForFunction(() => (document.getElementById("land")?.textContent ?? "").includes("%"),
+        null, { timeout: 60000 });
+      must(await page.locator("#panel.hide").count() === 0, "PC でパネルが閉じて始まっている");
+      const heroOpen = await effOpacity(page, "#heroNum");
+      must(heroOpen > 0, `パネルの答えが読めない: 実効 opacity ${heroOpen}`);
+      must(await effOpacity(page, "#land") === 0, "パネルを開いているのに HUD にも同じ答えが出ている");
+      // 閉じたら HUD が引き継ぐ
+      await page.click("#closePanel");
+      await page.waitForTimeout(400);
+      const after = await effOpacity(page, "#land .land-num");
+      must(after > 0, `パネルを閉じても HUD に答えが出ない: 実効 opacity ${after}`);
+      const num = (await page.locator("#land .land-num").textContent()).trim();
+      return `パネル 開=答えはパネルだけ／閉=HUD が ${num}`;
     },
   },
   {
