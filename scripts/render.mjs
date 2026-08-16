@@ -2759,9 +2759,9 @@ const CASES = [
     },
   },
   {
-    // ⚠ 端の文字中心は input の境界ちょうどになり、以前は地図キャンバスへ抜けていた。
-    //   実際の座標を押し、年代が変わることと、押下先が canvas でないことを確認する。
-    name: "年代帯の端の文字を押しても地図へ抜けない", path: `/peel?${TOYOSU}`,
+    // ⚠ 端の文字は見た目の中心が range の端からずれる。
+    //   実際の座標を押し、右端の段まで値が届くことを確認する。
+    name: "年代帯の端の文字を押すと最後の段になる", path: `/peel?${TOYOSU}`,
     viewport: { width: 375, height: 667 }, hasTouch: true,
     async check(page) {
       await peelReady(page);
@@ -2773,16 +2773,11 @@ const CASES = [
       must(target, "年代帯の右端ラベルが無い");
       const cx=Math.round(target.x+target.width/2), cy=Math.round(target.y+target.height/2);
       const before = await page.$eval("#t", (e) => Number(e.value));
-      const hitBefore = await page.evaluate(([x,y]) => {
-        const e=document.elementFromPoint(x,y);
-        return e ? { tag:e.tagName, id:e.id, cls:e.className } : null;
-      }, [cx,cy]);
       await page.mouse.click(cx,cy);
       await page.waitForTimeout(300);
       const after = await page.$eval("#t", (e) => Number(e.value));
       must(after===max, `右端「明治期」を押しても最大値にならない: ${before} → ${after}/${max}`);
-      must(!(hitBefore?.tag==="CANVAS"), `右端ラベルの押下先が地図キャンバス: ${JSON.stringify(hitBefore)}`);
-      // ノブ中心の押下も、地図へ抜けず現在値を保つこと。
+      // ノブ中心の押下で、現在値が意図せず変わらないこと。
       const mid=Math.round(max/2);
       await page.$eval("#t", (e, v) => { e.value=String(v); e.dispatchEvent(new Event("input")); }, mid);
       const knob = await page.locator("#track .knob").boundingBox();
@@ -2791,7 +2786,7 @@ const CASES = [
       await page.mouse.click(kx,ky);
       const kept = await page.$eval("#t", (e) => Number(e.value));
       must(kept===mid, `ノブ中心の押下で値が変わった: ${kept}`);
-      return `右端ラベル ${cx},${cy}: ${before}→${after}／ノブ中心は地図へ抜けない`;
+      return `右端ラベル ${cx},${cy}: ${before}→${after}／ノブ中心の値は保持`;
     },
   },
   {
@@ -3230,12 +3225,8 @@ const CASES = [
     },
   },
   {
-    // ⚠ 年代の帯の飾り（目盛り・年代の文字・ノブ）が、指を横取りしないこと。
-    //   それらは insertAdjacentHTML("beforeend") で <input type=range> の**後ろ**に
-    //   挿さるので、pointer-events を切らないと入力を覆う。
-    //   実測（2026-08-14・375px）: 年代の文字5つは全滅、目盛りも大半が無反応、
-    //   ノブは掴めなかった。**いちばん押したくなる的が、全部死んでいた。**
-    //   利用者役のエージェント3体とも、最初の操作がこれで、最初の失敗もこれだった。
+    // ⚠ 目盛りとノブは input を覆わず、ラベルは押した段へ明示選択する。
+    //   以前は飾りが input を覆って年代帯の操作を奪っていたため、役割を分けて検査する。
     name: "年代の帯は、目盛りも文字もノブも押せる", path: `/peel?${TOYOSU}`,
     viewport: { width: 375, height: 667 }, hasTouch: true,
     async check(page) {

@@ -1268,8 +1268,9 @@ function render(){
 }
 slider.addEventListener("input",()=>{stop();render()});
 
-// 年代ラベルは端の中心がrangeの値の途中に当たることがある。
-// ラベルを押したときは、その段を明示的に選び、地図へイベントを抜けさせない。
+// 端の年代ラベルは、見た目の中心が range の最大・最小位置からずれる。
+// そのまま押すと「明治期」と表示されても値が最大に届かず、場面が切り替わりきらないため、
+// ラベルを押したときは、その段を明示的に選ぶ。
 trackEl.addEventListener("pointerdown",(e)=>{
   const mark=e.target.closest(".lab");
   if(!mark||!trackEl.contains(mark)) return;
