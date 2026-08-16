@@ -127,15 +127,25 @@
   header{margin-bottom:20px}
   h1{margin:0 0 3px;font-size:var(--fs-sign);letter-spacing:.05em;font-weight:500}
   .lead{margin:0;font-size:var(--fs-note);color:var(--ink-dim)}
-  /* 出所の名乗り。いまの時代、ここが差になる（AIが推測したものではない） */
-  .lead.src{margin-top:6px;font-size:var(--fs-evidence);color:var(--ink-faint)}
-  .lead.src b{color:var(--ink-dim);font-weight:500}
+  .lead b{color:var(--ink-dim);font-weight:500}
+  /* 出所の名乗り。いまの時代、ここが差になる（AIが推測したものではない）。
+     ⚠ 消さずに**弱くする**。初期画面の主役ではないが、何を読んでいるかは残す */
+  .lead .src{color:var(--ink-faint)}
+  /* 何が起きるかを、読ませずに見せる。5秒で「場所を調べる画面」と分かること。
+     ⚠ 枠も背景も hover も持たせない。押せる見た目にすると、押しても何も起きない導線になる */
+  .steps{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;margin-top:9px;
+    font-size:var(--fs-evidence);color:var(--ink-dim)}
+  .steps .st{display:inline-flex;align-items:center;gap:4px;white-space:nowrap}
+  .steps i{font-style:normal;font-size:var(--fs-badge);line-height:1}
+  .steps .ar{color:var(--ink-faint);margin-right:2px}
   /* 場所が決まったら、リード文は用が済んでいる。実測でスマホ幅 79px（4行）あり、
      そのぶん写真と判定文が下へ押し出されていた。
      h1（＝この画面が答える問い）は残す。写真がその問いへの答えになっている。
      ⚠ ここも display で消すが、消えるのは「場所が決まったあと」＝タップの処理が
        終わったあとなので、入口の1タップは壊れない（.hint の事故と同じ轍は踏まない） */
-  body.picked .lead{display:none}
+  /* ⚠ 導入の絵も一緒に畳む。残すと、答えが出たあとの画面で「これから何が起きるか」を
+       説明し続けることになる。検査（場所を選んだあとリード文が 0 個）とも揃える */
+  body.picked .lead,body.picked .steps{display:none}
   /* サービス名。共有リンクから来た人が「何のサイトか」「戻る先」を持てるように */
   .brand{display:inline-flex;align-items:center;gap:6px;font-size:var(--fs-note);letter-spacing:.18em;
     color:var(--ink-dim);text-decoration:none;margin-bottom:6px}
@@ -265,7 +275,13 @@
      ファーストビューの外）に居座り、押しても画面は動かないので何が起きたか見えない。
      場所を変える手段は ✕ と「保存した場所」が既に持っている */
   #scope.on ~ .quick{display:none}
-  .quick button{padding:4px 11px;border:1px solid var(--line);border-radius:999px;background:transparent;
+  /* ⚠ 検索欄と**同じ強さ**で並べない。ここは主操作ではなく「何を打てばいいか」の例。
+     実測（375×667）で 10 個・144px あり、枠線が判定カードと同じ var(--line) だったため、
+     主ボタンが 11 個あるように見えていた。枠を外し、地の色をわずかに敷くだけにする。
+     ⚠ **当たり判定は下げない。** 見た目を弱めるのと、押しにくくするのは別のこと
+       （下の @media (hover:none) の min-height はそのまま）。 */
+  .quick button{padding:4px 11px;border:1px solid transparent;border-radius:999px;
+    background:rgba(255,255,255,.045);
     color:var(--ink-dim);font:inherit;font-size:var(--fs-note);cursor:pointer}
   /* ⚠ 指で押す端末では、押せる高さを var(--tap) 取る（Apple の指針の値）。
      実測（375px）: 高さ 29px のまま10個を2行に詰めると、行の間隔が 6px しかなく、
@@ -686,14 +702,28 @@
   <!-- ⚠ 標高は「低地かどうか」に使うだけで、区分の判定には**使っていない**。
        区分は地形分類のポリゴンと明治期の低湿地タイルの画素だけで決まる。
        読んだものと使ったものを混ぜて書かない。 -->
-  <!-- ⚠ 画面が「判定して並べる」から「時間をさかのぼる」に変わったので、名乗りも合わせる。
-       以前の文は実測で 79px（4行）あり、3つの助言役のエージェントが揃って「長い」と言っていた。
-       技術の話は下の1行へ落とす。ただし**何を読んでいるか**は最初の画面から消さない
+  <!-- ⚠ **何を読んでいるか**は最初の画面から消さない
        （利用者役のエージェントによる検証で「グルメ検索? 不動産?」と受け取られた事故の再発防止。検査あり）。
-       「など」なのは、地理院タイルのほかに OpenStreetMap・Wikidata も使うようになったから。 -->
-  <p class="lead">気になる場所を検索して、その土地の時間をさかのぼってみよう。<br>
-    昔の航空写真や土地の<b>成り立ち</b>から、その場所がどのように変わってきたのかをたどれます。</p>
-  <p class="lead src">国土地理院などの<b>一次データ</b>を使用。<b>判定根拠</b>まで確認できます。</p>
+       「など」なのは、地理院タイルのほかに OpenStreetMap・Wikidata も使うようになったから。
+       ⚠ 説明文は 2 つに分かれていて、実測で 79px + 40px = 119px（375×667）あった。
+         そのぶん検索欄が y=240（画面の 36% 地点）まで押し下げられていたので、1 つにまとめる。
+         削るのは説明であって、**何を読んでいるか**ではない（国土地理院・成り立ちは残す）。 -->
+  <p class="lead">場所を検索すると、<b>国土地理院</b>などのデータから
+    その土地の<b>成り立ち</b>を判定します。<span class="src">判定根拠まで確認できます。</span></p>
+  <!-- ⚠ 文だけでは 5 秒で伝わらない。何が起きるかを、読ませずに見せる。
+       出しているのは実際にできること 3 つだけ（掟: 根拠のないことは書かない）。
+       「いつ埋め立てられたか」のような、画素から出せないことは絵にもしない。
+       ⚠ **押せる見た目にしない。** 枠も hover も当たり判定も持たせない
+       （掟: 押しても何も起きない導線を置かない）。
+       ⚠ 絵文字は読み上げから外す（記号の名前が読まれるだけで、意味は隣の文字が持っている）。 -->
+  <!-- ⚠ 矢印は**次の語と同じ塊**に入れる。別々に置くと、折り返したときに
+       矢印だけが行末に取り残される（実測 375×667 で発生）。
+       語も詰める。何を判定するかは、すぐ上の文が言っている。 -->
+  <div class="steps">
+    <span class="st"><i aria-hidden="true">🔍</i>場所を探す</span>
+    <span class="st"><span class="ar" aria-hidden="true">→</span><i aria-hidden="true">🗺</i>成り立ち</span>
+    <span class="st"><span class="ar" aria-hidden="true">→</span><i aria-hidden="true">📷</i>昔の写真</span>
+  </div>
 </header>
 
 <div class="scope" id="scope">

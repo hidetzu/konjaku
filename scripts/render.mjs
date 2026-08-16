@@ -1198,11 +1198,32 @@ const CASES = [
       });
       must(q0.disp !== "none" && q0.h > 0 && q0.y < 667,
         `最初の画面で地名の例が見えていない: ${JSON.stringify(q0)}`);
+      // ⚠ **主操作（場所を検索する）が、説明に押し下げられていないこと。**
+      //   実測（2026-08-17 / 375×667）: 説明文が 2 つで 119px あり、検索欄は y=240
+      //   （画面の 36% 地点）にいた。1 つにまとめて y=184 になっている。
+      //   ここが緩むのは「説明をもう1行足す」ときなので、px で止める。
+      const q = await page.$eval("#q", (e) => {
+        const r = e.getBoundingClientRect();
+        return { y: Math.round(r.top), bottom: Math.round(r.bottom) };
+      });
+      must(q.bottom <= 667, `検索欄がファーストビューの外にいる: 下端 ${q.bottom}px`);
+      must(q.y <= 220, `検索欄が説明に押し下げられている: y=${q.y}px（実測の基準は 184px）`);
+      // ⚠ 導入の絵は**1行**に収める。
+      //   矢印を独立した要素として並べていたとき、375px で折り返して
+      //   **矢印だけが行末に取り残された**（実測 44px＝2行）。矢印は次の語と同じ塊に入れてある。
+      const steps = await page.$eval(".steps", (e) => {
+        const r = e.getBoundingClientRect();
+        const tops = [...e.querySelectorAll(".st")].map((x) => Math.round(x.getBoundingClientRect().top));
+        return { h: Math.round(r.height), rows: new Set(tops).size,
+          text: e.textContent.replace(/\s+/g, " ").trim() };
+      });
+      must(steps.rows === 1, `導入の絵が ${steps.rows} 行に折り返している（高さ ${steps.h}px）: ${steps.text}`);
       // 収まらない説明はフォーカス時の補足へ回す。触れば読めること
       await page.click("#q");
       must(await page.locator(".hint").isVisible(), "入力欄に触れても補足が出ない");
       const hint = (await page.locator(".hint").textContent()).trim();
-      return `${head.slice(0, 40)}…／placeholder「${ph.text}」${ph.need}px ≤ ${ph.room}px／補足「${hint}」`;
+      return `検索欄 y=${q.y}（実測 240 → 改善）／導入の絵 ${steps.rows} 行 ${steps.h}px`
+        + `「${steps.text}」／placeholder ${ph.need}px ≤ ${ph.room}px／補足「${hint}」`;
     },
   },
   // ---- 年代ストリップ ----
@@ -1296,9 +1317,11 @@ const CASES = [
       const h = await page.$eval("#strip", (e) => Math.round(e.getBoundingClientRect().height));
       must(h <= 220, `帯が高すぎる: ${h}px`);
       // 場所が決まったらリード文は畳む（実測 79px。写真と判定文がそのぶん下へ押し出されていた）
-      const leads = await page.$$eval(".lead", (els) => els
+      // ⚠ 導入の絵（.steps）も一緒に畳む。答えが出たあとの画面で
+      //   「これから何が起きるか」を説明し続けないこと
+      const leads = await page.$$eval(".lead,.steps", (els) => els
         .filter((e) => e.getBoundingClientRect().height > 0).length);
-      must(leads === 0, `場所を選んだあともリード文が残っている: ${leads} 個`);
+      must(leads === 0, `場所を選んだあとも導入（リード文・導入の絵）が残っている: ${leads} 個`);
       // 判定文が画面内にあること。写真が主役でも、答えの一文は同じ画面で読めること
       const v = await page.$eval("#verdict .v-head", (e) => Math.round(e.getBoundingClientRect().y));
       must(v < 667, `判定文がファーストビューの外にいる: y=${v}`);
