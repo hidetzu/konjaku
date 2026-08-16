@@ -69,7 +69,7 @@ let preloadAll = false;
 const allSteps = () => [...ALL_ERAS.map((e) => ({ ...e, tau:TAU.get(e.id), state:"ok" })),
                         { ...MEIJI, tau:TAU_MEIJI, state:"ok" }];
 // いま画面が持っている段。**地点ごとに loadArea() が組み直す。**
-//   steps[k] … k 段目（右端の「現在」が 0、左端が明治期）
+//   steps[k] … k 段目（左端の「現在」が 0、右端が明治期）
 //   .tau     … 時間座標。段を間引いても動かない
 // ⚠ 既定は全段。地点の写真が分かるまでは timelineReady=false のあいだ先読みを止める。
 //   止めないと、まだ存在を確かめていない年代のタイルを取りに行ってしまう。
@@ -512,7 +512,7 @@ function wireRetry(lon,lat,title){
 //   ここでは並べるだけで、判定をやり直さない（掟: 同じ問いに答える実装を2つ持たない）。
 // ============================================================
 // ⚠ 「現在」は判定の対象ではない（photos が答えるのは**残っている**＝過去の写真）。
-//   常に右端に置く。ここに現在を混ぜると、年代の数の意味が変わる。
+//   常に左端に置く。ここに現在を混ぜると、年代の数の意味が変わる。
 function stepsFrom(ph){
   const out=[{...ALL_ERAS[0], tau:0, state:"ok"}];
   const byId=new Map((ph?.eras??[]).map((e)=>[e.id,e]));
@@ -965,7 +965,7 @@ function buildTicks(){
     const show=k===0||k===n||k%2===0;
     trackEl.insertAdjacentHTML("beforeend",
       `<div class="tick" data-i="${k}" style="left:${pc}%"></div>
-       <div class="lab${edge}" style="left:${pc}%">${show?s.label:""}</div>`);
+       <div class="lab${edge}" data-i="${k}" style="left:${pc}%">${show?s.label:""}</div>`);
   });
   // スライダーの目盛りと上限を、段の数に合わせる（1段 = 100）
   slider.max=String(n*100);
@@ -1066,6 +1066,11 @@ function render(){
   //     TDZ で例外になり、**そこから下の描画が丸ごと止まった**（画面は何も言わない）。
   const bldVisible = !!(area && area.total) && pos < nPhoto - 0.02;
   eraEl.querySelector(".y").textContent=cur.label;
+  const timeSummary=document.getElementById("timeSummary");
+  if(timeSummary) timeSummary.textContent=cur.label;
+  const eraSummaryNote=document.getElementById("eraSummaryNote");
+  if(eraSummaryNote) eraSummaryNote.textContent=(bldVisible&&pos>.02)?"いまの街を重ねています":"";
+  slider.setAttribute("aria-valuetext",cur.label);
   // ⚠ 過去の年代に入ったら、年と同じ強さで「重ねている」と言う。
   //   建物は現在のもので、地面だけが過去。そこを画面が言わないと、
   //   利用者は自分の知識でしか判別できない（知識が無ければ判別できない）。
@@ -1077,7 +1082,14 @@ function render(){
 
   const pc=pos/nPhoto*100;
   fillEl.style.width=pc+"%"; knobEl.style.left=pc+"%";
-  trackEl.querySelectorAll(".tick").forEach(el=>el.classList.toggle("on",Number(el.dataset.i)<=pos+.5));
+  const selected=Math.max(0,Math.min(steps.length-1,Math.round(pos)));
+  trackEl.querySelectorAll(".tick").forEach((el)=>{
+    const k=Number(el.dataset.i);
+    el.classList.toggle("on",k<=pos+.5);
+    el.classList.toggle("selected",k===selected);
+  });
+  trackEl.querySelectorAll(".lab").forEach((el)=>
+    el.classList.toggle("selected",Number(el.dataset.i)===selected));
 
   // ⚠ 建物についての但し書きを、畳まれない場所に出す。
   //   空になるのは「建物が1件も立っていないとき」だけ。無いものは説明しない。
@@ -1185,6 +1197,31 @@ function render(){
 slider.addEventListener("input",()=>{stop();render()});
 
 const playBtn=document.getElementById("play");
+const eraDetails=document.getElementById("eraDetails");
+const eraToggle=document.getElementById("eraToggle");
+const eraToggleText=document.getElementById("eraToggleText");
+let eraPanelOpen=true;
+function applyEraPanel(){
+  eraEl.classList.toggle("collapsed",!eraPanelOpen);
+  eraDetails.hidden=!eraPanelOpen;
+  eraToggle.setAttribute("aria-expanded",String(eraPanelOpen));
+  eraToggleText.textContent=eraPanelOpen?"閉じる":"開く";
+}
+eraToggle.onclick=()=>{ eraPanelOpen=!eraPanelOpen; applyEraPanel(); };
+applyEraPanel();
+const timePanel=document.getElementById("timePanel");
+const timePanelBody=document.getElementById("timePanelBody");
+const timeToggle=document.getElementById("timeToggle");
+const timeToggleText=document.getElementById("timeToggleText");
+let timePanelOpen=true;
+function applyTimePanel(){
+  timePanel.classList.toggle("collapsed",!timePanelOpen);
+  timePanelBody.hidden=!timePanelOpen;
+  timeToggle.setAttribute("aria-expanded",String(timePanelOpen));
+  timeToggleText.textContent=timePanelOpen?"閉じる":"開く";
+}
+timeToggle.onclick=()=>{ timePanelOpen=!timePanelOpen; applyTimePanel(); };
+applyTimePanel();
 // 1段あたりの所要時間。全 8 段で 11 秒だったものを、段あたりに直した。
 // ⚠ 段の数は地点によって変わる（豊洲 8 / 広島 6 / 長崎 出島 3 段の写真）。
 //   総時間を固定すると、段が少ない地点ほど1段が長くなって間延びする。
