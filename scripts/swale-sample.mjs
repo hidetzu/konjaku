@@ -32,7 +32,13 @@ function decodePNG(buf){
   return {w,h,data:out};
 }
 function classify(r,g,b){let best=null,bd=Infinity;for(const c of SWALE){const d=(c.rgb[0]-r)**2+(c.rgb[1]-g)**2+(c.rgb[2]-b)**2;if(d<bd){bd=d;best=c}}return Math.sqrt(bd)<=60?best:null;}
-async function tile(x,y){const k=`${x}/${y}`;if(cache.has(k))return cache.get(k);const p=fetch(`${GSI}/swale/${Z}/${x}/${y}.png`,{signal:AbortSignal.timeout(15000)}).then(async r=>{if(!r.ok)return {state:"データなし"};return {state:"ok",...decodePNG(Buffer.from(await r.arrayBuffer()))}}).catch(()=>({state:"読み込めず"}));cache.set(k,p);return p;}
+async function tile(x,y){const k=`${x}/${y}`;if(cache.has(k))return cache.get(k);const p=fetch(`${GSI}/swale/${Z}/${x}/${y}.png`,{signal:AbortSignal.timeout(15000)}).then(async r=>{
+  // 404だけが「このタイルにデータが無い」。403/5xxは一時的な取得失敗として
+  // 取り込みを止め、誤って「整備対象外」を恒久配信しない。
+  if(r.status===404)return {state:"データなし"};
+  if(!r.ok)return {state:"読み込めず"};
+  return {state:"ok",...decodePNG(Buffer.from(await r.arrayBuffer()))};
+}).catch(()=>({state:"読み込めず"}));cache.set(k,p);return p;}
 export async function sampleSwale(lon,lat){
   const {x,y}=tileOf(lon,lat),t=await tile(x,y); if(t.state!=="ok")return {state:t.state};
   const xf=((lon+180)/360*2**Z)-x,yf=((1-Math.log(Math.tan(lat*Math.PI/180)+1/Math.cos(lat*Math.PI/180))/Math.PI)/2*2**Z)-y;

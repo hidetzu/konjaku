@@ -684,8 +684,7 @@ const CASES = [
         `事前に取り込んだデータを使っていない（${status.slice(0, 80)}）`);
       const hero = await page.locator("#heroNum").textContent({ timeout: 45000 });
       const cap = await page.locator("#heroCap").textContent();
-      must(hero.trim().length > 0 && ((cap.includes("建物の足元") && cap.includes("水域だった建物")) || cap.includes("水の上")),
-        `建物足元の最多区分と水域補足が出ていない: ${hero} / ${cap.trim().slice(0, 80)}`);
+      assertToyosu3dAnswer(hero, cap, "3D");
       // ⚠ ここは長いあいだ、読んで報告に印字するだけで assert が無かった。
       //   08ce46f で潰した「測っていないことを報告する」と同じ形が、
       //   いちばん重要な case に残っていた（2026-08-14 検証者の指摘）。
@@ -748,8 +747,7 @@ const CASES = [
       const hero = (await page.locator("#heroNum").textContent()).trim();
       must(hero.length > 0, `事前計算の建物区分が表示されていない: ${hero}`);
       const cap = (await page.locator("#heroCap").textContent()).trim();
-      must((cap.includes("建物の足元") && cap.includes("水域だった建物")) || cap.includes("水の上"),
-        `事前計算の建物区分が説明されていない: ${cap.slice(0, 80)}`);
+      assertToyosu3dAnswer(hero, cap, "通信断でも3D");
       const status = (await page.locator("#status").textContent()).trim();
       must(!status.includes("データがありません"),
         `通信断なのに「データがありません」と断定している: ${status.slice(0, 60)}`);
@@ -913,8 +911,7 @@ const CASES = [
       const hero = (await page.locator("#heroNum").textContent()).trim();
       must(hero.length > 0, `事前計算の建物区分が表示されていない: ${hero}`);
       const cap = (await page.locator("#heroCap").textContent()).trim();
-      must((cap.includes("建物の足元") && cap.includes("水域だった建物")) || cap.includes("水の上"),
-        `事前計算の建物区分が説明されていない: ${cap.slice(0, 80)}`);
+      assertToyosu3dAnswer(hero, cap, "403でも3D");
       const status = (await page.locator("#status").textContent()).trim();
       must(!status.includes("データがありません"),
         `403 なのに「データがありません」と断定している: ${status.slice(0, 60)}`);
@@ -948,8 +945,7 @@ const CASES = [
       must(prov.includes("実際の水域"), `水面の行まで落ちている: ${prov.replace(/\s+/g, " ").slice(0, 60)}`);
       const hero = (await page.locator("#heroNum").textContent()).trim();
       const cap = (await page.locator("#heroCap").textContent()).trim();
-      must(hero.length > 0 && ((cap.includes("建物の足元") && cap.includes("水域だった建物")) || cap.includes("水の上")),
-        `建物足元の最多区分と水域補足が出ていない: ${hero} / ${cap.slice(0, 80)}`);
+      assertToyosu3dAnswer(hero, cap, "地表タイル断でも3D");
       return `${txt.slice(0, 34)}／土地区分と水域補足（${hero}）は従来どおり`;
     },
   },
@@ -4202,6 +4198,14 @@ const CASES = [
 ];
 
 function must(cond, msg) { if (!cond) throw new Error(msg); }
+function assertToyosu3dAnswer(hero, cap, label) {
+  const h = hero.trim(), c = cap.replace(/\s+/g, " ").trim();
+  must(/^99\.\d%$/.test(h), `${label}: 建物単位の水域割合が表示されていない: ${h}`);
+  must((c.includes("建物の足元") && c.includes("水域だった建物")) || c.includes("水の上"),
+    `${label}: 水域割合の主語と補足が不足: ${c.slice(0, 100)}`);
+  must(/533件すべての足元を1件ずつ判定した実測値|足元を判定できた 533 \/ 533 件/.test(c),
+    `${label}: 分母が建物の判定件数になっていない: ${c.slice(0, 100)}`);
+}
 
 // ---- ローカルサーバ ----
 const server = spawn(process.execPath, ["serve.js"], {

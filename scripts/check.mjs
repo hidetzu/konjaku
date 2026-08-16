@@ -1600,6 +1600,50 @@ head("6. 外部リンク");
   }
 }
 
+// 共通アセットの入口と、生成元の候補地が食い違わないこと。
+// seeds を変更して export を忘れると、画面は古い候補を静かに出し続けるため、
+// 公開JSONを生成元と突き合わせる。
+{
+  const seedLines = (await readFile(join(ROOT, "seeds", "areas.jsonl"), "utf8"))
+    .trim().split("\n").filter(Boolean).map((line) => JSON.parse(line)).filter((a) => a.quick);
+  const quickPath = join(PUB, "data", "quick-places.json");
+  if (!existsSync(quickPath)) bad("quick-places.json が無く、候補地の生成結果を照合できない");
+  else {
+    const places = JSON.parse(await readFile(quickPath, "utf8")).places ?? [];
+    const key = (p) => `${p.id}|${p.lon}|${p.lat}|${p.title ?? ""}`;
+    const want = new Set(seedLines.map((a) => key({id:a.id,lon:a.ll[0],lat:a.ll[1],title:a.quickTitle ?? a.title})));
+    const got = new Set(places.map(key));
+    const missing = [...want].filter((x) => !got.has(x));
+    const extra = [...got].filter((x) => !want.has(x));
+    missing.length || extra.length
+      ? bad(`候補地の生成結果が seeds と不一致（不足 ${missing.length} / 余分 ${extra.length}）`)
+      : ok(`候補地の生成結果が seeds/areas.jsonl と一致（${places.length} 件）`);
+  }
+}
+
+// 共通アセットマニフェストの参照先が実在し、建物索引の版・日付と一致すること。
+// 壊れた assets.json は建物だけ実行時取得へ落ちる入口になるため、存在確認だけで終わらせない。
+{
+  const path = join(PUB, "data", "assets.json");
+  if (!existsSync(path)) bad("assets.json が無い（共通アセットの入口が生成されていない）");
+  else {
+    const m = JSON.parse(await readFile(path, "utf8"));
+    const b = m.layers?.buildings;
+    const idxPath = join(PUB, String(b?.index ?? "").replace(/^\.\//, ""));
+    const tile = String(b?.tile ?? "");
+    const idx = existsSync(idxPath) ? JSON.parse(await readFile(idxPath, "utf8")) : null;
+    const tilePath = tile.replace(/^\.\//, "").replace("{x}", String(Object.keys(idx?.tiles ?? {})[0]?.split("/")[0] ?? ""))
+      .replace("{y}", String(Object.keys(idx?.tiles ?? {})[0]?.split("/")[1] ?? ""));
+    const errors = [];
+    if (!b || b.format !== "packed-geojson-v3") errors.push(`建物format=${b?.format ?? "なし"}`);
+    if (!idx) errors.push("建物索引が無い");
+    if (idx && b.at !== idx.at) errors.push(`建物at=${b.at} / 索引at=${idx.at}`);
+    if (idx && (!Object.keys(idx.tiles ?? {}).length || !existsSync(join(PUB, tilePath)))) errors.push("建物タイルが無い");
+    errors.length ? bad(`assets.json の建物参照が不正: ${errors.join("、")}`)
+      : ok(`assets.json の建物参照が索引・タイルと一致（${Object.keys(idx.tiles).length} 区画）`);
+  }
+}
+
 // ---------- 7. 外部から来た文字列を HTML として実行させない ----------
 head("7. 外部から来た文字列");
 // 実際に踏んだ（2026-08-15）。配信物は一切変えず、応答だけ差し替えて広島を開くと、

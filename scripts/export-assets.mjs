@@ -19,7 +19,7 @@ const manifest = {
   layers: {
     buildings: {
       source: "osm",
-      format: "packed-geojson-v2",
+      format: "packed-geojson-v3",
       zoom: buildingIndex?.z ?? 14,
       index: "./data/bl/index.json",
       tile: "./data/bl/14/{x}/{y}.json",

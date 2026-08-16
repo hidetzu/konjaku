@@ -1112,7 +1112,7 @@ function setupHere(btn,msg,label,onOk){
 setupHere(document.getElementById("here"), document.getElementById("hereMsg"),
   "現在地から調べる", (lo,la)=>loadArea(lo,la,"現在地"));
 
-// ⚠ トップ（index.html の QUICK）と同じ土地にする。
+// ⚠ トップと3Dで同じ公開候補地を使う。
 //   以前はここだけ旧6件のままで、実測すると **6件中5件が建物の索引に無く、
 //   押すと Overpass を最大20秒待つ**状態だった（天王洲は seeds/areas.jsonl にも無い）。
 //   3D の入口が、押すと失敗する入口になっていた。
