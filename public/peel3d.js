@@ -277,7 +277,8 @@ async function buildWater(bbox){
   const y0=Math.floor(lat2yf(bbox.n)), y1=Math.floor(lat2yf(bbox.s));
   const TW=(x1-x0+1)*256, TH=(y1-y0+1)*256;
   const mask=new Uint8Array(TW*TH);
-  let waterPx=0;
+  let waterPx=0, classifiedPixels=0, transparentPixels=0, unknownPixels=0;
+  const classCounts=Object.fromEntries(SWALE.map((c)=>[c.name,0]));
   // タイルごとの結末を数える。1枚も読めていないのに「データがありません」と
   // 書かないために、absent（404）と unreachable（読めず）を分けて持つ。
   const tiles={ok:0,absent:0,unreachable:0};
@@ -291,9 +292,11 @@ async function buildWater(bbox){
     const ox=(tx-x0)*256, oy=(ty-y0)*256;
     for(let y=0;y<256;y++) for(let x=0;x<256;x++){
       const i=(y*256+x)*4;
-      if(d[i+3]===0) continue;
+      if(d[i+3]===0){ transparentPixels++; continue; }
       const c=classify(d[i],d[i+1],d[i+2]);
-      if(c?.water){ mask[(oy+y)*TW+(ox+x)]=1; waterPx++; }
+      if(!c){ unknownPixels++; continue; }
+      classCounts[c.name]++; classifiedPixels++;
+      if(c.water){ mask[(oy+y)*TW+(ox+x)]=1; waterPx++; }
     }
   }
 
@@ -315,7 +318,16 @@ async function buildWater(bbox){
       coordinates:[[[lonA,latA],[lonB,latA],[lonB,latB],[lonA,latB],[lonA,latA]]]}});
   }
   return { geojson:{type:"FeatureCollection",features:feats},
-           ratio: TW*TH ? waterPx/(TW*TH) : 0, tiles, rects:feats.length };
+           ratio: TW*TH ? waterPx/(TW*TH) : 0, tiles, rects:feats.length,
+           classCounts, classifiedPixels, transparentPixels, unknownPixels };
+}
+
+function summarizeLand(counts, classifiedPixels){
+  if(!counts || !(classifiedPixels>0)) return null;
+  const entries=Object.entries(counts).filter(([,n])=>n>0).sort((a,b)=>b[1]-a[1]);
+  if(!entries.length) return null;
+  const [name,count]=entries[0];
+  return {name,count,classifiedPixels,pct:(count/classifiedPixels*100).toFixed(1)};
 }
 
 // ============================================================
@@ -466,29 +478,35 @@ let missEra=null, missBld=false;
 let place=null;
 // ⚠ 種別（kind）と建設年（startDate）は OSM のタグそのもの。誰でも編集できる第三者データで、
 //   こちらが中身を保証できない。描くときに esc を通す（理由は esc.js）。
-//   rgba はこちらが画素から読んだ数値、meiji は自前の凡例表（verify.js）から来る。
+//   rgba はこちらが画素から読んだ根拠値、meiji は自前の凡例表（verify.js）から来る。
+//   rgbaは通常のカードには出さず、利用者が読む主情報を優先する。
+function meijiText(p){
+  if(Number(p.wasWater)===1) return "足元は、明治期には水でした";
+  if(p.meiji==="該当なし") return "この地点は、明治期の低湿地データでは区分されていません";
+  if(p.meiji==="データなし") return "明治期の低湿地データの対象外です";
+  if(p.meiji==="読み込めず") return "明治期の低湿地データを読み込めませんでした";
+  if(p.meiji==="特定できず") return "明治期の土地の区分を特定できませんでした";
+  return `明治期の土地: ${p.meiji}`;
+}
 function pickCard(p){
-  const w=Number(p.wasWater)===1;
-  // 読めていない建物では rgba の行を出さない（読んでいない根拠は出さない）
-  const read=p.rgba?`低湿地データ rgba=${esc(p.rgba)}`:"低湿地データは読み込めていません";
-  const src=p.heightSource, made=p.startDate;
+  const src=p.heightSource, made=p.startDate, land=esc(meijiText(p));
+  const cls=Number(p.wasWater)===1?"w":"";
   return `<div class="card">
-    <div class="v ${w?"w":""}">${w?"足元は、明治期には水でした":`明治期の区分: ${esc(p.meiji)}`}</div>
-    <div class="meta">高さ ${esc(p.height)}m ─ ${
-      src==="default"?`種別「${esc(p.kind)}」の既定値。OSM に高さの記載なし`
-      :src==="levels"?"OSM の階数 × 3.2m（1階を3.2mとみなした換算）"
-      :"OSM の height タグ"}<br>
-    ${made?`建設年 <b>${esc(made)}</b>`:"建設年は不明"}<br>
-    ${read}</div></div>`;
+    <div class="v ${cls}">${land}</div>
+    <div class="meta"><div>高さ <b>${esc(p.height)}m</b> ─ ${
+      src==="default"?`種別「${esc(p.kind)}」の既定値（OSM に高さの記載なし）`
+      :src==="levels"?"OSM の階数から換算（1階を3.2mとして計算）"
+      :"OSM の height タグ"}</div>
+    <div>${made?`建設年 <b>${esc(made)}</b>`:"建設年 <b>不明</b>（OSM に記載なし）"}</div></div></div>`;
 }
 // 読み上げ。⚠ 画面に出ている文だけを読む。作文を混ぜない（トップの 🔊 と同じ掟）
 function pickSpeech(p){
-  const w=Number(p.wasWater)===1;
   const h=p.heightSource==="default"?"種別ごとの既定値です"
     :p.heightSource==="levels"?"階数からの換算です":"OSM の記載です";
-  return (w?"足元は、明治期には水でした。":`明治期の区分は、${p.meiji}です。`)
+  const land=meijiText(p);
+  return (Number(p.wasWater)===1?`${land}。`:`${land}。`)
     + `高さは ${p.height} メートル。${h}。`
-    + (p.startDate?`建設年は ${p.startDate} 年です。`:"建設年は分かっていません。");
+    + (p.startDate?`建設年は ${p.startDate} 年です。`:"建設年は分かっていません（OSMに記載がありません）。");
 }
 // 建物を選んだ結果を出す。
 // ⚠ 押したときと、URL から戻したときで**同じ道を通す**。2つ書くと、
@@ -652,7 +670,11 @@ async function loadArea(lon,lat,title,opt){
   if(pre?.water){
     const gj=await loadJSON(pre.water);
     if(gj) w={ geojson:gj, ratio:gj.metadata?.waterRatio??0, rects:gj.features.length,
-               tiles:{ok:1,absent:0,unreachable:0}, pre:true };
+               tiles:{ok:1,absent:0,unreachable:0}, pre:true,
+               classCounts:gj.metadata?.classCounts??null,
+               classifiedPixels:gj.metadata?.classifiedPixels??0,
+               transparentPixels:gj.metadata?.transparentPixels??0,
+               unknownPixels:gj.metadata?.unknownPixels??0 };
   }
   if(!w) w=await buildWater(bbox);
   map.getSource("water").setData(w.geojson);
@@ -679,7 +701,8 @@ async function loadArea(lon,lat,title,opt){
   // 「–%」が残り、Overpass が返った瞬間に「0.0% ── 実測値」へ化けていた（掟: 取れなかったを「無い」と言わない）。
   area={ title, areaTitle:pre?.title??null, source:w.pre?"pre":"tiles", pending:true,
     total:0, wet:0, classified:0, unread:0, counts:{}, dated:0,
-    waterRatio:w.ratio, waterRead, waterUnread };
+    waterRatio:w.ratio, waterRead, waterUnread,
+    landSummary:summarizeLand(w.classCounts,w.classifiedPixels) };
   showResult(); render();
 
   // --- 2. 建物 ---
@@ -723,7 +746,8 @@ async function loadArea(lon,lat,title,opt){
   if(!feats){
     map.getSource("bld").setData({type:"FeatureCollection",features:[]});
     area={ title, total:0, wet:0, classified:0, unread:0, counts:{}, dated:0,
-      waterRatio:w.ratio, waterRead, waterUnread, source:"none" };
+      waterRatio:w.ratio, waterRead, waterUnread, source:"none",
+      landSummary:summarizeLand(w.classCounts,w.classifiedPixels) };
     statusEl.innerHTML=`<span class="err">建物データを取得できませんでした（Overpass 混雑）。</span>
       <span style="color:var(--ink-dim)">水域と空中写真だけで表示しています。</span> ${retryBtn(lon,lat,title)}`;
     wireRetry(lon,lat,title);
@@ -776,7 +800,8 @@ async function loadArea(lon,lat,title,opt){
       }
       return c;
     })(),
-    waterRatio:w.ratio, waterRead, waterUnread };
+    waterRatio:w.ratio, waterRead, waterUnread,
+    landSummary:summarizeLand(w.classCounts,w.classifiedPixels) };
 
   // 水域が読めていないのに「水域 0 面を判定しました」とは書かない
   statusEl.innerHTML=`<span style="color:var(--ink-dim)">${waterRead?`水域 ${w.rects} 面 ／ `:""}建物 ${
@@ -830,18 +855,22 @@ function landformLine(){
 function landVerdict(){
   if(!area) return null;
   const lf=landformLine();
+  // 建物がある場合は、足元のラスタ判定が成立したときだけ範囲集計も見せる。
+  // 通信断で建物の判定が0件なのに、事前生成GeoJSONの割合だけ出すと、
+  // 「読めていないのに割合が出た」状態になる。
+  const land=(area.classified>0||area.total===0)?area.landSummary:null;
   // 足元を1件でも判定できた。割合は**判定できた件数**からしか作らない
   if(area.classified>0)
     return { kind:"ratio", pct:(area.wet/area.classified*100).toFixed(1),
       classified:area.classified, total:area.total, all:area.classified===area.total,
-      unread:area.unread, lf };
+      unread:area.unread, land, lf };
   // 建物は出ているが、足元は1件も判定できない
-  if(area.total>0) return { kind:"none", scope:"building", total:area.total, unread:area.unread, lf };
+  if(area.total>0) return { kind:"none", scope:"building", total:area.total, unread:area.unread, land, lf };
   // 建物が無い・取れない。面積比なら出せる
   if(area.waterRead&&area.waterRatio>0)
-    return { kind:"area", pct:(area.waterRatio*100).toFixed(1), pending:!!area.pending, lf };
-  if(area.waterRead) return { kind:"dry", lf };
-  return { kind:"none", scope:"land", unread:area.waterUnread, lf };
+    return { kind:"area", pct:(area.waterRatio*100).toFixed(1), pending:!!area.pending, land, lf };
+  if(area.waterRead) return { kind:"dry", land, lf };
+  return { kind:"none", scope:"land", unread:area.waterUnread, land, lf };
 }
 
 // 常時見える HUD 側の描画。⚠ 数字は landVerdict() が作ったものだけを使う。
@@ -862,13 +891,15 @@ function renderLand(v){
       ? `${v.classified} / ${v.total}件の足元を判定`
       : (v.pending?"建物を取得中。揃うと建物ごとの割合になる"
                   :"建物が取れなかったため、面積比で出している");
+    const land=`${v.land?`<div class="land-sub">この範囲で最も多い区分: <b>${esc(v.land.name)}</b>（${v.land.pct}%）</div>`:""}`;
     landEl.innerHTML=`<div class="land-line"><b class="land-num">${v.pct}<small>%</small></b>`
-      + `<span class="land-what">${what}</span></div><div class="land-den">${den}</div>`;
+      + `<span class="land-what">${what}</span></div><div class="land-den">${den}</div>${land}`;
     return;
   }
   if(v.kind==="dry"){
     landEl.innerHTML=`<div class="land-line"><b class="land-alt">水域なし</b></div>`
-      + `<div class="land-den">この範囲は、明治期の低湿地データで水域に該当しません</div>`;
+      + `<div class="land-den">この範囲は、明治期の低湿地データで水域に該当しません</div>`
+      + (v.land?`<div class="land-sub">この範囲で最も多い区分: <b>${esc(v.land.name)}</b>（${v.land.pct}%）</div>`:"");
     return;
   }
   // 判定できない。⚠ 数値を作らない（0% は出さない）。何が分からないのかを書く
@@ -878,7 +909,8 @@ function renderLand(v){
     : `明治期の低湿地データは<b>整備対象外</b>です`;
   landEl.innerHTML=`<div class="land-line"><b class="land-alt">${head}</b></div>`
     + `<div class="land-den">${why}</div>`
-    + sub(v.scope==="building"?`建物 ${v.total} 件は出ています${v.lf?` ／ ${v.lf}`:""}`:v.lf);
+    + sub(v.scope==="building"?`建物 ${v.total} 件は出ています${v.lf?` ／ ${v.lf}`:""}`:v.lf)
+    + (v.land?`<div class="land-sub">この範囲で最も多い区分: <b>${esc(v.land.name)}</b>（${v.land.pct}%）</div>`:"");
 }
 
 function showResult(){

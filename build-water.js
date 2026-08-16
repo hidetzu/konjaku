@@ -23,13 +23,27 @@ const BBOX = { s: 35.6480, w: 139.7880, n: 35.6620, e: 139.8060 };
 // 配信するのは public/ だけなので、そこへ直接書く（スクリプトからの相対＝cwd に依存しない）
 const OUT = new URL(`public/data/${NAME}-water.geojson`, import.meta.url);
 
-// 「水」とみなす区分。凡例 lw_legend.pdf の配色より。
+// 凡例 lw_legend.pdf の配色。水域だけでなく、範囲内で最も多い区分も集計する。
 // 干潟・砂浜は満潮時に海面下になる地形なので水に含める。
-const WATER_RGB = [
-  [147, 200, 254], // 河川・湖沼・海面
-  [209, 234, 255], // 干潟・砂浜
+const CLASSES = [
+  { rgb: [254, 227, 200], name: "砂礫地" }, { rgb: [254, 200, 200], name: "泥地" },
+  { rgb: [228, 172, 123], name: "泥炭地" }, { rgb: [200, 200, 228], name: "湿地" },
+  { rgb: [209, 234, 255], name: "干潟・砂浜", water: true },
+  { rgb: [147, 200, 254], name: "河川・湖沼・海面", water: true },
+  { rgb: [251, 247, 176], name: "田" }, { rgb: [225, 227, 118], name: "深田" },
+  { rgb: [227, 227, 200], name: "塩田" }, { rgb: [162, 222, 162], name: "草地" },
+  { rgb: [173, 200, 147], name: "荒地" }, { rgb: [119, 227, 201], name: "ヨシ" },
+  { rgb: [173, 255, 173], name: "茅" }, { rgb: [144, 73, 11], name: "堤防" },
 ];
 const TOL = 60;
+function classify(r, g, b) {
+  let best = null, distance = Infinity;
+  for (const c of CLASSES) {
+    const d = (c.rgb[0] - r) ** 2 + (c.rgb[1] - g) ** 2 + (c.rgb[2] - b) ** 2;
+    if (d < distance) { distance = d; best = c; }
+  }
+  return Math.sqrt(distance) <= TOL ? best : null;
+}
 
 function decodePNG(buf) {
   let p = 8, w = 0, h = 0, ct = 0;
@@ -80,7 +94,8 @@ console.log(`タイル ${x1 - x0 + 1} x ${y1 - y0 + 1} 枚  → ${TW} x ${TH} px
 
 // --- 二値マスク ---
 const mask = new Uint8Array(TW * TH);
-let waterPx = 0, missing = 0;
+const classCounts = Object.fromEntries(CLASSES.map((c) => [c.name, 0]));
+let waterPx = 0, classifiedPx = 0, transparentPx = 0, unknownPx = 0, missing = 0;
 
 for (let ty = y0; ty <= y1; ty++) {
   for (let tx = x0; tx <= x1; tx++) {
@@ -91,14 +106,12 @@ for (let ty = y0; ty <= y1; ty++) {
     for (let y = 0; y < 256; y++) {
       for (let x = 0; x < 256; x++) {
         const i = (y * img.w + x) * 4;
-        if (img.data[i + 3] === 0) continue;
+        if (img.data[i + 3] === 0) { transparentPx++; continue; }
         const [R, G, B] = [img.data[i], img.data[i + 1], img.data[i + 2]];
-        for (const [wr, wg, wb] of WATER_RGB) {
-          if (Math.hypot(R - wr, G - wg, B - wb) <= TOL) {
-            mask[(oy + y) * TW + (ox + x)] = 1; waterPx++;
-            break;
-          }
-        }
+        const c = classify(R, G, B);
+        if (!c) { unknownPx++; continue; }
+        classCounts[c.name]++; classifiedPx++;
+        if (c.water) { mask[(oy + y) * TW + (ox + x)] = 1; waterPx++; }
       }
     }
   }
@@ -147,7 +160,11 @@ await writeFile(OUT, JSON.stringify({
     source: "国土地理院「明治期の低湿地」タイルより生成",
     classes: "河川・湖沼・海面 / 干潟・砂浜",
     waterRatio: +(waterPx / (TW * TH)).toFixed(4),
-    note: "ラスタ画素を二値化し、重ならない矩形に分解したもの。位置精度は原典に依存する。",
+    classCounts,
+    classifiedPixels: classifiedPx,
+    transparentPixels: transparentPx,
+    unknownPixels: unknownPx,
+    note: "ラスタ画素を分類し、水域だけを重ならない矩形に分解したもの。位置精度は原典に依存する。",
   },
   features,
 }));
