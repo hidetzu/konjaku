@@ -19,6 +19,8 @@
 
 ## 動かす
 
+Node.js 22 以上を使います。
+
 ```
 node serve.js   # → http://localhost:8081
 ```
@@ -43,7 +45,8 @@ npm i --no-save playwright@1.62.1 && npx playwright install chromium
 ⚠ **`npm run check` だけでは足りません。** 実際に不具合を捕まえているのは実描画のほうが多いです。
 
 ⚠ **`npm run check-search` は国土地理院の住所検索を 42 回叩きます。**
-手元で何度も回さないでください。
+⚠ **`npm run render` も、国土地理院のタイルを実際に読みます。**
+どちらも手元で繰り返し回さないでください（`docs/SPEC.md`「地理院への負荷は自分の請求とは別に見る」）。
 
 ## 変更は小さく
 
