@@ -193,20 +193,41 @@ const whitePng = (size = 256) => {
 };
 const eraRoute = (id) => `**://cyberjapandata.gsi.go.jp/xyz/${id}/**`;
 
+// 段が**確定する**まで待つ。
+// ⚠ `/peel` は写真の判定を待つあいだ、いったん全 9 段を仮に出す
+//   （peel3d.js: timelineReady=false の区間。共有先で「一度戻された」ように見せないため）。
+//   peelReady が見ている #status は**水域と建物**の話で、写真の年代とは別の経路なので、
+//   **#status が埋まった時点では、段はまだ仮のことがある**。
+//   実測（2026-08-17 / 豊洲 / 375×667）: peelReady 直後は timelineReady=false。
+// ⚠ 建物を事前計算して静的に配るようになり #status が速くなったぶん、
+//   仮の段を読む確率が上がった。**手元では 2 件が落ち、CI では通っていた**
+//   ＝落ちたり通ったりする検査で、いずれ CI でも落ちるものだった。
+const timelineSettled = (page) => page.waitForFunction(() => {
+  // ⚠ 名前が変わったときに**黙って素通りさせない**。見えないなら落とす
+  //   （`typeof … !== "undefined" && …` と書くと、消えた日から何も待たなくなる）
+  if (typeof timelineReady === "undefined")
+    throw new Error("peel3d.js の timelineReady が見えない（段の確定を待てていない）");
+  return timelineReady === true;
+}, null, { timeout: 60000 });
+
 // 段のラベルを、実際にスライダーを動かして読む。
 // ⚠ #track .lab は1つおきにしか文字を出さないので、DOM の文字だけ数えると足りない。
 //   ⚠ 読むだけのつもりでも、動かせば地図はタイルを取りに行く。
 //     要求数を数えるケースでは使わないこと。
-const stepLabels = (page) => page.evaluate(() => {
-  const el = document.getElementById("t"), max = Number(el.max), out = [];
-  const keep = el.value;
-  for (let v = 0; v <= max; v += 100) {
-    el.value = String(v); el.dispatchEvent(new Event("input"));
-    out.push(document.querySelector("#era .y").textContent.trim());
-  }
-  el.value = keep; el.dispatchEvent(new Event("input"));
-  return out;
-});
+const stepLabels = async (page) => {
+  // 仮の段を読まない。ここ1か所で待てば、段を読むケース全部が同じ約束になる
+  await timelineSettled(page);
+  return page.evaluate(() => {
+    const el = document.getElementById("t"), max = Number(el.max), out = [];
+    const keep = el.value;
+    for (let v = 0; v <= max; v += 100) {
+      el.value = String(v); el.dispatchEvent(new Event("input"));
+      out.push(document.querySelector("#era .y").textContent.trim());
+    }
+    el.value = keep; el.dispatchEvent(new Event("input"));
+    return out;
+  });
+};
 // 建物の高さの式に埋まっている時間座標（tau）を読む。
 // ⚠ ここが「表示位置」に化けていないことが、この修正の肝。
 const tauNow = (page) => page.evaluate(() => {
@@ -2857,8 +2878,10 @@ const CASES = [
     viewport: { width: 375, height: 667 }, hasTouch: true,
     async check(page) {
       await peelReady(page);
-      await page.waitForFunction(() => document.querySelectorAll("#track .tick").length > 1,
-        null, { timeout: 60000 });
+      // ⚠ 「目盛りが2つ以上ある」では足りない。仮の段でも満たすので、
+      //   直後に段が組み直されると、掴んだラベルが外れて boundingBox() が null になる
+      //   （実測 2026-08-17: ここが「年代帯の右端ラベルが無い」で落ちていた）。
+      await timelineSettled(page);
       const max = await page.$eval("#t", (e) => Number(e.max));
       await page.$eval("#t", (e) => { e.value="0"; e.dispatchEvent(new Event("input")); });
       const target = await page.locator("#track .lab.at-end").boundingBox();
@@ -2894,8 +2917,8 @@ const CASES = [
     viewport: { width: 375, height: 667 }, hasTouch: true,
     async check(page) {
       await peelReady(page);
-      await page.waitForFunction(() => document.querySelectorAll("#track .tick").length > 1,
-        null, { timeout: 60000 });
+      // 同じ穴を残さない。仮の段の上で座標を測ると、組み直しで的がずれる
+      await timelineSettled(page);
       // 文字は1つおきに間引かれているので、**文字のあるラベル**だけを見る
       const labs = await page.$$eval("#track .lab", (els) => els.map((e) => {
         const r = e.getBoundingClientRect();
