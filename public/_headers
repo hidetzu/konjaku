@@ -47,6 +47,14 @@
   Cache-Control: public, max-age=86400
 /data/toyosu-water.geojson
   Cache-Control: public, max-age=86400
+# 配信中の版（npm run build が作る。scripts/version.mjs）。
+# ⚠ **no-store**。監視や curl が古い版を「いまの本番」と読むと、
+#   「どの commit から出たか」の照合そのものが嘘になる。
+#   must-revalidate（＝持ってよいが毎回確かめる）ではなく、持たせない。
+#   ⚠ Cache API は HTTP の鮮度を見ないので、ヘッダだけでは Service Worker に効かない。
+#     sw.js が持たないことは scripts/check.mjs が見ている。
+/version.json
+  Cache-Control: no-store
 /*.html
   Cache-Control: public, max-age=0, must-revalidate
 /

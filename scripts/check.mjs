@@ -402,6 +402,100 @@ head("2.5. Service Worker の版");
   }
 }
 
+// ---------- 2.6 配信中の版 ----------
+// ⚠ ここも「本番でしか完結しない」検査。version.json は生成物で Git に入らないので、
+//   ここで見られるのは**仕組みが繋がっているか**まで。
+//   本番に出ている版が main の HEAD と一致することは、デプロイ後に
+//   `curl -s https://konjaku.hidetzu.work/version.json` と照合して確かめる。
+head("2.6. 配信中の版（/version.json）");
+{
+  // ⚠ 版の正しさの定義は scripts/version.mjs に1つだけ置いてある。
+  //   ここで字面を写すと、片方だけ直したときに検査が通ってしまう。
+  const { versionJson } = await import("./version.mjs");
+  const SHA = "0123456789abcdef0123456789abcdef01234567";
+
+  try {
+    const v = versionJson(SHA, "main");
+    (Object.keys(v).join(",") === "commit,branch" && v.commit === SHA && v.branch === "main")
+      ? ok(`正常な commit と branch から版を作れる（${JSON.stringify(v)}）`)
+      : bad(`版の形が仕様と違う: ${JSON.stringify(v)}（commit と branch の2つ）`);
+  } catch (e) {
+    bad(`正常な commit と branch で版を作れない: ${e.message}`);
+  }
+
+  // ⚠ **通ってはいけない値で、本当に落ちること。**
+  //   短縮 SHA を通すと「GitHub の HEAD と一致するか」を機械で照合できなくなる。
+  const nope = [
+    ["短縮 SHA", "0123456", "main"],
+    ["大文字混じり", SHA.toUpperCase(), "main"],
+    ["16進でない", "z".repeat(40), "main"],
+    ["空の commit", "", "main"],
+    ["commit が無い", undefined, "main"],
+    ["空の branch", SHA, ""],
+    ["branch が無い", SHA, undefined],
+  ];
+  const through = nope.filter(([, c, b]) => {
+    try { versionJson(c, b); return true; } catch { return false; }
+  });
+  through.length
+    ? bad(`版の検査を素通りする値がある: ${through.map(([n]) => n).join("、")}`
+        + "（不正な版のまま build が通り、本番が嘘の commit を名乗る）")
+    : ok(`通してはいけない値 ${nope.length} 通りで、版を作れない`);
+
+  // 仕組みの結線。⚠ Workers Builds は build に `npm run build`、
+  //   deploy に `npx wrangler deploy` を設定してある（そこは Cloudflare 側の設定で、
+  //   ここからは見えない。⚠ **この検査では確かめられない**）。
+  const pkg = JSON.parse(await readFile(join(ROOT, "package.json"), "utf8"));
+  /version\.mjs/.test(pkg.scripts?.build ?? "")
+    ? ok(`npm run build が版を作る（${pkg.scripts.build}）`)
+    : bad(`npm run build が scripts/version.mjs を呼んでいない: ${JSON.stringify(pkg.scripts?.build)}`);
+
+  const ignored = (await readFile(join(ROOT, ".gitignore"), "utf8"))
+    .split("\n").some((l) => l.trim() === "public/version.json");
+  ignored ? ok(".gitignore が public/version.json を外している")
+          : bad(".gitignore に public/version.json が無い（手元の版を commit すると、配信物の版として名乗られる）");
+
+  // ⚠ 書いてあるだけでなく、**実際に追跡されていない**こと
+  try {
+    const tracked = execFileSync("git", ["ls-files", "--", "public/version.json"],
+      { cwd: ROOT, encoding: "utf8" }).trim();
+    tracked ? bad(`public/version.json が Git に入っている（生成物。配信物と食い違う版を名乗る）`)
+            : ok("public/version.json は Git に入っていない");
+  } catch (e) {
+    warn(`Git の追跡状況を確かめられなかった: ${String(e.message).split("\n")[0]}`);
+  }
+
+  // ⚠ no-store。古い版を「いまの本番」と読むと、照合そのものが嘘になる。
+  const hdr = await readFile(join(PUB, "_headers"), "utf8");
+  const noStore = (() => {
+    let cur = null;
+    for (const raw of hdr.split("\n")) {
+      const line = raw.replace(/\s+$/, "");
+      if (!line.trim() || line.trim().startsWith("#")) continue;   // ⚠ コメントを先に落とす
+      if (/^\//.test(line)) { cur = line.trim(); continue; }
+      if (cur === "/version.json" && /^\s*Cache-Control:/i.test(line)) return /no-store/i.test(line);
+    }
+    return false;
+  })();
+  noStore ? ok("_headers が /version.json を no-store にしている")
+          : bad("_headers の /version.json に Cache-Control: no-store が無い（古い版が「いまの本番」として読まれる）");
+
+  // 手元に生成物があるときは、中身も見る（CI には無い。**無いことを緑と呼ばない**）
+  const raw = await readFile(join(PUB, "version.json"), "utf8").catch(() => null);
+  if (raw === null) ok("public/version.json は手元に無い（生成物。ここでは中身を見ていない）");
+  else {
+    try {
+      const v = JSON.parse(raw);
+      versionJson(v.commit, v.branch);
+      Object.keys(v).join(",") === "commit,branch"
+        ? ok(`手元の public/version.json は仕様どおり（${v.commit.slice(0, 7)} / ${v.branch}）`)
+        : bad(`public/version.json の鍵が commit,branch ではない: ${Object.keys(v).join(",")}`);
+    } catch (e) {
+      bad(`public/version.json が仕様を満たしていない: ${e.message}`);
+    }
+  }
+}
+
 // ---------- 3. 内部リンク ----------
 head("3. 内部リンク");
 {
@@ -536,9 +630,11 @@ for (const f of htmlFiles) {
     const line = raw.replace(/\s+$/, "");
     if (!line.trim() || line.trim().startsWith("#")) continue;
     if (/^\//.test(line)) { cur = line.trim(); continue; }
-    if (cur && /Cache-Control/i.test(line) && /must-revalidate/i.test(line)) strict.push(cur);
+    // ⚠ no-store も同じ側に入れる（＝持たせない。must-revalidate より強い約束）。
+    //   /version.json がこれ。SW が持つと、古い版が「いまの本番」として読まれる。
+    if (cur && /Cache-Control/i.test(line) && /must-revalidate|no-store/i.test(line)) strict.push(cur);
   }
-  if (!strict.length) bad("_headers から must-revalidate のパスを読めない（この検査が何も見ていない）");
+  if (!strict.length) bad("_headers から must-revalidate / no-store のパスを読めない（この検査が何も見ていない）");
   else {
     // sw.js の判定を実際に動かす。**書いてある字面ではなく、動きで見る。**
     const { runInNewContext } = await import("node:vm");
@@ -574,9 +670,9 @@ for (const f of htmlFiles) {
       const held = samples.filter((u) => fns.cacheable(u) && !versioned(u));
       held.length
         ? bad(`版の材料に入っていないのに、SW が版のキャッシュに入れる: ${held.join("、")}`
-            + `（_headers は毎回確認させると言っている。Cache API はヘッダの鮮度を見ないので、`
+            + `（_headers は古いものを返さないと言っている。Cache API はヘッダの鮮度を見ないので、`
             + `版が動かないまま中身が変わると古いものが出続ける）`)
-        : ok(`毎回確認させるもの（実ファイル ${samples.length} 本）のうち、`
+        : ok(`古いものを返さないと言っているもの（実ファイル ${samples.length} 本）のうち、`
             + `SW が持つのは版の材料に入っているものだけ（版の材料: ${extra.length} 本）`);
       // ⚠ 許可リストが**何も通さない**空振りになっていないこと
       fns.cacheable("/vendor/maplibre-gl.js")
