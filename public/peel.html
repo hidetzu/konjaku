@@ -91,8 +91,11 @@
     background:linear-gradient(180deg,rgba(20,60,110,.18),rgba(10,35,70,.42));mix-blend-mode:multiply}
 
   /* ============ HUD ============ */
+  /* ⚠ 下の余白は、地図の帰属表示（国土地理院・OpenStreetMap）の場所。実測 24px ＋ 2px。
+     ⚠ **負の margin で板を下げて相殺しない。** 一度そうして、板が帰属表示に 12px 食い込んだ
+       （2026-08-17）。空けた場所に何かを戻せば、空けた意味が無くなる。 */
   #hud{position:absolute;left:0;right:0;bottom:0;z-index:12;pointer-events:none;
-    padding:0 26px 22px;display:flex;flex-direction:column;align-items:center;gap:13px}
+    padding:0 26px 26px;display:flex;flex-direction:column;align-items:center;gap:13px}
   /* ============ 土地の答え（常時見える） ============ */
   /* ⚠ 年代（60px）より小さく、但し書き（12px）より大きい。この画面の中心の主張。
      ⚠ **画面の上に置く。** 下の HUD に足すと、板のぶんだけ HUD が上へ伸び、
@@ -374,7 +377,19 @@
        その分、開いたパネルの中身が下敷きにならないよう頭を空ける。 */
   #panel:not(.hide){padding-top:64px}
   a{color:var(--action)}
-  .maplibregl-ctrl-attrib{display:none!important}
+  /* ⚠ **帰属表示を消さない。** 以前ここに `display:none!important` を置いていた（2026-08-17 に直した）。
+       消したうえで手書きの出典を**左パネルの中**に置いていたので、
+       パネルが閉じている状態（スマホの初期状態）では出典が 1 つも見えていなかった。
+       出典明示は地理院タイルの利用の条件、OSM は ODbL でクレジット必須。
+     ⚠ `#hud`（z-index 12）の裏に入らせない。出しただけでは足りず、一度隠れていた。
+       ⚠ `#hud` は `pointer-events:none` なので `elementFromPoint` では見つからない。
+         矩形の交差で見ること（検査もそうしてある）。 */
+  .maplibregl-ctrl-bottom-right{z-index:14}
+  .maplibregl-ctrl-attrib{background:rgba(12,16,22,.82)!important;backdrop-filter:blur(8px);
+    border-radius:6px 0 0 0;font-size:var(--fs-label);margin:0!important}
+  .maplibregl-ctrl-attrib,.maplibregl-ctrl-attrib a{color:#9aa5b1!important}
+  .maplibregl-ctrl-attrib a:hover{color:var(--action)!important}
+  .maplibregl-ctrl-attrib-button{background-color:rgba(154,165,177,.9)!important}
   .maplibregl-ctrl-group{background:rgba(12,16,22,.8)!important;backdrop-filter:blur(10px);
     border:1px solid rgba(255,255,255,.14)}
   /* ⚠ MapLibre の +/− は白背景を前提にした濃い色のアイコン。
@@ -385,7 +400,13 @@
   .maplibregl-ctrl-group button{width:var(--tap)!important;height:var(--tap)!important}
   @media(max-width:680px){
     #panel{width:calc(100% - 28px);max-height:58%}
-    #era .y{font-size:var(--fs-hero)}#hud{padding:0 12px 12px;gap:9px}
+    /* ⚠ 狭い幅でも帰属表示の場所を空ける（12 → 26px）。
+       ⚠ **この 14px は HUD を押し上げる。** 320×640 では HUD が画面中央（＝いま調べている
+         地点）をもともと覆っており（実測: 直す前 308 / 中央 320）、そこが 294 になる。
+         ⚠ **これは別の不具合**（HUD が小さい画面で高すぎる）で、ここでは直していない。
+         出典明示は利用の条件なので、先にこちらを満たす。
+         ⚠ 375×667 は 354 → 340 で、中央 334 より下のまま（覆っていない）。 */
+    #era .y{font-size:var(--fs-hero)}#hud{padding:0 12px 26px;gap:9px}
     #era{padding:7px 10px 9px}
     .era-panel-head{min-height:60px}
     #era .era-readout{min-width:128px;padding:0 68px}
@@ -453,15 +474,26 @@
   </div>
 
   <div class="sec">
+    <!-- ⚠ **常に見えている出典は、地図の帰属表示のほう**（peel3d.js の ATTR_GSI / ATTR_OSM から
+         MapLibre が組む）。ここはリンクを辿れる詳しい版。
+         ⚠ 同じ問いに 2 か所で答えているので、**機械で突き合わせる**（掟3）。
+           `npm run check` が peel3d.js の出どころと、ここに書いた名前を照合する。
+           片方だけ増やしたり消したりすると落ちる。 -->
     <div class="label">出典</div>
     <div class="hint">
       <a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" rel="noopener">国土地理院</a>
-      ・<a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>（ODbL）
-      　<span style="color:#3d4650">|</span>　作 <a href="https://github.com/hidetzu" target="_blank" rel="noopener">hidetzu</a>
+      ・© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors（ODbL）
       <!-- ⚠ この画面にはプライバシーの説明が1つも無かった（2026-08-15 に判明）。
            /peel も判定すると URL に ?q=<地名>&ll=<座標> を載せる（peel3d.js の replaceState）ので、
            **トップと同じことが起きる**。同じ約束をする画面で、説明が片方だけ無いのはおかしい。
            ⚠ 文言は index.html と同じものを置き、食い違わないことを npm run check が見る。 -->
+      <!-- ⚠ **「作」は出典と同じ行に置かない**（2026-08-17）。
+           出典は利用条件で置いているもの、作者はそうではないもの。
+           同じ行に並べると「hidetzu も出典」と読めるし、出典の重みが下がる。 -->
+      <div style="margin-top:7px;padding-top:7px;border-top:1px solid var(--line);
+        font-size:var(--fs-label);color:var(--ink-faint)">
+        作 <a href="https://github.com/hidetzu" target="_blank" rel="noopener">hidetzu</a>
+      </div>
       <div data-privacy-lead style="margin-top:6px;font-size:var(--fs-note);line-height:1.7">
         <b>利用状況の計測には、検索した地名や座標を送りません。</b>Cookie も使いません。
       </div>

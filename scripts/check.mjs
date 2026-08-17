@@ -2383,6 +2383,55 @@ head("9. 画面の言葉");
     }
   }
   {
+    // ⚠ **出典は 2 か所にある。同じ問いに答えるので、機械で突き合わせる**（掟3）。
+    //   1) 地図の帰属表示 … peel3d.js の ATTR_GSI / ATTR_OSM から MapLibre が組む。**常に見えている側**
+    //   2) 左パネルの「出典」 … 手書きの HTML。リンクを辿れる詳しい版
+    //   ⚠ 片方だけ増やす・消すと、画面と画面で答えが変わる。
+    //     実際に破れていた: OSM が peel3d.js 側に無く、**地図の帰属表示に OSM が出ていなかった**
+    //     （2026-08-17。パネル側には書いてあったので、字面だけ見ると揃っているように見えた）。
+    const j = src["peel3d.js"] ?? "", ph = src["peel.html"] ?? "";
+    if (!j || !ph) bad("peel3d.js か peel.html が読めない（この検査が何も見ていない）");
+    else {
+      // peel3d.js の出どころ（ATTR_* の中身）
+      // ⚠ **宣言があるだけでは足りない。実際に地図へ渡っているものだけを数える。**
+      //   最初「const ATTR_* を宣言しているか」で見ていたら、名前を変えて
+      //   `attribution:` から外しても緑のままだった（2026-08-17 に壊して気づいた）。
+      const decl = new Map([...j.matchAll(/const (ATTR_\w+)\s*=\s*'([^']*)'/g)]
+        .map((m) => [m[1], m[2]]));
+      // `attribution: X` の X として使われている名前だけ拾う
+      const used = new Set([...j.matchAll(/attribution\s*:\s*(ATTR_\w+|ATTR)\b/g)].map((m) => m[1]));
+      // `const ATTR = ATTR_GSI` のような別名を1段だけ辿る
+      for (const [k, v] of [...j.matchAll(/const (ATTR\w*)\s*=\s*(ATTR_\w+)\s*;/g)]
+        .map((m) => [m[1], m[2]])) if (used.has(k)) used.add(v);
+      const attrs = [...used].filter((k) => decl.has(k)).map((k) => ({ key: k, html: decl.get(k) }));
+      const need = [
+        { name: "国土地理院", why: "出典明示が利用の条件" },
+        { name: "OpenStreetMap", why: "ODbL でクレジット必須" },
+      ];
+      const joined = attrs.map((a) => a.html).join(" ");
+      const missJs = need.filter((n) => !joined.includes(n.name));
+      // パネル側は、常に見えている側と**同じ名前**を出していること
+      // ⚠ 正規表現で `</div>` まで取ろうとしたら、いちばん近い `</div>` が 600 文字より
+      //   先にあって取れなかった（2026-08-17）。**索引で切り出す。**
+      const anchor = '<div class="label">出典</div>';
+      const at = ph.indexOf(anchor);
+      const panel = at < 0 ? "" : ph.slice(at + anchor.length, at + anchor.length + 400);
+      const missPanel = need.filter((n) => !panel.includes(n.name));
+      // ⚠ ODbL は「© … contributors」の形が要る。名前だけでは足りない
+      const noCopyJs = !/©/.test(joined), noCopyPanel = !/©/.test(panel);
+      if (!attrs.length) bad("peel3d.js で attribution に渡している ATTR_* が無い（地図の帰属表示の出どころ）");
+      else if (missJs.length)
+        bad(`地図の帰属表示に ${missJs.map((n) => `${n.name}（${n.why}）`).join("・")} が無い`);
+      else if (!panel) bad('peel.html の左パネルに「出典」の節が無い');
+      else if (missPanel.length)
+        bad(`左パネルの出典に ${missPanel.map((n) => n.name).join("・")} が無い（地図側にはある）`);
+      else if (noCopyJs || noCopyPanel)
+        bad(`ODbL のクレジット（©）が無い: ${noCopyJs ? "地図の帰属表示" : ""}${noCopyJs && noCopyPanel ? "・" : ""}${noCopyPanel ? "左パネル" : ""}`);
+      else ok(`/peel の出典は 2 か所で一致（${need.map((n) => n.name).join("・")}／© つき）`
+        + `／地図へ渡しているのは ${attrs.map((a) => a.key).join("・")}`);
+    }
+  }
+  {
     // ⚠ **テンプレートリテラルの中に書いた HTML コメントに、バッククォートを入れない。**
     //   バッククォートはそこで文字列を終わらせるので、続きが JS として読まれる。
     //   3 回踏んでいる（2026-08-17 に 2 回）。最後は「⚠ 中身は 〈backtick〉<i>〈backtick〉 だけ
