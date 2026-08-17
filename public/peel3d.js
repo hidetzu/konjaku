@@ -178,36 +178,19 @@ async function sampleSwale(lon,lat){
 // 取り込み済みの建物タイル（z14）。
 // ⚠ 束ねない。実測で、いちばん重い z14 タイルが 6,510件 / gz 174KB。
 //   z12 に束ねると1束 約3.9MB になり、600m四方を見るために引かせる量ではない。
-let blAt=null, blTrunc=false, blIdxP=null;
-let assetManifestP=null;
-function assetManifest(){
-  if(!assetManifestP) assetManifestP=fetch("./data/assets.json",{cache:"no-cache"})
-    .then(r=>r.ok?r.json():null).catch(()=>null);
-  return assetManifestP;
-}
-function blIndex(){
-  if(!blIdxP) blIdxP=assetManifest().then(m=>{
-    const spec=m?.layers?.buildings;
-    if(!spec?.index||!spec?.tile) return null;
-    return fetch(spec.index,{cache:"no-cache"}).then(r=>r.ok?r.json():null)
-      .then(index=>index?{...index,__tile:spec.tile}:null);
-  }).catch(()=>null);
-  return blIdxP;
-}
-const z14of=(lon,lat)=>{ const n=2**14, r=lat*Math.PI/180;
-  return { x:Math.floor((lon+180)/360*n),
-           y:Math.floor((1-Math.log(Math.tan(r)+1/Math.cos(r))/Math.PI)/2*n) }; };
+let blAt=null, blTrunc=false;
+// ⚠ **「取り込んであるか」の判定は ground.js の1か所**（掟: 同じ問いに答える実装を2つ持たない）。
+//   トップの「この場所を深掘り」を出すかどうかも、同じ答えで決めている。
+//   ここに書き写すと、**トップが「深掘りできる」と言った場所で、こちらが
+//   Overpass に落ちる**状態を作れてしまう。
+//   ⚠ peel.html が ground.js を peel3d.js より先に読み込んでいる。
 async function loadBuildingTiles(bbox){
-  const idx=await blIndex();
-  if(!idx?.tiles) return null;
-  const a=z14of(bbox.w,bbox.n), b=z14of(bbox.e,bbox.s);
-  const need=[];
-  for(let x=a.x;x<=b.x;x++) for(let y=a.y;y<=b.y;y++) need.push(`${x}/${y}`);
-  // 1枚でも見ていなければ、静的では答えない
-  for(const k of need) if(!idx.tiles[k]) return null;
-  const got=await Promise.all(need.map(k=>{
+  await KonjakuGround.load();
+  const spec=KonjakuGround.tilesFor(bbox);   // 1枚でも欠けたら null（静的では答えない）
+  if(!spec) return null;
+  const got=await Promise.all(spec.keys.map(k=>{
     const [x,y]=k.split("/");
-    const path=idx.__tile.replace("{x}",x).replace("{y}",y);
+    const path=spec.tile.replace("{x}",x).replace("{y}",y);
     return fetch(path).then(r=>r.ok?r.json():null).catch(()=>null);
   }));
   if(got.some(g=>!g)) return null;
@@ -579,7 +562,9 @@ let area=null;   // 現在のエリアの集計
 let marker=null; // 調べている地点の印
 
 // 約1.6km四方。Overpass の負荷とタイル枚数のバランス。
-const HALF_LON=0.0090, HALF_LAT=0.0070;
+// ⚠ **値は ground.js が持つ。**ここで別に宣言すると、トップが「下地がある」と判定する
+//   範囲と、こちらが集計する範囲がずれる（＝導線を出したのに建物が出ない場所ができる）。
+const {HALF_LON,HALF_LAT}=KonjakuGround;
 
 // 再試行ボタン。取れなかったときは必ず復帰手段を添える（掟: 取れなかったを「無い」と言わない）
 // ⚠ 地名は共有された URL の q か、地理院の応答から来る。属性の中も HTML なので esc を通す

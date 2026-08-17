@@ -2117,7 +2117,8 @@ const CASES = [
       // (4) 本命（3D）が、外部リンクと同じ顔で埋もれていないこと
       const peel = await page.evaluate(() => {
         const el = [...document.querySelectorAll("#list .it")]
-          // ⚠ 語で探さない。名乗りは実装に合わせて変わる（「時間をさかのぼる（3D）」→「立体で見る」）。
+          // ⚠ 語で探さない。名乗りは実装に合わせて変わる
+          //   （「時間をさかのぼる（3D）」→「立体で見る」→「この場所を深掘り」）。
           //   この検査が見たいのは「本命の行が埋もれていないか」なので、行き先で探す
           .find((e) => (e.getAttribute("href") ?? "").startsWith("./peel"));
         if (!el) return null;
@@ -2153,7 +2154,7 @@ const CASES = [
       //     書けないなら、それは足しすぎ。
       must(peel.y < 1260, `本命が埋もれている: y=${peel.y}（実測 手元 1186 / CI は約 +10px。上限 1260）`);
       return `☆は y=${mine.y} に開く／バッジ ${badges} 個から根拠へ／店は打つまで出ない／`
-        + `立体で見るは y=${peel.y}（判定の下から ${gap}px。環境で 10px 動くので相対で見る）`;
+        + `3D への行は y=${peel.y}（判定の下から ${gap}px。環境で 10px 動くので相対で見る）`;
     },
   },
   // ---- この年代を聞く ----
@@ -4566,16 +4567,68 @@ const CASES = [
       await page.waitForFunction(() => document.querySelectorAll("#list .tx b").length > 0,
         null, { timeout: 20000 });
       const acted = (await page.locator("#list").innerText()).trim();
-      must(/立体で見る/.test(acted), `場所を選んでも行動一覧が出ていない: ${JSON.stringify(acted.slice(0, 40))}`);
+      must(/この場所を深掘り/.test(acted), `場所を選んでも行動一覧が出ていない: ${JSON.stringify(acted.slice(0, 40))}`);
       await page.waitForTimeout(2500);         // ⚠ ここで古い応答が届く
       const after = (await page.locator("#list").innerText()).trim();
       must(!/渋谷区/.test(after),
         `場所を選んだのに、行動一覧が古い候補で上書きされた: ${JSON.stringify(after.slice(0, 40))}`);
       // ⚠ 「変わらないこと」は見ない。判定が進むと行動一覧は**正当に増える**
       //   （最初そう書いて落ちた）。見たいのは**行動一覧のままであること**。
-      must(/立体で見る/.test(after),
+      must(/この場所を深掘り/.test(after),
         `行動一覧でなくなっている: ${JSON.stringify(after.slice(0, 40))}`);
       return `行動一覧のまま（${JSON.stringify(after.slice(0, 18))}）`;
+    },
+  },
+  {
+    // ⚠ **3D の下地が無い場所に、深掘りの導線を出さない。**
+    //   （掟: 押しても何も起きない導線を置かない）
+    //
+    //   取り込んであるのは z14 タイル 87 枚・7 かたまり（実測 2026-08-18）。
+    //   そこから外れると /peel は Overpass に落ちる。⚠ **必ず失敗するわけではない**
+    //   （名古屋で 8 秒・5,845 件が返った回がある）。問題は**出るか出ないかが相手次第**なこと。
+    //
+    // ⚠ **判定は ground.js の1か所。** トップと /peel が同じ答えを使う。
+    //   別々に持つと「トップは深掘りできると言ったのに、/peel は Overpass に落ちる」が作れる。
+    //
+    // ⚠ **「読めなかった」と「無い」を混ぜない**（掟: 取得できなかった ≠ 存在しなかった）。
+    //   索引そのものを引けないときは、導線を**出したまま**にする。ここも一緒に見る。
+    //
+    // ⚠ 行動一覧だけでなく**根拠カード**も見る。片方だけ消すと、
+    //   一覧に無いのに根拠パネルからは行ける状態になる。
+    name: "3D の下地が無い場所には、深掘りの導線を出さない", path: "/",
+    async check(page) {
+      const NAGOYA = "q=%E5%90%8D%E5%8F%A4%E5%B1%8B&ll=35.17090,136.88160";
+      const look = async () => {
+        await page.waitForFunction(
+          () => /です|ません/.test(document.querySelector("#verdict .v-head")?.innerText ?? ""),
+          null, { timeout: 45000 });
+        await page.waitForTimeout(1200);
+        return page.evaluate(() => ({
+          list: (document.getElementById("list")?.innerText ?? "").replace(/\s+/g, " "),
+          listPeel: document.querySelectorAll('#list [href^="./peel"]').length,
+          ownPeel: document.querySelectorAll('#own a[href^="./peel"]').length,
+        }));
+      };
+      // (1) 取り込んである場所（豊洲）では出る
+      await page.goto(`${BASE}/?${TOYOSU}`, { waitUntil: "domcontentloaded" });
+      const yes = await look();
+      must(yes.listPeel === 1, `取り込んである場所で導線が出ていない: 行動一覧 ${yes.listPeel} 本`);
+      must(/この場所を深掘り/.test(yes.list), `名乗りが「この場所を深掘り」でない: ${yes.list.slice(0, 60)}`);
+      must(yes.ownPeel === 1, `取り込んである場所で、根拠カードの導線が出ていない: ${yes.ownPeel} 本`);
+      // (2) 取り込んでいない場所（名古屋。z14 タイル 4 枚とも索引に無い）では出ない
+      await page.goto(`${BASE}/?${NAGOYA}`, { waitUntil: "domcontentloaded" });
+      const no = await look();
+      must(no.listPeel === 0, `下地が無い場所に導線が出ている: 行動一覧 ${no.listPeel} 本`);
+      must(!/この場所を深掘り/.test(no.list), `下地が無い場所に名乗りが出ている: ${no.list.slice(0, 60)}`);
+      must(no.ownPeel === 0, `下地が無い場所に、根拠カードの導線が出ている: ${no.ownPeel} 本`);
+      // (3) ⚠ 索引を引けないときは「無い」と言わない。導線は出したまま
+      await page.route("**/data/assets.json", (r) => r.abort());
+      await page.goto(`${BASE}/?${NAGOYA}`, { waitUntil: "domcontentloaded" });
+      const unknown = await look();
+      must(unknown.listPeel === 1,
+        `索引を読めなかっただけなのに、導線を消している（取得できなかった ≠ 無い）: ${unknown.listPeel} 本`);
+      await page.unroute("**/data/assets.json");
+      return `取り込み済み 1 本（一覧・根拠とも）／未取り込み 0 本／索引を読めないときは 1 本のまま`;
     },
   },
   // ⚠ **別の語へ変えたときも、古い候補が出ない。**
