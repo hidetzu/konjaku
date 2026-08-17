@@ -2076,7 +2076,12 @@ let meiji=null;   // null=未選択 / {loading:true} / {text, water, cls}
 
 function renderVerdict(){
   const el=document.getElementById("verdict");
-  if(!current||!meiji){ el.style.display="none"; return; }
+  // ⚠ **隠すだけでなく、中身も捨てる。** 隠すだけだと前の土地の年代の段（実測 9 コマ）が
+  //   DOM に残り続ける。見えないので気づけないが、`#strip .f` を数えるものからは見えている。
+  //   ⚠ 判定を待っているあいだ（current はあるが meiji がまだ）は消さない。
+  //     消すと、いま出したばかりの「現在の写真」が一瞬で消える。
+  if(!current){ el.style.display="none"; el.replaceChildren(); return; }
+  if(!meiji){ el.style.display="none"; return; }
   el.style.display="";
   // ⚠ 判定を待ってから絵を出していたので、3G相当で **2.6秒、文字だけ**だった（実測）。
   //   座標は選んだ瞬間に分かっているので、**現在の写真は判定を待たずに出せる**。
@@ -2508,10 +2513,26 @@ function setMode(m){
   if(m==="action"){ items=buildActions("",current); renderList(); }
   else { items=[]; listEl.innerHTML=""; renderKbd(); }
 }
+// 場所を外す（✕）。
+// ⚠ **見えなくするのと、消すのは別。** 以前はここで `current` を捨てるだけで、
+//   前の場所の名前・年代の段・地図・URL が**そのまま残っていた**。
+//   見た目は場所未選択になるので気づけず、実測（2026-08-17 / 375×667 / 豊洲）では:
+//     ✕ の直後 … url=?q=豊洲&ll=…&era=swale ／ chipName「豊洲」／ #strip 9 コマ（非表示なだけ）
+//     再読み込み … **豊洲が復活する**
+//   `tmp/9/10` の状態遷移の契約「✕ → 結果・一覧・場所・古い非同期処理を消す」に反していた。
+// ⚠ URL も一緒に戻す。調べた場所を URL に載せているのは「戻る・共有する」ためなので、
+//   場所を外したなら載せる理由も消える（掟: 調べた場所は URL に載る、の裏返し）。
+//   ⚠ replaceState にする。pushState だと「戻る」で外したはずの場所へ戻ってしまう。
 document.getElementById("chipX").onclick=()=>{
   current=null; meiji=null;
+  // 前の土地の年代・地図・読み上げを持ち越さない
+  stopSay(); stopPlay(); dropMap();
+  frames=[]; eraIdx=0; wantEra=null; eraMiss=null; eraTicked=false;
+  evState=null; evTile=null;
+  document.getElementById("chipName").textContent="";
   document.getElementById("result").style.display="none";
   renderVerdict();
+  history.replaceState(null,"",location.pathname);
   setMode("place"); qEl.focus();
 };
 
