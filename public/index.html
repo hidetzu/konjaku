@@ -126,25 +126,17 @@
   .wrap{max-width:680px;margin:0 auto;padding:34px 18px 90px}
   header{margin-bottom:20px}
   h1{margin:0 0 3px;font-size:var(--fs-sign);letter-spacing:.05em;font-weight:500}
-  .lead{margin:0;font-size:var(--fs-note);color:var(--ink-dim)}
-  .lead b{color:var(--ink-dim);font-weight:500}
-  /* ⚠ 出所の名乗り（国土地理院）は .lead 本体が持つ。いまの時代、ここが差になる
-     （AIが推測したものではない）。弱めるための .src は、文を1行にしたときに用が済んだ */
-  /* 何が起きるかを、読ませずに見せる。5秒で「場所を調べる画面」と分かること。
-     ⚠ 枠も背景も hover も持たせない。押せる見た目にすると、押しても何も起きない導線になる */
-  .steps{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;margin-top:9px;
-    font-size:var(--fs-evidence);color:var(--ink-dim)}
-  .steps .st{display:inline-flex;align-items:center;gap:4px;white-space:nowrap}
-  .steps i{font-style:normal;font-size:var(--fs-badge);line-height:1}
-  .steps .ar{color:var(--ink-faint);margin-right:2px}
-  /* 場所が決まったら、リード文は用が済んでいる。実測でスマホ幅 79px（4行）あり、
-     そのぶん写真と判定文が下へ押し出されていた。
+  /* サブコピー。順位は h1（--fs-sign 19px）＞ここ＞但し書き（--fs-note 12px）。
+     ⚠ 12px（--fs-note）のままだと、画面に残った唯一の文が但し書きと同じ格になる。
+       ここは「次に何をすればよいか」を言う 1 文なので、本文の格で出す。
+     ⚠ 太字にも色付きにもしない。強いのは h1 と検索欄の 2 つで、ここは 3 番目 */
+  .lead{margin:0;font-size:var(--fs-body);color:var(--ink-dim)}
+  /* 場所が決まったら、サブコピーは用が済んでいる。「場所を検索して」と言い続けると、
+     もう選び終えた人に前の段の指示が残る（住所選択中の責務にサービス紹介は無い）。
      h1（＝この画面が答える問い）は残す。写真がその問いへの答えになっている。
      ⚠ ここも display で消すが、消えるのは「場所が決まったあと」＝タップの処理が
        終わったあとなので、入口の1タップは壊れない（.hint の事故と同じ轍は踏まない） */
-  /* ⚠ 導入の絵も一緒に畳む。残すと、答えが出たあとの画面で「これから何が起きるか」を
-       説明し続けることになる。検査（場所を選んだあとリード文が 0 個）とも揃える */
-  body.picked .lead,body.picked .steps{display:none}
+  body.picked .lead{display:none}
   /* サービス名。共有リンクから来た人が「何のサイトか」「戻る先」を持てるように */
   .brand{display:inline-flex;align-items:center;gap:6px;font-size:var(--fs-note);letter-spacing:.18em;
     color:var(--ink-dim);text-decoration:none;margin-bottom:6px}
@@ -269,7 +261,7 @@
   .share-msg{margin-top:8px;padding:6px 9px;border-radius:7px;font-size:var(--fs-note);
     background:rgba(126,224,165,.10);border-left:2px solid var(--evidence);color:#9ed3b4}
   .quick{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
-  /* 「例から見てみる」。行を独り占めさせて、地名の帯の見出しにする。
+  /* 「たとえば」。行を独り占めさせて、地名の帯の見出しにする。
      ⚠ 押せる見た目にしない（span のまま。掟: 押しても何も起きない導線を置かない） */
   .quick .q-lead{flex:0 0 100%;font-size:var(--fs-note);color:var(--ink-faint);margin-bottom:-1px}
   /* 地名の例は「何を打てばいいか分からない」を越えさせるためのもの。
@@ -280,6 +272,8 @@
   /* ⚠ 検索欄と**同じ強さ**で並べない。ここは主操作ではなく「何を打てばいいか」の例。
      実測（375×667）で 10 個・144px あり、枠線が判定カードと同じ var(--line) だったため、
      主ボタンが 11 個あるように見えていた。枠を外し、地の色をわずかに敷くだけにする。
+     ⚠ 弱めても 10 個は 3 行・169px を占めていたので、出す数そのものを 3 件にした
+       （選び方は下の TOP_EXAMPLE_IDS）。見た目を弱める話と、数を絞る話は別の手当て。
      ⚠ **当たり判定は下げない。** 見た目を弱めるのと、押しにくくするのは別のこと
        （下の @media (hover:none) の min-height はそのまま）。 */
   .quick button{padding:4px 11px;border:1px solid transparent;border-radius:999px;
@@ -704,40 +698,34 @@
   <!-- ⚠ 標高は「低地かどうか」に使うだけで、区分の判定には**使っていない**。
        区分は地形分類のポリゴンと明治期の低湿地タイルの画素だけで決まる。
        読んだものと使ったものを混ぜて書かない。 -->
-  <!-- ⚠ **何を読んでいるか**は最初の画面から消さない
-       （利用者役のエージェントによる検証で「グルメ検索? 不動産?」と受け取られた事故の再発防止。検査あり）。
-       「など」なのは、地理院タイルのほかに OpenStreetMap・Wikidata も使うようになったから。
-       ⚠ 説明文は 2 つに分かれていて、実測で 79px + 40px = 119px（375×667）あった。
-         そのぶん検索欄が y=240（画面の 36% 地点）まで押し下げられていたので、1 行にする。
-         削るのは説明であって、**何を読んでいるか**ではない（国土地理院は残す）。
-       ⚠ 「成り立ちを判定する」は下の図が言うので、ここでは言わない。
-         文と図で二度言うと、そのぶん検索欄が下がる（UI/UX レビュー 原則5「足す前に隠す」）。
-       ⚠ 「判定根拠まで確認できます」は初期画面から外した。
+  <!-- サブコピーは**1文だけ**。この画面の責務は「場所を1つ決めること」で、
+       土地の判定・年代・根拠・保存を説明する責務は持たない。
+       ⚠ ここで言うのは**次に何をすればよいか**であって、こちらの手口ではない。
+         以前ここには「国土地理院などのデータを実際に読んで判定します。」と
+         「🔍場所を探す →🗺成り立ちを判定 →📷昔の写真」の 3 段の図が並んでいた。
+         実測（2026-08-17 / 375×667）で説明が 2 つ・40px を占め、検索欄は y=164 にいた。
+         2 つは同じことを二度言っている（何が起きるか）ので、1 文に畳んだ。
+       ⚠ **何を読んでいるかを画面から消したわけではない。**
+         出所（国土地理院・OpenStreetMap・Wikidata）はフッターに常時出ており、
+         判定の中身は場所を選んだあとの判定カードと根拠が持つ。
+         最初の 5 秒に要らないものを、**後ろへ動かした**（掟: 必要になるまで見せない）。
+         ⚠ 消えていないことは実描画が見る（フッターに出典が出ていること）。
+       ⚠ 「判定根拠まで確認できます」も初期画面には置かない。
          根拠は**判定したあとにしか操作できない**ので、ここに置くと説明だけが増える
          （原則4「説明より操作」）。根拠の入口は判定カードの ? とフッターにある。 -->
-  <p class="lead"><b>国土地理院</b>などのデータを実際に読んで判定します。</p>
-  <!-- ⚠ 文だけでは 5 秒で伝わらない。何が起きるかを、読ませずに見せる。
-       出しているのは実際にできること 3 つだけ（掟: 根拠のないことは書かない）。
-       「いつ埋め立てられたか」のような、画素から出せないことは絵にもしない。
-       ⚠ **押せる見た目にしない。** 枠も hover も当たり判定も持たせない
-       （掟: 押しても何も起きない導線を置かない）。
-       ⚠ 絵文字は読み上げから外す（記号の名前が読まれるだけで、意味は隣の文字が持っている）。 -->
-  <!-- ⚠ 矢印は**次の語と同じ塊**に入れる。別々に置くと、折り返したときに
-       矢印だけが行末に取り残される（実測 375×667 で発生）。
-       語も詰める。何を判定するかは、すぐ上の文が言っている。 -->
-  <div class="steps">
-    <span class="st"><i aria-hidden="true">🔍</i>場所を探す</span>
-    <span class="st"><span class="ar" aria-hidden="true">→</span><i aria-hidden="true">🗺</i>成り立ちを判定</span>
-    <span class="st"><span class="ar" aria-hidden="true">→</span><i aria-hidden="true">📷</i>昔の写真</span>
-  </div>
+  <p class="lead">場所を検索して、その土地の時間をさかのぼる。</p>
 </header>
 
 <div class="scope" id="scope">
   <div class="chip"><span class="nm" id="chipName"></span><button class="x" id="chipX" title="場所を変える"><i>✕</i></button></div>
   <!-- placeholder は入力欄の可視幅（375px 幅の端末で 259px）に収まる長さにする。
        前の文言は 361px 必要で、肝心の「（例: 豊洲）」が切れて見えなかった。
+       ⚠ 「（例: 豊洲）」はここから外した。すぐ下に「たとえば ［豊洲］［渋谷］［広島］」が
+         出ており、同じ例を二度出していた。ここは**何を入れられるか**だけを言う。
+       ⚠ 場所が決まったあとの文言は setMode() が持っている。**2 か所ある**ので、
+         片方だけ直さない（住所未選択と住所選択中で入力欄の意味が違う）。
        補足は下の .hint に出す（入力欄に触れている間だけ） -->
-  <input id="q" placeholder="地名を入力（例: 豊洲）" autocomplete="off" autofocus>
+  <input id="q" placeholder="地名・住所を入力" autocomplete="off" autofocus>
   <button id="here" class="in-box" title="現在地から調べる">📍</button>
   <button id="mineToggle" class="mine-toggle in-box" title="この場所の評価とメモ"
           aria-expanded="false" style="display:none">☆</button>
@@ -2408,7 +2396,7 @@ function setMode(m){
   document.body.classList.toggle("picked",m==="action");
   qEl.placeholder = m==="action"
     ? `${current.title} で調べる（例: ごはん、公園、歯医者、昔）`
-    : "地名を入力（例: 豊洲）";
+    : "地名・住所を入力";      // ⚠ index.html の placeholder 属性と同じ文言にする
   // コマンド一覧は場所が決まった後の話で、先頭が「明治期の地形を見る」に固定されている。
   // 別の土地へ飛ばされる事故は起きないので、ここは従来どおり先頭を選んでおく。
   qEl.value=""; sel=m==="action"?0:-1;
@@ -2668,21 +2656,39 @@ const showResult=()=>{};
 //   選び方は scripts/survey.mjs の実測から。判定がばらけるように選んである
 //   （全部「昔は水」だと、どこを押しても同じ話になり、判定を疑えない）。
 const quickEl=document.getElementById("quick");
+// ⚠ **トップの住所未選択で出すのは 3 件だけ。**
+//   10 件を出していたとき、実測（2026-08-17 / 375×667）で 3 行・169px を占め、
+//   検索欄と同じ強さの入口が 10 個並んで見えていた（UI/UX レビュー 原則2「主役は1つ」）。
+//   ここは「おすすめ一覧」ではなく、**何を打てばいいか分からない人への入力例**なので、
+//   3 件で足りる。
+//   ⚠ **配っているデータ（10 件）は減らさない。** `/peel` の「別の場所を見る」は
+//     全件を出しており、そちらは一覧として機能している。減らすのは、この画面の見せ方だけ。
+//   ⚠ 選び方は「有名な3つ」ではなく、**今昔の違う面が見える3地点**
+//     （豊洲＝埋立で海岸線が動く／渋谷＝都市化／広島＝歴史的背景）。
+//   ⚠ id は quick-places.json 側にしか無いものを指している。**scripts/check.mjs が
+//     この 3 つの id の実在を突き合わせている**（掟: 同じ問いに答える実装を2つ持つなら機械で突き合わせる）。
+const TOP_EXAMPLE_IDS=["toyosu","shibuya","hiroshima"];
 function loadQuickPlaces(){
   quickEl.replaceChildren();
   fetch("./data/quick-places.json",{cache:"no-cache"}).then(r=>{
     if(!r.ok) throw new Error(`quick places ${r.status}`);
     return r.json();
   }).then(data=>{
-    const places=data?.places??[];
-    // ⚠ **例であることを名乗る。** 名乗らないと、10 個の地名が検索欄と同じ強さの
+    const all=data?.places??[];
+    const byId=new Map(all.map(p=>[p.id,p]));
+    const picked=TOP_EXAMPLE_IDS.map(id=>byId.get(id)).filter(Boolean);
+    // ⚠ 読めたのに 1 件も選べないときは、**黙って空にしない**。配っているデータの
+    //   id が入れ替わった場合で、例が出ないより先頭 3 件を出したほうが利用者は困らない
+    //   （どれも「取り込み済みの土地」であることは check.mjs が全件について見ている）。
+    const places=picked.length?picked:all.slice(0,3);
+    // ⚠ **例であることを名乗る。** 名乗らないと、地名が検索欄と同じ強さの
     //   主ボタンとして並んで見える（UI/UX レビュー 原則2「主役は1つ」。実測 10 個・144px）。
     //   ⚠ **中に入れる**（#quick の子）。外に置くと、取得に失敗したときに
-    //     見出しだけが残り、例が1つも無いのに「例から見てみる」と言うことになる。
+    //     見出しだけが残り、例が1つも無いのに「たとえば」と言うことになる。
     //     ここなら、成功した経路でしか作られない。
     if(places.length){
       const lead=document.createElement("span"); lead.className="q-lead";
-      lead.textContent="例から見てみる"; quickEl.appendChild(lead);
+      lead.textContent="たとえば"; quickEl.appendChild(lead);
     }
     for(const p of places){
       const b=document.createElement("button"); b.textContent=p.name;

@@ -1156,28 +1156,50 @@ const CASES = [
     },
   },
   {
-    // ⚠ ピンは入口。数を増やすと、増やしただけ押し間違いが増える。
-    //   間違えて開いても「別の街の判定」が普通に出るので、間違えたこと自体に気づけない。
-    name: "ピンは、指で押せる大きさで、折り返しの上にある", path: "/",
+    // ⚠ ここは「おすすめ一覧」ではなく**入力例**。数を増やすと、増やしただけ
+    //   押し間違いが増え、間違えて開いても「別の街の判定」が普通に出るので気づけない。
+    //   ⚠ 以前この検査は「5 個以上」を求めていた。**消しすぎを反対側から押さえる**ためだったが、
+    //     そのぶん 10 個・3 行・169px（実測 2026-08-17 / 375×667）が固定され、
+    //     検索欄と同じ強さの入口が 10 個並んで見えていた（UI/UX レビュー 原則2「主役は1つ」）。
+    //     守りたかったのは「例が消えていないこと」なので、**ちょうど 3 件**で押さえ直す。
+    //   ⚠ 配っている quick-places.json（10 件）は減らしていない。`/peel` は全件を出す。
+    name: "入力例は 3 件で、指で押せて、折り返しの上にある", path: "/",
     viewport: { width: 375, height: 667 }, hasTouch: true,
     async check(page) {
-      const r = await page.evaluate(() => {
-        const b = [...document.querySelectorAll("#quick button")]
-          .map((e) => e.getBoundingClientRect());
-        return { n: b.length, minH: Math.min(...b.map((x) => x.height)),
+      await page.waitForSelector("#quick button");
+      const read = () => page.evaluate(() => {
+        const els = [...document.querySelectorAll("#quick button")];
+        const b = els.map((e) => e.getBoundingClientRect());
+        return { names: els.map((e) => e.textContent.trim()),
+          n: b.length, minH: Math.min(...b.map((x) => x.height)),
           bottom: Math.max(...b.map((x) => x.bottom)),
           rows: new Set(b.map((x) => Math.round(x.top))).size };
       });
-      must(r.n >= 5, `ピンが少なすぎる: ${r.n} 個`);
+      const r = await read();
+      // 今昔の違う面が見える 3 地点（豊洲＝埋立 / 渋谷＝都市化 / 広島＝歴史）。
+      // ⚠ 選び方は index.html の TOP_EXAMPLE_IDS。id の実在は scripts/check.mjs が
+      //   quick-places.json と突き合わせている（ここは**画面に出た名前**を見る）
+      must(r.n === 3, `入力例が 3 件でない: ${r.n} 件（${r.names.join("・")}）`);
+      must(["豊洲", "渋谷", "広島"].every((x) => r.names.includes(x)),
+        `入力例が 豊洲・渋谷・広島 でない: ${r.names.join("・")}`);
       // 指で押す端末では 44px（Apple の指針）。ここを下回ると隣を押す
-      must(r.minH >= 44, `ピンが指で押すには小さい: ${Math.round(r.minH)}px（44px 必要）`);
+      must(r.minH >= 44, `入力例が指で押すには小さい: ${Math.round(r.minH)}px（44px 必要）`);
       // 入口が折り返しの下にあると、来た人は入口があること自体を知らない
-      must(r.bottom <= 667, `ピンが折り返しの下にはみ出た: 下端 ${Math.round(r.bottom)}px`);
-      return `${r.n} 個 / ${r.rows} 行 / 高さ ${Math.round(r.minH)}px / 下端 ${Math.round(r.bottom)}px`;
+      must(r.bottom <= 667, `入力例が折り返しの下にはみ出た: 下端 ${Math.round(r.bottom)}px`);
+      must(r.rows === 1, `375px で入力例が ${r.rows} 行に折り返している`);
+      // ⚠ 狭い端末も見る。ここを見ていなかったので、320px で導入の絵が 2 行になっていた
+      await page.setViewportSize({ width: 320, height: 640 });
+      await page.waitForTimeout(120);
+      const s = await read();
+      must(s.rows === 1, `320px で入力例が ${s.rows} 行に折り返している: ${s.names.join("・")}`);
+      must(s.minH >= 44, `320px で入力例が小さい: ${Math.round(s.minH)}px`);
+      must(s.bottom <= 640, `320px で入力例が折り返しの下にはみ出た: 下端 ${Math.round(s.bottom)}px`);
+      return `${r.n} 件（${r.names.join("・")}）／375px: ${r.rows} 行 高さ ${Math.round(r.minH)}px 下端 ${Math.round(r.bottom)}px`
+        + `／320px: ${s.rows} 行 下端 ${Math.round(s.bottom)}px`;
     },
   },
   {
-    name: "最初の画面が何のサービスか言っている", path: "/",
+    name: "最初の画面が、場所を検索する画面だと5秒で分かる", path: "/",
     viewport: { width: 375, height: 667 }, hasTouch: true,
     async check(page) {
       // 利用者役のエージェントによる検証で理解まで1分半かかり「グルメ検索? 不動産?」と受け取られていた。
@@ -1185,10 +1207,29 @@ const CASES = [
       const head = await page.$eval("header", (e) => e.textContent.replace(/\s+/g, " ").trim());
       // 見出しは効能で名乗る（掟: 看板は効能で名乗る）。「その土地を知る」はカテゴリ名で、
       // 何が起きるかが読んだ人に伝わっていなかった。主題（成り立ち・掟: 主題は「成り立ち」。明治期は手法のひとつ）は変えていない。
-      // 何を読んで何を出すのかが、最初の画面に書いてあること
       must(/この土地は、昔なんだったのか/.test(head), `見出しが変わっている: ${head.slice(0, 40)}`);
-      must(/成り立ち/.test(head), `何を判定するのかが書いていない: ${head}`);
-      must(/国土地理院/.test(head), `何を読んで判定するのかが書いていない: ${head}`);
+      // ⚠ この検査は以前、header に「成り立ち」と「国土地理院」があることを求めていた。
+      //   守っていたのは「何のサービスか分からない」の再発防止だが、そのために
+      //   説明が 2 つ（実測 40px）並び、検索欄が y=164 まで下がっていた。
+      //   **同じ意図を、こんどは「次に何をすればよいかが 1 文で書いてある」で守る。**
+      //   ⚠ 何を読んでいるか（国土地理院）は消していない。下の「出典が残っている」で見る。
+      must(/場所を検索して、その土地の時間をさかのぼる。/.test(head),
+        `次に何をすればよいかが 1 文で書かれていない: ${head}`);
+      // ⚠ **説明の塊は 1 つだけ。** ここが緩むのは「説明をもう 1 行足す」ときなので、
+      //   px ではなく個数でも止める（原則5「足す前に隠す」）。
+      const blocks = await page.$$eval("header p, header div:not(.brand)", (els) => els
+        .filter((e) => e.getBoundingClientRect().height > 0)
+        .map((e) => e.textContent.replace(/\s+/g, " ").trim()));
+      must(blocks.length === 1,
+        `最初の画面の説明が ${blocks.length} 塊ある（1 文だけにする）: ${blocks.join(" ／ ")}`);
+      // ⚠ 判定の手口・データ提供元・Privacy を**入口では語り始めない**。
+      //   （tmp/9 の設計: 操作 → 結果 → 説明 → 根拠。トップは「操作」まで）
+      for (const w of ["国土地理院", "明治期", "画素", "タイル", "Cookie", "標高", "Wikidata"])
+        must(!head.includes(w), `最初の画面が判定の手口を語り始めている: 「${w}」（${head}）`);
+      // ⚠ **消したのではなく、後ろへ動かした**ことまで見る。
+      //   出典が画面から消えると、地理院タイルの利用条件（出典明示）も破る
+      const foot = await page.$eval("footer", (e) => e.textContent.replace(/\s+/g, " ").trim());
+      must(/国土地理院/.test(foot), `出典（国土地理院）が画面から消えた: ${foot.slice(0, 60)}`);
       const h1 = await page.$eval("h1", (e) => {
         const r = e.getBoundingClientRect();
         return { bottom: Math.round(r.bottom), right: Math.round(r.right),
@@ -1212,17 +1253,21 @@ const CASES = [
         `placeholder が入力欄に収まらない: ${ph.need}px 必要 / 可視幅 ${ph.room}px「${ph.text}」`);
       // 地名の例は、まだ場所を選んでいないこの画面では見えていること。
       // 「確定後は消す」を入れたので、消しすぎていないことを反対側から押さえる
+      await page.waitForSelector("#quick button");
       const q0 = await page.$eval("#quick", (e) => {
         const r = e.getBoundingClientRect();
-        return { disp: getComputedStyle(e).display, y: Math.round(r.y), h: Math.round(r.height) };
+        return { vis: e.checkVisibility(), y: Math.round(r.y),
+          h: Math.round(r.height), bottom: Math.round(r.bottom) };
       });
-      must(q0.disp !== "none" && q0.h > 0 && q0.y < 667,
-        `最初の画面で地名の例が見えていない: ${JSON.stringify(q0)}`);
+      must(q0.vis && q0.h > 0 && q0.bottom <= 667,
+        `最初の画面で入力例が見えていない: ${JSON.stringify(q0)}`);
       // ⚠ **地名の帯が「例」だと名乗っていること。**
-      //   名乗らないと、10 個の地名が検索欄と同じ強さの主ボタンとして並んで見える
+      //   名乗らないと、地名が検索欄と同じ強さの主ボタンとして並んで見える
       //   （実測 10 個・144px。UI/UX レビュー 原則2「主役は1つ」）。
+      //   ⚠ 名乗りは「たとえば」。「おすすめ」「人気の場所」にすると、
+      //     こちらが選んだ土地を推していることになり、入力例ではなくなる。
       //   ⚠ 見出しは #quick の**中**に作る。外に置くと、取得に失敗したときに
-      //     見出しだけが残り、例が 1 つも無いのに「例から見てみる」と言うことになる。
+      //     見出しだけが残り、例が 1 つも無いのに「たとえば」と言うことになる。
       const qLead = await page.evaluate(() => {
         const e = document.querySelector("#quick .q-lead");
         if (!e) return null;
@@ -1230,30 +1275,26 @@ const CASES = [
           chips: document.querySelectorAll("#quick button").length,
           focusable: e.tabIndex >= 0 };
       });
-      must(qLead, "地名の帯が「例」だと名乗っていない（主ボタンが 10 個並んで見える）");
-      must(qLead.chips > 0, `例が 1 つも無いのに「${qLead.text}」と言っている`);
+      must(qLead, "地名の帯が「例」だと名乗っていない（主ボタンが並んで見える）");
+      must(qLead.text === "たとえば", `入力例の名乗りが「たとえば」でない: 「${qLead.text}」`);
+      must(qLead.chips === 3, `入力例が 3 件でない: ${qLead.chips} 件`);
       must(qLead.tag !== "BUTTON" && !qLead.focusable,
         `見出しが押せる見た目になっている: ${qLead.tag}（掟: 押しても何も起きない導線を置かない）`);
       // ⚠ **主操作（場所を検索する）が、説明に押し下げられていないこと。**
-      //   実測（2026-08-17 / 375×667）: 説明文が 2 つで 119px あり、検索欄は y=240
-      //   （画面の 36% 地点）にいた。1 行にまとめて y=164 になっている。
-      //   ここが緩むのは「説明をもう1行足す」ときなので、px で止める。
+      //   実測（375×667）: 説明が 2 つ（40px）あったときは y=164。
+      //   1 文に畳んで y=138 になっている。ここが緩むのは「説明をもう1行足す」とき。
       const q = await page.$eval("#q", (e) => {
         const r = e.getBoundingClientRect();
         return { y: Math.round(r.top), bottom: Math.round(r.bottom) };
       });
       must(q.bottom <= 667, `検索欄がファーストビューの外にいる: 下端 ${q.bottom}px`);
-      must(q.y <= 200, `検索欄が説明に押し下げられている: y=${q.y}px（実測の基準は 164px）`);
-      // ⚠ 導入の絵は**1行**に収める。
-      //   矢印を独立した要素として並べていたとき、375px で折り返して
-      //   **矢印だけが行末に取り残された**（実測 44px＝2行）。矢印は次の語と同じ塊に入れてある。
-      const steps = await page.$eval(".steps", (e) => {
-        const r = e.getBoundingClientRect();
-        const tops = [...e.querySelectorAll(".st")].map((x) => Math.round(x.getBoundingClientRect().top));
-        return { h: Math.round(r.height), rows: new Set(tops).size,
-          text: e.textContent.replace(/\s+/g, " ").trim() };
-      });
-      must(steps.rows === 1, `導入の絵が ${steps.rows} 行に折り返している（高さ ${steps.h}px）: ${steps.text}`);
+      must(q.y <= 150, `検索欄が説明に押し下げられている: y=${q.y}px（実測の基準は 138px）`);
+      // ⚠ H1 → サブコピー → 検索欄 → 入力例。**この順に上から並んでいること。**
+      //   px の上限だけだと、順序を入れ替えても通る書き方が残る
+      const order = await page.evaluate(() => ["h1", ".lead", "#q", "#quick"]
+        .map((s) => Math.round(document.querySelector(s).getBoundingClientRect().top)));
+      must(order.every((y, i) => i === 0 || y > order[i - 1]),
+        `H1 → 1文 → 検索欄 → 入力例 の順に並んでいない: ${order.join(" → ")}`);
       // ⚠ 「効かないキーの説明を打つ前に出さない」は、ここでは見ない。
       //   375px は @media (hover:none) が .kbd を丸ごと隠すので、**何も見ずに緑になる**。
       //   キーが効く端末（PC 幅）で見る。→「検索（確度が低いので選ばない）」の冒頭。
@@ -1261,8 +1302,8 @@ const CASES = [
       await page.click("#q");
       must(await page.locator(".hint").isVisible(), "入力欄に触れても補足が出ない");
       const hint = (await page.locator(".hint").textContent()).trim();
-      return `検索欄 y=${q.y}（実測 240 → 改善）／導入の絵 ${steps.rows} 行 ${steps.h}px`
-        + `「${steps.text}」／placeholder ${ph.need}px ≤ ${ph.room}px／補足「${hint}」`;
+      return `検索欄 y=${q.y}（実測 164 → 改善）／説明 ${blocks.length} 塊「${blocks[0]}」`
+        + `／入力例 ${qLead.chips} 件・下端 ${q0.bottom}px／placeholder ${ph.need}px ≤ ${ph.room}px／補足「${hint}」`;
     },
   },
   // ---- 年代ストリップ ----
@@ -1355,12 +1396,17 @@ const CASES = [
       // 帯そのものが画面の高さを食いつぶしていないこと（判定文が押し出される）
       const h = await page.$eval("#strip", (e) => Math.round(e.getBoundingClientRect().height));
       must(h <= 220, `帯が高すぎる: ${h}px`);
-      // 場所が決まったらリード文は畳む（実測 79px。写真と判定文がそのぶん下へ押し出されていた）
-      // ⚠ 導入の絵（.steps）も一緒に畳む。答えが出たあとの画面で
-      //   「これから何が起きるか」を説明し続けないこと
-      const leads = await page.$$eval(".lead,.steps", (els) => els
+      // 場所が決まったらサブコピーは畳む（実測 79px。写真と判定文がそのぶん下へ押し出されていた）
+      // ⚠ 「場所を検索して…」は、もう場所を選んだ人には前の段の指示。
+      //   住所選択中の責務にサービス紹介は無い（tmp/9/10-トップ2状態の詳細設計.md）
+      const leads = await page.$$eval(".lead", (els) => els
         .filter((e) => e.getBoundingClientRect().height > 0).length);
-      must(leads === 0, `場所を選んだあとも導入（リード文・導入の絵）が残っている: ${leads} 個`);
+      must(leads === 0, `場所を選んだあともサブコピーが残っている: ${leads} 個`);
+      // ⚠ 入力例も一緒に消えること。ここで一緒に見ておかないと、
+      //   「未選択向けのものが選択後に残る」を 2 か所へ分けて見ることになる
+      const qk = await page.$eval("#quick", (e) => ({
+        vis: e.checkVisibility(), h: Math.round(e.getBoundingClientRect().height) }));
+      must(!qk.vis, `場所を選んだあとも入力例が残っている: 高さ ${qk.h}px`);
       // 判定文が画面内にあること。写真が主役でも、答えの一文は同じ画面で読めること
       const v = await page.$eval("#verdict .v-head", (e) => Math.round(e.getBoundingClientRect().y));
       must(v < 667, `判定文がファーストビューの外にいる: y=${v}`);
