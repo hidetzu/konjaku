@@ -1163,22 +1163,26 @@ const tileUrl=(fr,x,y)=>`${GSI}/${fr.id}/16/${x}/${y}.${fr.ext}`;
 //   （CLAUDE.md「同じ結果を出す経路が複数あるなら、1 か所にまとめてから直す」）。
 // ⚠ 写真の年代（`under` を持たない）は 1 のまま。写真は下に敷くものが無い。
 // ⚠ **同じチェックが、コマによって別のものを動かす。**
-//   写真の年代 … 写真の上に「明治期の水域」をもう1枚重ねる（swale 層）。既定は切
+//   写真の年代 … 写真の上に「明治期の水域」をもう1枚重ねる（swale 層）
 //   明治期のコマ … 見えている塗りそのものが明治期の水域なので、**その濃さ**を動かす
-//                   （era 層 = swale タイル）。既定は入（切ると下地の地図だけになる）
-//   ⚠ 状態を1つにまとめない。まとめると、写真で重ねていた人が明治期のコマを通っただけで
-//     設定を失う（またはその逆）。**別のものを動かしているのだから、別に覚える。**
+//                   （era 層 = swale タイル）。切ると下地の地図だけになる
+// ⚠ **状態は1つ。** 「明治期の水域を見ているかどうか」という1つの問いなので、
+//   コマをまたいでも引き継ぐ。既定は入（着いた瞬間に水域が見えている）。
+//   ⚠ 一度コマごとに別々に覚える形にしたが、**明治期で入にしたのに写真へ移ると切れる**
+//     という取り違えを生んだ（2026-08-17 にオーナーが実機で発見）。
+//   ⚠ 代償: 写真の年代へ移った瞬間に地図が起き、水域タイルを引く。
+//     実測（375×667 / 豊洲 / 全 9 段を順に見る）: 地理院への要求 51 → **93 本**。
+//     オーナー判断で許容。⚠ 事前計算へ寄せる案が別途ある（tmp/9 の設計メモ）。
 // ⚠ ERA_ALPHA より前に置く。あとに置くと、初回の描画が宣言前の参照になる
-let ovPhoto=false;     // 写真に重ねるか（従来の既定＝切）
-let ovMeiji=true;      // 明治期のコマで水域を見せるか（既定＝入。切ると地図だけ）
+let ovOn=true;
 const onMeijiFrame=()=>!!frames[eraIdx]?.under;
 // 明治期の塗りを透かす濃さ。**数字はここにしか書かない。**
 const MEIJI_ALPHA=0.75;
-// ⚠ 明治期のコマでは、この値をチェックで MEIJI_ALPHA ⇄ 0 に動かす（上の ovMeiji）。
+// ⚠ 明治期のコマでは、この値をチェックで MEIJI_ALPHA ⇄ 0 に動かす（上の ovOn）。
 //   他の年代と同じく「重ねる／重ねない」を選べるようにするため。
 // ⚠ **帯のコマ（frameHTML）はここを通さない。** あちらは水域を重ねず、下地の地図だけを出す
 //   （重ねると、全面が水だった土地でコマが青いベタ塗りになる）。
-const ERA_ALPHA=(fr)=>fr?.under?(ovMeiji?MEIJI_ALPHA:0):1;
+const ERA_ALPHA=(fr)=>fr?.under?(ovOn?MEIJI_ALPHA:0):1;
 
 function bigLayer(fr,id,on){
   const cells=[[0,0],[1,0],[0,1],[1,1]];
@@ -1368,6 +1372,11 @@ function setEra(i){
   stopSay();
   unzoom(); renderEvents();
   mapSetEra(fr);
+  // ⚠ **引き継いだ状態を、移った先でも効かせる。** 写真の年代の重ねは MapLibre の層が要るので、
+  //   入のまま移ってきたら地図を起こす。ここを忘れると、チェックは入っているのに
+  //   何も重なっていない（言葉と画面が食い違う）状態になる。
+  if(ovOn&&!onMeijiFrame()&&!mapObj&&!mapLoading) ensureMap().then(()=>applyOverlay());
+  else applyOverlay();
   // 重ねたまま年代を動かすと、上に載っている現在しか見えず、何が変わったのか分からない
   mixVal=0; wireMix(); applyMix();
   document.getElementById("mixbar")?.classList.toggle("off",!!fr.now);
@@ -1537,8 +1546,8 @@ function wirePlay(){
 //   説明できない色を画面に置くのは、この画面の他の部分と格が揃わない。
 function applyOverlay(){
   const on=document.getElementById("ovSwale")?.checked;
+  ovOn=!!on;
   if(onMeijiFrame()){
-    ovMeiji=!!on;
     // 地図の経路
     if(mapObj?.getLayer("era"))
       mapObj.setPaintProperty("era","raster-opacity",ERA_ALPHA(frames[eraIdx]));
@@ -1547,7 +1556,6 @@ function applyOverlay(){
       if(/\/swale\//.test(im.src)) im.style.opacity=String(ERA_ALPHA(frames[eraIdx]));
     });
   }else{
-    ovPhoto=!!on;
     if(mapObj?.getLayer("swale"))
       mapObj.setPaintProperty("swale","raster-opacity",on?0.75:0);
   }
@@ -1588,11 +1596,11 @@ function overlayState(){
 //   「重ねる相手（空中写真）が無い／入り切りしても絵が変わらない」で、当時は正しかった。
 //   いまは**相手がある**（下に敷いてある淡色地図）。塗りを透かしたので、
 //   入り切りすると絵が本当に変わる（掟: 押しても何も起きない導線を置かない、を満たす）。
-// ⚠ チェックは「いま重なっているか」そのものを映す。コマによって覚えている先が違うので、
-//   コマが変わるたびに映し直す（写真の設定を明治期が上書きしない）。
+// ⚠ チェックは「いま重なっているか」そのものを映す。状態は1つなので、
+//   コマが変わっても選んだままを引き継ぐ。
 function syncOverlayRow(){
   const c=document.getElementById("ovSwale");
-  if(c) c.checked=onMeijiFrame()?ovMeiji:ovPhoto;
+  if(c) c.checked=ovOn;
   overlayState();
 }
 function wireOverlay(){

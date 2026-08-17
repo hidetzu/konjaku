@@ -2289,18 +2289,33 @@ const CASES = [
       const mapOffBuf = await page.screenshot({ clip });
       must(!mapOnBuf.equals(mapOffBuf),
         "地図が出ている状態で、重ねを入り切りしても1バイトも変わらない（地図の経路に届いていない）");
-      // ⚠ 写真の年代と設定が混ざらないこと。1 つの状態にまとめると、
-      //   写真で重ねていた人が明治期のコマを通っただけで設定を失う
+      // ⚠ **選んだ状態は、コマをまたいでも引き継ぐ。**（2026-08-17 オーナー判断）
+      //   以前はコマごとに別々に覚えていたが、**明治期で入にしたのに写真へ移ると切れる**
+      //   という取り違えを生んだ。「明治期の水域を見ているか」は1つの問いなので、状態も1つ。
+      //   ⚠ ここは**切った状態**のまま移る（直前で uncheck している）。切ったまま引き継ぐこと。
       await page.locator("#strip .f").nth(1).click();
       await page.waitForTimeout(2000);
       must(await page.$eval("#ovSwale", (e) => e.checked) === false,
-        "写真の年代へ移ったのに、明治期のコマの設定を引きずっている");
+        "切ったのに、写真の年代へ移ったら入に戻った");
       await page.locator("#strip .f").nth(0).click();
       await page.waitForTimeout(2000);
       must(await page.$eval("#ovSwale", (e) => e.checked) === false,
         "明治期のコマへ戻ったのに、切っておいた設定が戻っていない");
+      // 入れ直して、写真の年代へ**入のまま**引き継ぐこと（今回の指摘そのもの）
+      await page.locator("#ovSwale").check();
+      await page.waitForTimeout(800);
+      await page.locator("#strip .f").nth(1).click();
+      await page.waitForTimeout(3000);
+      must(await page.$eval("#ovSwale", (e) => e.checked) === true,
+        "明治期で入にしたのに、写真の年代へ移ると切れている");
+      // ⚠ チェックが入っているだけでは足りない。**層まで効いていること**を見る
+      const carried = await page.evaluate(() =>
+        (typeof mapObj !== "undefined" && mapObj?.getLayer("swale"))
+          ? mapObj.getPaintProperty("swale", "raster-opacity") : null);
+      must(carried > 0,
+        `写真の年代でチェックは入っているのに、層が ${carried}（何も重なっていない）`);
       return `3経路とも下地が透ける（帯のコマ ${cell} 色／大きい絵 ${on} 色／地図 ${onMap} 色`
-        + `／切ると ${off} 色。単色なら 2〜4 色）／入り切りで絵が変わる／写真の年代と設定が混ざらない`;
+        + `／切ると ${off} 色。単色なら 2〜4 色）／入り切りで絵が変わる／状態がコマをまたいで引き継がれる`;
     },
   },
   {
@@ -2413,12 +2428,18 @@ const CASES = [
       //   実況をやめた（2026-08-17 オーナー判断: ラベルと合わせて 2 行になり読む量が増える）ので、
       //   **同じ意図を裏返して守る**: 正常なときは**何も言わない**こと＋層が言葉と食い違わないこと。
       //   ⚠ 「取れなかったときは言う」ほうは、次のケース（水域のタイルだけ拒まれたら）が見ている。
-      // 重ねる相手は空中写真なので、写真の年代へ移ってから見る
+      // ⚠ 既定は入。まず切ってから、写真の年代へ移る
+      //   （切ったまま引き継ぐので、移った先でも層は無い）
+      await page.locator("#ovSwale").uncheck();
+      await page.waitForTimeout(600);
       await page.evaluate(() => document.querySelectorAll("#strip .f")[1]?.click());
       await page.waitForTimeout(900);
       const before = (await st()).trim();
       must(before === "", `切っているだけなのに、何か書いてある: 「${before}」`);
-      must(await op() === null, "押していないのに、もう地図の層がある");
+      // ⚠ この検査は以前「押していないのに、もう地図の層がある」を見ていた。
+      //   状態を1つにして引き継ぐようにしたので、**入のまま移ってきたら層はある**のが正しい。
+      //   ここでは直前に切ってから移っているので、層はまだ無い。
+      must(await op() === null, "切ったまま移ってきたのに、もう地図の層がある");
 
       await page.locator("#ovSwale").check();
       await page.waitForFunction(() => document.querySelector("#big.map-on"), null, { timeout: 60000 });
