@@ -436,7 +436,7 @@ const CASES = [
     // このサービスでいちばん価値のある信号は「探したのに出せなかった語」。
     // 黙って去られると永久に分からない。ただし勝手には送らない（掟: 地名も座標も送らない）。
     // 押すかどうかは本人が決める形になっていること。
-    name: "見つからなかった語を、本人の判断で報告できる", path: "/",
+    name: "見つからなかった語を、本人の判断で報告できる", dep: "search", path: "/",
     async check(page) {
       await page.fill("#q", "ぞぞぞぞぞぞ");
       await page.waitForFunction(
@@ -975,7 +975,7 @@ const CASES = [
   // 並びそのものは scripts/search-check.mjs が35語で測る。ここで見るのは
   // 「画面の上で Enter を押したとき何が起きるか」のほう。
   {
-    name: "検索（確度が高いので先頭を選ぶ）", path: "/",
+    name: "検索（確度が高いので先頭を選ぶ）", dep: "search", path: "/",
     async check(page) {
       await page.fill("#q", "渋谷");
       await page.waitForSelector("#list .it", { timeout: 30000 });
@@ -1006,7 +1006,7 @@ const CASES = [
     },
   },
   {
-    name: "検索（確度が低いので選ばない）", path: "/",
+    name: "検索（確度が低いので選ばない）", dep: "search", path: "/",
     async check(page) {
       // ⚠ **効かないキーの説明を、打つ前に出さない。**
       //   実測（2026-08-17 / 1280×800 / 地名を打つ前）: ↑↓・Enter・Esc が 3 つとも
@@ -1053,7 +1053,7 @@ const CASES = [
     // ⚠ 区名と町字が同じ語で競合する組。並べ替えは「区名が上」で決めるが、それは
     // 順番の規則であって確からしさの証拠ではない。ここで選んでしまうと、
     // 掟: 取れなかったを「無い」と言わない で狙いに定めた埋立地（港区港南＝品川駅東）から確信を持って離れる。
-    name: "検索（同名の土地では選ばない）", path: "/",
+    name: "検索（同名の土地では選ばない）", dep: "search", path: "/",
     async check(page) {
       await page.fill("#q", "港南");
       await page.waitForSelector("#list .it", { timeout: 30000 });
@@ -1074,7 +1074,7 @@ const CASES = [
     // ⚠ 検索経路の「取れなかった」を「無かった」と言い換えない（掟: 取れなかったを「無い」と言わない の検索側の残り）。
     // res.ok を見ずに .json() し、配列の長さだけで判定していたため、
     // HTTP 500 も、配列でない 200 も「見つかりませんでした」に化けていた。
-    name: "検索が失敗したとき「無い」と言わない", path: "/",
+    name: "検索が失敗したとき「無い」と言わない", dep: "search", path: "/",
     async check(page) {
       const API = "**/AddressSearch*";
       const failed = async (label) => {
@@ -1448,7 +1448,7 @@ const CASES = [
   //   指を離す前にレイアウトが動くので、押した座標には別の要素が来ている。
   //   見せ方をどれだけ磨いても、ここが塞がっていると誰も判定に到達できない。
   {
-    name: "スマホで、最初の1タップが空振りしない", path: "/",
+    name: "スマホで、最初の1タップが空振りしない", dep: "search", path: "/",
     viewport: { width: 375, height: 667 }, hasTouch: true,
     async check(page) {
       // (1) クイック選択（地名の例）
@@ -2166,6 +2166,159 @@ const CASES = [
     },
   },
   {
+    // ⚠ **下地を敷いても、上が不透明なら 1 ピクセルも見えない。**
+    //   明治期のコマは「淡色地図＋区分の塗り」の 2 枚組で描いているが、塗りが不透明だったため、
+    //   **全面が水だった土地（豊洲）では下地が完全に隠れ、画面の 6 割が青一色**になっていた。
+    //   初見の 3 人が 3 人ともそこに最初に目を奪われ、1 人は「読み込み中かと思った」（2026-08-17）。
+    //   ⚠ **この不具合は、それまでの検査を 1 つも落とさなかった。**
+    //     層は在るし、タイルも取りに行くし、地図も出る。「見えているか」を誰も見ていなかった。
+    //   → **撮った絵の画素を実際に数える。** 単色なら色数が極端に少ない。
+    //   ⚠ 通信の本数では測れない（不透明度 0 でもタイルは取りに行く）。
+    //   ⚠ 不透明度の値そのものを見ない。0.99 でも通ってしまい、**見えるかどうか**を測れない。
+    name: "明治期のコマで、下地の地図が透けて見える", path: `/?${TOYOSU}`,
+    viewport: { width: 375, height: 667 }, hasTouch: true,
+    async check(page, reqs) {
+      await waitVerdict(page);
+      await page.waitForSelector("#big .lyr.on img", { timeout: 20000 });
+      await page.waitForTimeout(3000);
+      // 着いた直後は最古＝明治期のコマ。前提が変わったら落とす（別のコマを測って緑にしない）
+      const first = await page.$eval("#yrBig", (e) => e.textContent.replace(/\s+/g, " ").trim());
+      must(/明治期/.test(first), `着いた直後が明治期のコマでない: ${first}`);
+      // 絵の中だけを切り取る。四隅の操作（🔇・＋−・年バッジ・重ねる行）を含めない
+      const box = await page.locator("#big").boundingBox();
+      const clip = { x: box.x + box.width * 0.34, y: box.y + 10,
+                     width: Math.round(box.width * 0.46), height: Math.round(box.height * 0.34) };
+      // 撮った PNG を**その場のブラウザで開いて**画素を数える。
+      // ⚠ data: URL なので canvas は汚れない（タイルを直接読むと cross-origin で読めない）
+      const colors = async (area = clip) => {
+        const buf = await page.screenshot({ clip: area });
+        return page.evaluate(async (b64) => {
+          const img = new Image();
+          img.src = "data:image/png;base64," + b64;
+          await img.decode();
+          const c = document.createElement("canvas");
+          c.width = img.width; c.height = img.height;
+          const g = c.getContext("2d");
+          g.drawImage(img, 0, 0);
+          const d = g.getImageData(0, 0, c.width, c.height).data;
+          const seen = new Set();
+          for (let i = 0; i < d.length; i += 4) seen.add((d[i] << 16) | (d[i + 1] << 8) | d[i + 2]);
+          return seen.size;
+        }, buf.toString("base64"));
+      };
+      const on = await colors();
+      // 単色に近ければ、下地は見えていない。実測（2026-08-17 / 豊洲）:
+      //   直す前 = 2 色（青のベタ塗り）／直したあと = 数百色（道路・駅名・町名が透ける）
+      must(on >= 24, `明治期のコマが単色に近い（下地が透けていない）: ${on} 色`);
+      // ⚠ **帯の小さいコマも見る。** この画面は同じ絵を出す経路が **3 本**ある
+      //   （帯のコマ・大きい絵・地図）。大きい絵と地図だけ直して**帯に届いておらず**、
+      //   帯のコマが青いベタ塗りのまま残っていた（2026-08-17 にオーナーが実機で発見）。
+      //   検査も 2 本しか見ていなかったので、緑のまま通していた。
+      // ⚠ **帯には水域を重ねない**（オーナー判断 2026-08-17）。重ねると、全面が水だった土地で
+      //   コマが青いベタ塗りになり、隣に並ぶ空中写真の中で 1 つだけ「絵ではないもの」になる。
+      //   水域は、そのコマを選んだときに大きい絵の側で見せる（重ねる操作つき）。
+      const cellBox = await page.locator("#strip .f.meiji").boundingBox();
+      must(cellBox, "帯に明治期のコマが無い（この検査が何も見ていない）");
+      const cell = await colors({ x: cellBox.x + 3, y: cellBox.y + 3,
+        width: Math.max(1, Math.round(cellBox.width - 6)),
+        height: Math.max(1, Math.round(cellBox.height - 6)) });
+      // ⚠ コマは 24px 角しかないので、大きい絵より色数は少ない。
+      //   ⚠ **ベタ塗りでも 0 色にはならない。** 枠の丸み・選択中の輪・判定した点の印・
+      //     縁のぼかしが色を持つ。実測（2026-08-17 / 豊洲）:
+      //       塗りが不透明 = 37 色 ／ 透かして重ねる = 134 色 ／ 重ねない（いま）= 176 色
+      //     最初 12 色で書いたら**壊しても通った**ので、実測の間に置き直した。
+      must(cell >= 80, `帯の明治期のコマが青いベタ塗りのまま: ${cell} 色（地図なら 170 前後）`);
+      // ⚠ **塗りのタイルを要求していないこと**まで見る。透明にして隠すのでは、
+      //   見えないものを国土地理院へ取りに行き続ける（掟: 地理院への負荷は自分の請求とは別に見る）
+      const cellImgs = await page.$$eval("#strip .f.meiji img", (els) => els.map((e) => e.src));
+      must(!cellImgs.some((s) => /\/swale\//.test(s)),
+        `帯のコマが水域のタイルを取りに行っている: ${cellImgs.join(" / ")}`);
+      // 重ねる操作が**そこに出ている**こと。以前は明治期のコマでだけ隠していた
+      const row = await page.$eval("#ovRow", (e) => e.checkVisibility()).catch(() => false);
+      must(row, "明治期のコマに、重ねる操作が出ていない");
+      const c0 = await page.$eval("#ovSwale", (e) => e.checked);
+      must(c0, "明治期のコマで、水域が既定で重なっていない");
+      // ⚠ **押しても地図を起こさないこと。** 起こすと、静止画から地図へ絵が差し替わり
+      //   **押した瞬間に位置が跳ぶ**（2026-08-17 にオーナーが実機で発見）。
+      //   実測: #ovRow 自体は 1px も動かないのに、中の絵だけが替わる。
+      //   ⚠ 明治期のコマは静止画のモザイクだけで成立する（淡色地図＋塗りの2枚組）。
+      //     起こすぶんの要求（実測 24 タイル）も無駄になる
+      //     （掟: 地理院への負荷は自分の請求とは別に見る）。
+      const gsiBefore = reqs.filter((u) => /gsi\.go\.jp/.test(u)).length;
+      // 入り切りで**絵が本当に変わる**こと（掟: 押しても何も起きない導線を置かない）
+      await page.locator("#ovSwale").uncheck();
+      await page.waitForTimeout(900);
+      must(!(await page.$("#big.map-on")),
+        "明治期のコマで重ねを押しただけで地図が起きた（絵が差し替わって位置が跳ぶ）");
+      const gsiAfter = reqs.filter((u) => /gsi\.go\.jp/.test(u)).length;
+      must(gsiAfter === gsiBefore,
+        `明治期のコマで重ねを押しただけで、地理院へ ${gsiAfter - gsiBefore} 本出た`);
+      const offBuf = await page.screenshot({ clip });
+      const onBuf2 = await (async () => {
+        await page.locator("#ovSwale").check();
+        await page.waitForTimeout(900);
+        return page.screenshot({ clip });
+      })();
+      must(!offBuf.equals(onBuf2), "重ねを入り切りしても、明治期のコマが1バイトも変わらない");
+      // 切ったほうも単色でないこと（＝下地の地図が出ている。真っ白や真っ黒にしない）
+      await page.locator("#ovSwale").uncheck();
+      await page.waitForTimeout(900);
+      const off = await colors();
+      must(off >= 24, `水域を切ったのに、下地の地図が出ていない: ${off} 色`);
+      // ⚠ **地図の経路でも同じことを確かめる。** ここまでは静止画のモザイクしか見ていない。
+      //   同じ絵を出す経路が 2 本あり、**片方だけ直して届いていなかった事故を 2 回**やっている
+      //   （CLAUDE.md の落とし穴）。実際、この検査を書いた直後に地図側だけ壊してみたら**通った**。
+      //   → 地図が出ている状態（#big.map-on）にしてから、もう一度画素を数える。
+      // ⚠ **この検査が見ていない範囲**（実測で確かめた 2026-08-17）:
+      //   地図の**作成時**の不透明度（style の paint）を壊しても、ここは通る。
+      //   地図の読み込み直後に applyOverlay() が必ず走って上書きするため、
+      //   振る舞いに差が出ないから。作成時の値が効くのは「地図が出た瞬間の一瞬」だけで、
+      //   そこは撮れていない。**「作成時の値も検査した」とは言わない。**
+      await page.locator("#ovSwale").check();
+      await page.waitForTimeout(600);
+      await page.locator("#big").click({ position: { x: 180, y: 120 } });   // 地図を起こす
+      await page.waitForFunction(() => document.querySelector("#big.map-on"),
+        null, { timeout: 60000 });
+      await page.waitForTimeout(3000);
+      const onMap = await colors();
+      must(onMap >= 24, `地図の経路でも下地が透けていない: ${onMap} 色`);
+      // 地図が出た状態で、入り切りが効くこと（層だけを切り分けて見る）
+      const mapOnBuf = await page.screenshot({ clip });
+      await page.locator("#ovSwale").uncheck();
+      await page.waitForTimeout(1500);
+      const mapOffBuf = await page.screenshot({ clip });
+      must(!mapOnBuf.equals(mapOffBuf),
+        "地図が出ている状態で、重ねを入り切りしても1バイトも変わらない（地図の経路に届いていない）");
+      // ⚠ **選んだ状態は、コマをまたいでも引き継ぐ。**（2026-08-17 オーナー判断）
+      //   以前はコマごとに別々に覚えていたが、**明治期で入にしたのに写真へ移ると切れる**
+      //   という取り違えを生んだ。「明治期の水域を見ているか」は1つの問いなので、状態も1つ。
+      //   ⚠ ここは**切った状態**のまま移る（直前で uncheck している）。切ったまま引き継ぐこと。
+      await page.locator("#strip .f").nth(1).click();
+      await page.waitForTimeout(2000);
+      must(await page.$eval("#ovSwale", (e) => e.checked) === false,
+        "切ったのに、写真の年代へ移ったら入に戻った");
+      await page.locator("#strip .f").nth(0).click();
+      await page.waitForTimeout(2000);
+      must(await page.$eval("#ovSwale", (e) => e.checked) === false,
+        "明治期のコマへ戻ったのに、切っておいた設定が戻っていない");
+      // 入れ直して、写真の年代へ**入のまま**引き継ぐこと（今回の指摘そのもの）
+      await page.locator("#ovSwale").check();
+      await page.waitForTimeout(800);
+      await page.locator("#strip .f").nth(1).click();
+      await page.waitForTimeout(3000);
+      must(await page.$eval("#ovSwale", (e) => e.checked) === true,
+        "明治期で入にしたのに、写真の年代へ移ると切れている");
+      // ⚠ チェックが入っているだけでは足りない。**層まで効いていること**を見る
+      const carried = await page.evaluate(() =>
+        (typeof mapObj !== "undefined" && mapObj?.getLayer("swale"))
+          ? mapObj.getPaintProperty("swale", "raster-opacity") : null);
+      must(carried > 0,
+        `写真の年代でチェックは入っているのに、層が ${carried}（何も重なっていない）`);
+      return `3経路とも下地が透ける（帯のコマ ${cell} 色／大きい絵 ${on} 色／地図 ${onMap} 色`
+        + `／切ると ${off} 色。単色なら 2〜4 色）／入り切りで絵が変わる／状態がコマをまたいで引き継がれる`;
+    },
+  },
+  {
     // 明治期のデータが無い土地では、重ねるものが無い
     name: "明治期が無い土地では、重ねる操作を出さない", path: `/?${SAPPORO}`,
     async check(page) {
@@ -2206,9 +2359,15 @@ const CASES = [
         `明治期の見出しが、空中写真と区別できない: ${yr}`);
       const cell = await page.locator("#strip .f.meiji .yr").textContent();
       must(cell.trim() === "明治期", `帯のコマの見出しが変わっている: ${cell}`);
-      // ⚠ 明治期のコマには重ねる相手（空中写真）が無い。ここでは操作を出さない
-      must(await effOpacity(page, "#ovRow") === 0,
-        "明治期のコマなのに、重ねる操作が出ている（押しても絵は変わらない）");
+      // ⚠ この検査は以前、**明治期のコマでは操作を出さない**ことを求めていた。
+      //   当時の理由は「重ねる相手（空中写真）が無い／入り切りしても絵が変わらない」で、
+      //   当時は正しかった（掟: 押しても何も起きない導線を置かない）。
+      //   ⚠ 前提が変わった。相手は**下に敷いてある淡色地図**で、塗りを透かしたので
+      //     入り切りすると絵が本当に変わる。**出すのが正しい**（2026-08-17）。
+      //   守っていた「押しても何も起きない導線を置かない」は、
+      //   →「明治期のコマで、下地の地図が透けて見える」が、画素を数えて引き継いでいる。
+      must(await effOpacity(page, "#ovRow") > 0,
+        "明治期のコマで、重ねる操作が出ていない（下地の地図を出し入れできない）");
       // 写真の年代（1936–42）へ移ると、出る
       await page.evaluate(() => document.querySelectorAll("#strip .f")[1]?.click());
       await page.waitForTimeout(900);
@@ -2264,27 +2423,40 @@ const CASES = [
           ? mapObj.getPaintProperty("swale", "raster-opacity") : null);
       const st = () => page.locator("#ovState").textContent();
 
-      // 重ねる相手は空中写真なので、写真の年代へ移ってから見る（明治期では出さない）
+      // ⚠ この検査は以前、**正常時の実況**（「ONで地図に重ねます」「重ねています」）を
+      //   文字列で要求していた。守っていたのは「言葉と層を食い違わせない」ことだが、
+      //   実況をやめた（2026-08-17 オーナー判断: ラベルと合わせて 2 行になり読む量が増える）ので、
+      //   **同じ意図を裏返して守る**: 正常なときは**何も言わない**こと＋層が言葉と食い違わないこと。
+      //   ⚠ 「取れなかったときは言う」ほうは、次のケース（水域のタイルだけ拒まれたら）が見ている。
+      // ⚠ 既定は入。まず切ってから、写真の年代へ移る
+      //   （切ったまま引き継ぐので、移った先でも層は無い）
+      await page.locator("#ovSwale").uncheck();
+      await page.waitForTimeout(600);
       await page.evaluate(() => document.querySelectorAll("#strip .f")[1]?.click());
       await page.waitForTimeout(900);
       const before = (await st()).trim();
-      must(before === "ONで地図に重ねます", `切っているときの言い方が違う: ${before}`);
-      must(await op() === null, "押していないのに、もう地図の層がある");
+      must(before === "", `切っているだけなのに、何か書いてある: 「${before}」`);
+      // ⚠ この検査は以前「押していないのに、もう地図の層がある」を見ていた。
+      //   状態を1つにして引き継ぐようにしたので、**入のまま移ってきたら層はある**のが正しい。
+      //   ここでは直前に切ってから移っているので、層はまだ無い。
+      must(await op() === null, "切ったまま移ってきたのに、もう地図の層がある");
 
       await page.locator("#ovSwale").check();
       await page.waitForFunction(() => document.querySelector("#big.map-on"), null, { timeout: 60000 });
       await page.waitForFunction(() =>
-        document.getElementById("ovState")?.textContent.trim() === "重ねています",
+        (typeof mapObj !== "undefined" && mapObj?.getPaintProperty("swale", "raster-opacity")) > 0,
         null, { timeout: 20000 });
       const onOp = await op();
-      must(onOp > 0, `「重ねています」と書いてあるのに、層は ${onOp}`);
+      must(onOp > 0, `重ねたのに、層が ${onOp}`);
+      const onTx = (await st()).trim();
+      must(onTx === "", `正常に重なっているのに、実況が書いてある: 「${onTx}」`);
 
       await page.locator("#ovSwale").uncheck();
       await page.waitForTimeout(600);
       const offTx = (await st()).trim();
-      must(offTx === "ONで地図に重ねます", `切ったのに言い方が変わらない: ${offTx}`);
+      must(offTx === "", `切っただけなのに、何か書いてある: 「${offTx}」`);
       must(await op() === 0, `切ったのに、層が ${await op()} のまま`);
-      return `切: 層 0／入: 層 ${onOp}（言葉と一致）`;
+      return `切: 層 0／入: 層 ${onOp}／正常時は言葉を出さない（3 状態とも空）`;
     },
   },
   {
@@ -2292,7 +2464,7 @@ const CASES = [
     //   地図も写真も出せるのに、**水域のタイルだけ**拒まれる状態がある。
     //   ⚠ 逆に 404 は「その範囲は整備対象外」なので、失敗として扱ってはいけない。
     //     両方をこの1件で見る。
-    name: "水域のタイルだけ拒まれたら、「重ねています」と言わない", path: `/?${TOYOSU}`,
+    name: "水域のタイルだけ拒まれたら、取れなかったと言う", path: `/?${TOYOSU}`,
     viewport: { width: 375, height: 667 }, hasTouch: true,
     setup: (page) => stubWikidata(page, []),
     async check(page) {
@@ -2316,7 +2488,9 @@ const CASES = [
       must(await page.locator("#big.map-on").count() === 1,
         "水域が取れないだけなのに、地図ごと出なくなっている");
 
-      // ⚠ 404（整備対象外）は失敗ではない。入れ直したら「重ねています」に戻ること。
+      // ⚠ 404（整備対象外）は失敗ではない。入れ直したら**何も言わない**状態に戻ること。
+      //   ⚠ 以前は「重ねています」に戻ることを見ていた。正常時の実況をやめたので、
+      //     同じ意図（404 を「読み込めなかった」に化けさせない）を**空に戻る**ことで守る。
       //   ⚠ 実測（2026-08-16 / MapLibre GL JS v5.24.0）では 404 で error 自体が飛んでこないので、
       //     ここが見ているのは**画面が何と言うか**であって、除外の条件式ではない
       //     （条件式を外しても、この検査は落ちない。確かめた）。
@@ -2331,8 +2505,8 @@ const CASES = [
       await page.waitForTimeout(3000);
       const gone = (await page.locator("#ovState").textContent()).trim();
       must(missing > 0, "404 を1本も返せていない（検査の前提が消えた）");
-      must(gone === "重ねています",
-        `整備対象外（404）を、読み込めなかったことにしている: ${gone}`);
+      must(gone === "",
+        `整備対象外（404）を、読み込めなかったことにしている: 「${gone}」`);
       return `403 を ${denied} 本 → 「${bad}」／404 を ${missing} 本 → 「${gone}」`;
     },
   },
@@ -2355,8 +2529,10 @@ const CASES = [
       // ⚠ 「読み込んでいます…」のまま止まるのも失敗。**終わったと言うところ**まで待つ。
       //   待ち切れなかったときに Timeout とだけ出ると、何が起きたのか読めないので、
       //   いま画面に出ている言葉を添えて落とす。
+      // ⚠ 正常時は何も言わなくなったので、「終わった」の合図は
+      //   「読み込めませんでした」が出ること、そのもの
       const done = await page.waitForFunction(() =>
-        /読み込めませんでした|重ねています/.test(document.getElementById("ovState")?.textContent ?? ""),
+        /読み込めませんでした/.test(document.getElementById("ovState")?.textContent ?? ""),
         null, { timeout: 30000 }).catch(() => null);
       const tx = (await page.locator("#ovState").textContent()).trim();
       must(done, `地図の読み込みは終わっているのに、状態が「${tx}」のまま止まっている`);
@@ -4037,7 +4213,7 @@ const CASES = [
   //   同じ固定の応答を両画面へ流して、出てきた並びを突き合わせる。
   //   ⚠ 応答は「渋谷」の実際の形（都道府県コードの昇順＝**先頭が別の土地**）を模してある。
   {
-    name: "同じ応答なら、トップと 3D の候補が一致する", path: "/",
+    name: "同じ応答なら、トップと 3D の候補が一致する", dep: "search", path: "/",
     setup: (page) => page.route("**/AddressSearch*", (r) => r.fulfill({
       status: 200, contentType: "application/json",
       // ⚠ **自動選択が発火する組み合わせにする。** 先に「福島県猪苗代町渋谷」を混ぜた
@@ -4084,7 +4260,7 @@ const CASES = [
   //   **2.5 秒後に「東京都渋谷区」で上書きされた**。
   //   ⚠ 入力欄は setMode() が空にするので `oninput` は発火せず、そこの cancel() には届かない。
   {
-    name: "検索中に場所を選んでも、行動一覧が古い候補で上書きされない", path: "/",
+    name: "検索中に場所を選んでも、行動一覧が古い候補で上書きされない", dep: "search", path: "/",
     setup: (page) => page.route("**/AddressSearch*", async (r) => {
       await new Promise((x) => setTimeout(x, 2000));
       await r.fulfill({ status: 200, contentType: "application/json",
@@ -4118,7 +4294,7 @@ const CASES = [
   //   ⚠ 新しい検索が始まるのはデバウンスのあとなので、run() の中で世代を進めるだけでは
   //   間に合わない。**入力の瞬間に cancel() する**必要がある。
   ...[["トップ", "/", "#list", false], ["3D", "/peel", "#cands", true]].map(([who, path, listSel, needOpen]) => ({
-    name: `${who}: 別の語へ変えたら、前の語の候補が出ない`, path,
+    name: `${who}: 別の語へ変えたら、前の語の候補が出ない`, dep: "search", path,
     // ⚠ 「渋谷」だけ遅らせる。実際の地理院には出ない
     setup: (page) => page.route("**/AddressSearch*", async (r) => {
       const q = decodeURIComponent(new URL(r.request().url()).searchParams.get("q") ?? "");
@@ -4150,7 +4326,7 @@ const CASES = [
   //   いまは places.js の createSearch().cancel() を両画面が呼ぶ。
   //   ⚠ 応答を遅らせて作る。実際の地理院には出ない。
   ...[["トップ", "/", "#list", false], ["3D", "/peel", "#cands", true]].map(([who, path, listSel, needOpen]) => ({
-    name: `${who}: 入力を消したら、遅れて返った候補が復活しない`, path,
+    name: `${who}: 入力を消したら、遅れて返った候補が復活しない`, dep: "search", path,
     setup: (page) => page.route("**/AddressSearch*", async (r) => {
       await new Promise((x) => setTimeout(x, 2500));
       await r.fulfill({ status: 200, contentType: "application/json",
@@ -4483,13 +4659,41 @@ let failed = 0;
 //   **確かめずに済ませる誘惑が生まれる**（実際、確認1つに 5 分かけていた）。
 //   ⚠ **CI と main では必ず全件を回す。** ここは手元で1件を見るためだけのもの。
 const ONLY = process.argv.find((a) => a.startsWith("--only="))?.slice(7);
-const RUN = ONLY ? CASES.filter((c) => c.name.includes(ONLY)) : CASES;
-if (ONLY) {
-  if (!RUN.length) { console.log(`\x1b[31m--only=${ONLY} に当てはまるケースが無い\x1b[0m`); process.exit(1); }
-  console.log(`\x1b[33m⚠ --only=${ONLY}: ${RUN.length} / ${CASES.length} 件だけ回す（全件ではない）\x1b[0m\n`);
+// ⚠ **外部に寄りかかるケースだけを切り出せるようにする。**
+//   `dep:"search"` は、地理院の住所検索（msearch）の応答が返ってこないと成立しない検査。
+//   実測（2026-08-17）で、住所検索は速いとき 0.4 秒・遅いとき 8.2 秒だった。
+//   アプリは 8 秒で中断する（掟のタイムアウト）ので、遅い回はアプリが正しく中断し、
+//   候補が出ないまま検査だけが落ちる。**アプリの不具合ではなく、検査の前提が外部にある。**
+//   → `--group=core` は外へ出ない（＝落ちても外部のせいにできない）ぶんだけを回す。
+//     `--group=search` はその逆。CI は両方を回すが、切り分けができる。
+const GROUP = process.argv.find((a) => a.startsWith("--group="))?.slice(8);
+if (GROUP && !["core", "search"].includes(GROUP)) {
+  console.log(`\x1b[31m--group は core か search（来たのは ${GROUP}）\x1b[0m`); process.exit(1);
+}
+const RUN = CASES
+  .filter((c) => !ONLY || c.name.includes(ONLY))
+  .filter((c) => !GROUP || (GROUP === "search" ? c.dep === "search" : c.dep !== "search"));
+if (ONLY || GROUP) {
+  const how = [ONLY && `--only=${ONLY}`, GROUP && `--group=${GROUP}`].filter(Boolean).join(" ");
+  if (!RUN.length) { console.log(`\x1b[31m${how} に当てはまるケースが無い\x1b[0m`); process.exit(1); }
+  console.log(`\x1b[33m⚠ ${how}: ${RUN.length} / ${CASES.length} 件だけ回す（全件ではない）\x1b[0m\n`);
 }
 
+let retried = 0;      // 何回やり直したか。**必ず最後に出す**（黙って再試行しない）
 for (const c of RUN) {
+  // ⚠ **再試行するのは `dep` が付いたケースだけ。** 付いていないケースの失敗は、
+  //   こちらの不具合なので隠さない。付いているものも **1 回だけ**。
+  //   ⚠ 2 回目も落ちたら落とす。「たまに落ちる」を「落ちない」に見せかけない。
+  for (let attempt = 1; attempt <= (c.dep ? 2 : 1); attempt++) {
+    const again = await runCase(c, attempt);
+    if (!again) break;
+    retried++;
+    console.log(`      \x1b[33m⟳ 再試行（${c.dep} が返らなかった可能性）\x1b[0m`);
+  }
+}
+
+// 1 件を回す。落ちて、かつ**やり直す価値がある**なら true を返す
+async function runCase(c, attempt) {
   // スマホ幅でしか出ない壊れ方（タップ判定）を見るケースがあるので、画面はケースごとに指定できる
   // スマホ幅でしか出ない壊れ方を見るケースは、指（hasTouch）も一緒に再現する。
   // これが無いと @media (hover:none) が効かず、タッチ端末での見え方を測れない。
@@ -4503,6 +4707,19 @@ for (const c of RUN) {
     serviceWorkers: "block" });
   const errors = [], reqs = [];
   page.on("pageerror", (e) => errors.push(String(e).slice(0, 160)));
+  // ⚠ **外部が遅いときに何が起きたかを、あとから読めるようにしておく。**
+  //   `LOG_SEARCH=1 npm run render` で、住所検索の要求・応答・失敗を時刻つきで出す。
+  //   これで「アプリが 8 秒で中断した（掟どおり）」と「検査の書き方が悪い」を切り分けられた
+  //   （2026-08-17: 実測で遅いとき 8.2 秒 → ERR_ABORTED → 候補が出ず時間切れ）。
+  if (process.env.LOG_SEARCH) {
+    const t0 = Date.now();
+    page.on("request", (r) => { if (/address-search/.test(r.url()))
+      console.log(`      [req ] +${((Date.now()-t0)/1000).toFixed(1)}s ${c.name}`); });
+    page.on("response", (r) => { if (/address-search/.test(r.url()))
+      console.log(`      [resp] +${((Date.now()-t0)/1000).toFixed(1)}s ${r.status()} ${c.name}`); });
+    page.on("requestfailed", (r) => { if (/address-search/.test(r.url()))
+      console.log(`      [FAIL] +${((Date.now()-t0)/1000).toFixed(1)}s ${r.failure()?.errorText} ${c.name}`); });
+  }
   // 「実行時に外部へ出ていないこと」を検査できるように、出た先を全部控える
   page.on("request", (r) => reqs.push(r.url()));
 
@@ -4513,8 +4730,16 @@ for (const c of RUN) {
     const detail = await c.check(page, reqs);
     // 描画自体は通っても、裏でエラーが出ていれば見逃さない
     if (errors.length) throw new Error(`JSエラー: ${errors[0]}`);
-    console.log(`  \x1b[32m✓\x1b[0m ${c.name} — ${detail}`);
+    console.log(`  \x1b[32m✓\x1b[0m ${c.name} — ${detail}${attempt > 1 ? " \x1b[33m（再試行で通過）\x1b[0m" : ""}`);
+    // ⚠ **印と実際の通信を突き合わせる。** 印が古くなると、再試行も切り分けも効かなくなる。
+    //   ⚠ 応答を差し替えているケースでも request は出るので、これは
+    //     「印が付いているのに一度も検索しない」ほうだけを見る（片方向）。
+    if (c.dep === "search" && !reqs.some((u) => /address-search/.test(u))) {
+      failed++;
+      console.log(`  \x1b[31m✗\x1b[0m ${c.name} — dep:"search" の印が付いているのに、住所検索を1度も叩いていない（印が古い）`);
+    }
   } catch (e) {
+    if (c.dep && attempt === 1) { await page.close(); return true; }   // やり直す
     failed++;
     console.log(`  \x1b[31m✗\x1b[0m ${c.name} — ${e.message.split("\n")[0]}`);
     if (errors.length) console.log(`      JSエラー: ${errors.join(" / ")}`);
@@ -4528,12 +4753,15 @@ for (const c of RUN) {
       .catch(() => {});
   }
   await page.close();
+  return false;
 }
 
 await browser.close();
 stop();
 
 console.log(`\n${"─".repeat(52)}`);
+// ⚠ **再試行を黙って飲み込まない。** 増えていくなら、外部が落ちているか検査が悪い
+if (retried) console.log(`\x1b[33m⟳ 外部（住所検索）待ちで ${retried} 回やり直した\x1b[0m`);
 if (failed) { console.log(`\x1b[31m${failed} / ${RUN.length} 件が失敗\x1b[0m`); process.exit(1); }
 // ⚠ 回していないケースを「描画できた」と言わない（--only のとき）
 console.log(ONLY
