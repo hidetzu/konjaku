@@ -2139,7 +2139,7 @@ const CASES = [
       must(await at() === stopped, `止めたのに進んでいる: ${stopped} → ${await at()}`);
 
       // 明治期の水域を重ねられること（判定できた土地でだけ出す）
-      must(await page.locator("#ovSwale").count() === 1, "明治期の水域を重ねる操作が無い");
+      must(await page.locator("#ovSwale").count() === 1, "明治期の土地を重ねる操作が無い");
       // ⚠ ここは長いあいだ、**何も測らずに「水域の重ねあり」と報告していた**。
       //   代入した値をどこにも使わない行が置いてあるだけで、assertion が無かった。
       //
@@ -2483,8 +2483,25 @@ const CASES = [
       const bad = (await page.locator("#ovState").textContent()).trim();
       // ⚠ 前提が消えたら落とす。1本も拒めていないなら、この検査は何も確かめていない
       must(denied > 0, "水域のタイルを1本も拒めていない（検査の前提が消えた）");
-      must(!bad.includes("重ねています"), `水域を取れていないのに、重ねたと言っている: ${bad}`);
-      must(bad.includes("読み込めませんでした"), `水域を取れなかったことを言っていない: ${bad}`);
+      must(!bad.includes("重ねています"), `明治期を取れていないのに、重ねたと言っている: ${bad}`);
+      // ⚠ **その文が1行に収まっていること。** 写真の上に置いているので、折り返したぶんだけ
+      //   写真が隠れる。⚠ **この約束は長いあいだ 320px で破れていた**（2026-08-17 実測:
+      //   「水域を読み込めませんでした」で札が 44px → 58px）。誰も見ていなかったので、ここで見る。
+      for (const [w, h] of [[375, 667], [320, 640]]) {
+        await page.setViewportSize({ width: w, height: h });
+        await page.waitForTimeout(400);
+        const g = await page.evaluate(() => {
+          const st = document.getElementById("ovState");
+          const lh = parseFloat(getComputedStyle(st).lineHeight) || 15;
+          return { rows: Math.max(1, Math.round(st.getBoundingClientRect().height / lh)),
+            rowH: Math.round(document.getElementById("ovRow").getBoundingClientRect().height),
+            t: st.textContent };
+        });
+        must(g.rows === 1,
+          `${w}×${h}: 状態の文が ${g.rows} 行に折り返している（札 ${g.rowH}px）: 「${g.t}」`);
+      }
+      await page.setViewportSize({ width: 375, height: 667 });
+      must(bad.includes("読み込めません"), `明治期を取れなかったことを言っていない: ${bad}`);
       must(await page.locator("#big.map-on").count() === 1,
         "水域が取れないだけなのに、地図ごと出なくなっている");
 
@@ -2532,12 +2549,12 @@ const CASES = [
       // ⚠ 正常時は何も言わなくなったので、「終わった」の合図は
       //   「読み込めませんでした」が出ること、そのもの
       const done = await page.waitForFunction(() =>
-        /読み込めませんでした/.test(document.getElementById("ovState")?.textContent ?? ""),
+        /読み込めません/.test(document.getElementById("ovState")?.textContent ?? ""),
         null, { timeout: 30000 }).catch(() => null);
       const tx = (await page.locator("#ovState").textContent()).trim();
       must(done, `地図の読み込みは終わっているのに、状態が「${tx}」のまま止まっている`);
       must(!tx.includes("重ねています"), `地図が出せていないのに、重ねたと言っている: ${tx}`);
-      must(tx.includes("読み込めませんでした"), `地図が出せなかったことを言っていない: ${tx}`);
+      must(tx.includes("読み込めません"), `地図が出せなかったことを言っていない: ${tx}`);
       // 判定そのものは巻き添えにしない
       const v = await page.locator("#verdict").textContent();
       must(v.includes("明治期"), "地図が出せないことで、判定まで消えている");
