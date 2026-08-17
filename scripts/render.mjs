@@ -1398,7 +1398,7 @@ const CASES = [
       must(h <= 220, `帯が高すぎる: ${h}px`);
       // 場所が決まったらサブコピーは畳む（実測 79px。写真と判定文がそのぶん下へ押し出されていた）
       // ⚠ 「場所を検索して…」は、もう場所を選んだ人には前の段の指示。
-      //   住所選択中の責務にサービス紹介は無い（tmp/9/10-トップ2状態の詳細設計.md）
+      //   場所選択中の責務にサービス紹介は無い（tmp/9/10-トップ2状態の詳細設計.md）
       const leads = await page.$$eval(".lead", (els) => els
         .filter((e) => e.getBoundingClientRect().height > 0).length);
       must(leads === 0, `場所を選んだあともサブコピーが残っている: ${leads} 個`);
