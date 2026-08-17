@@ -436,7 +436,7 @@ const CASES = [
     // このサービスでいちばん価値のある信号は「探したのに出せなかった語」。
     // 黙って去られると永久に分からない。ただし勝手には送らない（掟: 地名も座標も送らない）。
     // 押すかどうかは本人が決める形になっていること。
-    name: "見つからなかった語を、本人の判断で報告できる", path: "/",
+    name: "見つからなかった語を、本人の判断で報告できる", dep: "search", path: "/",
     async check(page) {
       await page.fill("#q", "ぞぞぞぞぞぞ");
       await page.waitForFunction(
@@ -975,7 +975,7 @@ const CASES = [
   // 並びそのものは scripts/search-check.mjs が35語で測る。ここで見るのは
   // 「画面の上で Enter を押したとき何が起きるか」のほう。
   {
-    name: "検索（確度が高いので先頭を選ぶ）", path: "/",
+    name: "検索（確度が高いので先頭を選ぶ）", dep: "search", path: "/",
     async check(page) {
       await page.fill("#q", "渋谷");
       await page.waitForSelector("#list .it", { timeout: 30000 });
@@ -1006,7 +1006,7 @@ const CASES = [
     },
   },
   {
-    name: "検索（確度が低いので選ばない）", path: "/",
+    name: "検索（確度が低いので選ばない）", dep: "search", path: "/",
     async check(page) {
       // ⚠ **効かないキーの説明を、打つ前に出さない。**
       //   実測（2026-08-17 / 1280×800 / 地名を打つ前）: ↑↓・Enter・Esc が 3 つとも
@@ -1053,7 +1053,7 @@ const CASES = [
     // ⚠ 区名と町字が同じ語で競合する組。並べ替えは「区名が上」で決めるが、それは
     // 順番の規則であって確からしさの証拠ではない。ここで選んでしまうと、
     // 掟: 取れなかったを「無い」と言わない で狙いに定めた埋立地（港区港南＝品川駅東）から確信を持って離れる。
-    name: "検索（同名の土地では選ばない）", path: "/",
+    name: "検索（同名の土地では選ばない）", dep: "search", path: "/",
     async check(page) {
       await page.fill("#q", "港南");
       await page.waitForSelector("#list .it", { timeout: 30000 });
@@ -1074,7 +1074,7 @@ const CASES = [
     // ⚠ 検索経路の「取れなかった」を「無かった」と言い換えない（掟: 取れなかったを「無い」と言わない の検索側の残り）。
     // res.ok を見ずに .json() し、配列の長さだけで判定していたため、
     // HTTP 500 も、配列でない 200 も「見つかりませんでした」に化けていた。
-    name: "検索が失敗したとき「無い」と言わない", path: "/",
+    name: "検索が失敗したとき「無い」と言わない", dep: "search", path: "/",
     async check(page) {
       const API = "**/AddressSearch*";
       const failed = async (label) => {
@@ -1448,7 +1448,7 @@ const CASES = [
   //   指を離す前にレイアウトが動くので、押した座標には別の要素が来ている。
   //   見せ方をどれだけ磨いても、ここが塞がっていると誰も判定に到達できない。
   {
-    name: "スマホで、最初の1タップが空振りしない", path: "/",
+    name: "スマホで、最初の1タップが空振りしない", dep: "search", path: "/",
     viewport: { width: 375, height: 667 }, hasTouch: true,
     async check(page) {
       // (1) クイック選択（地名の例）
@@ -4213,7 +4213,7 @@ const CASES = [
   //   同じ固定の応答を両画面へ流して、出てきた並びを突き合わせる。
   //   ⚠ 応答は「渋谷」の実際の形（都道府県コードの昇順＝**先頭が別の土地**）を模してある。
   {
-    name: "同じ応答なら、トップと 3D の候補が一致する", path: "/",
+    name: "同じ応答なら、トップと 3D の候補が一致する", dep: "search", path: "/",
     setup: (page) => page.route("**/AddressSearch*", (r) => r.fulfill({
       status: 200, contentType: "application/json",
       // ⚠ **自動選択が発火する組み合わせにする。** 先に「福島県猪苗代町渋谷」を混ぜた
@@ -4260,7 +4260,7 @@ const CASES = [
   //   **2.5 秒後に「東京都渋谷区」で上書きされた**。
   //   ⚠ 入力欄は setMode() が空にするので `oninput` は発火せず、そこの cancel() には届かない。
   {
-    name: "検索中に場所を選んでも、行動一覧が古い候補で上書きされない", path: "/",
+    name: "検索中に場所を選んでも、行動一覧が古い候補で上書きされない", dep: "search", path: "/",
     setup: (page) => page.route("**/AddressSearch*", async (r) => {
       await new Promise((x) => setTimeout(x, 2000));
       await r.fulfill({ status: 200, contentType: "application/json",
@@ -4294,7 +4294,7 @@ const CASES = [
   //   ⚠ 新しい検索が始まるのはデバウンスのあとなので、run() の中で世代を進めるだけでは
   //   間に合わない。**入力の瞬間に cancel() する**必要がある。
   ...[["トップ", "/", "#list", false], ["3D", "/peel", "#cands", true]].map(([who, path, listSel, needOpen]) => ({
-    name: `${who}: 別の語へ変えたら、前の語の候補が出ない`, path,
+    name: `${who}: 別の語へ変えたら、前の語の候補が出ない`, dep: "search", path,
     // ⚠ 「渋谷」だけ遅らせる。実際の地理院には出ない
     setup: (page) => page.route("**/AddressSearch*", async (r) => {
       const q = decodeURIComponent(new URL(r.request().url()).searchParams.get("q") ?? "");
@@ -4326,7 +4326,7 @@ const CASES = [
   //   いまは places.js の createSearch().cancel() を両画面が呼ぶ。
   //   ⚠ 応答を遅らせて作る。実際の地理院には出ない。
   ...[["トップ", "/", "#list", false], ["3D", "/peel", "#cands", true]].map(([who, path, listSel, needOpen]) => ({
-    name: `${who}: 入力を消したら、遅れて返った候補が復活しない`, path,
+    name: `${who}: 入力を消したら、遅れて返った候補が復活しない`, dep: "search", path,
     setup: (page) => page.route("**/AddressSearch*", async (r) => {
       await new Promise((x) => setTimeout(x, 2500));
       await r.fulfill({ status: 200, contentType: "application/json",
@@ -4659,13 +4659,41 @@ let failed = 0;
 //   **確かめずに済ませる誘惑が生まれる**（実際、確認1つに 5 分かけていた）。
 //   ⚠ **CI と main では必ず全件を回す。** ここは手元で1件を見るためだけのもの。
 const ONLY = process.argv.find((a) => a.startsWith("--only="))?.slice(7);
-const RUN = ONLY ? CASES.filter((c) => c.name.includes(ONLY)) : CASES;
-if (ONLY) {
-  if (!RUN.length) { console.log(`\x1b[31m--only=${ONLY} に当てはまるケースが無い\x1b[0m`); process.exit(1); }
-  console.log(`\x1b[33m⚠ --only=${ONLY}: ${RUN.length} / ${CASES.length} 件だけ回す（全件ではない）\x1b[0m\n`);
+// ⚠ **外部に寄りかかるケースだけを切り出せるようにする。**
+//   `dep:"search"` は、地理院の住所検索（msearch）の応答が返ってこないと成立しない検査。
+//   実測（2026-08-17）で、住所検索は速いとき 0.4 秒・遅いとき 8.2 秒だった。
+//   アプリは 8 秒で中断する（掟のタイムアウト）ので、遅い回はアプリが正しく中断し、
+//   候補が出ないまま検査だけが落ちる。**アプリの不具合ではなく、検査の前提が外部にある。**
+//   → `--group=core` は外へ出ない（＝落ちても外部のせいにできない）ぶんだけを回す。
+//     `--group=search` はその逆。CI は両方を回すが、切り分けができる。
+const GROUP = process.argv.find((a) => a.startsWith("--group="))?.slice(8);
+if (GROUP && !["core", "search"].includes(GROUP)) {
+  console.log(`\x1b[31m--group は core か search（来たのは ${GROUP}）\x1b[0m`); process.exit(1);
+}
+const RUN = CASES
+  .filter((c) => !ONLY || c.name.includes(ONLY))
+  .filter((c) => !GROUP || (GROUP === "search" ? c.dep === "search" : c.dep !== "search"));
+if (ONLY || GROUP) {
+  const how = [ONLY && `--only=${ONLY}`, GROUP && `--group=${GROUP}`].filter(Boolean).join(" ");
+  if (!RUN.length) { console.log(`\x1b[31m${how} に当てはまるケースが無い\x1b[0m`); process.exit(1); }
+  console.log(`\x1b[33m⚠ ${how}: ${RUN.length} / ${CASES.length} 件だけ回す（全件ではない）\x1b[0m\n`);
 }
 
+let retried = 0;      // 何回やり直したか。**必ず最後に出す**（黙って再試行しない）
 for (const c of RUN) {
+  // ⚠ **再試行するのは `dep` が付いたケースだけ。** 付いていないケースの失敗は、
+  //   こちらの不具合なので隠さない。付いているものも **1 回だけ**。
+  //   ⚠ 2 回目も落ちたら落とす。「たまに落ちる」を「落ちない」に見せかけない。
+  for (let attempt = 1; attempt <= (c.dep ? 2 : 1); attempt++) {
+    const again = await runCase(c, attempt);
+    if (!again) break;
+    retried++;
+    console.log(`      \x1b[33m⟳ 再試行（${c.dep} が返らなかった可能性）\x1b[0m`);
+  }
+}
+
+// 1 件を回す。落ちて、かつ**やり直す価値がある**なら true を返す
+async function runCase(c, attempt) {
   // スマホ幅でしか出ない壊れ方（タップ判定）を見るケースがあるので、画面はケースごとに指定できる
   // スマホ幅でしか出ない壊れ方を見るケースは、指（hasTouch）も一緒に再現する。
   // これが無いと @media (hover:none) が効かず、タッチ端末での見え方を測れない。
@@ -4679,6 +4707,19 @@ for (const c of RUN) {
     serviceWorkers: "block" });
   const errors = [], reqs = [];
   page.on("pageerror", (e) => errors.push(String(e).slice(0, 160)));
+  // ⚠ **外部が遅いときに何が起きたかを、あとから読めるようにしておく。**
+  //   `LOG_SEARCH=1 npm run render` で、住所検索の要求・応答・失敗を時刻つきで出す。
+  //   これで「アプリが 8 秒で中断した（掟どおり）」と「検査の書き方が悪い」を切り分けられた
+  //   （2026-08-17: 実測で遅いとき 8.2 秒 → ERR_ABORTED → 候補が出ず時間切れ）。
+  if (process.env.LOG_SEARCH) {
+    const t0 = Date.now();
+    page.on("request", (r) => { if (/address-search/.test(r.url()))
+      console.log(`      [req ] +${((Date.now()-t0)/1000).toFixed(1)}s ${c.name}`); });
+    page.on("response", (r) => { if (/address-search/.test(r.url()))
+      console.log(`      [resp] +${((Date.now()-t0)/1000).toFixed(1)}s ${r.status()} ${c.name}`); });
+    page.on("requestfailed", (r) => { if (/address-search/.test(r.url()))
+      console.log(`      [FAIL] +${((Date.now()-t0)/1000).toFixed(1)}s ${r.failure()?.errorText} ${c.name}`); });
+  }
   // 「実行時に外部へ出ていないこと」を検査できるように、出た先を全部控える
   page.on("request", (r) => reqs.push(r.url()));
 
@@ -4689,8 +4730,16 @@ for (const c of RUN) {
     const detail = await c.check(page, reqs);
     // 描画自体は通っても、裏でエラーが出ていれば見逃さない
     if (errors.length) throw new Error(`JSエラー: ${errors[0]}`);
-    console.log(`  \x1b[32m✓\x1b[0m ${c.name} — ${detail}`);
+    console.log(`  \x1b[32m✓\x1b[0m ${c.name} — ${detail}${attempt > 1 ? " \x1b[33m（再試行で通過）\x1b[0m" : ""}`);
+    // ⚠ **印と実際の通信を突き合わせる。** 印が古くなると、再試行も切り分けも効かなくなる。
+    //   ⚠ 応答を差し替えているケースでも request は出るので、これは
+    //     「印が付いているのに一度も検索しない」ほうだけを見る（片方向）。
+    if (c.dep === "search" && !reqs.some((u) => /address-search/.test(u))) {
+      failed++;
+      console.log(`  \x1b[31m✗\x1b[0m ${c.name} — dep:"search" の印が付いているのに、住所検索を1度も叩いていない（印が古い）`);
+    }
   } catch (e) {
+    if (c.dep && attempt === 1) { await page.close(); return true; }   // やり直す
     failed++;
     console.log(`  \x1b[31m✗\x1b[0m ${c.name} — ${e.message.split("\n")[0]}`);
     if (errors.length) console.log(`      JSエラー: ${errors.join(" / ")}`);
@@ -4704,12 +4753,15 @@ for (const c of RUN) {
       .catch(() => {});
   }
   await page.close();
+  return false;
 }
 
 await browser.close();
 stop();
 
 console.log(`\n${"─".repeat(52)}`);
+// ⚠ **再試行を黙って飲み込まない。** 増えていくなら、外部が落ちているか検査が悪い
+if (retried) console.log(`\x1b[33m⟳ 外部（住所検索）待ちで ${retried} 回やり直した\x1b[0m`);
 if (failed) { console.log(`\x1b[31m${failed} / ${RUN.length} 件が失敗\x1b[0m`); process.exit(1); }
 // ⚠ 回していないケースを「描画できた」と言わない（--only のとき）
 console.log(ONLY
