@@ -563,8 +563,9 @@
   /* いま重ねているのかどうかを、言葉で出す（チェックの形だけに頼らない） */
   /* ⚠ 小さくはするが、薄くはしすぎない。ここは「いまどうなっているか」そのもの */
   .ov-st{display:block;font-size:var(--fs-label);color:var(--ink-dim)}
-  /* 明治期のコマでは、重ねる相手（空中写真）が無い。JS がここを付け外しする */
-  .ov.none{display:none}
+  /* ⚠ 以前ここに `.ov.none{display:none}` があり、明治期のコマで重ねる操作を隠していた。
+     当時は「重ねる相手（空中写真）が無い」ため正しかったが、いまは相手がある
+     （下に敷いた淡色地図）。塗りを透かしたので入り切りで絵が変わる。規則ごと消した。 */
   .mixbar input[type=range]{flex:1;min-width:0;accent-color:var(--action);height:22px}
   .mixbar .mixv{flex:none;width:34px;text-align:right;font-variant-numeric:tabular-nums}
   .strip-foot{margin:-3px 0 11px;font-size:var(--fs-note);color:var(--ink-dim)}
@@ -1121,7 +1122,17 @@ function frameHTML(fr,i){
       aria-pressed="${i===eraIdx}" title="${fr.meiji?`${name}（この判定の根拠になっているデータ）`:`${name}の空中写真を大きく見る`}">
     <!-- ⚠ loading="lazy" は付けない。右端（現在）が画面外から始まる端末で、
          いちばん見せたい1枚だけが永久に読み込まれない -->
-    <span class="im">${under}<img src="${fr.tile}" alt="" fetchpriority="low" decoding="async">
+    <!-- ⚠ **帯のコマには水域を重ねない。** 明治期のコマは下地（淡色地図）だけを出す。
+         重ねると、全面が水だった土地（豊洲）でコマが**青いベタ塗り**になり、
+         隣に並ぶ空中写真の中で1つだけ「絵ではないもの」になる。
+         水域は、そのコマを選んだときに大きい絵の側で見せる（重ねる操作つき）。
+         ⚠ 塗りのタイルは**要求そのものを出さない**。透明にして隠すのではなく作らない
+         （掟: 地理院への負荷は自分の請求とは別に見る）。
+         ⚠ この画面は同じ絵を出す経路が 3 本ある（帯のコマ・大きい絵・地図）。
+           帯だけ扱いが違うので、ERA_ALPHA は通さない。
+         ⚠ ここは**テンプレートリテラルの中**。コメントでもバッククォートを書かない
+           （書いた瞬間に文字列がそこで終わり、SyntaxError になる。実際にやった） -->
+    <span class="im">${under}${fr.under?"":`<img src="${fr.tile}" alt="" fetchpriority="low" decoding="async">`}
       <i class="mk" style="left:${x}%;top:${y}%"></i></span>
     <span class="yr">${fr.label}</span></button>`;
 }
@@ -1141,15 +1152,47 @@ function setMosaic(){
 }
 const tileUrl=(fr,x,y)=>`${GSI}/${fr.id}/16/${x}/${y}.${fr.ext}`;
 
+// ⚠ **下地を敷いても、上が不透明なら 1 ピクセルも見えない。**
+//   明治期のコマは区分の塗りだけなので下に淡色地図を敷いてある（`under:"pale"`）が、
+//   塗りを不透明のまま載せていたため、**全面が水だった土地では下地が完全に隠れていた**。
+//   実測（2026-08-17 / 375×667 / 豊洲）: 画面の 6 割が青一色になり、
+//   初見の 3 人が 3 人ともここに最初に目を奪われ、1 人は「読み込み中かと思った」。
+//   透かすと、同じデータのまま豊洲駅・道路・町名が読めて「この一帯が水だった」と分かる。
+// ⚠ **この判断は 1 か所に置く。** 同じ絵を出す経路が 2 本ある（静止画のモザイクと、
+//   MapLibre の地図）。片方だけ直して届いていなかった事故を 2 回やっている
+//   （CLAUDE.md「同じ結果を出す経路が複数あるなら、1 か所にまとめてから直す」）。
+// ⚠ 写真の年代（`under` を持たない）は 1 のまま。写真は下に敷くものが無い。
+// ⚠ **同じチェックが、コマによって別のものを動かす。**
+//   写真の年代 … 写真の上に「明治期の水域」をもう1枚重ねる（swale 層）
+//   明治期のコマ … 見えている塗りそのものが明治期の水域なので、**その濃さ**を動かす
+//                   （era 層 = swale タイル）。切ると下地の地図だけになる
+// ⚠ **状態は1つ。** 「明治期の水域を見ているかどうか」という1つの問いなので、
+//   コマをまたいでも引き継ぐ。既定は入（着いた瞬間に水域が見えている）。
+//   ⚠ 一度コマごとに別々に覚える形にしたが、**明治期で入にしたのに写真へ移ると切れる**
+//     という取り違えを生んだ（2026-08-17 にオーナーが実機で発見）。
+//   ⚠ 代償: 写真の年代へ移った瞬間に地図が起き、水域タイルを引く。
+//     実測（375×667 / 豊洲 / 全 9 段を順に見る）: 地理院への要求 51 → **93 本**。
+//     オーナー判断で許容。⚠ 事前計算へ寄せる案が別途ある（tmp/9 の設計メモ）。
+// ⚠ ERA_ALPHA より前に置く。あとに置くと、初回の描画が宣言前の参照になる
+let ovOn=true;
+const onMeijiFrame=()=>!!frames[eraIdx]?.under;
+// 明治期の塗りを透かす濃さ。**数字はここにしか書かない。**
+const MEIJI_ALPHA=0.75;
+// ⚠ 明治期のコマでは、この値をチェックで MEIJI_ALPHA ⇄ 0 に動かす（上の ovOn）。
+//   他の年代と同じく「重ねる／重ねない」を選べるようにするため。
+// ⚠ **帯のコマ（frameHTML）はここを通さない。** あちらは水域を重ねず、下地の地図だけを出す
+//   （重ねると、全面が水だった土地でコマが青いベタ塗りになる）。
+const ERA_ALPHA=(fr)=>fr?.under?(ovOn?MEIJI_ALPHA:0):1;
+
 function bigLayer(fr,id,on){
   const cells=[[0,0],[1,0],[0,1],[1,1]];
-  const draw=(f2)=>cells.map(([c,r])=>
+  const draw=(f2,alpha)=>cells.map(([c,r])=>
     f2?`<img class="t" data-c="${c}" data-r="${r}" alt="" fetchpriority="high"
-        decoding="async" src="${tileUrl(f2,mosaic.x0+c,mosaic.y0+r)}">`
+        decoding="async"${alpha<1?` style="opacity:${alpha}"`:""} src="${tileUrl(f2,mosaic.x0+c,mosaic.y0+r)}">`
       :`<img class="t" data-c="${c}" data-r="${r}" alt="">`).join("");
   // 明治期は区分の塗りだけなので、下に淡色地図を敷く（2組み重ねる）
-  const under=fr?.under?draw({id:fr.under,ext:"png"}):"";
-  return `<div class="lyr${on?" on":""}" id="${id}">${under}${draw(fr)}</div>`;
+  const under=fr?.under?draw({id:fr.under,ext:"png"},1):"";
+  return `<div class="lyr${on?" on":""}" id="${id}">${under}${draw(fr,ERA_ALPHA(fr))}</div>`;
 }
 
 // モザイクを枠いっぱいに置く。判定した点を縦の基準にする（object-fit:cover と同じ考え）
@@ -1329,6 +1372,11 @@ function setEra(i){
   stopSay();
   unzoom(); renderEvents();
   mapSetEra(fr);
+  // ⚠ **引き継いだ状態を、移った先でも効かせる。** 写真の年代の重ねは MapLibre の層が要るので、
+  //   入のまま移ってきたら地図を起こす。ここを忘れると、チェックは入っているのに
+  //   何も重なっていない（言葉と画面が食い違う）状態になる。
+  if(ovOn&&!onMeijiFrame()&&!mapObj&&!mapLoading) ensureMap().then(()=>applyOverlay());
+  else applyOverlay();
   // 重ねたまま年代を動かすと、上に載っている現在しか見えず、何が変わったのか分からない
   mixVal=0; wireMix(); applyMix();
   document.getElementById("mixbar")?.classList.toggle("off",!!fr.now);
@@ -1385,7 +1433,9 @@ async function ensureMap(){
           // 下地（淡色地図）。明治期の低湿地は区分の塗りだけなので、これが無いと何も見えない
           layers:[{id:"under",type:"raster",source:"under",
               paint:{"raster-opacity":fr.under?1:0}},
-            {id:"era",type:"raster",source:"era"},
+            // ⚠ 明治期のコマは塗りを透かす（ERA_ALPHA）。不透明のままだと、上で敷いた
+            //   下地が 1 ピクセルも見えない。静止画の経路（bigLayer）と同じ判断を使う
+            {id:"era",type:"raster",source:"era",paint:{"raster-opacity":ERA_ALPHA(fr)}},
             // 上に「現在」を重ね、濃さで比べる。既定は 0（＝選んだ年代だけ）
             {id:"now",type:"raster",source:"now",paint:{"raster-opacity":mixVal/100}},
             // 明治期の水域。既定は 0（押した人にだけ出す）
@@ -1449,6 +1499,9 @@ function mapSetEra(fr){
   // 下地は、明治期のコマのときだけ見せる
   if(mapObj.getLayer("under"))
     mapObj.setPaintProperty("under","raster-opacity",fr.under?1:0);
+  // ⚠ 下地を出すだけでは足りない。上の塗りも透かす（静止画の経路と同じ ERA_ALPHA）
+  if(mapObj.getLayer("era"))
+    mapObj.setPaintProperty("era","raster-opacity",ERA_ALPHA(fr));
   const src=mapObj.getSource("era");
   if(src?.setTiles) src.setTiles([`${GSI}/${fr.id}/{z}/{x}/{y}.${fr.ext}`]);
   else { mapObj.removeLayer("era"); mapObj.removeSource("era");
@@ -1493,15 +1546,28 @@ function wirePlay(){
 //   説明できない色を画面に置くのは、この画面の他の部分と格が揃わない。
 function applyOverlay(){
   const on=document.getElementById("ovSwale")?.checked;
-  if(mapObj?.getLayer("swale"))
-    mapObj.setPaintProperty("swale","raster-opacity",on?0.75:0);
+  ovOn=!!on;
+  if(onMeijiFrame()){
+    // 地図の経路
+    if(mapObj?.getLayer("era"))
+      mapObj.setPaintProperty("era","raster-opacity",ERA_ALPHA(frames[eraIdx]));
+    // 静止画の経路。⚠ ここを忘れると、地図を起こす前は押しても絵が変わらない
+    document.querySelectorAll("#big .lyr.on img").forEach((im)=>{
+      if(/\/swale\//.test(im.src)) im.style.opacity=String(ERA_ALPHA(frames[eraIdx]));
+    });
+  }else{
+    if(mapObj?.getLayer("swale"))
+      mapObj.setPaintProperty("swale","raster-opacity",on?0.75:0);
+  }
   overlayState();
 }
-// いま重ねているのかどうかを、言葉で出す。
+// **取れなかったときだけ**、言葉で出す。
 // ⚠ チェックが入っていることと、画面に重なっていることは別。地図が出せていないのに
-//   「重ねています」と書くと、起きていないことを書くことになる。
-// ⚠ 切っているときは「押すと何が起きるか」を言う。「重ねていません」とだけ書くと、
-//   静止画が地図に変わることが押すまで分からない（掟: 押しても何も起きない導線を置かない）。
+//   黙っていると、「重ねているつもりで何も重なっていない」状態が見分けられない。
+// ⚠ 以前は正常時も実況していた（「ONで地図に重ねます」「重ねています」）。
+//   ラベルと合わせて2行になり、写真の上で読む量が増えるためやめた（2026-08-17 オーナー判断）。
+//   ⚠ そのとき一緒に失われたものがある: **切っているときの「押すと静止画が地図に変わる」の予告**。
+//     写真の年代では、いまも押すと地図に変わる。必要なら別の形で戻す。
 // ⚠ どの文も1行に収める。写真の上に置いているので、折り返したぶんだけ写真が隠れる
 //   （実測 2026-08-16 / 320×640: 折り返すと 61px ＝ 写真の高さの 32% を覆った）。
 // 水域のタイルを取りに行って拒まれた（404 以外）。地図は出ているのに、水域は出ていない状態
@@ -1509,32 +1575,54 @@ let swaleFail=false;
 function overlayState(){
   const c=document.getElementById("ovSwale"), el=document.getElementById("ovState");
   if(!c||!el) return;
-  if(!c.checked) el.textContent="ONで地図に重ねます";
-  else if(swaleFail) el.textContent="水域を読み込めませんでした";
-  else if(mapObj?.getLayer("swale")) el.textContent="重ねています";
+  // ⚠ **正常なときは何も言わない。** 入っているかどうかはチェックの形が示している。
+  //   以前は常時「ONで地図に重ねます」／「重ねています」と書いていたが、
+  //   ラベルと合わせて 2 行になり、写真の上で読む量が増えていた（2026-08-17 オーナー判断）。
+  //   ⚠ **消したのは「正常時の実況」だけ。** 取れなかったことは、ここでしか言えない
+  //     （掟: 取れなかったことを「無い」と言わない）。チェックだけ残すと、
+  //     水域が取れていないのに入ったままになり、「重ねているつもりで何も重なっていない」
+  //     状態を見分けられなくなる。
+  //   ⚠ 空にすると高さ 0 になる（実測: 15px → 0px）。札は 44px のままで、写真は広がらない。
+  // ⚠ 明治期のコマは、地図（MapLibre）を起こさなくても重なっている。
+  //   静止画のモザイクが「淡色地図＋透かした塗り」の 2 枚組だから。
+  //   ここで地図の有無を見ると、重なって**見えている**のに
+  //   「地図を読み込めませんでした」と書くことになる。
+  if(onMeijiFrame()||!c.checked){ el.textContent=""; return; }
+  if(swaleFail) el.textContent="水域を読み込めませんでした";
+  else if(mapObj?.getLayer("swale")) el.textContent="";
   else el.textContent=mapLoading?"地図を読み込んでいます…":"地図を読み込めませんでした";
 }
-// ⚠ 明治期のコマでは、重ねる相手（空中写真）が無い。
-//   出したままにすると、着いた瞬間のいちばん押しやすいところに
-//   「押しても絵がほとんど変わらない操作」が置かれる（掟: 押しても何も起きない導線を置かない）。
-//   実測（2026-08-16 / 375×667 / 豊洲）: 明治期のコマで入り切りしても、見えている絵は低湿地データのまま。
+// ⚠ **明治期のコマでも出す。** 以前は隠していた。当時の理由は
+//   「重ねる相手（空中写真）が無い／入り切りしても絵が変わらない」で、当時は正しかった。
+//   いまは**相手がある**（下に敷いてある淡色地図）。塗りを透かしたので、
+//   入り切りすると絵が本当に変わる（掟: 押しても何も起きない導線を置かない、を満たす）。
+// ⚠ チェックは「いま重なっているか」そのものを映す。状態は1つなので、
+//   コマが変わっても選んだままを引き継ぐ。
 function syncOverlayRow(){
-  const r=document.getElementById("ovRow");
-  if(r) r.classList.toggle("none",!!frames[eraIdx]?.meiji);
+  const c=document.getElementById("ovSwale");
+  if(c) c.checked=ovOn;
+  overlayState();
 }
 function wireOverlay(){
   const c=document.getElementById("ovSwale");
   if(!c) return;
-  overlayState(); syncOverlayRow();
+  syncOverlayRow();      // ⚠ 中で overlayState() を呼ぶ
   // ⚠ 写真の上に置いた操作なので、写真側の「押したら寄りを解除」に飲まれないようにする。
   //   地図を起こす pointerdown（wake）は通す。押した人は地図を見たいので、そのまま起きてよい。
   document.getElementById("ovRow")?.addEventListener("click",(e)=>e.stopPropagation());
   c.onchange=async()=>{
     // 入れ直しは、やり直し。前に拒まれたことを引きずらない
     if(c.checked) swaleFail=false;
+    // ⚠ **明治期のコマでは、地図の完成を待たない。** 静止画のモザイクが既に
+    //   「淡色地図＋透かした塗り」の 2 枚組なので、そのまま濃さを変えれば絵は変わる。
+    //   待つと、押してから地図が出るまで（実測 24 タイル）絵が変わらない。
+    // ⚠ **ただし地図は起きる。** 写真の枠の pointerdown が地図を起こす既存の仕掛けがあり、
+    //   この行を押しても通る（実測 2026-08-17: チェックを押す＝24 本／写真を 1 回タップ＝24 本。
+    //   どちらも同じ）。ここで止めていないので「起こさない」とは書かない。
+    //   起こさない形にするかは別の判断（掟: 地理院への負荷は自分の請求とは別に見る）。
     // ⚠ 先に読み込みを始めてから状態を出す。順を逆にすると、まだ始めていない時点で
     //   「読み込めませんでした」と書くことになる（読み込み中と失敗を取り違える）。
-    if(!mapObj&&!mapLoading){ const p=ensureMap(); overlayState(); await p; }
+    if(!onMeijiFrame()&&!mapObj&&!mapLoading){ const p=ensureMap(); overlayState(); await p; }
     applyOverlay();
   };
 }
@@ -1947,6 +2035,13 @@ function wireStrip(){
   if(bigEl){
     const wake=(e)=>{
       if(e.target.closest(".unzoom,.zoombar,.loading")) return;   // 操作ボタンは対象外
+      // ⚠ **明治期のコマの「重ねる」は、地図を起こさない。**
+      //   静止画のモザイクが「淡色地図＋塗り」の2枚組なので、そのまま濃さを変えれば足りる。
+      //   起こすと、押した瞬間に静止画から地図へ**絵が差し替わって位置が跳ぶ**
+      //   （実測 2026-08-17 / 375×667 / 豊洲: チェックを押すと map=false → true になり、
+      //    枠取りが変わって見える。#ovRow 自体は 1px も動いていない）。
+      //   ⚠ 写真の年代では起こす。あちらの重ねは MapLibre の層が要る。
+      if(onMeijiFrame()&&e.target.closest("#ovRow")) return;
       if(!mapObj&&!mapLoading) ensureMap();
     };
     bigEl.addEventListener("pointerdown",wake,{passive:true});
