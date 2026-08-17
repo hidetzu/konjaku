@@ -2021,6 +2021,13 @@ function wireStrip(){
   if(bigEl){
     const wake=(e)=>{
       if(e.target.closest(".unzoom,.zoombar,.loading")) return;   // 操作ボタンは対象外
+      // ⚠ **明治期のコマの「重ねる」は、地図を起こさない。**
+      //   静止画のモザイクが「淡色地図＋塗り」の2枚組なので、そのまま濃さを変えれば足りる。
+      //   起こすと、押した瞬間に静止画から地図へ**絵が差し替わって位置が跳ぶ**
+      //   （実測 2026-08-17 / 375×667 / 豊洲: チェックを押すと map=false → true になり、
+      //    枠取りが変わって見える。#ovRow 自体は 1px も動いていない）。
+      //   ⚠ 写真の年代では起こす。あちらの重ねは MapLibre の層が要る。
+      if(onMeijiFrame()&&e.target.closest("#ovRow")) return;
       if(!mapObj&&!mapLoading) ensureMap();
     };
     bigEl.addEventListener("pointerdown",wake,{passive:true});

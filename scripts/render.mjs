@@ -2177,7 +2177,7 @@ const CASES = [
     //   ⚠ 不透明度の値そのものを見ない。0.99 でも通ってしまい、**見えるかどうか**を測れない。
     name: "明治期のコマで、下地の地図が透けて見える", path: `/?${TOYOSU}`,
     viewport: { width: 375, height: 667 }, hasTouch: true,
-    async check(page) {
+    async check(page, reqs) {
       await waitVerdict(page);
       await page.waitForSelector("#big .lyr.on img", { timeout: 20000 });
       await page.waitForTimeout(3000);
@@ -2238,9 +2238,21 @@ const CASES = [
       must(row, "明治期のコマに、重ねる操作が出ていない");
       const c0 = await page.$eval("#ovSwale", (e) => e.checked);
       must(c0, "明治期のコマで、水域が既定で重なっていない");
+      // ⚠ **押しても地図を起こさないこと。** 起こすと、静止画から地図へ絵が差し替わり
+      //   **押した瞬間に位置が跳ぶ**（2026-08-17 にオーナーが実機で発見）。
+      //   実測: #ovRow 自体は 1px も動かないのに、中の絵だけが替わる。
+      //   ⚠ 明治期のコマは静止画のモザイクだけで成立する（淡色地図＋塗りの2枚組）。
+      //     起こすぶんの要求（実測 24 タイル）も無駄になる
+      //     （掟: 地理院への負荷は自分の請求とは別に見る）。
+      const gsiBefore = reqs.filter((u) => /gsi\.go\.jp/.test(u)).length;
       // 入り切りで**絵が本当に変わる**こと（掟: 押しても何も起きない導線を置かない）
       await page.locator("#ovSwale").uncheck();
       await page.waitForTimeout(900);
+      must(!(await page.$("#big.map-on")),
+        "明治期のコマで重ねを押しただけで地図が起きた（絵が差し替わって位置が跳ぶ）");
+      const gsiAfter = reqs.filter((u) => /gsi\.go\.jp/.test(u)).length;
+      must(gsiAfter === gsiBefore,
+        `明治期のコマで重ねを押しただけで、地理院へ ${gsiAfter - gsiBefore} 本出た`);
       const offBuf = await page.screenshot({ clip });
       const onBuf2 = await (async () => {
         await page.locator("#ovSwale").check();
