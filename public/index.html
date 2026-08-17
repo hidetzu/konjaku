@@ -263,7 +263,10 @@
        凡例を別に置くとまた 2 か所になるので、ここが凡例そのものになる。
      ⚠ 色の四角は**凡例の色そのまま**を使う（`KonjakuSwale.SWALE` の rgb）。
        ここで色を作り直すと、絵と凡例が食い違う。 */
-  .area{margin-top:9px;padding:9px 11px;border-radius:9px;
+  /* ⚠ 余白は 8px。9px だと本命の行が y=1043 で、検査の境目（< 1043）に 1px 足りなかった。
+     ⚠ **文を削って合わせない。** 落とせない中身（別の資料・時期が書かれていない・分母）は
+       すでに 1 行ずつに詰めてある。ここは余白で払う。 */
+  .area{margin-top:8px;padding:8px 11px;border-radius:9px;
     background:rgba(255,255,255,.035);border:1px solid var(--line)}
   .area-lead{font-size:var(--fs-body);color:var(--ink);line-height:1.6}
   .area-lead b{font-weight:600}
@@ -277,6 +280,24 @@
   /* ⚠ 分母。小さくするが、消さない（掟4: 数字は必ず主張範囲の分母で書く）。
      初見の人は「最初は読み飛ばしたが、読んで必要だと思った。これが無いと
      浦安ぜんぶの話だと勘違いしていた」と答えた */
+  /* 分母は％のすぐ上（初見の 2 人が「地図全体の話だと思って読んだ」）。⚠ 小さくても消さない */
+  .area-where{margin-top:4px;font-size:var(--fs-evidence);color:var(--ink-faint);line-height:1.5}
+  /* 打ち切った残り。⚠ 色は持たない（凡例に無いものに色を付けると、絵と対応しない） */
+  .area-list .rest{opacity:.75}
+  .area-list .sw-rest{background:repeating-linear-gradient(45deg,
+    rgba(255,255,255,.22) 0 3px, rgba(255,255,255,.06) 3px 6px)}
+  /* 出どころの違い。⚠ **畳むが消さない**（常に開くと本命の行を押し下げる）。
+     ⚠ 名乗りだけで「別の資料」だと分かるようにする。畳んだまま読み終える人がいる */
+  .area-src{margin-top:6px}
+  .area-src summary{font-size:var(--fs-evidence);color:var(--ink-dim);cursor:pointer;
+    line-height:1.5;list-style:none}
+  .area-src summary::-webkit-details-marker{display:none}
+  .area-src summary::before{content:"▸ ";color:var(--ink-faint)}
+  .area-src[open] summary::before{content:"▾ "}
+  /* ⚠ ここは 44px を取らない。畳みの見出しに 44px を取ると、畳んだのに
+     元の 36px より**高くなり**、本命の行をさらに押し下げた（実測 1075 → 1083）。
+     ⚠ 代わりに横幅いっぱいを当たり判定にする（行全体が押せる） */
+  .area-src summary{padding:3px 0}
   .area-note{margin-top:6px;font-size:var(--fs-evidence);color:var(--ink-faint);line-height:1.5}
   /* 区分を押すと出る解説。⚠ **こちらでは書かない**（凡例の解説文をそのまま出す）。
      ⚠ カーソルオーバにしない。スマホで hover が効かない */
@@ -1158,6 +1179,20 @@ function buildFrames(f){
 // 写真の上に置く見出し。
 // ⚠ 明治期のコマは空中写真ではない。ここは幅があるので、そう名乗らせる
 //   （帯の小さなコマは幅が足りないので label だけ）。
+// この場所に残っている空中写真の数を、単位語なしで言う。
+// ⚠ **「N 年代（M 年代中）」をやめた理由**は上の strip-foot のコメントにある。
+// ⚠ 年は実データ（Konjaku.ERAS）から取る。ここに西暦を書かない。
+function photoCountText(past){
+  const all=Konjaku.ERAS.length;
+  const from=Konjaku.ERAS[0].label.split(/[–-]/)[0];
+  const to=Konjaku.ERAS[all-1].label.split(/[–-]/)[0];
+  // ⚠ そろっているときに数を 2 回出さない（「7 年代（7 年代中）」が意味を成さなかった）
+  // ⚠ **1 行に収める。** 2 行になると本命の行を 20px 押し下げる（実測）。
+  //   落とせないのは「この場所に何回ぶん残っているか」と「全部で何回か」（掟1・掟4）。
+  if(past>=all) return `昔の写真 <b>${all}回ぶんすべて</b>（${from}〜${to}年）`;
+  if(past<=0)   return `昔の写真は <b>残っていません</b>（全${all}回ぶん中）`;
+  return `昔の写真 <b>${all}回ぶん中 ${past}回</b>（${from}〜${to}年）`;
+}
 function bigSub(fr){
   const s=fr.subBig??fr.sub;
   return `${fr.label}${s?`<small>${s}</small>`:""}`;
@@ -1332,10 +1367,21 @@ function areaHTML(){
   //   4 件目が 20% ある土地で「残りは何？」に答えられない
   const rows=[]; let acc=0;
   for(const c of a.byName){ rows.push(c); acc+=c.share; if(acc>=0.95) break; }
+  // ⚠ **打ち切った残りを黙って落とさない。** 初見の人が「足すと 97.6% で 100 にならない。
+  //   残りの 2.4% は何？」と気づいた（2026-08-17）。掟4 に触れる。
+  //   → 「その他」として出し、合計が 100% になることを利用者が確かめられるようにする。
+  const rest=1-acc;
+  const others=a.byName.length-rows.length;
   // 言い方は初見の人の言葉から取った。「混じっていました」が数字より先に意味が入ると評価された
+  // ⚠ **西暦を添える。** 3 人が 3 人とも「明治期だけでは、いつなのか分からない」と答えた
+  //   （「明治は 40 年以上あるので、いつの話か知りたい」）。
+  //   ⚠ **資料の年ではなく、明治という時代の範囲**を書く。低湿地データの原典が
+  //     いつ測られたかは、こちらでは特定できない（凡例にも書かれていない）ので、
+  //     「1868〜1912年」と時代を書き、資料の年を作らない（掟: 実測でない数字を書かない）。
+  const ERA_JP="明治期（1868〜1912年）";
   const lead=a.top.share>=0.7
-    ? `明治期は、ほとんど <b>${esc(a.top.name)}</b> でした`
-    : `明治期は <b>${esc(rows[0].name)}</b> と <b>${esc(rows[1]?.name??"")}</b> が混じっていました`;
+    ? `${ERA_JP}は、ほとんど <b>${esc(a.top.name)}</b> でした`
+    : `${ERA_JP}は <b>${esc(rows[0].name)}</b> と <b>${esc(rows[1]?.name??"")}</b> が混じっていました`;
   const m=a.meters;
   // ⚠ **押すと解説が出る形にする。カーソルオーバにしない。**
   //   スマホでは hover が効かない（この画面は既に「title はタッチ端末では一生見えない」を
@@ -1343,12 +1389,34 @@ function areaHTML(){
   //   スマホで見た人たちなので、そこへ届かない出し方を選ばない。
   return `<div class="area" id="area">
     <div class="area-lead">${lead}</div>
+    <!-- ⚠ **分母は％のすぐ上。** 一番下に置いていたら、初見の 2 人が
+         「％を地図全体の話だと思って読んだ」と答えた（375px では末尾が「1画…」で
+         切れて読めてもいなかった）。⚠ 短く書く。長くすると本命の行を押し下げる -->
+    <div class="area-where">白い枠の中（${m.w}×${m.h}m）で数えた割合${
+      a.clipped?"／端なので枠が切れています":""}</div>
     <ul class="area-list">${rows.map((c)=>
       `<li><button type="button" class="area-item" data-cls="${esc(c.name)}"
-          aria-expanded="false" title="${esc(c.name)}とは？">${swatch(c.name)}<span class="nm">${esc(c.name)}</span><b>${pct(c.share)}</b></button></li>`).join("")}</ul>
+          aria-expanded="false" title="${esc(c.name)}とは？">${swatch(c.name)}<span class="nm">${esc(c.name)}</span><b>${pct(c.share)}</b></button></li>`).join("")}${
+      // ⚠ 打ち切った残りを黙って落とさない。何件まとめたかも言う
+      rest>0.0005?`<li class="rest"><i class="sw sw-rest"></i><span class="nm">その他${
+        others>0?`（${others} 区分）`:""}</span><b>${pct(rest)}</b></li>`:""}</ul>
     <div class="area-why" id="areaWhy" hidden></div>
-    <div class="area-note">写真に白い枠で囲った範囲（${m.w}×${m.h}m）を、1 画素ずつ数えた結果です${
-      a.clipped?"（データの端にあたるため、枠はこの大きさで切れています）":""}</div>
+    <!-- ⚠ **短く。** ここを 3 文で書いたら本命の行（立体で見る）を押し下げ、
+         検査が落ちた（「本命が埋もれている: y=1089」）。落とせないのは 2 点だけ:
+         「別の資料」と「時期が書かれていない」。これが無いと、初見の人が上下を
+         同じ話と読んで**誤った統合**をした（「泥地＋水で約50%」） -->
+    <!-- ⚠ **畳むが、消さない。** 常に開いていると本命の行（立体で見る）を押し下げ、
+         検査が落ちた（実測 y=1043 → 1089）。畳めば 36px 戻る。
+         ⚠ 名乗りで中身が分かるようにする（「詳しく」ではなく、何が書いてあるかを言う）。
+           畳んだ見出しだけ読んでも「別の資料」だと分かる形にしてある。 -->
+    <details class="area-src">
+      <!-- ⚠ **1 行に収める**（2 行だと 18px 押し下げる）。畳んだまま読み終える人がいるので、
+           名乗りだけで「別の資料」だと分かること。中身は開けば読める -->
+      <summary>上の「もとは」は<b>別の資料</b>です</summary>
+      <div class="area-note">この割合は<b>明治期の資料</b>（1868〜1912年）から数えたものです。
+        上の「もとは 水だった土地（旧水部）」は<b>地形分類</b>という別の資料で、
+        <b>いつ水だったかは書かれていません</b>。同じ場所の、別の時期の話が並んでいます。</div>
+    </details>
   </div>`;
 }
 
@@ -1502,10 +1570,24 @@ function timeHTML(f){
     // ⚠ 明治期の水域を重ねる操作は、写真の中（.bl）へ移した。ここには置かない。
     //   重ねる相手は写真なので、操作も写真と一緒に見えている必要がある（上の .ov のコメント）。
     // ⚠ 🔊 のプライバシーは footer の .f-priv へ寄せた（同じ主題が2か所にあった）。
-    //   ⚠ 「残っていた空中写真は N 年代」は残す。**調べた範囲**の申告で、帯を見ても
-    //   分母（7年代中）は分からない。ここを消すと「取れなかった」が言えなくなる。
-    + `<div class="strip-foot">写真はドラッグで動かせます（＋−で拡大縮小）`
-      + ` ／ 残っていた空中写真は <b>${past}</b> 年代（${Konjaku.ERAS.length} 年代中）`
+    //   ⚠ 「この場所に残っている枚数」は残す。**調べた範囲**の申告で、帯を見ても
+    //   分母は分からない。ここを消すと「取れなかった」が言えなくなる（掟1）。
+    // ⚠ **「N 年代（M 年代中）」という書き方をやめた**（2026-08-17）。
+    //   初見の人が通算 3 人とも「まったく意味が分からない」と答えた:
+    //     「7 年代って何？ 70 年代の書き間違い？ カッコの中も同じ数字で、何と何を比べているのか」
+    //     「『年代』が 10 年単位のことだと気づくのに時間がかかった」
+    //   ⚠ 全部そろうと「7 年代（7 年代中）」と**同じ数字が 2 回**出て、意味を成さなかった。
+    //   → 「年代」という単位語をやめ、**そろっているときは数を繰り返さず「すべて」と言う**。
+    //     ⚠ 分母（全部で何回あるか）は残す（掟4）。
+    //   ⚠ 年は `Konjaku.ERAS` の実データから作る。ここに数字を書かない
+    //     （書くと、年代を足したときに嘘になる）。
+    // ⚠ **操作説明と、調べた範囲の申告を同居させない。**
+    //   同じ行に置いていたら、文言を意味の通るものに直したぶん **1 行増えて**
+    //   本命の行を押し下げた（実測 1081 → 1100）。
+    //   ⚠ 操作説明（ドラッグ・＋−）は**触れば分かること**なので落とす（原則4「説明より操作」）。
+    //     ＋− のボタンは写真の上に出ており、ドラッグは触れば動く。
+    //   ⚠ 申告（何回ぶん残っているか）は落とさない。帯を見ても分母は分からない（掟1・掟4）。
+    + `<div class="strip-foot">${photoCountText(past)}`
     + (p.state==="partial" ? ` ／ <span class="warn">${p.unread} 年代分は読み込めていません</span>` : "")
     + `</div>`
     + `<div class="ev" id="ev"></div>`;
