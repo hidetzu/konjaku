@@ -16,7 +16,16 @@
 //   片方だけ直すと「検査が緑のまま何も見ていない」状態になる。
 
 const GSI = "https://cyberjapandata.gsi.go.jp/xyz";
-const ATTR = '<a href="https://maps.gsi.go.jp/development/ichiran.html">国土地理院</a>';
+// ⚠ **地図に出す帰属表示。** 出典明示は利用の条件であって、飾りではない。
+//   地理院タイル: 出典明示が利用の条件 ／ OpenStreetMap: ODbL でクレジット必須
+// ⚠ **開かないと見えない場所に置かない。** 2026-08-17 に実測で見つけた:
+//   `attributionControl:false` ＋ CSS の `display:none!important` で地図側の帰属を消し、
+//   手書きの出典は**左パネルの中**にあった。パネルはスマホで閉じて始まる。
+//   実測: PC 1280×800 で y=920（画面外 120px 下）／375×667 は閉じたパネルの中。
+// ⚠ `checkVisibility()` は閉じたパネルの中でも true を返す。素朴な検査では捕まらない。
+const ATTR_GSI = '<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" rel="noopener">国土地理院</a>';
+const ATTR_OSM = '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors';
+const ATTR = ATTR_GSI;
 
 // 外部から来た文字列（OSM のタグ・地理院の地名）は、HTML を組み立てるところで必ず通す。
 // ⚠ 読み上げ（pickSpeech）には通さない。あちらは HTML ではない（理由は esc.js）
@@ -117,7 +126,8 @@ const yf2lat=(y)=>{const n=Math.PI-2*Math.PI*y/2**Z;return 180/Math.PI*Math.atan
 const raster=(l)=>({type:"raster",tiles:[`${GSI}/${l.id}/{z}/{x}/{y}.${l.ext}`],
   tileSize:256,minzoom:l.min,maxzoom:l.max,attribution:ATTR});
 
-const map = new maplibregl.Map({ container:"map", attributionControl:false, maxPitch:80,
+// ⚠ **false に戻さない。** 戻すと利用条件を満たさなくなる（検査が落ちる）
+const map = new maplibregl.Map({ container:"map", attributionControl:{compact:true}, maxPitch:80,
   center:[139.7975,35.6548], zoom:15.05, pitch:56, bearing:-20,
   style:{version:8,sources:{},layers:[{id:"bg",type:"background",paint:{"background-color":"#080b0f"}}]} });
 map.addControl(new maplibregl.NavigationControl({visualizePitch:true}),"top-right");
@@ -442,7 +452,10 @@ map.on("load",()=>{
     paint:{"fill-extrusion-color":"#2f7fc4","fill-extrusion-height":0,
            "fill-extrusion-base":0,"fill-extrusion-opacity":0}});
 
-  map.addSource("bld",{type:"geojson",data:{type:"FeatureCollection",features:[]}});
+  // ⚠ 建物は OpenStreetMap。**ODbL でクレジット必須**なので出どころに書く。
+  //   書いていないと、地図の帰属表示に OSM が出ない（2026-08-17 に実測で見つけた）。
+  map.addSource("bld",{type:"geojson",attribution:ATTR_OSM,
+    data:{type:"FeatureCollection",features:[]}});
   map.addLayer({id:"bld",type:"fill-extrusion",source:"bld",
     paint:{"fill-extrusion-color":["case",["==",["get","wasWater"],1],"#8fb9dd","#d8cfa8"],
            "fill-extrusion-height":["get","height"],"fill-extrusion-base":0,
