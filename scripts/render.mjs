@@ -418,6 +418,98 @@ const CASES = [
     },
   },
   {
+    // ⚠ **出典明示は利用の条件であって、飾りではない。**
+    //   国土地理院タイル: 出典明示が利用の条件
+    //   OpenStreetMap:   ODbL でクレジット必須
+    //   /peel は空中写真と建物を**全面に**出している画面。
+    //
+    // ⚠ 実際に破れていた（2026-08-17。UI/UX レビュー役の指摘 → 実測で確定）:
+    //   ・`attributionControl:false` ＋ CSS の `display:none!important` で地図側の帰属を消していた
+    //   ・手書きの出典は**左パネルの中**。パネルはスマホで閉じて始まる（panelOpen=!isNarrow）
+    //   ・実測: PC 1280×800 で y=920（画面外 120px 下）／375×667 は閉じたパネルの中
+    //   ・直したあとも、一度は **#hud（z-index 12）の裏**に隠れていた
+    //   ・OSM の建物データに `attribution` が無く、ODbL のクレジットが出ていなかった
+    //
+    // ⚠ **「ある」と「見えている」は別。** `checkVisibility()` は
+    //   閉じたパネルの中でも true を返した。
+    // ⚠ `elementFromPoint` でも駄目だった（2026-08-17 に壊して気づいた）。
+    //   `#hud` は `pointer-events:none` なので**当たり判定に出てこない**。
+    // ⚠ 画素で見比べるのも駄目だった。**3D 地図は常に描き直している**ので、
+    //   HUD を消していなくても絵が変わる（同じ条件で 2 枚撮っても一致しない）。
+    //   → **矩形の交差で見る。** HUD の中で地色や枠線を持つ板が、
+    //     帰属表示の枠に 1px でも重なっていないこと。
+    //   ⚠ 実際に守っているのは z-index ではなく **HUD の下の余白**。
+    //     余白を削ると板が下りてきて重なる。だからここが本当の見張り。
+    name: "さかのぼる（出典が、開かなくても画面に出ている）", path: `/peel?${TOYOSU}`,
+    viewport: { width: 375, height: 667 }, hasTouch: true,
+    async check(page) {
+      await page.waitForFunction(() => document.querySelectorAll(".maplibregl-ctrl-group button").length > 0,
+        null, { timeout: 45000 });
+      await page.waitForTimeout(4000);
+      const out = [];
+      // ⚠ 3 幅で見る。狭い幅は板が増えて裏に入りやすい
+      for (const [w, h] of [[1280, 800], [375, 667], [320, 640]]) {
+        await page.setViewportSize({ width: w, height: h });
+        await page.waitForTimeout(900);
+        const r = await page.evaluate(() => {
+          const at = document.querySelector(".maplibregl-ctrl-attrib");
+          if (!at) return { there: false };
+          const b = at.getBoundingClientRect();
+          const text = at.innerText.replace(/\s+/g, " ").trim();
+          // その座標を占めているのは帰属表示自身か（裏に隠れていないか）
+          const cx = Math.round(b.x + b.width / 2), cy = Math.round(b.y + b.height / 2);
+          const top = document.elementFromPoint(cx, cy);
+          // ⚠ パネルを開かないと読めないものは、出典として数えない
+          const panel = document.getElementById("panel");
+          const inPanel = !!panel && panel.contains(at);
+          return { there: true, text,
+            inView: b.top >= 0 && b.bottom <= innerHeight && b.width > 0 && b.height > 0,
+            covered: !(top && (at === top || at.contains(top))),
+            coveredBy: top ? (top.id || String(top.className) || top.tagName) : "",
+            inPanel, w: Math.round(b.width), h: Math.round(b.height) };
+        });
+        must(r.there, `${w}×${h}: 地図の帰属表示が無い（出典明示は利用の条件）`);
+        must(r.inView, `${w}×${h}: 帰属表示が画面の外にある`);
+        // ⚠ HUD の板が、帰属表示の枠に重なっていないこと
+        const over = await page.evaluate(() => {
+          const at = document.querySelector(".maplibregl-ctrl-attrib").getBoundingClientRect();
+          const hits = [];
+          for (const e of document.querySelectorAll("#hud *")) {
+            const r = e.getBoundingClientRect();
+            if (r.width < 2 || r.height < 2) continue;
+            const cs = getComputedStyle(e);
+            // 地色も枠線も無いものは、上に塗らないので数えない
+            if (cs.backgroundColor === "rgba(0, 0, 0, 0)" && cs.borderTopWidth === "0px") continue;
+            if (r.left < at.right && at.left < r.right && r.top < at.bottom && at.top < r.bottom)
+              hits.push(`<${e.tagName.toLowerCase()}${e.id ? "#" + e.id : "." + String(e.className).split(" ")[0]}>`
+                + ` y=${Math.round(r.top)}..${Math.round(r.bottom)}`);
+          }
+          return hits;
+        });
+        must(!over.length,
+          `${w}×${h}: 帰属表示に HUD の板が重なっている: ${over.join(" ／ ")}`);
+        must(!r.inPanel, `${w}×${h}: 帰属表示が畳めるパネルの中にある（閉じると消える）`);
+        // ⚠ 名前を字で確かめる。控えを表示していても、名前が出ていなければ意味がない
+        must(r.text.includes("国土地理院"), `${w}×${h}: 国土地理院が出ていない: 「${r.text}」`);
+        must(/OpenStreetMap/.test(r.text), `${w}×${h}: OpenStreetMap が出ていない: 「${r.text}」`);
+        must(/©/.test(r.text), `${w}×${h}: ODbL のクレジット（©）が出ていない: 「${r.text}」`);
+        out.push(`${w}×${h}: ${r.w}×${r.h}px`);
+      }
+      // ⚠ **中央（いま調べている地点）を覆っていないこと。** 帰属表示の場所を作るために
+      //   HUD を押し上げると、そこが隠れる。375×667 で見る
+      //   （⚠ 320×640 は**もともと覆っている別の不具合**があるので、ここでは見ない）
+      await page.setViewportSize({ width: 375, height: 667 });
+      await page.waitForTimeout(700);
+      const hud = await page.evaluate(() =>
+        ({ top: Math.round(document.getElementById("hud").getBoundingClientRect().top),
+           mid: Math.round(innerHeight / 2) }));
+      must(hud.top > hud.mid,
+        `375×667: HUD が画面中央（調べている地点 y=${hud.mid}）を覆っている: HUD 上端 ${hud.top}`);
+      return `国土地理院・© OpenStreetMap contributors が、開かなくても画面に出ている`
+        + `（${out.join(" ／ ")}）／HUD 上端 ${hud.top} は中央 ${hud.mid} より下`;
+    },
+  },
+  {
     // ズームは暗いパネルに載せたせいで黒地に黒になり、実測でボタンの存在すら見えなかった
     name: "さかのぼる（ズームが見えて、指で押せる）", path: `/peel?${TOYOSU}`,
     viewport: { width: 390, height: 844 }, hasTouch: true,
