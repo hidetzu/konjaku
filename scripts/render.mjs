@@ -154,6 +154,13 @@ async function waitStrip(page, timeout = 30000) {
 // 通信が落ちただけの土地に「整備対象外」「データが無い」「残っていない」と書いていた。
 // しかも根拠UI（参照タイル・読んだ画素）付きで。人の目に頼らず、ここで落とす。
 const LIES = ["整備対象外", "データが無い", "記録がありません", "残っていない", "データなし"];
+// 成り立ちの1文が出ていること。⚠ **形は2通りある**（2026-08-17 に増えた）。
+//   「もとは 水だった土地（旧水部）です。いまは 盛土地･埋立地 です。」… 定義に「かつて」がある区分
+//   「この場所は 扇状地 です。」                                    … それ以外
+//   ⚠ 前は `/この場所は .+ です/` だけを見ていたので、文を変えた瞬間に
+//     **「成り立ちが出ていない」ではなく「時間切れ」で落ちた**（原因が読めない落ち方だった）。
+//   ⚠ 守っている意図は「区分名を含む1文が出ていること」。文言そのものではない。
+const VERDICT_SENTENCE = /(この場所は .+ です|もとは .+（.+）です。)/;
 const GSI_ROUTE = "**://*.gsi.go.jp/**";
 // 写真タイルだけを落とす。低湿地（swale）・標高・建物は生かしたまま、
 // 「地表のラスタだけが1枚も届いていない」状態を作るための経路。
@@ -352,7 +359,7 @@ const CASES = [
       await waitVerdict(page);
       const v = await page.locator("#verdict").textContent();
       // 掟: 主題は「成り立ち」。明治期は手法のひとつ の前は「整備対象外」で終わっていた土地。地形分類は答えられる
-      must(/この場所は .+ です/.test(v), `成り立ちが出ていない: ${v.trim().slice(0, 60)}`);
+      must(VERDICT_SENTENCE.test(v), `成り立ちが出ていない: ${v.trim().slice(0, 60)}`);
       // ただし明治期のデータが無いことは、無いと言い続けること。
       // 地形分類が答えられたからといって、別の手法の空振りを黙って埋めない
       must(/明治期のデータなし|明治期: 記録なし/.test(v),
@@ -623,7 +630,7 @@ const CASES = [
     async check(page) {
       await waitVerdict(page);
       const v = await page.locator("#verdict").textContent();
-      must(/この場所は .+ です/.test(v), `成り立ちが出ていない: ${v.trim().slice(0, 60)}`);
+      must(VERDICT_SENTENCE.test(v), `成り立ちが出ていない: ${v.trim().slice(0, 60)}`);
       // バッジ自体に「広い区分」と書いてあること。本文だけだと読まれない
       const badge = await page.$$eval("#verdict .badge", (els) => els.map((e) => e.textContent.trim()));
       must(badge.some((b) => b.includes("広い区分")),
@@ -803,9 +810,12 @@ const CASES = [
       // 再試行が本当に効くか。失敗をキャッシュに残していると、ここで永久に直らない。
       await page.unroute(GSI_ROUTE);
       await page.click("#retryBtn");
+      // ⚠ **ブラウザの中で評価される関数には、Node 側の定数が届かない。**
+      //   `VERDICT_SENTENCE` をそのまま書いて ReferenceError にした（2026-08-17）。
+      //   引数として渡す。⚠ 正規表現は渡せないので、文字列にして中で組む。
       await page.waitForFunction(
-        () => /この場所は .+ です/.test(document.getElementById("verdict")?.textContent ?? ""),
-        null, { timeout: 30000 });
+        (src) => new RegExp(src).test(document.getElementById("verdict")?.textContent ?? ""),
+        VERDICT_SENTENCE.source, { timeout: 30000 });
       const after = await page.locator("#verdict").textContent();
       // 見出しは地形分類、明治期はバッジ。両方の手法が戻っていることを見る
       must(/旧水部|水部/.test(after), `再試行しても地形分類が戻らない: ${after.slice(0, 60)}`);
@@ -1391,10 +1401,25 @@ const CASES = [
       must(await page.locator("#strip .f.meiji").count() === 1,
         "明治期のコマが帯に無い（判定と、目の前の絵が噛み合わない）");
       must(fr[0].year === "明治期", `左端が明治期でない: ${fr[0].year}`);
-      // ⚠ 明治期は空中写真ではない。数に混ぜると「8年代（7年代中）」という嘘になる
+      // ⚠ 明治期は空中写真ではない。数に混ぜると「8 回ぶん中 8 回」という嘘になる
+      //   （帯には明治期のコマも並ぶので、コマ数をそのまま数えると 1 多くなる）。
+      // ⚠ 文言を変えた（2026-08-17）。「N 年代（M 年代中）」は初見の人が通算 3 人とも
+      //   「意味が分からない」と答えたのでやめた。⚠ **守っている意図は同じ**:
+      //   「この場所に残っている数」が「全部の数」を超えないこと＋分母が出ていること。
+      //   ⚠ 以前は `/(\d+)\s*年代（\s*(\d+)/` と**文言に張り付いた正規表現**だったので、
+      //     文言を変えた瞬間に「ありうる数を超えている」と**誤った理由で**落ちた。
       const foot = (await page.locator(".strip-foot").textContent()).replace(/\s+/g, " ");
-      const [got, of] = (foot.match(/(\d+)\s*年代（\s*(\d+)/) ?? []).slice(1).map(Number);
-      must(got <= of, `空中写真の数が、ありうる数を超えている: ${foot.trim()}`);
+      // 「7回ぶんすべて」／「7回ぶん中 4回」／「残っていません（全7回ぶん中）」の 3 通り
+      const all = Number((foot.match(/(\d+)\s*回ぶん/) ?? [])[1]);
+      const got = /すべて/.test(foot) ? all
+        : /残っていません/.test(foot) ? 0
+        : Number((foot.match(/回ぶん中\s*(\d+)\s*回/) ?? [])[1]);
+      must(Number.isFinite(all) && all > 0, `分母（全部で何回ぶんか）が出ていない: ${foot.trim()}`);
+      must(Number.isFinite(got), `この場所に残っている数が読めない: ${foot.trim()}`);
+      must(got <= all, `空中写真の数が、ありうる数を超えている: ${foot.trim()}`);
+      // ⚠ **同じ数を 2 回書かない**（「7 年代（7 年代中）」が意味を成さなかった原因）
+      must(!new RegExp(`${all}[^0-9]{1,8}${all}`).test(foot),
+        `同じ数を 2 回書いている（意味を成さない）: ${foot.trim()}`);
       must(fr.every((f) => f.err || f.w > 0), `写真が復号できていない: ${JSON.stringify(fr)}`);
       must(!fr.some((f) => f.err), `豊洲で読めない写真がある: ${JSON.stringify(fr)}`);
       // 右端は現在。左端は最古。時間の向きが逆だと、この帯は何も語らない
@@ -1964,9 +1989,24 @@ const CASES = [
       });
       must(peel, "3D への行が見つからない");
       must(peel.own, "本命が、外部へ渡すだけの行と同じ見た目になっている");
-      must(peel.y < 1043, `本命が埋もれている: y=${peel.y}（以前の実測 1043 より下）`);
+      // ⚠ **絶対の px で見ない。** 手元 1040 / CI 1050 と**環境で 10px 動く**
+      //   （CI は apt でフォントを入れるので文字の寸法が違う。同じ理由で過去に
+      //    「行を押すと寄った結果が画面に入る」が 2 回とも同じ値で落ちている）。
+      //   1043 という境目に 3px の余裕しか無く、環境差に耐えていなかった（2026-08-17 に CI で落ちた）。
+      // ⚠ **守りたいのは「本命が埋もれていないこと」。** それを、上にあるものとの関係で見る:
+      //   本命の上にあるのは「写真＋判定＋面の内訳」で、そこから**1画面ぶん以上離れていない**こと。
+      //   ⚠ 絶対値でないので、写真の高さが変わってもフォントが変わっても意味が保たれる。
+      const above = await page.evaluate(() => {
+        const a = document.getElementById("area") ?? document.querySelector("#verdict .v-head");
+        return a ? Math.round(a.getBoundingClientRect().bottom + scrollY) : null;
+      });
+      must(above, "判定ブロックが見つからない（この検査が何も見ていない）");
+      const gap = peel.y - above;
+      must(gap < 667, `本命が、判定の下から 1 画面ぶん以上離れている: ${gap}px（上端 ${above} / 本命 ${peel.y}）`);
+      // ⚠ 上限も残す。1 画面ぶんの条件だけだと、判定ブロックごと下へ伸びても通ってしまう
+      must(peel.y < 1200, `本命が埋もれている: y=${peel.y}（実測 手元 1040 / CI 1050。上限 1200）`);
       return `☆は y=${mine.y} に開く／バッジ ${badges} 個から根拠へ／店は打つまで出ない／`
-        + `立体で見るは y=${peel.y}（実測 1043 → 改善）`;
+        + `立体で見るは y=${peel.y}（判定の下から ${gap}px。環境で 10px 動くので相対で見る）`;
     },
   },
   // ---- この年代を聞く ----

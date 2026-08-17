@@ -105,16 +105,9 @@ function tauAt(pos){
   return steps[i].tau + f*(steps[i+1].tau - steps[i].tau);
 }
 
-const SWALE = [
-  {rgb:[254,227,200],name:"砂礫地"},{rgb:[254,200,200],name:"泥地"},
-  {rgb:[228,172,123],name:"泥炭地"},{rgb:[200,200,228],name:"湿地"},
-  {rgb:[209,234,255],name:"干潟・砂浜",water:true},
-  {rgb:[147,200,254],name:"河川・湖沼・海面",water:true},
-  {rgb:[251,247,176],name:"田"},{rgb:[225,227,118],name:"深田"},
-  {rgb:[227,227,200],name:"塩田"},{rgb:[162,222,162],name:"草地"},
-  {rgb:[173,200,147],name:"荒地"},{rgb:[119,227,201],name:"ヨシ"},
-  {rgb:[173,255,173],name:"茅"},{rgb:[144,73,11],name:"堤防"},
-];
+// ⚠ 14 区分と 1 画素の分類は **swale.js の1か所**。ここに書き写さない
+//   （peel.html が verify.js より先に読み込んでいる）。
+const SWALE = KonjakuSwale.SWALE;
 const Z = 16;
 const lon2xf=(l)=>((l+180)/360)*2**Z;
 const lat2yf=(l)=>{const r=l*Math.PI/180;return ((1-Math.log(Math.tan(r)+1/Math.cos(r))/Math.PI)/2)*2**Z};
@@ -152,11 +145,7 @@ async function readTile(x,y,k){
   const g=c.getContext("2d",{willReadFrequently:true}); g.drawImage(res.image,0,0);
   return {state:OK,data:g.getImageData(0,0,256,256).data};
 }
-function classify(r,g,b){
-  let best=null,bd=Infinity;
-  for(const c of SWALE){const q=(c.rgb[0]-r)**2+(c.rgb[1]-g)**2+(c.rgb[2]-b)**2;if(q<bd){bd=q;best=c}}
-  return Math.sqrt(bd)<=60?best:null;
-}
+const classify = KonjakuSwale.classify;
 async function sampleSwale(lon,lat){
   const xf=lon2xf(lon),yf=lat2yf(lat),x=Math.floor(xf),y=Math.floor(yf);
   const {state,data:d}=await getTile(x,y);
