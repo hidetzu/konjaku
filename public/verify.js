@@ -46,24 +46,10 @@
   // （以前は上限が無く、25秒待っても復帰手段が無かった）。
   const TIMEOUT_MS = 8000;
 
-  // 明治期の低湿地の14区分。配色は凡例 lw_legend.pdf から抽出したもの。
-  // https://cyberjapandata.gsi.go.jp/legend/lw_legend.pdf
-  const SWALE = [
-    { rgb: [254, 227, 200], name: "砂礫地" },
-    { rgb: [254, 200, 200], name: "泥地" },
-    { rgb: [228, 172, 123], name: "泥炭地" },
-    { rgb: [200, 200, 228], name: "湿地" },
-    { rgb: [209, 234, 255], name: "干潟・砂浜", water: true },
-    { rgb: [147, 200, 254], name: "河川・湖沼・海面", water: true },
-    { rgb: [251, 247, 176], name: "田" },
-    { rgb: [225, 227, 118], name: "深田" },
-    { rgb: [227, 227, 200], name: "塩田" },
-    { rgb: [162, 222, 162], name: "草地" },
-    { rgb: [173, 200, 147], name: "荒地" },
-    { rgb: [119, 227, 201], name: "ヨシ" },
-    { rgb: [173, 255, 173], name: "茅" },
-    { rgb: [144, 73, 11], name: "堤防" },
-  ];
+  // 明治期の低湿地の14区分と、1画素の分類は **swale.js の1か所**にある。
+  // ⚠ ここに書き写さない。同じ表が 4 か所に散っていて、`check.mjs` の突き合わせからも
+  //   1 か所（build-water.js）が漏れていた（2026-08-17 に寄せた）。
+  const SWALE = KonjakuSwale.SWALE;
 
   const ERAS = [
     { id: "ort_riku10", label: "1936–42", sub: "陸軍撮影", ext: "png", min: 13, max: 18 },
@@ -137,14 +123,7 @@
     return cx;
   }
 
-  function classify(r, g, b) {
-    let best = null, bd = Infinity;
-    for (const c of SWALE) {
-      const d = (c.rgb[0] - r) ** 2 + (c.rgb[1] - g) ** 2 + (c.rgb[2] - b) ** 2;
-      if (d < bd) { bd = d; best = c; }
-    }
-    return Math.sqrt(bd) <= 60 ? best : null;
-  }
+  const classify = KonjakuSwale.classify;
 
   // ---- 明治期の地形 ----
   // 近傍の一致率も出す。実測ではほぼ100%になるが（掟: 確率を出さない。実測値そのものを出す）、

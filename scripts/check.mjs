@@ -95,13 +95,25 @@ for (const f of htmlFiles) {
 //   増やしたら気づけるように数を固定する。
 {
   const marker = /251,\s*247,\s*176/;   // 明治期の低湿地「田」の色。表がある証拠
-  const holders = [...htmlFiles, ...jsFiles].filter((f) => marker.test(src[f]));
-  const ALLOWED = ["verify.js", "peel3d.js"];
+  // ⚠ **走査対象に、外の .js も入れる。** 以前は htmlFiles+jsFiles だけを見ていて、
+  //   `build-water.js` に同じ表があることに気づけなかった（2026-08-17 に実測して寄せた）。
+  const outside = ["build-water.js", "check-tiles.js", "fetch-buildings.js", "serve.js"]
+    .filter((f) => existsSync(join(ROOT, f)));
+  const outsideSrc = Object.fromEntries(await Promise.all(
+    outside.map(async (f) => [f, await readFile(join(ROOT, f), "utf8")])));
+  const scriptsDir = (await readdir(join(ROOT, "scripts"))).filter((f) => f.endsWith(".mjs"));
+  const scriptsSrc = Object.fromEntries(await Promise.all(
+    scriptsDir.map(async (f) => [`scripts/${f}`, await readFile(join(ROOT, "scripts", f), "utf8")])));
+  const all = { ...src, ...outsideSrc, ...scriptsSrc };
+  const holders = Object.keys(all).filter((f) => marker.test(all[f]));
+  // ⚠ **表があってよいのは swale.js だけ。** 借りる側は書き写さない
+  const ALLOWED = ["swale.js"];
   const extra = holders.filter((f) => !ALLOWED.includes(f));
   extra.length
-    ? bad(`判定の表を自前で持っているページが増えている: ${extra.join(", ")}`
-        + `（verify.js に寄せること。分かれると片方だけ直し忘れる）`)
-    : ok(`判定の表を持つのは ${holders.join(" と ")} だけ`);
+    ? bad(`明治期の 14 区分表を自前で持っている先が ${extra.length} 件ある: ${extra.join(", ")}`
+        + `（public/swale.js に寄せること。分かれると片方だけ直し忘れる。`
+        + `⚠ 実際 build-water.js が突き合わせから漏れていた）`)
+    : ok(`明治期の 14 区分表を持つのは ${holders.join(" と ")} だけ（${Object.keys(all).length} ファイルを走査）`);
 
   // ⚠ 上は明治期の14色表しか数えていない。あとで足した地形分類の「水に由来する区分」の
   //   表は別物で、verify.js / share.js / index.html×2 の4箇所に複製されていた。
@@ -1900,42 +1912,63 @@ head("6. 外部リンク");
   }
 }
 
-// 取り込み側・トップ・3D側が同じ明治期凡例と許容差を使うこと。
-// 3か所に残るのはブラウザ用とNode用の実行環境が違うためで、内容は機械的に照合する。
+// 明治期のラスタを読む計算は **public/swale.js の1か所**。
+// ⚠ 以前は同じものが 4 か所にあり、**3 か所だけ**を機械で突き合わせていた
+//   （build-water.js は走査から漏れていた。2026-08-17）。
+//   突き合わせるより 1 つにするほうが強いので寄せた。ここでは**中身を動かして確かめる**。
 {
-  const legend = (src) => [...src.matchAll(/\{\s*rgb:\s*\[\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\]\s*,\s*name:\s*"([^"]+)"(,\s*water:\s*true)?\s*\}/g)]
-    .map((m) => [...m.slice(1, 5), m[5] ? "water" : "land"].join("|"));
-  const threshold = (src) => src.match(/Math\.sqrt\(bd\)\s*<=\s*(\d+)/)?.[1] ?? null;
-  const files = ["scripts/swale-sample.mjs", "public/verify.js", "public/peel3d.js"];
-  const sources = await Promise.all(files.map((f) => readFile(join(ROOT, f), "utf8")));
-  const legends = sources.map(legend), thresholds = sources.map(threshold);
-  const sameLegend = legends.every((x) => JSON.stringify(x) === JSON.stringify(legends[0]));
-  const sameThreshold = thresholds.every((x) => x === thresholds[0]);
-  !sameLegend || !sameThreshold || legends[0].length !== 14
-    ? bad(`明治期凡例の照合失敗（凡例=${sameLegend ? "一致" : "不一致"} / 色数=${legends[0].length} / 閾値=${thresholds.join(",")})`)
-    : ok(`明治期凡例・許容差を3実装で照合（${legends[0].length} 色 / 閾値 ${thresholds[0]})`);
+  await import(`file://${join(PUB, "swale.js")}`);
+  const S = globalThis.KonjakuSwale;
+  const px = (...rows) => new Uint8ClampedArray(rows.flat());
+  const fails = [];
+  const eq = (got, want, what) => { if (got !== want) fails.push(`${what}: ${got} ≠ ${want}`); };
 
-  // ⚠ **重ねる操作の名前が、重ねているものより狭くないこと。**
-  //   重ねているタイルは上の凡例の **14 区分すべて**で、水域はそのうち 2 つだけ
-  //   （干潟・砂浜 / 河川・湖沼・海面）。それを「水域を重ねる」と名乗っていた。
-  //   実測（2026-08-17 / 明治期のコマの塗りを画素で数えた）:
-  //     豊洲   水域 100%
-  //     浦安   砂礫地 85.8% / 草地 6.8% / 水域 2.9% / 堤防 2.7% / 泥炭地 0.5% …
-  //     → 浦安では **97% が水域以外**。名前が実態より狭い。
-  //   ⚠ `/peel` の「水域」は建物の足元が水だったかの話で、あちらは正しい。ここでは見ない。
-  {
-    const water = legends[0].filter((l) => l.endsWith("|water")).length;
-    const label = /<span>([^<]*)<small class="ov-st"/.exec(src["index.html"] ?? "")?.[1] ?? "";
-    if (!label) bad("重ねる操作の名前を読めない（この検査が何も見ていない）");
-    else if (water >= legends[0].length)
-      ok(`重ねているのは水域だけ（${water}/${legends[0].length}）なので、名前は「水域」でよい`);
-    else if (label.includes("水域"))
-      bad(`重ねる操作の名前が、重ねているものより狭い: 「${label}」`
-        + `（塗っているのは ${legends[0].length} 区分で、水域はうち ${water} つだけ）`);
-    else if (!label.includes("明治期"))
-      bad(`重ねる操作が、いつの話か名乗っていない: 「${label}」`);
-    else ok(`重ねる操作の名前「${label}」は、${legends[0].length} 区分（うち水域 ${water}）に見合っている`);
+  if (!S) fails.push("swale.js を読み込めない（この検査が何も見ていない）");
+  else {
+    eq(S.SWALE.length, 14, "区分の数");
+    eq(S.SWALE.filter((c) => c.water).length, 2, "水域の数");
+    eq(S.TOLERANCE, 60, "許容差");
+    // 凡例そのままの色は、その区分になる
+    eq(S.classify(147, 200, 254)?.name, "河川・湖沼・海面", "凡例どおりの色");
+    eq(S.classify(254, 227, 200)?.name, "砂礫地", "凡例どおりの色（陸）");
+    // ⚠ 許容差の境目。ここが動くと、隣の区分に吸われたり全部 null に落ちたりする。
+    //   ⚠ 境目は**孤立した色**で見る。隣の区分が近いところで測ると、
+    //     許容差ではなく「どちらが近いか」を見てしまう（実際そう書いて 2 回外した）。
+    //     堤防 (144,73,11) は 2 番目（泥炭地）まで 171 離れている。
+    eq(S.classify(144 + 55, 73, 11)?.name, "堤防", "許容差の内側（距離 55）");
+    eq(S.classify(144 + 70, 73, 11), null, "許容差の外側（距離 70）");
+    eq(S.classify(0, 0, 0), null, "凡例から遠い色は null");
+    // ⚠ **順番の検査。** まず「いちばん近い色」を選び、そのあとで許容差を見る。
+    //   逆にすると、いちばん近い色が 60 より遠いときに 2 番目の色を答えてしまう。
+    //   実際、寄せるときに逆に書いてしまい、ここで捕まえた（2026-08-17）。
+    //   (181,200,254) は 河川(34.0) より 湿地(32.2) のほうが近い → 湿地 が正しい
+    eq(S.classify(181, 200, 254)?.name, "湿地", "いちばん近い色を選ぶ");
+    //   (110,140,150) はどの区分からも 60 より遠い → null（2番目を拾わない）
+    eq(S.classify(110, 140, 150), null, "いちばん近い色が遠ければ null");
+    // ⚠ **面の集計。** 分母は「区分に当てはまった画素」で、透明と凡例外は入れない
+    const t = S.tally(px(
+      [147, 200, 254, 255],   // 水
+      [254, 227, 200, 255],   // 砂礫地
+      [254, 227, 200, 255],   // 砂礫地
+      [0, 0, 0, 0],           // 透明 → 分母から外す
+      [0, 0, 0, 255],         // 凡例外 → 分母から外す
+    ));
+    eq(t.scanned, 5, "見た画素");
+    eq(t.transparent, 1, "透明");
+    eq(t.unmatched, 1, "凡例外");
+    eq(t.classified, 3, "分母（区分に当てはまった画素）");
+    eq(t.top?.name, "砂礫地", "いちばん多い区分");
+    eq(Math.round(t.top.share * 1000) / 10, 66.7, "いちばん多い区分の割合(%)");
+    eq(Math.round(t.waterShare * 1000) / 10, 33.3, "水域の割合(%)");
+    // 分母 0 のときに落ちないこと（透明だけのタイル）
+    const empty = S.tally(px([0, 0, 0, 0]));
+    eq(empty.classified, 0, "透明だけのときの分母");
+    eq(empty.top, null, "透明だけのときのいちばん多い区分");
+    eq(empty.waterShare, 0, "透明だけのときの水域割合");
   }
+  fails.length
+    ? bad(`swale.js の単体テストが失敗（${fails.length} 件）: ${fails.join(" / ")}`)
+    : ok(`swale.js を動かして確認（14 区分・水域 2・許容差 60・面の集計と分母）`);
 }
 
 // ---------- 7. 外部から来た文字列を HTML として実行させない ----------
