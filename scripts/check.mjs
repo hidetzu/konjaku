@@ -1969,6 +1969,35 @@ head("6. 外部リンク");
   fails.length
     ? bad(`swale.js の単体テストが失敗（${fails.length} 件）: ${fails.join(" / ")}`)
     : ok(`swale.js を動かして確認（14 区分・水域 2・許容差 60・面の集計と分母）`);
+
+  // ⚠ **区分の解説は、こちらで書かない。** 国土地理院の凡例（lw_legend.pdf）の解説文を
+  //   要約せずそのまま持つ（掟3: 引用のときは出典を必ず添え、要約しない）。
+  //   ⚠ 14 区分と**両方向で**突き合わせる。片方だけ増えても気づけるように。
+  {
+    const lp = join(PUB, "data", "swale-legend.json");
+    if (!existsSync(lp)) bad("swale-legend.json が無い（区分の説明が画面から出せない）");
+    else {
+      const lg = JSON.parse(await readFile(lp, "utf8"));
+      const names = S ? S.SWALE.map((c) => c.name) : [];
+      const keys = Object.keys(lg.classes ?? {});
+      const miss = names.filter((n) => !keys.includes(n));
+      const extra = keys.filter((k) => !names.includes(k));
+      const empty = keys.filter((k) => !lg.classes[k]?.text || !lg.classes[k]?.legendName);
+      // ⚠ 出典が消えたら落とす。引用なのに出典が無い状態を作らない
+      const noSrc = !lg.source || !lg.textSource || !lg.sourceLabel;
+      miss.length || extra.length || empty.length || noSrc
+        ? bad(`区分の説明が凡例と食い違っている（不足 ${miss.join("・") || "なし"} / `
+            + `余分 ${extra.join("・") || "なし"} / 中身が空 ${empty.join("・") || "なし"}`
+            + `${noSrc ? " / 出典が無い" : ""}）`)
+        : ok(`区分の説明 ${keys.length} 件が 14 区分と一致し、出典（${lg.textSource}）を持つ`);
+      // ⚠ 位置誤差の但し書きは、原典の**地域の限定**まで写していること。
+      //   以前は地域を落として「原典は三角点整備前の資料のため位置誤差を含む」と、
+      //   原典より広く言っていた（2026-08-17 に凡例を読んで気づいた）。
+      /関東地区/.test(lg.caveat ?? "") && /近畿地区/.test(lg.caveat ?? "")
+        ? ok("位置誤差の但し書きが、原典どおり地域（関東・近畿）を書いている")
+        : bad("位置誤差の但し書きから、原典にある地域の限定（関東地区・近畿地区）が落ちている");
+    }
+  }
 }
 
 // ---------- 7. 外部から来た文字列を HTML として実行させない ----------

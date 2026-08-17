@@ -46,6 +46,23 @@
   // （以前は上限が無く、25秒待っても復帰手段が無かった）。
   const TIMEOUT_MS = 8000;
 
+  // 明治期の土地を「面」で数えるときの、中心からの半径（m）。**変えるのはここ 1 行だけ。**
+  //
+  // ⚠ **見えている範囲（約 490m 四方）に合わせていない。** 合わせると、
+  //   端末の画面幅で数える範囲が変わり、**同じ場所なのに割合が端末ごとに変わる**
+  //   （掟4: 数字は必ず主張範囲の分母で書く。その分母が端末依存になってはいけない）。
+  //   固定にしたうえで、**数えた範囲は写真に白い枠で描く**（言葉ではなく枠で示す）。
+  // ⚠ SPEC §3 は明治期を「かなりの位置誤差を含むため**街区単位まで**」としている。
+  //   100m（＝約 200m 四方）はその辺り。細かくすると位置誤差より小さい話をすることになる。
+  // ⚠ **値を変えたら首位が入れ替わることがある。** 実測（2026-08-17 / 浦安）:
+  //     100m（200m 四方） … 荒地 47.9% / 泥地 43.8%
+  //     250m（500m 四方） … 泥地 47.6% が首位
+  //   変えるときは `node scripts/swale-probe.mjs <緯度> <経度>` で同じ半径を測り、
+  //   地点ごとの答えがどう動くかを見てから決める。
+  // ⚠ 実行中にも変えられる（`Konjaku.AREA.halfM = 250` → もう一度場所を選ぶ）。
+  //   手元で見比べるためのもので、画面から触らせる気は無い。
+  const AREA = { halfM: 100 };
+
   // 明治期の低湿地の14区分と、1画素の分類は **swale.js の1か所**にある。
   // ⚠ ここに書き写さない。同じ表が 4 か所に散っていて、`check.mjs` の突き合わせからも
   //   1 か所（build-water.js）が漏れていた（2026-08-17 に寄せた）。
@@ -168,6 +185,33 @@
     const total = Object.values(cnt).reduce((x, y) => x + y, 0);
     const top = Object.entries(cnt).sort((x, y) => y[1] - x[1])[0];
     fact.evidence.agreement = total ? +(top[1] / total).toFixed(3) : null;
+
+    // ---- 面（この範囲の内訳）----
+    // ⚠ **点だけでは足りない。** 浦安は 1 点では「荒地」だが、範囲で数えると
+    //   荒地 47.9% / 泥地 43.8% / 水 5.9% で**一つに言い切れない**（2026-08-17 実測）。
+    //   点だけを出していたので、初見の 3 人が「だまされた気分」「軽い嘘に見える」と答えた。
+    //   掟3「出すのは実測値そのものと、その取り方と、既知の限界だけ」。
+    // ⚠ **範囲は狭めない。** SPEC は明治期を「街区単位まで」としているので、その辺りで取る。
+    //   広げると答えが変わる（浦安は 200m 四方で荒地、500m 四方だと泥地が首位になる）。
+    // ⚠ **端では、数えられた大きさをそのまま返す。** タイルの縁に近いと窓が切れる。
+    //   縮んだのに「200m 四方」と書くと、分母が嘘になる（掟4）。
+    //   隣のタイルまで取りに行けば埋まるが、そのぶん地理院への要求が増える。ここでは取らない。
+    const M_PER_PX = 156543.03392 * Math.cos(lat * Math.PI / 180) / 2 ** z;
+    const want = Math.round(AREA.halfM / M_PER_PX);   // 中心からの半径（m）→ 画素
+    const x0 = Math.max(0, t.px - want), y0 = Math.max(0, t.py - want);
+    const x1 = Math.min(255, t.px + want), y1 = Math.min(255, t.py + want);
+    const w = x1 - x0 + 1, h = y1 - y0 + 1;
+    const box = g.getImageData(x0, y0, w, h).data;
+    const tal = KonjakuSwale.tally(box);
+    fact.area = {
+      ...tal,
+      // 実際に数えた大きさ（縮んだならそのまま小さい値）
+      meters: { w: Math.round(w * M_PER_PX), h: Math.round(h * M_PER_PX) },
+      box: [x0, y0, w, h],
+      clipped: w < 2 * want + 1 || h < 2 * want + 1,
+    };
+    fact.evidence.area = { box: fact.area.box, meters: fact.area.meters,
+      classified: tal.classified, scanned: tal.scanned };
 
     if (a === 0) {
       // 凡例に「草地・荒地は山地や台地上のものは取得しない」とある。
@@ -766,7 +810,7 @@
     return out;
   }
 
-  global.Konjaku = { GSI, SWALE, ERAS, LATEST, tileOf, loadImage, classify,
+  global.Konjaku = { GSI, SWALE, ERAS, LATEST, AREA, tileOf, loadImage, classify,
     landform, meiji, elevation, photos, facts, narrate, badges, suggestions,
     STATE: { OK, ABSENT, UNREACHABLE }, TIMEOUT_MS };
 })(window);
