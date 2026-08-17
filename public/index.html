@@ -1122,7 +1122,13 @@ function frameHTML(fr,i){
       aria-pressed="${i===eraIdx}" title="${fr.meiji?`${name}（この判定の根拠になっているデータ）`:`${name}の空中写真を大きく見る`}">
     <!-- ⚠ loading="lazy" は付けない。右端（現在）が画面外から始まる端末で、
          いちばん見せたい1枚だけが永久に読み込まれない -->
-    <span class="im">${under}<img src="${fr.tile}" alt="" fetchpriority="low" decoding="async">
+    <!-- ⚠ 帯のコマも「淡色地図＋区分の塗り」の2枚組。**ここでも塗りを透かす。**
+         透かさないと、全面が水だった土地（豊洲）でコマが**青いベタ塗り**になり、
+         隣に並ぶ空中写真と別物に見える。大きい絵だけ直して、ここに届いていなかった
+         （CLAUDE.md「同じ結果を出す経路が複数あるなら、1か所にまとめてから直す」。
+          この画面は 3 本ある: 帯のコマ・大きい絵・地図） -->
+    <span class="im">${under}<img src="${fr.tile}" alt="" fetchpriority="low" decoding="async"
+        ${fr.under?`style="opacity:${MEIJI_ALPHA}"`:""}>
       <i class="mk" style="left:${x}%;top:${y}%"></i></span>
     <span class="yr">${fr.label}</span></button>`;
 }
@@ -1162,9 +1168,14 @@ const tileUrl=(fr,x,y)=>`${GSI}/${fr.id}/16/${x}/${y}.${fr.ext}`;
 let ovPhoto=false;     // 写真に重ねるか（従来の既定＝切）
 let ovMeiji=true;      // 明治期のコマで水域を見せるか（既定＝入。切ると地図だけ）
 const onMeijiFrame=()=>!!frames[eraIdx]?.under;
-// ⚠ 明治期のコマでは、この値をチェックで 0.75 ⇄ 0 に動かす（上の ovMeiji）。
+// 明治期の塗りを透かす濃さ。**数字はここにしか書かない。**
+const MEIJI_ALPHA=0.75;
+// ⚠ 明治期のコマでは、この値をチェックで MEIJI_ALPHA ⇄ 0 に動かす（上の ovMeiji）。
 //   他の年代と同じく「重ねる／重ねない」を選べるようにするため。
-const ERA_ALPHA=(fr)=>fr?.under?(ovMeiji?0.75:0):1;
+// ⚠ **帯のコマ（frameHTML）はここを通さない。** あちらは「その年代を示す小さな絵」で、
+//   重ねる操作の入り切りでは変えない（一覧から水域の印が消えると、何の段か分からなくなる）。
+//   透かす濃さだけ MEIJI_ALPHA を共有する。
+const ERA_ALPHA=(fr)=>fr?.under?(ovMeiji?MEIJI_ALPHA:0):1;
 
 function bigLayer(fr,id,on){
   const cells=[[0,0],[1,0],[0,1],[1,1]];

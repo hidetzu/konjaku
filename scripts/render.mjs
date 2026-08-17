@@ -2190,8 +2190,8 @@ const CASES = [
                      width: Math.round(box.width * 0.46), height: Math.round(box.height * 0.34) };
       // 撮った PNG を**その場のブラウザで開いて**画素を数える。
       // ⚠ data: URL なので canvas は汚れない（タイルを直接読むと cross-origin で読めない）
-      const colors = async () => {
-        const buf = await page.screenshot({ clip });
+      const colors = async (area = clip) => {
+        const buf = await page.screenshot({ clip: area });
         return page.evaluate(async (b64) => {
           const img = new Image();
           img.src = "data:image/png;base64," + b64;
@@ -2210,6 +2210,21 @@ const CASES = [
       // 単色に近ければ、下地は見えていない。実測（2026-08-17 / 豊洲）:
       //   直す前 = 2 色（青のベタ塗り）／直したあと = 数百色（道路・駅名・町名が透ける）
       must(on >= 24, `明治期のコマが単色に近い（下地が透けていない）: ${on} 色`);
+      // ⚠ **帯の小さいコマも見る。** この画面は同じ絵を出す経路が **3 本**ある
+      //   （帯のコマ・大きい絵・地図）。大きい絵と地図だけ直して**帯に届いておらず**、
+      //   帯のコマが青いベタ塗りのまま残っていた（2026-08-17 にオーナーが実機で発見）。
+      //   検査も 2 本しか見ていなかったので、緑のまま通していた。
+      const cellBox = await page.locator("#strip .f.meiji").boundingBox();
+      must(cellBox, "帯に明治期のコマが無い（この検査が何も見ていない）");
+      const cell = await colors({ x: cellBox.x + 3, y: cellBox.y + 3,
+        width: Math.max(1, Math.round(cellBox.width - 6)),
+        height: Math.max(1, Math.round(cellBox.height - 6)) });
+      // ⚠ コマは 24px 角しかないので、大きい絵より色数は少ない。
+      //   ⚠ **ベタ塗りでも 0 色にはならない。** 枠の丸み・選択中の輪・判定した点の印・
+      //     縁のぼかしが色を持つ。実測（2026-08-17 / 豊洲）:
+      //       塗りが不透明 = 37 色 ／ 透かした = 134 色
+      //     最初 12 色で書いたら**壊しても通った**ので、実測の間に置き直した。
+      must(cell >= 80, `帯の明治期のコマが青いベタ塗りのまま: ${cell} 色（透けていれば 130 前後）`);
       // 重ねる操作が**そこに出ている**こと。以前は明治期のコマでだけ隠していた
       const row = await page.$eval("#ovRow", (e) => e.checkVisibility()).catch(() => false);
       must(row, "明治期のコマに、重ねる操作が出ていない");
@@ -2264,8 +2279,8 @@ const CASES = [
       await page.waitForTimeout(2000);
       must(await page.$eval("#ovSwale", (e) => e.checked) === false,
         "明治期のコマへ戻ったのに、切っておいた設定が戻っていない");
-      return `静止画 重ね ${on} 色／切 ${off} 色（単色なら 2 色）／地図 ${onMap} 色`
-        + `／両経路とも入り切りで絵が変わる／写真の年代と設定が混ざらない`;
+      return `3経路とも下地が透ける（帯のコマ ${cell} 色／大きい絵 ${on} 色／地図 ${onMap} 色`
+        + `／切ると ${off} 色。単色なら 2〜4 色）／入り切りで絵が変わる／写真の年代と設定が混ざらない`;
     },
   },
   {
