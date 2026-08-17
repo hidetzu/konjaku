@@ -2166,6 +2166,109 @@ const CASES = [
     },
   },
   {
+    // ⚠ **下地を敷いても、上が不透明なら 1 ピクセルも見えない。**
+    //   明治期のコマは「淡色地図＋区分の塗り」の 2 枚組で描いているが、塗りが不透明だったため、
+    //   **全面が水だった土地（豊洲）では下地が完全に隠れ、画面の 6 割が青一色**になっていた。
+    //   初見の 3 人が 3 人ともそこに最初に目を奪われ、1 人は「読み込み中かと思った」（2026-08-17）。
+    //   ⚠ **この不具合は、それまでの検査を 1 つも落とさなかった。**
+    //     層は在るし、タイルも取りに行くし、地図も出る。「見えているか」を誰も見ていなかった。
+    //   → **撮った絵の画素を実際に数える。** 単色なら色数が極端に少ない。
+    //   ⚠ 通信の本数では測れない（不透明度 0 でもタイルは取りに行く）。
+    //   ⚠ 不透明度の値そのものを見ない。0.99 でも通ってしまい、**見えるかどうか**を測れない。
+    name: "明治期のコマで、下地の地図が透けて見える", path: `/?${TOYOSU}`,
+    viewport: { width: 375, height: 667 }, hasTouch: true,
+    async check(page) {
+      await waitVerdict(page);
+      await page.waitForSelector("#big .lyr.on img", { timeout: 20000 });
+      await page.waitForTimeout(3000);
+      // 着いた直後は最古＝明治期のコマ。前提が変わったら落とす（別のコマを測って緑にしない）
+      const first = await page.$eval("#yrBig", (e) => e.textContent.replace(/\s+/g, " ").trim());
+      must(/明治期/.test(first), `着いた直後が明治期のコマでない: ${first}`);
+      // 絵の中だけを切り取る。四隅の操作（🔇・＋−・年バッジ・重ねる行）を含めない
+      const box = await page.locator("#big").boundingBox();
+      const clip = { x: box.x + box.width * 0.34, y: box.y + 10,
+                     width: Math.round(box.width * 0.46), height: Math.round(box.height * 0.34) };
+      // 撮った PNG を**その場のブラウザで開いて**画素を数える。
+      // ⚠ data: URL なので canvas は汚れない（タイルを直接読むと cross-origin で読めない）
+      const colors = async () => {
+        const buf = await page.screenshot({ clip });
+        return page.evaluate(async (b64) => {
+          const img = new Image();
+          img.src = "data:image/png;base64," + b64;
+          await img.decode();
+          const c = document.createElement("canvas");
+          c.width = img.width; c.height = img.height;
+          const g = c.getContext("2d");
+          g.drawImage(img, 0, 0);
+          const d = g.getImageData(0, 0, c.width, c.height).data;
+          const seen = new Set();
+          for (let i = 0; i < d.length; i += 4) seen.add((d[i] << 16) | (d[i + 1] << 8) | d[i + 2]);
+          return seen.size;
+        }, buf.toString("base64"));
+      };
+      const on = await colors();
+      // 単色に近ければ、下地は見えていない。実測（2026-08-17 / 豊洲）:
+      //   直す前 = 2 色（青のベタ塗り）／直したあと = 数百色（道路・駅名・町名が透ける）
+      must(on >= 24, `明治期のコマが単色に近い（下地が透けていない）: ${on} 色`);
+      // 重ねる操作が**そこに出ている**こと。以前は明治期のコマでだけ隠していた
+      const row = await page.$eval("#ovRow", (e) => e.checkVisibility()).catch(() => false);
+      must(row, "明治期のコマに、重ねる操作が出ていない");
+      const c0 = await page.$eval("#ovSwale", (e) => e.checked);
+      must(c0, "明治期のコマで、水域が既定で重なっていない");
+      // 入り切りで**絵が本当に変わる**こと（掟: 押しても何も起きない導線を置かない）
+      await page.locator("#ovSwale").uncheck();
+      await page.waitForTimeout(900);
+      const offBuf = await page.screenshot({ clip });
+      const onBuf2 = await (async () => {
+        await page.locator("#ovSwale").check();
+        await page.waitForTimeout(900);
+        return page.screenshot({ clip });
+      })();
+      must(!offBuf.equals(onBuf2), "重ねを入り切りしても、明治期のコマが1バイトも変わらない");
+      // 切ったほうも単色でないこと（＝下地の地図が出ている。真っ白や真っ黒にしない）
+      await page.locator("#ovSwale").uncheck();
+      await page.waitForTimeout(900);
+      const off = await colors();
+      must(off >= 24, `水域を切ったのに、下地の地図が出ていない: ${off} 色`);
+      // ⚠ **地図の経路でも同じことを確かめる。** ここまでは静止画のモザイクしか見ていない。
+      //   同じ絵を出す経路が 2 本あり、**片方だけ直して届いていなかった事故を 2 回**やっている
+      //   （CLAUDE.md の落とし穴）。実際、この検査を書いた直後に地図側だけ壊してみたら**通った**。
+      //   → 地図が出ている状態（#big.map-on）にしてから、もう一度画素を数える。
+      // ⚠ **この検査が見ていない範囲**（実測で確かめた 2026-08-17）:
+      //   地図の**作成時**の不透明度（style の paint）を壊しても、ここは通る。
+      //   地図の読み込み直後に applyOverlay() が必ず走って上書きするため、
+      //   振る舞いに差が出ないから。作成時の値が効くのは「地図が出た瞬間の一瞬」だけで、
+      //   そこは撮れていない。**「作成時の値も検査した」とは言わない。**
+      await page.locator("#ovSwale").check();
+      await page.waitForTimeout(600);
+      await page.locator("#big").click({ position: { x: 180, y: 120 } });   // 地図を起こす
+      await page.waitForFunction(() => document.querySelector("#big.map-on"),
+        null, { timeout: 60000 });
+      await page.waitForTimeout(3000);
+      const onMap = await colors();
+      must(onMap >= 24, `地図の経路でも下地が透けていない: ${onMap} 色`);
+      // 地図が出た状態で、入り切りが効くこと（層だけを切り分けて見る）
+      const mapOnBuf = await page.screenshot({ clip });
+      await page.locator("#ovSwale").uncheck();
+      await page.waitForTimeout(1500);
+      const mapOffBuf = await page.screenshot({ clip });
+      must(!mapOnBuf.equals(mapOffBuf),
+        "地図が出ている状態で、重ねを入り切りしても1バイトも変わらない（地図の経路に届いていない）");
+      // ⚠ 写真の年代と設定が混ざらないこと。1 つの状態にまとめると、
+      //   写真で重ねていた人が明治期のコマを通っただけで設定を失う
+      await page.locator("#strip .f").nth(1).click();
+      await page.waitForTimeout(2000);
+      must(await page.$eval("#ovSwale", (e) => e.checked) === false,
+        "写真の年代へ移ったのに、明治期のコマの設定を引きずっている");
+      await page.locator("#strip .f").nth(0).click();
+      await page.waitForTimeout(2000);
+      must(await page.$eval("#ovSwale", (e) => e.checked) === false,
+        "明治期のコマへ戻ったのに、切っておいた設定が戻っていない");
+      return `静止画 重ね ${on} 色／切 ${off} 色（単色なら 2 色）／地図 ${onMap} 色`
+        + `／両経路とも入り切りで絵が変わる／写真の年代と設定が混ざらない`;
+    },
+  },
+  {
     // 明治期のデータが無い土地では、重ねるものが無い
     name: "明治期が無い土地では、重ねる操作を出さない", path: `/?${SAPPORO}`,
     async check(page) {
@@ -2206,9 +2309,15 @@ const CASES = [
         `明治期の見出しが、空中写真と区別できない: ${yr}`);
       const cell = await page.locator("#strip .f.meiji .yr").textContent();
       must(cell.trim() === "明治期", `帯のコマの見出しが変わっている: ${cell}`);
-      // ⚠ 明治期のコマには重ねる相手（空中写真）が無い。ここでは操作を出さない
-      must(await effOpacity(page, "#ovRow") === 0,
-        "明治期のコマなのに、重ねる操作が出ている（押しても絵は変わらない）");
+      // ⚠ この検査は以前、**明治期のコマでは操作を出さない**ことを求めていた。
+      //   当時の理由は「重ねる相手（空中写真）が無い／入り切りしても絵が変わらない」で、
+      //   当時は正しかった（掟: 押しても何も起きない導線を置かない）。
+      //   ⚠ 前提が変わった。相手は**下に敷いてある淡色地図**で、塗りを透かしたので
+      //     入り切りすると絵が本当に変わる。**出すのが正しい**（2026-08-17）。
+      //   守っていた「押しても何も起きない導線を置かない」は、
+      //   →「明治期のコマで、下地の地図が透けて見える」が、画素を数えて引き継いでいる。
+      must(await effOpacity(page, "#ovRow") > 0,
+        "明治期のコマで、重ねる操作が出ていない（下地の地図を出し入れできない）");
       // 写真の年代（1936–42）へ移ると、出る
       await page.evaluate(() => document.querySelectorAll("#strip .f")[1]?.click());
       await page.waitForTimeout(900);
