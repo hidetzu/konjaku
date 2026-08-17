@@ -23,27 +23,14 @@ const BBOX = { s: 35.6480, w: 139.7880, n: 35.6620, e: 139.8060 };
 // 配信するのは public/ だけなので、そこへ直接書く（スクリプトからの相対＝cwd に依存しない）
 const OUT = new URL(`public/data/${NAME}-water.geojson`, import.meta.url);
 
-// 凡例 lw_legend.pdf の配色。水域だけでなく、範囲内で最も多い区分も集計する。
-// 干潟・砂浜は満潮時に海面下になる地形なので水に含める。
-const CLASSES = [
-  { rgb: [254, 227, 200], name: "砂礫地" }, { rgb: [254, 200, 200], name: "泥地" },
-  { rgb: [228, 172, 123], name: "泥炭地" }, { rgb: [200, 200, 228], name: "湿地" },
-  { rgb: [209, 234, 255], name: "干潟・砂浜", water: true },
-  { rgb: [147, 200, 254], name: "河川・湖沼・海面", water: true },
-  { rgb: [251, 247, 176], name: "田" }, { rgb: [225, 227, 118], name: "深田" },
-  { rgb: [227, 227, 200], name: "塩田" }, { rgb: [162, 222, 162], name: "草地" },
-  { rgb: [173, 200, 147], name: "荒地" }, { rgb: [119, 227, 201], name: "ヨシ" },
-  { rgb: [173, 255, 173], name: "茅" }, { rgb: [144, 73, 11], name: "堤防" },
-];
-const TOL = 60;
-function classify(r, g, b) {
-  let best = null, distance = Infinity;
-  for (const c of CLASSES) {
-    const d = (c.rgb[0] - r) ** 2 + (c.rgb[1] - g) ** 2 + (c.rgb[2] - b) ** 2;
-    if (d < distance) { distance = d; best = c; }
-  }
-  return Math.sqrt(distance) <= TOL ? best : null;
-}
+// 凡例・許容差・1画素の分類は **public/swale.js の1か所**。ここに書き写さない。
+// ⚠ 以前ここにも同じ表があり、しかも `check.mjs` の突き合わせから**漏れていた**
+//   （走査対象の .js 一覧に build-water.js が入っていなかった。2026-08-17 に気づいて寄せた）。
+// 干潟・砂浜は満潮時に海面下になる地形なので水に含める（その印は swale.js が持つ）。
+await import("./public/swale.js");
+const CLASSES = globalThis.KonjakuSwale.SWALE;
+const TOL = globalThis.KonjakuSwale.TOLERANCE;
+const classify = globalThis.KonjakuSwale.classify;
 
 function decodePNG(buf) {
   let p = 8, w = 0, h = 0, ct = 0;

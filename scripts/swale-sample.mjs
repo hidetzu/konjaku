@@ -4,16 +4,11 @@ import zlib from "node:zlib";
 
 const GSI = "https://cyberjapandata.gsi.go.jp/xyz";
 const Z = 16;
-export const SWALE = [
-  {rgb:[254,227,200],name:"砂礫地"},{rgb:[254,200,200],name:"泥地"},
-  {rgb:[228,172,123],name:"泥炭地"},{rgb:[200,200,228],name:"湿地"},
-  {rgb:[209,234,255],name:"干潟・砂浜",water:true},
-  {rgb:[147,200,254],name:"河川・湖沼・海面",water:true},
-  {rgb:[251,247,176],name:"田"},{rgb:[225,227,118],name:"深田"},
-  {rgb:[227,227,200],name:"塩田"},{rgb:[162,222,162],name:"草地"},
-  {rgb:[173,200,147],name:"荒地"},{rgb:[119,227,201],name:"ヨシ"},
-  {rgb:[173,255,173],name:"茅"},{rgb:[144,73,11],name:"堤防"},
-];
+// ⚠ 14 区分と 1 画素の分類は **public/swale.js の1か所**。ここに書き写さない。
+//   ブラウザ用のファイルだが、globalThis に生やす作法なので Node からも読める（esc.js と同じ）。
+await import("../public/swale.js");
+export const SWALE = globalThis.KonjakuSwale.SWALE;
+const classify = globalThis.KonjakuSwale.classify;
 const cache = new Map();
 const tileOf = (lon,lat) => {
   const n=2**Z, r=lat*Math.PI/180;
@@ -31,7 +26,6 @@ function decodePNG(buf){
       if(f===1)v+=a;else if(f===2)v+=b;else if(f===3)v+=(a+b)>>1;else if(f===4){const pp=a+b-c,pa=Math.abs(pp-a),pb=Math.abs(pp-b),pc=Math.abs(pp-c);v+=pa<=pb&&pa<=pc?a:pb<=pc?b:c}out[y*stride+i]=v&255;}}
   return {w,h,data:out};
 }
-function classify(r,g,b){let best=null,bd=Infinity;for(const c of SWALE){const d=(c.rgb[0]-r)**2+(c.rgb[1]-g)**2+(c.rgb[2]-b)**2;if(d<bd){bd=d;best=c}}return Math.sqrt(bd)<=60?best:null;}
 async function tile(x,y){const k=`${x}/${y}`;if(cache.has(k))return cache.get(k);const p=fetch(`${GSI}/swale/${Z}/${x}/${y}.png`,{signal:AbortSignal.timeout(15000)}).then(async r=>{
   // 404だけが「このタイルにデータが無い」。403/5xxは一時的な取得失敗として
   // 取り込みを止め、誤って「整備対象外」を恒久配信しない。

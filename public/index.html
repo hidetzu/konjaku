@@ -258,6 +258,69 @@
     border:1px solid var(--line);background:transparent;color:var(--ink-dim);
     font:inherit;font-size:var(--fs-badge);cursor:pointer;min-height:var(--tap)}
   .close-why:hover{border-color:var(--action);color:var(--action)}
+  /* この範囲の内訳（面）。**凡例と数字を同じ場所で出す。**
+     ⚠ 3 人が 3 人とも「重ねている絵のピンクが荒地か泥地か分からない」と答えた。
+       凡例を別に置くとまた 2 か所になるので、ここが凡例そのものになる。
+     ⚠ 色の四角は**凡例の色そのまま**を使う（`KonjakuSwale.SWALE` の rgb）。
+       ここで色を作り直すと、絵と凡例が食い違う。 */
+  /* ⚠ 余白は 8px。9px だと本命の行が y=1043 で、検査の境目（< 1043）に 1px 足りなかった。
+     ⚠ **文を削って合わせない。** 落とせない中身（別の資料・時期が書かれていない・分母）は
+       すでに 1 行ずつに詰めてある。ここは余白で払う。 */
+  .area{margin-top:8px;padding:8px 11px;border-radius:9px;
+    background:rgba(255,255,255,.035);border:1px solid var(--line)}
+  .area-lead{font-size:var(--fs-body);color:var(--ink);line-height:1.6}
+  .area-lead b{font-weight:600}
+  .area-list{list-style:none;margin:7px 0 0;padding:0;display:flex;flex-wrap:wrap;gap:4px 14px}
+  .area-list li{display:inline-flex;align-items:center;gap:6px;font-size:var(--fs-note);color:var(--ink-dim)}
+  .area-list .nm{color:var(--ink-dim)}
+  .area-list b{color:var(--ink);font-variant-numeric:tabular-nums}
+  /* ⚠ 色の四角は、細い枠を付ける。淡い色（干潟・砂浜）が地に溶けて見えなくなる */
+  .area-list .sw{width:12px;height:12px;border-radius:3px;flex:none;
+    border:1px solid rgba(255,255,255,.35)}
+  /* ⚠ 分母。小さくするが、消さない（掟4: 数字は必ず主張範囲の分母で書く）。
+     初見の人は「最初は読み飛ばしたが、読んで必要だと思った。これが無いと
+     浦安ぜんぶの話だと勘違いしていた」と答えた */
+  /* 分母は％のすぐ上（初見の 2 人が「地図全体の話だと思って読んだ」）。⚠ 小さくても消さない */
+  .area-where{margin-top:4px;font-size:var(--fs-evidence);color:var(--ink-faint);line-height:1.5}
+  /* 打ち切った残り。⚠ 色は持たない（凡例に無いものに色を付けると、絵と対応しない） */
+  .area-list .rest{opacity:.75}
+  .area-list .sw-rest{background:repeating-linear-gradient(45deg,
+    rgba(255,255,255,.22) 0 3px, rgba(255,255,255,.06) 3px 6px)}
+  /* 出どころの違い。⚠ **畳むが消さない**（常に開くと本命の行を押し下げる）。
+     ⚠ 名乗りだけで「別の資料」だと分かるようにする。畳んだまま読み終える人がいる */
+  .area-src{margin-top:6px}
+  .area-src summary{font-size:var(--fs-evidence);color:var(--ink-dim);cursor:pointer;
+    line-height:1.5;list-style:none}
+  .area-src summary::-webkit-details-marker{display:none}
+  .area-src summary::before{content:"▸ ";color:var(--ink-faint)}
+  .area-src[open] summary::before{content:"▾ "}
+  /* ⚠ ここは 44px を取らない。畳みの見出しに 44px を取ると、畳んだのに
+     元の 36px より**高くなり**、本命の行をさらに押し下げた（実測 1075 → 1083）。
+     ⚠ 代わりに横幅いっぱいを当たり判定にする（行全体が押せる） */
+  .area-src summary{padding:3px 0}
+  .area-note{margin-top:6px;font-size:var(--fs-evidence);color:var(--ink-faint);line-height:1.5}
+  /* 区分を押すと出る解説。⚠ **こちらでは書かない**（凡例の解説文をそのまま出す）。
+     ⚠ カーソルオーバにしない。スマホで hover が効かない */
+  .area-list .area-item{display:inline-flex;align-items:center;gap:6px;
+    padding:3px 6px;margin:-3px -6px;border:0;border-radius:6px;background:transparent;
+    color:inherit;font:inherit;font-size:var(--fs-note);cursor:pointer;text-align:left}
+  .area-list .area-item:hover{background:rgba(255,255,255,.06)}
+  .area-list .area-item[aria-expanded="true"]{background:rgba(111,195,255,.14)}
+  /* ⚠ 指で押せる高さを取る。見た目を弱めるのと、押しにくくするのは別のこと */
+  @media (hover:none){ .area-list .area-item{min-height:var(--tap);padding:6px} }
+  .area-why{margin-top:8px;padding:8px 10px;border-radius:8px;
+    background:rgba(255,255,255,.04);border-left:2px solid var(--action);
+    font-size:var(--fs-note);color:var(--ink-dim);line-height:1.65}
+  .area-why-tx{margin-top:3px;color:var(--ink)}
+  /* 出典。⚠ 消さない（引用なので出典を添える。掟3） */
+  .area-why-src{margin-top:5px;font-size:var(--fs-evidence);color:var(--ink-faint)}
+  /* 取れなかったことを言う色。⚠ 「無い」と同じ見た目にしない（掟1） */
+  .area-why .warn-tx{color:var(--missing)}
+  /* 数えた範囲を、写真の上に白い枠で出す。
+     ⚠ 「204m 四方」と書いても画面のどこか分からない、と 2 人が言った。
+        言葉ではなく枠で示す。⚠ 押せる見た目にしない（枠だけ。当たり判定も持たせない） */
+  .big .areabox{position:absolute;border:1.5px solid rgba(255,255,255,.85);
+    border-radius:2px;pointer-events:none;box-shadow:0 0 0 1px rgba(0,0,0,.35)}
   .share-msg{margin-top:8px;padding:6px 9px;border-radius:7px;font-size:var(--fs-note);
     background:rgba(126,224,165,.10);border-left:2px solid var(--evidence);color:#9ed3b4}
   .quick{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
@@ -877,6 +940,9 @@
 <!-- 外部から来た文字列（Wikidata のラベル・地理院の地名・OSM のタグ）を
      HTML として実行させないための1か所。⚠ ほかより先に読む（下のインラインが使う） -->
 <script src="./esc.js"></script>
+<!-- ⚠ verify.js / peel3d.js より**先に**読む。明治期の 14 区分と 1 画素の分類は
+     ここが唯一の定義で、あとの2つはこれを借りている（掟6: 同じ問いに答える実装を2つ持たない）。 -->
+<script src="./swale.js"></script>
 <script src="./verify.js"></script>
 <!-- 住所検索の応答を並べ替える。scripts/search-check.mjs がこのファイルをそのまま読んで
      35語の回帰検査を回すので、検査した実装と出荷する実装が同じであることを保証できる -->
@@ -1113,6 +1179,20 @@ function buildFrames(f){
 // 写真の上に置く見出し。
 // ⚠ 明治期のコマは空中写真ではない。ここは幅があるので、そう名乗らせる
 //   （帯の小さなコマは幅が足りないので label だけ）。
+// この場所に残っている空中写真の数を、単位語なしで言う。
+// ⚠ **「N 年代（M 年代中）」をやめた理由**は上の strip-foot のコメントにある。
+// ⚠ 年は実データ（Konjaku.ERAS）から取る。ここに西暦を書かない。
+function photoCountText(past){
+  const all=Konjaku.ERAS.length;
+  const from=Konjaku.ERAS[0].label.split(/[–-]/)[0];
+  const to=Konjaku.ERAS[all-1].label.split(/[–-]/)[0];
+  // ⚠ そろっているときに数を 2 回出さない（「7 年代（7 年代中）」が意味を成さなかった）
+  // ⚠ **1 行に収める。** 2 行になると本命の行を 20px 押し下げる（実測）。
+  //   落とせないのは「この場所に何回ぶん残っているか」と「全部で何回か」（掟1・掟4）。
+  if(past>=all) return `昔の写真 <b>${all}回ぶんすべて</b>（${from}〜${to}年）`;
+  if(past<=0)   return `昔の写真は <b>残っていません</b>（全${all}回ぶん中）`;
+  return `昔の写真 <b>${all}回ぶん中 ${past}回</b>（${from}〜${to}年）`;
+}
 function bigSub(fr){
   const s=fr.subBig??fr.sub;
   return `${fr.label}${s?`<small>${s}</small>`:""}`;
@@ -1216,6 +1296,23 @@ function layoutBig(){
   });
   const mk=big.querySelector(".big-in > .mk");
   if(mk){ mk.style.left=`${mosaic.mx/512*S}px`; mk.style.top=`${top+mosaic.my/512*S}px`; }
+  // 数えた範囲を白い枠で出す。⚠ **数字と同じ範囲**でなければ意味がない。
+  //   `meiji.area.box` はタイル内の座標。モザイクは 2×2 なので 512 を基準に置き換える。
+  //   ⚠ 明治期のコマ以外では出さない。写真の上に出しても、その数字は写真の話ではない。
+  const abox=big.querySelector(".areabox");
+  if(abox){
+    const a=meiji?.area, showing=!!frames[eraIdx]?.under;
+    if(a&&showing&&current){
+      const t=Konjaku.tileOf(current.lon,current.lat,16);
+      const ox=(t.x-mosaic.x0)*256, oy=(t.y-mosaic.y0)*256;
+      const [bx,by,bw,bh]=a.box;
+      abox.style.display="";
+      abox.style.left=`${(ox+bx)/512*S}px`;
+      abox.style.top=`${top+(oy+by)/512*S}px`;
+      abox.style.width=`${bw/512*S}px`;
+      abox.style.height=`${bh/512*S}px`;
+    } else abox.style.display="none";
+  }
   return { W, H, S, top };
 }
 
@@ -1238,7 +1335,145 @@ function headHTML(){
          以前はこの知らせが判定ブロックの末尾にあり、実測でボタン y=744 に対して y=1043、
          **299px 下の画面外**だった。利用者役のエージェント3体とも「押しても何も起きない＝壊れている」と判断し、
          1体は2回押して画像が2枚落ちた（2026-08-14）。 -->
-    <div class="share-msg" id="shareMsg" style="display:none"></div>`;
+    <div class="share-msg" id="shareMsg" style="display:none"></div>
+    ${areaHTML()}`;
+}
+
+// この範囲の内訳（面）。**凡例と数字を同じ場所で出す。**
+//
+// ⚠ **点だけを出していたのを改めた。** 浦安は 1 点では「荒地」だが、範囲で数えると
+//   荒地 47.9% / 泥地 43.8% / 水 5.9% で一つに言い切れない（2026-08-17 実測）。
+//   初見の 3 人に 4 案を見せたところ、**2 人が「素直に割れを出す案」を 1 位**にし、
+//   **2 人が「点だけの案」を最下位**にした。「だまされた気分」「軽い嘘に見える」。
+//   ⚠ 1 人（数字が苦手な人）は「◯◯が中心」の 1 文を好んだが、**その人自身が
+//     「半分以下なのに中心と書いてあるのは気づけなかった。自分では気づけないタイプの誤解」**
+//     と言った。気づけない誤解を選ばない。
+//
+// ⚠ **色を必ず添える。** 3 人が 3 人とも「重ねている絵のピンクが荒地か泥地か分からない」
+//   「ふつうの地図の色だと思って流した」と答えた。**凡例が無いと、数字は絵とつながらない。**
+//   ここが凡例そのものになる（別に凡例を置くと、また 2 か所になる）。
+//
+// ⚠ **分母を必ず書く**（掟4）。しかも「204m 四方」ではなく**実際に数えた大きさ**を書く。
+//   タイルの縁では窓が切れるので（上野で 186×157m）、切れたぶんを黙って 204 と書かない。
+function areaHTML(){
+  const a=meiji?.area;
+  if(!a||!a.top) return "";
+  const swatch=(name)=>{
+    const c=KonjakuSwale.SWALE.find((x)=>x.name===name);
+    return c?`<i class="sw" style="background:rgb(${c.rgb.join(",")})"></i>`:"";
+  };
+  const pct=(x)=>`${(x*100).toFixed(1)}%`;
+  // ⚠ 何件出すかは「合わせて 95% を超えるまで」。上位 3 件で切ると、
+  //   4 件目が 20% ある土地で「残りは何？」に答えられない
+  const rows=[]; let acc=0;
+  for(const c of a.byName){ rows.push(c); acc+=c.share; if(acc>=0.95) break; }
+  // ⚠ **打ち切った残りを黙って落とさない。** 初見の人が「足すと 97.6% で 100 にならない。
+  //   残りの 2.4% は何？」と気づいた（2026-08-17）。掟4 に触れる。
+  //   → 「その他」として出し、合計が 100% になることを利用者が確かめられるようにする。
+  const rest=1-acc;
+  const others=a.byName.length-rows.length;
+  // 言い方は初見の人の言葉から取った。「混じっていました」が数字より先に意味が入ると評価された
+  // ⚠ **西暦を添える。** 3 人が 3 人とも「明治期だけでは、いつなのか分からない」と答えた
+  //   （「明治は 40 年以上あるので、いつの話か知りたい」）。
+  //   ⚠ **資料の年ではなく、明治という時代の範囲**を書く。低湿地データの原典が
+  //     いつ測られたかは、こちらでは特定できない（凡例にも書かれていない）ので、
+  //     「1868〜1912年」と時代を書き、資料の年を作らない（掟: 実測でない数字を書かない）。
+  const ERA_JP="明治期（1868〜1912年）";
+  const lead=a.top.share>=0.7
+    ? `${ERA_JP}は、ほとんど <b>${esc(a.top.name)}</b> でした`
+    : `${ERA_JP}は <b>${esc(rows[0].name)}</b> と <b>${esc(rows[1]?.name??"")}</b> が混じっていました`;
+  const m=a.meters;
+  // ⚠ **押すと解説が出る形にする。カーソルオーバにしない。**
+  //   スマホでは hover が効かない（この画面は既に「title はタッチ端末では一生見えない」を
+  //   踏んでいる）。3 人が 3 人とも「荒地と泥地の違いが分からない」と答えたのは
+  //   スマホで見た人たちなので、そこへ届かない出し方を選ばない。
+  return `<div class="area" id="area">
+    <div class="area-lead">${lead}</div>
+    <!-- ⚠ **分母は％のすぐ上。** 一番下に置いていたら、初見の 2 人が
+         「％を地図全体の話だと思って読んだ」と答えた（375px では末尾が「1画…」で
+         切れて読めてもいなかった）。⚠ 短く書く。長くすると本命の行を押し下げる -->
+    <div class="area-where">白い枠の中（${m.w}×${m.h}m）で数えた割合${
+      a.clipped?"／端なので枠が切れています":""}</div>
+    <ul class="area-list">${rows.map((c)=>
+      `<li><button type="button" class="area-item" data-cls="${esc(c.name)}"
+          aria-expanded="false" title="${esc(c.name)}とは？">${swatch(c.name)}<span class="nm">${esc(c.name)}</span><b>${pct(c.share)}</b></button></li>`).join("")}${
+      // ⚠ 打ち切った残りを黙って落とさない。何件まとめたかも言う
+      rest>0.0005?`<li class="rest"><i class="sw sw-rest"></i><span class="nm">その他${
+        others>0?`（${others} 区分）`:""}</span><b>${pct(rest)}</b></li>`:""}</ul>
+    <div class="area-why" id="areaWhy" hidden></div>
+    <!-- ⚠ **短く。** ここを 3 文で書いたら本命の行（立体で見る）を押し下げ、
+         検査が落ちた（「本命が埋もれている: y=1089」）。落とせないのは 2 点だけ:
+         「別の資料」と「時期が書かれていない」。これが無いと、初見の人が上下を
+         同じ話と読んで**誤った統合**をした（「泥地＋水で約50%」） -->
+    <!-- ⚠ **畳むが、消さない。** 常に開いていると本命の行（立体で見る）を押し下げ、
+         検査が落ちた（実測 y=1043 → 1089）。畳めば 36px 戻る。
+         ⚠ 名乗りで中身が分かるようにする（「詳しく」ではなく、何が書いてあるかを言う）。
+           畳んだ見出しだけ読んでも「別の資料」だと分かる形にしてある。 -->
+    <details class="area-src">
+      <!-- ⚠ **1 行に収める**（2 行だと 18px 押し下げる）。畳んだまま読み終える人がいるので、
+           名乗りだけで「別の資料」だと分かること。中身は開けば読める -->
+      <summary>上の「もとは」は<b>別の資料</b>です</summary>
+      <!-- ⚠ **上の文を決め打ちしない。** ここに「もとは 水だった土地（旧水部）」と
+           書いていたら、渋谷（氾濫平野・海岸平野）で画面と食い違った（オーナーが発見）。
+           上の文が何であっても通る書き方にする。 -->
+      <div class="area-note">この割合は<b>明治期の資料</b>（1868〜1912年）から数えたものです。
+        上の1文は<b>地形分類</b>という別の資料で、<b>いつの姿かは書かれていません</b>。
+        同じ場所の、別の時期の話が並んでいます。</div>
+    </details>
+  </div>`;
+}
+
+// 区分の解説。⚠ **こちらでは書かない。** 国土地理院の凡例（lw_legend.pdf）の解説文を
+//   要約せずそのまま出す（掟3: 断定ではなく引用のときは出典を必ず添え、要約しない）。
+//   ⚠ 解説文の出典は凡例に明記されている（地形図図式詳解／広辞苑第四版）。それも一緒に出す。
+// ⚠ 押されるまで取りに行かない。初期表示のために 1 本増やす価値は無い。
+//   ⚠ 取れなかったときは黙らない。「取れなかった」と言って再試行を出す（掟1）。
+let swaleLegend=null, swaleLegendState="none";
+async function loadSwaleLegend(){
+  if(swaleLegendState==="ok") return swaleLegend;
+  swaleLegendState="loading";
+  try{
+    const r=await fetch("./data/swale-legend.json",{cache:"no-cache"});
+    if(!r.ok) throw new Error(String(r.status));
+    swaleLegend=await r.json(); swaleLegendState="ok"; return swaleLegend;
+  }catch{ swaleLegendState="fail"; return null; }
+}
+function wireAreaItems(){
+  const box=document.getElementById("areaWhy");
+  if(!box) return;
+  document.querySelectorAll("#area .area-item").forEach((b)=>{
+    b.onclick=async()=>{
+      const name=b.dataset.cls;
+      const open=b.getAttribute("aria-expanded")==="true";
+      document.querySelectorAll("#area .area-item").forEach((o)=>o.setAttribute("aria-expanded","false"));
+      if(open){ box.hidden=true; box.textContent=""; return; }
+      b.setAttribute("aria-expanded","true");
+      box.hidden=false;
+      box.innerHTML=`<span class="dim">${esc(name)} の説明を読み込んでいます…</span>`;
+      const lg=await loadSwaleLegend();
+      const c=lg?.classes?.[name];
+      if(!c){
+        // ⚠ 「説明が無い」と「取れなかった」を混ぜない
+        box.innerHTML=swaleLegendState==="fail"
+          ? `<span class="warn-tx">説明を、いま読み込めません。</span> <button type="button" class="retry" id="areaWhyRetry">再試行</button>`
+          : `<span class="warn-tx">この区分の説明は、凡例に見つかりませんでした。</span>`;
+        const rt=document.getElementById("areaWhyRetry");
+        if(rt) rt.onclick=()=>{ swaleLegendState="none"; b.setAttribute("aria-expanded","false"); b.click(); };
+        return;
+      }
+      box.innerHTML=`<b>${esc(c.legendName)}</b>${
+        c.legendName!==name?`<span class="dim">（この画面では「${esc(name)}」）</span>`:""}
+        <div class="area-why-tx">${esc(c.text)}</div>
+        <div class="area-why-src">解説文の出典: ${esc(lg.textSource)}／
+          <a href="${escUrl(lg.source)}" target="_blank" rel="noopener">${esc(lg.sourceLabel)}</a></div>`;
+      // ⚠ **押した結果が見える位置まで運ぶ。** 実測（375×667 / 浦安）で、
+      //   押したボタンは y=559 で見えているのに、出た解説は y=650〜812 と
+      //   **下端が画面の外**だった。この画面は同じ失敗を既に踏んでいる
+      //   （共有の知らせが 299px 下の画面外にあり、3 体とも「壊れている」と判断した）。
+      //   ⚠ block:"nearest" にする。center だと、すでに見えているときにも画面が飛ぶ。
+      box.scrollIntoView({behavior:"smooth",block:"nearest"});
+    };
+  });
 }
 
 // 判定を待つあいだの画面。出せるものだけ先に出す。
@@ -1302,6 +1537,10 @@ function timeHTML(f){
       <div class="big-in" id="bigIn">
         ${bigLayer(cur,"lyrA",true)}${bigLayer(null,"lyrB",false)}
         <i class="mk" aria-hidden="true"></i>
+        <!-- 数えた範囲。⚠ 押せる見た目にしない（枠だけ・当たり判定なし）。
+             ⚠ **判定後のテンプレートに置く。** 判定中の側に置いても、判定が返った瞬間に
+               作り直されて消える（最初そこに置いて、枠が一度も出なかった） -->
+        <div class="areabox" aria-hidden="true" style="display:none"></div>
         <div id="pins"></div>
       </div>
       <div class="bl">
@@ -1334,10 +1573,24 @@ function timeHTML(f){
     // ⚠ 明治期の水域を重ねる操作は、写真の中（.bl）へ移した。ここには置かない。
     //   重ねる相手は写真なので、操作も写真と一緒に見えている必要がある（上の .ov のコメント）。
     // ⚠ 🔊 のプライバシーは footer の .f-priv へ寄せた（同じ主題が2か所にあった）。
-    //   ⚠ 「残っていた空中写真は N 年代」は残す。**調べた範囲**の申告で、帯を見ても
-    //   分母（7年代中）は分からない。ここを消すと「取れなかった」が言えなくなる。
-    + `<div class="strip-foot">写真はドラッグで動かせます（＋−で拡大縮小）`
-      + ` ／ 残っていた空中写真は <b>${past}</b> 年代（${Konjaku.ERAS.length} 年代中）`
+    //   ⚠ 「この場所に残っている枚数」は残す。**調べた範囲**の申告で、帯を見ても
+    //   分母は分からない。ここを消すと「取れなかった」が言えなくなる（掟1）。
+    // ⚠ **「N 年代（M 年代中）」という書き方をやめた**（2026-08-17）。
+    //   初見の人が通算 3 人とも「まったく意味が分からない」と答えた:
+    //     「7 年代って何？ 70 年代の書き間違い？ カッコの中も同じ数字で、何と何を比べているのか」
+    //     「『年代』が 10 年単位のことだと気づくのに時間がかかった」
+    //   ⚠ 全部そろうと「7 年代（7 年代中）」と**同じ数字が 2 回**出て、意味を成さなかった。
+    //   → 「年代」という単位語をやめ、**そろっているときは数を繰り返さず「すべて」と言う**。
+    //     ⚠ 分母（全部で何回あるか）は残す（掟4）。
+    //   ⚠ 年は `Konjaku.ERAS` の実データから作る。ここに数字を書かない
+    //     （書くと、年代を足したときに嘘になる）。
+    // ⚠ **操作説明と、調べた範囲の申告を同居させない。**
+    //   同じ行に置いていたら、文言を意味の通るものに直したぶん **1 行増えて**
+    //   本命の行を押し下げた（実測 1081 → 1100）。
+    //   ⚠ 操作説明（ドラッグ・＋−）は**触れば分かること**なので落とす（原則4「説明より操作」）。
+    //     ＋− のボタンは写真の上に出ており、ドラッグは触れば動く。
+    //   ⚠ 申告（何回ぶん残っているか）は落とさない。帯を見ても分母は分からない（掟1・掟4）。
+    + `<div class="strip-foot">${photoCountText(past)}`
     + (p.state==="partial" ? ` ／ <span class="warn">${p.unread} 年代分は読み込めていません</span>` : "")
     + `</div>`
     + `<div class="ev" id="ev"></div>`;
@@ -2133,7 +2386,7 @@ function renderVerdict(){
       <b>${unread.map((f)=>f.unreadLabel ?? f.label).join("・")}</b> を、いま読み込めませんでした。
       通信を確認して、もう一度お試しください。
       <button class="retry" id="retryBtn">再試行</button></div>` : ""}`;
-  wireStrip(); wireMix(); wireBadges(); wireSay(); wirePlay(); wireOverlay();
+  wireStrip(); wireMix(); wireBadges(); wireSay(); wirePlay(); wireOverlay(); wireAreaItems();
   // 段が決まったので、URL を**いま出ているもの**に合わせ直す。
   // ⚠ 指定された年代が無かった場合、ここで URL からその年代が落ちる。
   //   出ていないものを URL に残すと、共有するたびに同じ空振りが伝播する
@@ -2709,6 +2962,9 @@ async function openPlace(lon,lat,title,opt){
   KonjakuShare.tick(KonjakuShare.outcome(f));
   KonjakuShare.health(f);
   meiji = { loading:false, text: headline, facts: f,
+            // 面の内訳（この範囲で 1 画素ずつ数えた結果）。⚠ 判定側（verify.js）が測ったものを
+            //   そのまま持つ。ここで数え直さない（掟6: 同じ問いに答える実装を2つ持たない）
+            area: m.area ?? null,
             water: lf.ok ? ["水部","旧水部","河川敷･浜","湖","干拓地","落堀"].includes(lf.value) : !!m.water };
   if (current && current.lon===lon && current.lat===lat) {
     renderVerdict();
