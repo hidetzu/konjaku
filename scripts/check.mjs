@@ -1856,6 +1856,24 @@ head("6. 外部リンク");
     missing.length || extra.length
       ? bad(`候補地の生成結果が seeds と不一致（不足 ${missing.length} / 余分 ${extra.length}）`)
       : ok(`候補地の生成結果が seeds/areas.jsonl と一致（${places.length} 件）`);
+    // ⚠ トップの住所未選択で出すのは、この 10 件のうち **3 件だけ**（入力例）。
+    //   index.html は id で指しているので、**配っているデータに その id が無いと
+    //   例が 1 件も出ない**（画面側には先頭 3 件へ落ちる保険があるが、
+    //   保険が働いた画面は「豊洲・渋谷・広島」ではなくなる。ここで気づけるようにする）。
+    //   掟: 同じ問いに答える実装を2つ持つときは、機械で突き合わせる。
+    const m = /const TOP_EXAMPLE_IDS\s*=\s*\[([^\]]*)\]/.exec(src["index.html"] ?? "");
+    if (!m) bad("index.html の TOP_EXAMPLE_IDS を読めない（トップの入力例が何も突き合わされていない）");
+    else {
+      const ids = [...m[1].matchAll(/"([^"]+)"/g)].map((x) => x[1]);
+      const have = new Set(places.map((p) => p.id));
+      const lost = ids.filter((id) => !have.has(id));
+      ids.length !== 3
+        ? bad(`トップの入力例が 3 件でない: ${ids.length} 件（${ids.join("・")}）`)
+        : lost.length
+          ? bad(`トップの入力例に、配っていない id がある: ${lost.join("・")}`
+              + "（画面は先頭3件へ落ちるので、見た目は壊れず静かに別の土地になる）")
+          : ok(`トップの入力例 3 件（${ids.join("・")}）は quick-places.json にある`);
+    }
   }
 }
 
