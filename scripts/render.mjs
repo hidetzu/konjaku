@@ -1166,6 +1166,52 @@ const CASES = [
     },
   },
   {
+    // ⚠ **押すものと、動くものを離さない。** ▶ は帯（年代）を順に送る操作なのに、
+    //   実測（2026-08-17）で**帯の下端から 487px（375×667）／650px（PC）**離れていた。
+    //   間に大きい写真・判定文・面の内訳が挟まっており、押しても何が起きたか見えない。
+    //   ⚠ 同じ整理を「明治期の土地を重ねる」で既にやっている（重ねる相手は写真なので、
+    //     操作も写真と一緒に見えている必要がある）。▶ だけ取り残されていた。
+    //   ⚠ この不具合は、それまでの検査を 1 つも落とさなかった。位置を誰も見ていなかった。
+    name: "▶ は、動かす相手（帯）のすぐそばにある", path: `/?${TOYOSU}`,
+    viewport: { width: 375, height: 667 }, hasTouch: true,
+    async check(page) {
+      await waitVerdict(page);
+      await waitStrip(page);
+      const g = await page.evaluate(() => {
+        const b = document.getElementById("playBtn");
+        const s = document.getElementById("strip");
+        if (!b || !s) return null;
+        const bb = b.getBoundingClientRect(), sb = s.getBoundingClientRect();
+        const cells = [...document.querySelectorAll("#strip .f")].map((e) => e.getBoundingClientRect());
+        return { gap: Math.round(sb.top - bb.bottom), y: Math.round(bb.y),
+          w: Math.round(bb.width), h: Math.round(bb.height),
+          cell: Math.round(cells[0]?.width ?? 0), rows: new Set(cells.map((c) => Math.round(c.top))).size,
+          label: document.querySelector(".strip-ops-tx")?.textContent.trim() ?? "" };
+      });
+      must(g, "▶ か帯が見つからない（この検査が何も見ていない）");
+      // ⚠ 「そば」を px で言う。1 画面ぶん離れていたら「そば」ではない
+      must(g.gap >= 0 && g.gap < 60,
+        `▶ が帯から離れている: ${g.gap}px（実測 移す前は 487px。帯の直前に置く）`);
+      // ⚠ **帯より上にあること。** 下に置くと「送る先」を見ながら押せない
+      must(g.y < 300, `▶ が帯より下にいる: y=${g.y}`);
+      // 指で押す端末では 44px（Apple の指針）
+      must(g.w >= 44 && g.h >= 44, `▶ が指で押すには小さい: ${g.w}×${g.h}px`);
+      // ⚠ **コマを縮めていないこと。** 帯の中に入れるとコマが縮む（実測 27→25px / 21→18px）。
+      //   コマは既に「小さくて押せるように見えない」と指摘が出ている場所
+      must(g.cell >= 26, `▶ を置いたせいで帯のコマが縮んでいる: ${g.cell}px（375px では 27px）`);
+      must(g.rows === 1, `帯が ${g.rows} 行に折り返している`);
+      // ⚠ **名前を添える。** ▶ だけだと「何が始まるか分からないので押すのが怖い」（初見）
+      must(g.label.length > 0, "▶ が何をするものか、言葉で書いていない");
+      // 押して本当に効くこと
+      await page.click("#playBtn");
+      await page.waitForTimeout(900);
+      must(await page.locator("#playBtn.on").count() === 1, "▶ を押しても、流れている印が出ない");
+      await page.click("#playBtn");
+      return `▶ は帯の ${g.gap}px 上（移す前は 487px）／${g.w}×${g.h}px／`
+        + `コマ ${g.cell}px は縮まず／名乗り「${g.label}」`;
+    },
+  },
+  {
     // ⚠ **見えなくするのと、消すのは別。** ✕ で場所を外したのに、前の土地の
     //   名前・年代の段・URL がそのまま残っていた（2026-08-17 にオーナーが実機で発見）。
     //   見た目は場所未選択になるので気づけず、**再読み込みすると前の場所が復活していた**。
@@ -2004,7 +2050,16 @@ const CASES = [
       const gap = peel.y - above;
       must(gap < 667, `本命が、判定の下から 1 画面ぶん以上離れている: ${gap}px（上端 ${above} / 本命 ${peel.y}）`);
       // ⚠ 上限も残す。1 画面ぶんの条件だけだと、判定ブロックごと下へ伸びても通ってしまう
-      must(peel.y < 1200, `本命が埋もれている: y=${peel.y}（実測 手元 1040 / CI 1050。上限 1200）`);
+      // ⚠ **1200 → 1260 へ上げた（2026-08-17）。** 上げた理由を残す。上げっぱなしにしない。
+      //   判定ブロックに、この日 146px を足した。すべてオーナーが決めたもの:
+      //     年代の見出しを写真の外へ +44px（写真の 29% を札が覆っていた）
+      //     共有する／なぜそう言える？ を独立した行へ +51px（答えの一文を 3 行に割っていた）
+      //     明治期の土地を重ねる を写真の外へ +49px（国土地理院の帰属表示に重なっていた）
+      //     昔の写真 N回ぶん の間隔 +12px（上の枠と 3px 重なっていた）
+      //   ⚠ **本当の見張りは上の隔たり（判定の下から 0px）のほう。** ここは背番号。
+      //   ⚠ 次にこの数字を上げるときも、何を足したから上げるのかを書くこと。
+      //     書けないなら、それは足しすぎ。
+      must(peel.y < 1260, `本命が埋もれている: y=${peel.y}（実測 手元 1186 / CI は約 +10px。上限 1260）`);
       return `☆は y=${mine.y} に開く／バッジ ${badges} 個から根拠へ／店は打つまで出ない／`
         + `立体で見るは y=${peel.y}（判定の下から ${gap}px。環境で 10px 動くので相対で見る）`;
     },
@@ -2102,7 +2157,7 @@ const CASES = [
       const during = await page.evaluate(() => ({
         skel: !!document.querySelector(".strip.skel"),
         photo: [...document.querySelectorAll("#big .lyr.on .t")].filter((e) => e.naturalWidth > 0).length,
-        yr: document.querySelector(".yr-big")?.textContent.replace(/\s+/g, " ").trim() ?? "",
+        yr: document.querySelector(".strip-title")?.textContent.replace(/\s+/g, " ").trim() ?? "",
         text: document.getElementById("verdict")?.textContent.replace(/\s+/g, " ").trim() ?? "",
       }));
       must(during.skel, "待っているあいだ、帯の骨組みが出ていない");
@@ -2475,6 +2530,10 @@ const CASES = [
       // 写真の年代（1936–42）へ移ると、出る
       await page.evaluate(() => document.querySelectorAll("#strip .f")[1]?.click());
       await page.waitForTimeout(900);
+      // ⚠ **地図を載せてから見る。** 国土地理院の帰属表示は地図が載って初めて出る。
+      //   載せずに見ていたら、帰属表示に重なっていることを一度も捕まえられない。
+      await page.click("#zIn");
+      await page.waitForTimeout(3000);
       const geom = () => page.evaluate(() => {
         const R = (s) => {
           const e = document.querySelector(s); if (!e) return null;
@@ -2485,10 +2544,22 @@ const CASES = [
         // 重なりは矩形の交差で見る（見えているつもりを、座標で潰す）
         const hit = (a, x) => !!a && !!x && a.l < x.r && x.l < a.r && a.t < x.b && x.t < a.b;
         const ov = R("#ovRow"), big = R("#big");
+        // 地図を載せると出る帰属表示（国土地理院）。**隠していないこと**を座標で見る
+        const attr = R(".maplibregl-ctrl-attrib");
         return { ov, big, h: innerHeight,
           inViewport: !!ov && ov.t >= 0 && ov.b <= innerHeight,
-          inBig: !!ov && !!big && ov.t >= big.t && ov.b <= big.b && ov.l >= big.l && ov.r <= big.r,
-          overZoom: hit(ov, R(".zoombar")), overYr: hit(ov, R(".yr-big")), overSay: hit(ov, R(".say")),
+          // ⚠ 写真の**すぐ下**。中ではない（2026-08-17 に外へ出した）
+          underBig: !!ov && !!big && ov.t >= big.b && ov.t - big.b <= 20,
+          sameRail: !!ov && !!big && Math.abs(ov.l - big.l) <= 1,
+          overZoom: hit(ov, R(".zoombar")),
+          // ⚠ **写真の中に載っているもの**が、帰属表示を隠していないか。
+          //   隠す危険があるのは「重ねる」（外に出した）ではなく ＋− のほう。
+          //   実測（2026-08-17）: ＋− の底を 34px にしていたら − の下端と帰属の上端が
+          //   ぴったり接し、オーナーが「国土地理院と − のボタンが被る」と報告した。
+          zoomOverAttr: hit(R(".zoombar"), attr), attrThere: !!attr,
+          // 接しているのも駄目。何px 空いているかを返す
+          zoomGap: (() => { const z = R(".zoombar");
+            return z && attr ? Math.round(attr.t - z.b) : null; })(),
           overflowX: document.documentElement.scrollWidth > document.documentElement.clientWidth };
       });
       const out = [];
@@ -2499,15 +2570,23 @@ const CASES = [
         const g = await geom();
         must(g.inViewport,
           `${w}×${h}: 重ねる操作が初期画面の外にある（y=${g.ov?.t}〜${g.ov?.b} / 画面 ${g.h}）`);
-        must(g.inBig, `${w}×${h}: 重ねる操作が写真の外に出ている`);
+        // ⚠ **写真から離さない。** 押した結果（絵が変わる）が同時に見えている必要がある。
+        //   以前は判定文の下にあり、押しても何が変わったか見えなかった。
+        //   ⚠ 写真の**中**に戻すのも駄目。実測（2026-08-17 / 344×882 ZFold5 カバー）で
+        //     写真が 278×209px しかなく、🔊・＋−・この行・国土地理院が全部載って窮屈だった。
+        must(g.underBig,
+          `${w}×${h}: 重ねる操作が写真のすぐ下にない（写真の下端 ${g.big?.b} / 操作の上端 ${g.ov?.t}）`);
+        must(g.sameRail, `${w}×${h}: 写真と左端が揃っていない（写真 ${g.big?.l} / 操作 ${g.ov?.l}）`);
         must(await effOpacity(page, "#ovRow") > 0, `${w}×${h}: 重ねる操作が読めない`);
-        must(!g.overZoom && !g.overYr && !g.overSay,
-          `${w}×${h}: 隣と重なっている（ズーム ${g.overZoom} / 年代 ${g.overYr} / 読み上げ ${g.overSay}）`);
-        // 写真の上に置いた以上、覆う量そのものを見る（文言が伸びると写真が消える）
-        must(g.ov.h <= g.big.h * 0.3,
-          `${w}×${h}: 操作が写真の ${Math.round(g.ov.h / g.big.h * 100)}% を覆っている（${g.ov.h}px / ${g.big.h}px）`);
+        must(!g.overZoom, `${w}×${h}: 重ねる操作がズームと重なっている`);
+        // ⚠ **国土地理院の帰属表示を隠さない**（掟: 出典は隠さない）。
+        must(g.attrThere, `${w}×${h}: 地図を載せたのに帰属表示が出ていない（この検査が何も見ていない）`);
+        must(!g.zoomOverAttr, `${w}×${h}: ＋− が国土地理院の帰属表示に重なっている`);
+        // 接するのも駄目。指で押すと隣に触る
+        must(g.zoomGap >= 6,
+          `${w}×${h}: ＋− と国土地理院の帰属表示が近すぎる: ${g.zoomGap}px（6px 必要）`);
         must(!g.overflowX, `${w}×${h}: 横にあふれている`);
-        out.push(`${w}×${h}: y=${g.ov.t}〜${g.ov.b}（写真の ${Math.round(g.ov.h / g.big.h * 100)}%）`);
+        out.push(`${w}×${h}: 写真の下 ${g.ov.t - g.big.b}px／＋−と出典 ${g.zoomGap}px`);
       }
       return `明治期では出さない ／ ${out.join(" ／ ")}`;
     },
@@ -3801,9 +3880,9 @@ const CASES = [
       //   「米軍撮影」は元から 11.5px で読みにくいのに、その上を隠していた。
       const lap = await page.evaluate(() => {
         const a = document.getElementById("fx").getBoundingClientRect();
-        const c = document.querySelector(".yr-big").getBoundingClientRect();
+        const c = document.querySelector(".strip-title").getBoundingClientRect();
         return { px: Math.round(Math.max(0, Math.min(a.bottom, c.bottom) - Math.max(a.top, c.top))),
-          yr: document.querySelector(".yr-big").innerText.replace(/\s+/g, " ").trim() };
+          yr: document.querySelector(".strip-title").innerText.replace(/\s+/g, " ").trim() };
       });
       must(lap.px === 0, `寄せた先の名前が年バッジ「${lap.yr}」を ${lap.px}px 覆っている`);
       // ⚠ 押した印が、他の印と見分けられること。

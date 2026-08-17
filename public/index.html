@@ -69,6 +69,12 @@
     /* 操作 */
     --action:#6fc3ff;        /* 押せるもの */
     --tap:44px;              /* 指で押す最小の大きさ（Apple の指針） */
+    /* 写真の右下は地図の帰属表示（国土地理院）が使う。実測 24px。
+       ⚠ **写真の上に載せるものは、全部この値だけ底を上げる。** 別々に決めると必ずずれる。
+         実際にずれた: 年代の札を外したら、下駄が無くなった「重ねる」が落ちてきて
+         帰属表示に 9×24px（344px 幅）・33×24px（320px 幅）重なった（2026-08-17）。
+       ⚠ 出典は隠さない（掟: 地理院の記述はそのまま見せる）。 */
+    --attrib:44px;
 
     /* ============ 文字の大きさ ============
        二層にしてある。**値はここ（--text-*）にしか書かない。**
@@ -381,6 +387,18 @@
   .verdict .why:hover i{border-color:var(--action)}
   .verdict .why[aria-expanded="true"]{color:#07121c}
   .verdict .why[aria-expanded="true"] i{background:var(--action);border-color:var(--action)}
+  /* 答えの下に、押せるものだけを並べる行。
+     ⚠ 以前この 2 つは**答えの一文の中に浮いていて**、実測（2026-08-17 / 375×667）で
+       「もとは 水だった土地（旧水部）です。いまは 盛土地･埋立地 です。」を **3 行に割り**、
+       最終行に「す。」だけが取り残されていた。
+       UI/UX レビュー 原則2「主役は1つ」— 本命は答えの一文なのに、脇のボタンが割っていた。
+     ⚠ **名前を添える。** 絵だけだと初見の人 3 体とも「どこかへ飛ぶ」と予想して 3 体とも外れ、
+       1 体は 2 回押して画像が 2 枚落ちた（2026-08-14）。何が起きるかを字で書く。 */
+  .v-acts{display:flex;flex-wrap:wrap;gap:7px;margin-top:7px}
+  .v-acts .why{width:auto;min-width:0;height:auto;min-height:var(--tap);padding:0 11px 0 7px;
+    grid-auto-flow:column;gap:7px;border-radius:9px;border:1px solid var(--line);
+    font-size:var(--fs-badge)}
+  .v-acts .why:hover{border-color:var(--action)}
   /* ============ 年代（帯＝操作 ＋ 大きい写真） ============ */
   /* この土地の空中写真を、撮られた順に並べて選ばせる。選んだ年代が下で大きくなる。
      ⚠ 中間の年代について、こちらは一言も書かない。
@@ -400,7 +418,29 @@
     background:rgba(255,255,255,.04);color:var(--ink-dim);font-size:var(--fs-note);line-height:1.5}
   /* 昔 → 今 の向きを、端に置いた2文字だけで示す。
      枠が狭い端末では年代ラベルを畳むので、向きの手がかりがこれだけになる */
-  .strip .end{flex:none;align-self:center;font-size:var(--fs-label);color:var(--ink-dim);padding:0 1px}
+  /* 帯を動かす操作。⚠ **帯のすぐ上**に置く。動かす相手は帯（年代）なので、
+     押すものと動くものを離さない。実測（2026-08-17）で、以前は
+     **帯の下端から 487px（375px 幅）／650px（PC）**離れていた。
+     ⚠ 帯の中（コマと同じ行）には入れない。コマが縮む（375px: 27→25px / 320px: 21→18px）。
+     ⚠ **名前を添える。** ▶ だけだと「何が始まるか分からないので押すのが怖い」と
+       初見の人が答えた（2026-08-17）。 */
+  .strip-ops{display:flex;align-items:center;gap:7px;margin:0 0 5px}
+  .strip-ops-tx{font-size:var(--fs-evidence);color:var(--ink-faint)}
+  /* ⚠ 実体の指定は下（`.op` の定義より後ろ）に置く。ここに書くと、
+     あとから来る `.op{width:30px;height:30px}` に上書きされて 44px が効かない（実測で踏んだ）。 */
+
+  /* 「昔 → 今」の向き。**帯の外、すぐ上の行の右端**に置く。
+     ⚠ 以前は帯の両端（`.strip .end`）にあり、実測（2026-08-17 / 375×667）で
+       帯 309px のうち **34px（11%）を両端が食っていた**。コマは 27px×9枚。
+       外へ出すと 309px を全部コマに使えて **30px** になる。
+       コマは「小さくて押せるように見えない」と指摘が出ている場所なので、ここは効く。
+     ⚠ **向きは消さない。** 「昔→今」は初見の人が
+       「時間のスライダーだとすぐ分かった。ここは良い」と評価した数少ない要素。
+       両端に離して置く代わりに、矢印で向きを明示する。
+     ⚠ 行は増やさない（▶ の行に相乗りする）。独立行にすると写真も本命も 18px 下がる。 */
+  .strip-ax{margin-left:auto;display:flex;align-items:center;gap:5px;flex:none;
+    font-size:var(--fs-label);color:var(--ink-dim)}
+  .strip-ax i{font-style:normal;color:var(--ink-faint);letter-spacing:-.5px}
   /* 判定を待つあいだの骨組み。本番と同じ形にして、差し替わるときに飛び跳ねさせない */
   .strip .sk{flex:1 1 0;min-width:0;aspect-ratio:1;border-radius:6px;border:1px solid var(--line);
     background:linear-gradient(100deg,#131922 30%,#1b2430 50%,#131922 70%);
@@ -440,6 +480,14 @@
   /* 掴めることを、形でも出す（タッチ端末には効かないので、文言も別に出している） */
   .big{cursor:grab;position:relative;width:100%;aspect-ratio:4/3;border-radius:10px;overflow:hidden;
     border:1px solid var(--line);background:#0f141b;margin:0 0 9px}
+  /* ⚠ 広い画面では 4:3 だと**写真そのものが初期画面から出る**。
+     実測（2026-08-17 / 1280×800）: 写真 614×461px で下端 y=818（画面 800）。
+     写真の下に「重ねる」を出したので、両方を初期画面に入れるには写真を縮めるしかない。
+     ⚠ 縮めるのは**幅ではなく比**。max-height で切ると、絵は同じ大きさのまま上下が
+       切れるだけで、印（中心）が枠の真ん中から外れる。 */
+  /* ⚠ 16/10（下端 794px）では画面 800 まで **6px** しか無く、CI のフォントで簡単に破れる
+     （実測で 10px 動いた前例がある）。5/3 にして 22px 取る。 */
+  @media (min-width:760px){ .big{aspect-ratio:5/3} }
   .big .lyr{position:absolute;inset:0;opacity:0;transition:opacity .28s ease}
   .big .lyr .t{position:absolute;display:block}
   .big .lyr.on{opacity:1}
@@ -451,16 +499,24 @@
        （1936–42 陸軍撮影 / 1945–50 米軍撮影 / 現在 / 明治期 ＝ 9 コマ中 4 つ）で
        年バッジが 46px より高くなり、実測で 102×10px 覆っていた。
        固定値で避けようとすると、年バッジの高さが変わるたびに破れる。 */
-  .big .bl{position:absolute;left:10px;bottom:10px;z-index:3;
+  .big .bl{position:absolute;left:10px;bottom:var(--attrib);z-index:3;
     display:flex;flex-direction:column-reverse;align-items:flex-start;gap:6px;
     max-width:calc(100% - 72px)}
-  .big .yr-big{padding:5px 11px;border-radius:8px;
-    background:rgba(11,14,19,.72);backdrop-filter:blur(6px);border:1px solid var(--line);
-    font-size:var(--fs-era);letter-spacing:.02em;font-variant-numeric:tabular-nums;line-height:1.25}
-  .big .yr-big small{display:block;font-size:var(--fs-evidence);color:var(--ink-dim);letter-spacing:.04em}
+  /* いま見ている年代。**帯の見出し**として、帯のすぐ上に置く。
+     ⚠ 以前は写真の中（左下の札）にあり、実測（2026-08-17 / 375×667）で
+       写真 309×232px の **23%（現在）〜29%（明治期）**を覆っていた。
+     ⚠ **副題を同じ行に流す**（`小さい字`）。明治期は「低湿地データ／空中写真ではありません」の
+       2 行があり、これは落とせない（掟1: 空中写真でないものを写真と呼ばない）。
+     ⚠ 折り返しても帯を押し下げるだけで、何も覆わない。写真の中にいたときは覆っていた。 */
+  .strip-title{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 8px;margin:0 0 6px;
+    font-size:var(--fs-era);letter-spacing:.02em;font-variant-numeric:tabular-nums;line-height:1.3}
+  .strip-title small{font-size:var(--fs-evidence);color:var(--ink-dim);letter-spacing:.04em;
+    line-height:1.4}
   /* 大きい写真が落ちたときに、前の絵を黙って残さない */
   .big-err{display:none}
-  .big.err .lyr,.big.err .mk,.big.err .yr-big,.big.err .bl{display:none}
+  /* ⚠ 年代の見出し（#yrBig）は写真の外へ出したので、ここでは隠さない。
+     写真が落ちても「どの年代を見ようとしていたか」は残す（消すと、何が落ちたか分からない） */
+  .big.err .lyr,.big.err .mk,.big.err .bl{display:none}
   .big.err .big-err{display:grid;place-items:center;position:absolute;inset:0;
     font-size:var(--fs-note);color:var(--estimate);text-align:center;padding:0 12px}
   /* --- 寄る --- */
@@ -470,17 +526,17 @@
     padding:5px 10px;border-radius:999px;border:1px solid var(--line);
     background:rgba(11,14,19,.75);color:var(--ink);font:inherit;font-size:var(--fs-note);cursor:pointer}
   .big.zoom .unzoom{display:block}
-  .big .say{position:absolute;left:10px;top:10px;z-index:4;width:34px;height:34px;
-    border-radius:50%;cursor:pointer;border:1px solid var(--line);
-    background:rgba(11,14,19,.75);color:var(--ink);font:inherit;font-size:var(--fs-body);
-    line-height:1;backdrop-filter:blur(6px)}
-  .big .say:hover{border-color:var(--action);color:var(--action)}
-  .big .say.on{background:var(--action);color:#07121c;border-color:var(--action)}
+  /* 🔊 は ▶ と同じ行（.strip-ops）にいる。写真の中ではない */
+  .say{flex:none;width:30px;height:30px;border-radius:50%;cursor:pointer;padding:0;
+    border:1px solid var(--line);display:grid;place-items:center;
+    background:transparent;color:var(--ink);font:inherit;font-size:var(--fs-note);line-height:1}
+  .say i{font-style:normal}
+  .say:hover{border-color:var(--action);color:var(--action)}
+  .say.on{background:var(--action);color:#07121c;border-color:var(--action)}
   /* 鳴らなかったことを、画面に出す（無音のまま黙らない） */
-  .big .say-msg{position:absolute;left:10px;top:50px;z-index:4;max-width:calc(100% - 20px);
-    padding:6px 10px;border-radius:8px;font-size:var(--fs-note);line-height:1.5;
-    background:rgba(11,14,19,.85);border:1px solid rgba(230,196,122,.45);color:#cbb98f;
-    backdrop-filter:blur(6px)}
+  .say-msg{display:block;margin:0 0 7px;padding:6px 10px;border-radius:8px;
+    font-size:var(--fs-note);line-height:1.5;
+    background:rgba(11,14,19,.85);border:1px solid rgba(230,196,122,.45);color:#cbb98f}
   .big.zoom .unzoom:hover{border-color:var(--action);color:var(--action)}
   /* この範囲にあるものの位置。写真は静止画なので、印の側で示す */
   /* 地図（触った瞬間に載る）。載ったら静止した写真は下に隠す */
@@ -491,11 +547,23 @@
   .big:active{cursor:grabbing}
   /* ⚠ 右下は地図の帰属表示（国土地理院）が使う。実測（2026-08-16 / 375×667）で
      ＋− がその上に乗り、「国土地理院」が途中で切れて読めなかった。出典は隠さない。 */
-  .big .zoombar{position:absolute;right:8px;bottom:34px;z-index:4;display:flex;flex-direction:column;gap:4px}
+  .big .zoombar{position:absolute;right:8px;bottom:var(--attrib);z-index:4;display:flex;flex-direction:column;gap:4px}
   .big .zoombar button{width:32px;height:32px;border-radius:8px;cursor:pointer;
     border:1px solid var(--line);background:rgba(11,14,19,.75);color:var(--ink);
     font:inherit;font-size:var(--fs-claim);line-height:1;backdrop-filter:blur(6px)}
   .big .zoombar button:hover{border-color:var(--action);color:var(--action)}
+  /* ⚠ **指で押す端末では var(--tap)。** 実測（2026-08-17 / 375×667 touch）で
+     🔊 34×34px・＋ 32×32px・− 32×32px と、どれも 44px に届いていなかった。
+     オーナーが「スマホで操作してみたけど、押しづらい」と報告して分かった。
+     ⚠ **同じ 44px の規則を `/peel` では検査していた**（ズーム・読み上げ）のに、
+       トップには検査が無く、誰も見ていなかった。だから 34px のまま残った。
+     ⚠ PC は 34/32px のまま。マウスの狙いは指より細かく、
+       写真の上の札は大きいほど写真を隠す（写真が本命）。 */
+  @media (hover:none){
+    .say{width:var(--tap);height:var(--tap)}
+    /* ＋− は 44+4+44=92px。下端 var(--attrib) から積む（帰属表示を隠さない） */
+    .big .zoombar button{width:var(--tap);height:var(--tap)}
+  }
   .big.map-loading .loading{display:block}
   .big.map-loading .loading::after{content:"地図を読み込んでいます…"}
   .big.map-loading .loading{font-size:0}
@@ -605,6 +673,10 @@
     border:1px solid var(--line);background:transparent;color:var(--ink);
     font:inherit;font-size:var(--fs-note);line-height:1}
   .op:hover{border-color:var(--action);color:var(--action)}
+  /* 帯を動かす ▶。⚠ **指で押す端末では 44px 取る**（Apple の指針）。
+     ⚠ `.op` より**後ろ**に置くこと。前に置くと上書きされる（実測で踏んだ）。 */
+  .op-play{width:30px;height:30px}
+  @media (hover:none){ .op-play{width:var(--tap);height:var(--tap);font-size:var(--fs-note)} }
   .op.on{background:var(--action);color:#07121c;border-color:var(--action)}
   .mixbar{display:flex;flex:1;min-width:0;align-items:center;gap:9px;font-size:var(--fs-note);color:var(--ink-dim)}
   /* 「現在」を選んでいるときは、重ねるものが無い（自分と自分を比べることになる） */
@@ -620,14 +692,18 @@
         実測（2026-08-16 / 豊洲）で 1280×800 では y=831 と**初期画面の外**、
         375×667 でも 552px と写真の下だった。固定値で位置を決めると隣と重なるので、
         年バッジ・寄せた先の名前と同じ積み上げに入れて、写真と一緒に動かす。 */
-  /* ⚠ 主役は年代（yr-big）。同じ強さの板を2つ縦に並べない。
+  /* ⚠ **写真の上に載る板は、これ 1 つだけにした**（2026-08-17）。
+     以前は年代の札（yr-big）と 2 枚が縦に並び、実測で写真 309×232px の
+     29%（明治期）を覆っていた。札は帯の見出し（.strip-title）へ出した。
      この操作は補助なので、地色も文字も一段引く。ただし**押せる大きさは削らない**（44px）。 */
-  .ov{display:flex;align-items:center;gap:7px;max-width:100%;min-height:44px;
-    box-sizing:border-box;padding:5px 10px;border-radius:8px;cursor:pointer;
-    /* ⚠ 一段引くのは大きさと色。地色まで薄くすると、明るい写真や水色の上で読めなくなる
-       （実測 2026-08-16: .55 では重ねた直後の水色の上で「重ねています」が沈んだ） */
-    background:rgba(11,14,19,.78);backdrop-filter:blur(6px);border:1px solid var(--line);
+  /* ⚠ **写真の外（枠のすぐ下）に置く。** 中に載せていたときの名残に注意:
+       地色を敷いていたのは「明るい写真や水色の上で沈む」からで（実測 2026-08-16）、
+       外へ出したいまは要らない。背景と同じ地の上なので、枠だけで足りる。 */
+  .ov{display:flex;align-items:center;gap:8px;width:100%;min-height:44px;
+    box-sizing:border-box;padding:5px 11px;margin:-4px 0 9px;border-radius:8px;cursor:pointer;
+    background:transparent;border:1px solid var(--line);
     font-size:var(--fs-evidence);line-height:1.35;color:var(--ink-dim)}
+  .ov:hover{border-color:var(--action)}
   .ov input{accent-color:var(--action);flex:none}
   /* いま重ねているのかどうかを、言葉で出す（チェックの形だけに頼らない） */
   /* ⚠ 小さくはするが、薄くはしすぎない。ここは「いまどうなっているか」そのもの */
@@ -637,7 +713,10 @@
      （下に敷いた淡色地図）。塗りを透かしたので入り切りで絵が変わる。規則ごと消した。 */
   .mixbar input[type=range]{flex:1;min-width:0;accent-color:var(--action);height:22px}
   .mixbar .mixv{flex:none;width:34px;text-align:right;font-variant-numeric:tabular-nums}
-  .strip-foot{margin:-3px 0 11px;font-size:var(--fs-note);color:var(--ink-dim)}
+  /* ⚠ 上に詰めない。実測（2026-08-17）で `margin-top:-3px` にしており、
+     面の内訳の枠と **3px 重なって**いた（オーナーが「被っているようにみえる」と報告）。
+     これは「調べた範囲の申告」なので、上の枠と混ざって読めるようにしない */
+  .strip-foot{margin:9px 0 11px;font-size:var(--fs-note);color:var(--ink-dim)}
   .strip-foot b{color:var(--ink);font-weight:500}
   .strip-foot .warn{color:var(--estimate)}
 
@@ -1323,13 +1402,17 @@ function layoutBig(){
 function headHTML(){
   return `<div class="v-head">
       <span class="tx">${meiji.text}</span>
+    </div>
+    <!-- ⚠ **答えの一文とは別の行にする。** 中に混ぜると一文が割れる（上の .v-acts のコメント） -->
+    <div class="v-acts">
       <!-- ⚠ ↗ は使わない。利用者役のエージェント3体とも「どこかへ飛ぶ」と予想し、3体とも外れた。
            ↗ は同じ画面で「外部サイトへ出る」の意味でも使っている（一覧のタグ・出典）。
            実際に起きるのは画像の生成なので、絵の記号にする。
            ⚠ title はタッチ端末では一生見えないので、aria-label も置く。 -->
-      <button class="why" id="shareBtn" title="この判定を画像にする"
-        aria-label="この判定を画像にする"><i>🖼</i></button>
-      <button class="why" id="whyBtn" title="根拠を見る" aria-expanded="false"><i>?</i></button>
+      <button class="why" id="shareBtn" title="この判定を共有する"
+        aria-label="この判定を共有する"><i>🖼</i><span>共有する</span></button>
+      <button class="why" id="whyBtn" title="根拠を見る"
+        aria-expanded="false"><i>?</i><span>なぜそう言える？</span></button>
     </div>
     <!-- ⚠ 押した結果は、押したボタンの隣に出す。
          以前はこの知らせが判定ブロックの末尾にあり、実測でボタン y=744 に対して y=1043、
@@ -1483,8 +1566,11 @@ function loadingHTML(){
   setMosaic();
   const L=Konjaku.LATEST;
   const now={...L,px:mosaic.mx%256,py:mosaic.my%256};
-  return `<div class="strip skel" aria-hidden="true">
-      <span class="end">昔</span>${"<span class=\"sk\"></span>".repeat(6)}<span class="end">今</span>
+  // ⚠ **判定後と同じ形にする。** 見出し → 帯 → 写真の順。
+  //   違う形にすると、判定が返った瞬間に画面が飛び跳ねる。
+  return `<div class="strip-title">現在<small>この土地を調べています…</small></div>
+    <div class="strip skel" aria-hidden="true">
+      ${"<span class=\"sk\"></span>".repeat(6)}
     </div>
     <div class="big" id="big">
       <div class="big-in" id="bigIn">
@@ -1492,7 +1578,6 @@ function loadingHTML(){
         <i class="mk" aria-hidden="true"></i>
         <div id="pins"></div>
       </div>
-      <span class="yr-big">現在<small>この土地を調べています…</small></span>
     </div>
     <div class="v-head"><span class="tx dim">この土地の成り立ちを判定中…</span></div>`;
 }
@@ -1528,10 +1613,50 @@ function timeHTML(f){
   //   文言に入るのは URL 由来の文字列なので、必ず esc を通す（理由は esc.js）。
   return (eraMiss?`<div class="era-miss" id="eraMiss">⚠ 共有された年代（${
       esc(eraMiss)}）は、この土地には残っていません</div>`:"")
-    + `<div class="strip" id="strip" role="group" aria-label="年代を選ぶ">
-      <span class="end">昔</span>
+    // ⚠ **▶ は帯の中に置く。** 動かす相手は帯（年代）なのに、実測で
+    //   **帯の下端から 487px（375px 幅）／650px（PC）**離れたところにあった。
+    //   押すものと動くものが離れていると、押しても何が起きたか分からない。
+    //   ⚠ 同じ整理を「明治期の土地を重ねる」で既にやっている
+    //     （重ねる相手は写真なので、操作も写真と一緒に見えている必要がある）。▶ だけ残っていた。
+    //   ⚠ 位置は固定値で決めない。帯の flex に入れる
+    //     （CLAUDE.md の落とし穴「固定値で決めたら隣が高くなる場合に重なった」）。
+    // ⚠ 帯の**すぐ上**に、独立した行として置く。
+    //   ⚠ 帯の中（コマと同じ行）に入れると、コマが縮む。実測 375px: 27→25px / 320px: 21→18px。
+    //     コマは既に「小さくて押せるように見えない」「年が書いていない」と指摘が出ている場所で、
+    //     そこをさらに小さくする形は選ばない。
+    //   ⚠ 「昔」を ▶ に置き換える案も採らない。「昔→今」の向きは、初見の人が
+    //     「時間のスライダーだとすぐ分かった。ここは良い」と評価した数少ない要素。
+    // ⚠ 年代の札は、**写真の中から出した**（2026-08-17）。
+    //   実測（375×667）で、写真の枠 309×232px に対し札が
+    //   **現在 169×98px（23%）／明治期 186×113px（29%）**を覆っていた。
+    //   写真の 3 割が札で、オーナーが「スマホだと窮屈」と報告した。
+    //   ⚠ **同じ id（#yrBig）のまま動かす。** 別の場所に 2 つ目を作ると、
+    //     重ねている最中の書き換え（applyMix）と更新経路が 2 本になる（掟3）。
+    //   ⚠ 写真の中に残すのは「写真そのものを操るもの」だけ
+    //     （🔊・＋−・重ねる）。重ねる相手は写真なので、操作も写真と一緒に見えている必要がある。
+    + `<div class="strip-title" id="yrBig">${bigSub(cur)}</div>
+    <div class="strip-ops">
+      <button type="button" id="playBtn" class="op op-play" title="年代を順に流す"
+        aria-label="年代を順に流す">▶</button>
+      <span class="strip-ops-tx">年代を順に流す</span>
+      <!-- ⚠ 🔊 は**写真の中から出した**（2026-08-17）。理由は 2 つ:
+           ・写真の中では左上 x=44、▶ は x=33 で**中心が 11px ずれ**、丸が 2 つ縦に
+             並んで揃っていなかった（オーナーが指摘）。写真の中は余白ぶん右へずれる。
+           ・ZFold5 のカバー画面（344px）で写真が 278×209px しかなく、
+             🔊・＋−・重ねる・国土地理院 が全部載って窮屈だった。
+           ⚠ **名前を付けたいが、付けられない。** 判定の下の行（共有する／なぜそう言える？）へ
+             入れると 3 つで 373px になり、幅 309px（375 端末）に入らず折り返して、
+             本命「立体で見る」が y=1186 → 1237 まで落ちた（上限 1200）。実測で断念。
+             代わりに title と aria-label を置く。⚠ 初見の人が読み違えないかは、まだ確かめていない。
+           ⚠ 中身は i の中だけ差し替える。button ごと textContent を書くと丸ごと消える。 -->
+      <button class="say" id="sayBtn" type="button" title="この判定を読み上げる"
+        aria-label="この判定を読み上げる"><i>🔊</i></button>
+      <!-- ⚠ 読み上げには「昔 → 今」と読ませる。矢印の記号をそのまま読ませない -->
+      <span class="strip-ax" aria-hidden="true">昔<i>→→</i>今</span>
+    </div>
+    <span class="say-msg" id="sayMsg" style="display:none"></span>
+    <div class="strip" id="strip" role="group" aria-label="年代を選ぶ（左が昔、右が今）">
       ${frames.map(frameHTML).join("")}
-      <span class="end">今</span>
     </div>
     <div class="big" id="big">
       <div class="big-in" id="bigIn">
@@ -1544,16 +1669,9 @@ function timeHTML(f){
         <div id="pins"></div>
       </div>
       <div class="bl">
-        <span class="yr-big" id="yrBig">${bigSub(cur)}</span>
         <div class="fx" id="fx"></div>
-        ${f.byKey.meiji?.ok ? `<label class="ov" id="ovRow">
-          <input type="checkbox" id="ovSwale">
-          <span>明治期の土地を重ねる<small class="ov-st" id="ovState"></small></span>
-        </label>` : ""}
       </div>
       <button class="unzoom" id="unzoom" type="button">全体に戻す</button>
-      <button class="say" id="sayBtn" type="button" title="この年代を読み上げる">🔊</button>
-      <span class="say-msg" id="sayMsg" style="display:none"></span>
       <span class="loading" id="bigLoading"></span>
       <div class="map" id="map"></div>
       <div class="zoombar" id="zoombar">
@@ -1561,15 +1679,24 @@ function timeHTML(f){
         <button type="button" id="zOut" title="縮小">−</button>
       </div>
       <span class="big-err" id="bigErr">この年代の写真を読み込めませんでした</span>
-    </div>`
+    </div>
+    <!-- ⚠ **写真の外、すぐ下。** 中に載せていたが、実測（2026-08-17）で
+         ZFold5 のカバー画面（344px）だと写真が 278×209px しかなく、
+         その上に 🔊・＋−・この行・国土地理院 が全部載って窮屈だった。
+         さらに札を外した拍子にこの行が落ちて、**国土地理院の帰属表示に 9×24px 重なった**
+         （320px では 33×24px）。出典を隠すのは掟に反する。
+         ⚠ **写真から離さない。** 重ねる相手は写真なので、押した結果が同時に見えている必要がある
+           （以前は判定文の下にあり、押しても何が変わったか見えなかった）。枠のすぐ下なら見える。 -->
+    ${f.byKey.meiji?.ok ? `<label class="ov" id="ovRow">
+      <input type="checkbox" id="ovSwale">
+      <span>明治期の土地を重ねる<small class="ov-st" id="ovState"></small></span>
+    </label>` : ""}`
     + headHTML()
     // ⚠ 「現在を重ねる」を外した（2026-08-14）。実測 30px。
     //   帯が時間軸なのに、その真下に**2本目の時間の操作**が並んでいた。
     //   ⚠ ▶ は残す。/eras を撤去したときに「前提条件」として移した3機能の1つ
     //   （任意地点クリック判定・明治期の水域を重ねる・▶）。外すと撤去の前提が崩れる。
-    + `<div class="ops">
-        <button type="button" id="playBtn" class="op" title="年代を順に流す">▶</button>
-      </div>`
+
     // ⚠ 明治期の水域を重ねる操作は、写真の中（.bl）へ移した。ここには置かない。
     //   重ねる相手は写真なので、操作も写真と一緒に見えている必要がある（上の .ov のコメント）。
     // ⚠ 🔊 のプライバシーは footer の .f-priv へ寄せた（同じ主題が2か所にあった）。
@@ -2473,7 +2600,8 @@ function stopSay(){
   try{ speechSynthesis.cancel(); }catch{}
   speaking=false;
   const b=document.getElementById("sayBtn");
-  if(b){ b.textContent="🔊"; b.classList.remove("on"); }
+  // ⚠ button 全体を textContent で書き換えない。名前（読み上げる）まで消える
+  if(b){ const i=b.querySelector("i"); if(i) i.textContent="🔊"; b.classList.remove("on"); }
 }
 // ⚠ 声の一覧は、最初の呼び出しでは空のことがある（あとから非同期で入る）。
 //   温めておかないと、1回目だけ日本語の声が選ばれない。
@@ -2502,7 +2630,7 @@ function wireSay(){
     u.onstart=()=>{ started=true; clearTimeout(sayTimer); sayTimer=null; };
     u.onend=stopSay;
     u.onerror=(e)=>{ stopSay(); sayMsg(`音声を再生できませんでした（${e?.error??"原因不明"}）`); };
-    speaking=true; b.textContent="■"; b.classList.add("on"); sayMsg(null);
+    speaking=true; b.querySelector("i").textContent="■"; b.classList.add("on"); sayMsg(null);
     // ⚠ 計測の無い機能を増やさない。
     //   era.moved / open.peel には入れたのに、音声にだけ入れ忘れていた。
     //   「これが無いと『使われなければ後で消す』の"後で"が永久に来ない」と
