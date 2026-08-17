@@ -546,7 +546,13 @@
   .mixbar{display:flex;flex:1;min-width:0;align-items:center;gap:9px;font-size:var(--fs-note);color:var(--ink-dim)}
   /* 「現在」を選んでいるときは、重ねるものが無い（自分と自分を比べることになる） */
   .mixbar.off{visibility:hidden}
-  /* 明治期の水域を写真に重ねる。判定の裏取りとして、面で見える。
+  /* 明治期の土地を写真に重ねる。判定の裏取りとして、面で見える。
+     ⚠ **「水域」と呼ばない。** 重ねているタイルは低湿地データの **14 区分すべて**で、
+       水域はそのうち 2 つ（干潟・砂浜 / 河川・湖沼・海面）でしかない。
+       実測（2026-08-17）: 豊洲は水域 100% だが、**浦安は 97% が水域以外**
+       （砂礫地 85.8% / 草地 6.8% / 水域 2.9% / 堤防 2.7% / 泥炭地 0.5% …）。
+       「水域を重ねる」は**見せているものより狭い名前**だった。
+     ⚠ `/peel` の「水域」は建物の足元が水だったかの話なので、あちらは正しい。揃えない。
      ⚠ 写真の左下の積み上げ（.bl）に入れる。以前は写真・判定文・▶ の下にあり、
         実測（2026-08-16 / 豊洲）で 1280×800 では y=831 と**初期画面の外**、
         375×667 でも 552px と写真の下だった。固定値で位置を決めると隣と重なるので、
@@ -1303,7 +1309,7 @@ function timeHTML(f){
         <div class="fx" id="fx"></div>
         ${f.byKey.meiji?.ok ? `<label class="ov" id="ovRow">
           <input type="checkbox" id="ovSwale">
-          <span>明治期の水域を重ねる<small class="ov-st" id="ovState"></small></span>
+          <span>明治期の土地を重ねる<small class="ov-st" id="ovState"></small></span>
         </label>` : ""}
       </div>
       <button class="unzoom" id="unzoom" type="button">全体に戻す</button>
@@ -1570,6 +1576,10 @@ function applyOverlay(){
 //     写真の年代では、いまも押すと地図に変わる。必要なら別の形で戻す。
 // ⚠ どの文も1行に収める。写真の上に置いているので、折り返したぶんだけ写真が隠れる
 //   （実測 2026-08-16 / 320×640: 折り返すと 61px ＝ 写真の高さの 32% を覆った）。
+//   ⚠ **この約束は、長いあいだ 320px で破れていた**（2026-08-17 に実測して気づいた）。
+//     「水域を読み込めませんでした」も「地図を読み込めませんでした」も 320×640 で 2 行になり、
+//     札が 44px → 58px に膨らんでいた。検査は 1 件も落ちていなかった。
+//     → 「〜ませんでした」を「〜ません」に詰めて 1 行に収めた。実測で確かめること。
 // 水域のタイルを取りに行って拒まれた（404 以外）。地図は出ているのに、水域は出ていない状態
 let swaleFail=false;
 function overlayState(){
@@ -1588,9 +1598,9 @@ function overlayState(){
   //   ここで地図の有無を見ると、重なって**見えている**のに
   //   「地図を読み込めませんでした」と書くことになる。
   if(onMeijiFrame()||!c.checked){ el.textContent=""; return; }
-  if(swaleFail) el.textContent="水域を読み込めませんでした";
+  if(swaleFail) el.textContent="明治期を読み込めません";
   else if(mapObj?.getLayer("swale")) el.textContent="";
-  else el.textContent=mapLoading?"地図を読み込んでいます…":"地図を読み込めませんでした";
+  else el.textContent=mapLoading?"地図を読み込み中…":"地図を読み込めません";
 }
 // ⚠ **明治期のコマでも出す。** 以前は隠していた。当時の理由は
 //   「重ねる相手（空中写真）が無い／入り切りしても絵が変わらない」で、当時は正しかった。
@@ -2066,7 +2076,12 @@ let meiji=null;   // null=未選択 / {loading:true} / {text, water, cls}
 
 function renderVerdict(){
   const el=document.getElementById("verdict");
-  if(!current||!meiji){ el.style.display="none"; return; }
+  // ⚠ **隠すだけでなく、中身も捨てる。** 隠すだけだと前の土地の年代の段（実測 9 コマ）が
+  //   DOM に残り続ける。見えないので気づけないが、`#strip .f` を数えるものからは見えている。
+  //   ⚠ 判定を待っているあいだ（current はあるが meiji がまだ）は消さない。
+  //     消すと、いま出したばかりの「現在の写真」が一瞬で消える。
+  if(!current){ el.style.display="none"; el.replaceChildren(); return; }
+  if(!meiji){ el.style.display="none"; return; }
   el.style.display="";
   // ⚠ 判定を待ってから絵を出していたので、3G相当で **2.6秒、文字だけ**だった（実測）。
   //   座標は選んだ瞬間に分かっているので、**現在の写真は判定を待たずに出せる**。
@@ -2183,7 +2198,7 @@ function sayText(){
   if(mixVal>0) parts.push(`いまは現在の写真を ${mixVal} パーセント重ねています。`);
   // 明治期の水域も同じ。⚠ 押しただけでなく、実際に地図へ重なっているときだけ言う
   if(document.getElementById("ovSwale")?.checked&&mapObj?.getLayer("swale"))
-    parts.push("いまは明治期の水域を重ねています。");
+    parts.push("いまは明治期の土地を重ねています。");
   parts.push(meiji.text);
   // 差分。画面に出ている行と同じものだけを、同じ順で読む
   for(const x of evShown.slice(0,3))
@@ -2498,10 +2513,26 @@ function setMode(m){
   if(m==="action"){ items=buildActions("",current); renderList(); }
   else { items=[]; listEl.innerHTML=""; renderKbd(); }
 }
+// 場所を外す（✕）。
+// ⚠ **見えなくするのと、消すのは別。** 以前はここで `current` を捨てるだけで、
+//   前の場所の名前・年代の段・地図・URL が**そのまま残っていた**。
+//   見た目は場所未選択になるので気づけず、実測（2026-08-17 / 375×667 / 豊洲）では:
+//     ✕ の直後 … url=?q=豊洲&ll=…&era=swale ／ chipName「豊洲」／ #strip 9 コマ（非表示なだけ）
+//     再読み込み … **豊洲が復活する**
+//   `tmp/9/10` の状態遷移の契約「✕ → 結果・一覧・場所・古い非同期処理を消す」に反していた。
+// ⚠ URL も一緒に戻す。調べた場所を URL に載せているのは「戻る・共有する」ためなので、
+//   場所を外したなら載せる理由も消える（掟: 調べた場所は URL に載る、の裏返し）。
+//   ⚠ replaceState にする。pushState だと「戻る」で外したはずの場所へ戻ってしまう。
 document.getElementById("chipX").onclick=()=>{
   current=null; meiji=null;
+  // 前の土地の年代・地図・読み上げを持ち越さない
+  stopSay(); stopPlay(); dropMap();
+  frames=[]; eraIdx=0; wantEra=null; eraMiss=null; eraTicked=false;
+  evState=null; evTile=null;
+  document.getElementById("chipName").textContent="";
   document.getElementById("result").style.display="none";
   renderVerdict();
+  history.replaceState(null,"",location.pathname);
   setMode("place"); qEl.focus();
 };
 

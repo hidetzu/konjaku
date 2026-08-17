@@ -1914,6 +1914,28 @@ head("6. 外部リンク");
   !sameLegend || !sameThreshold || legends[0].length !== 14
     ? bad(`明治期凡例の照合失敗（凡例=${sameLegend ? "一致" : "不一致"} / 色数=${legends[0].length} / 閾値=${thresholds.join(",")})`)
     : ok(`明治期凡例・許容差を3実装で照合（${legends[0].length} 色 / 閾値 ${thresholds[0]})`);
+
+  // ⚠ **重ねる操作の名前が、重ねているものより狭くないこと。**
+  //   重ねているタイルは上の凡例の **14 区分すべて**で、水域はそのうち 2 つだけ
+  //   （干潟・砂浜 / 河川・湖沼・海面）。それを「水域を重ねる」と名乗っていた。
+  //   実測（2026-08-17 / 明治期のコマの塗りを画素で数えた）:
+  //     豊洲   水域 100%
+  //     浦安   砂礫地 85.8% / 草地 6.8% / 水域 2.9% / 堤防 2.7% / 泥炭地 0.5% …
+  //     → 浦安では **97% が水域以外**。名前が実態より狭い。
+  //   ⚠ `/peel` の「水域」は建物の足元が水だったかの話で、あちらは正しい。ここでは見ない。
+  {
+    const water = legends[0].filter((l) => l.endsWith("|water")).length;
+    const label = /<span>([^<]*)<small class="ov-st"/.exec(src["index.html"] ?? "")?.[1] ?? "";
+    if (!label) bad("重ねる操作の名前を読めない（この検査が何も見ていない）");
+    else if (water >= legends[0].length)
+      ok(`重ねているのは水域だけ（${water}/${legends[0].length}）なので、名前は「水域」でよい`);
+    else if (label.includes("水域"))
+      bad(`重ねる操作の名前が、重ねているものより狭い: 「${label}」`
+        + `（塗っているのは ${legends[0].length} 区分で、水域はうち ${water} つだけ）`);
+    else if (!label.includes("明治期"))
+      bad(`重ねる操作が、いつの話か名乗っていない: 「${label}」`);
+    else ok(`重ねる操作の名前「${label}」は、${legends[0].length} 区分（うち水域 ${water}）に見合っている`);
+  }
 }
 
 // ---------- 7. 外部から来た文字列を HTML として実行させない ----------
