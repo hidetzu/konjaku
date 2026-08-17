@@ -2408,27 +2408,34 @@ const CASES = [
           ? mapObj.getPaintProperty("swale", "raster-opacity") : null);
       const st = () => page.locator("#ovState").textContent();
 
-      // 重ねる相手は空中写真なので、写真の年代へ移ってから見る（明治期では出さない）
+      // ⚠ この検査は以前、**正常時の実況**（「ONで地図に重ねます」「重ねています」）を
+      //   文字列で要求していた。守っていたのは「言葉と層を食い違わせない」ことだが、
+      //   実況をやめた（2026-08-17 オーナー判断: ラベルと合わせて 2 行になり読む量が増える）ので、
+      //   **同じ意図を裏返して守る**: 正常なときは**何も言わない**こと＋層が言葉と食い違わないこと。
+      //   ⚠ 「取れなかったときは言う」ほうは、次のケース（水域のタイルだけ拒まれたら）が見ている。
+      // 重ねる相手は空中写真なので、写真の年代へ移ってから見る
       await page.evaluate(() => document.querySelectorAll("#strip .f")[1]?.click());
       await page.waitForTimeout(900);
       const before = (await st()).trim();
-      must(before === "ONで地図に重ねます", `切っているときの言い方が違う: ${before}`);
+      must(before === "", `切っているだけなのに、何か書いてある: 「${before}」`);
       must(await op() === null, "押していないのに、もう地図の層がある");
 
       await page.locator("#ovSwale").check();
       await page.waitForFunction(() => document.querySelector("#big.map-on"), null, { timeout: 60000 });
       await page.waitForFunction(() =>
-        document.getElementById("ovState")?.textContent.trim() === "重ねています",
+        (typeof mapObj !== "undefined" && mapObj?.getPaintProperty("swale", "raster-opacity")) > 0,
         null, { timeout: 20000 });
       const onOp = await op();
-      must(onOp > 0, `「重ねています」と書いてあるのに、層は ${onOp}`);
+      must(onOp > 0, `重ねたのに、層が ${onOp}`);
+      const onTx = (await st()).trim();
+      must(onTx === "", `正常に重なっているのに、実況が書いてある: 「${onTx}」`);
 
       await page.locator("#ovSwale").uncheck();
       await page.waitForTimeout(600);
       const offTx = (await st()).trim();
-      must(offTx === "ONで地図に重ねます", `切ったのに言い方が変わらない: ${offTx}`);
+      must(offTx === "", `切っただけなのに、何か書いてある: 「${offTx}」`);
       must(await op() === 0, `切ったのに、層が ${await op()} のまま`);
-      return `切: 層 0／入: 層 ${onOp}（言葉と一致）`;
+      return `切: 層 0／入: 層 ${onOp}／正常時は言葉を出さない（3 状態とも空）`;
     },
   },
   {
@@ -2436,7 +2443,7 @@ const CASES = [
     //   地図も写真も出せるのに、**水域のタイルだけ**拒まれる状態がある。
     //   ⚠ 逆に 404 は「その範囲は整備対象外」なので、失敗として扱ってはいけない。
     //     両方をこの1件で見る。
-    name: "水域のタイルだけ拒まれたら、「重ねています」と言わない", path: `/?${TOYOSU}`,
+    name: "水域のタイルだけ拒まれたら、取れなかったと言う", path: `/?${TOYOSU}`,
     viewport: { width: 375, height: 667 }, hasTouch: true,
     setup: (page) => stubWikidata(page, []),
     async check(page) {
@@ -2460,7 +2467,9 @@ const CASES = [
       must(await page.locator("#big.map-on").count() === 1,
         "水域が取れないだけなのに、地図ごと出なくなっている");
 
-      // ⚠ 404（整備対象外）は失敗ではない。入れ直したら「重ねています」に戻ること。
+      // ⚠ 404（整備対象外）は失敗ではない。入れ直したら**何も言わない**状態に戻ること。
+      //   ⚠ 以前は「重ねています」に戻ることを見ていた。正常時の実況をやめたので、
+      //     同じ意図（404 を「読み込めなかった」に化けさせない）を**空に戻る**ことで守る。
       //   ⚠ 実測（2026-08-16 / MapLibre GL JS v5.24.0）では 404 で error 自体が飛んでこないので、
       //     ここが見ているのは**画面が何と言うか**であって、除外の条件式ではない
       //     （条件式を外しても、この検査は落ちない。確かめた）。
@@ -2475,8 +2484,8 @@ const CASES = [
       await page.waitForTimeout(3000);
       const gone = (await page.locator("#ovState").textContent()).trim();
       must(missing > 0, "404 を1本も返せていない（検査の前提が消えた）");
-      must(gone === "重ねています",
-        `整備対象外（404）を、読み込めなかったことにしている: ${gone}`);
+      must(gone === "",
+        `整備対象外（404）を、読み込めなかったことにしている: 「${gone}」`);
       return `403 を ${denied} 本 → 「${bad}」／404 を ${missing} 本 → 「${gone}」`;
     },
   },
@@ -2499,8 +2508,10 @@ const CASES = [
       // ⚠ 「読み込んでいます…」のまま止まるのも失敗。**終わったと言うところ**まで待つ。
       //   待ち切れなかったときに Timeout とだけ出ると、何が起きたのか読めないので、
       //   いま画面に出ている言葉を添えて落とす。
+      // ⚠ 正常時は何も言わなくなったので、「終わった」の合図は
+      //   「読み込めませんでした」が出ること、そのもの
       const done = await page.waitForFunction(() =>
-        /読み込めませんでした|重ねています/.test(document.getElementById("ovState")?.textContent ?? ""),
+        /読み込めませんでした/.test(document.getElementById("ovState")?.textContent ?? ""),
         null, { timeout: 30000 }).catch(() => null);
       const tx = (await page.locator("#ovState").textContent()).trim();
       must(done, `地図の読み込みは終わっているのに、状態が「${tx}」のまま止まっている`);
