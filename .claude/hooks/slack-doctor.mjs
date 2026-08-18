@@ -11,6 +11,7 @@
 //   SLACK_APP_TOKEN    xapp-…  Socket Mode 用（connections:write）
 //   SLACK_BOT_TOKEN    xoxb-…  投稿用（chat:write）
 //   SLACK_CHANNEL_ID   C…      投げ先
+// ⚠ SLACK_WEBHOOK_URL はもう使わない。残っていたら「消せ」と言う。
 import { readFileSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -66,7 +67,9 @@ const APP = get("SLACK_APP_TOKEN"), BOT = get("SLACK_BOT_TOKEN"), CH = get("SLAC
 const HOOK = get("SLACK_WEBHOOK_URL");
 
 console.log("\n\x1b[1m1. 手元にあるもの\x1b[0m（⚠ 値は出さない）");
-line(!!HOOK, "SLACK_WEBHOOK_URL", HOOK ? "ある（いまの通知はこれを使う）" : "無い（通知は飛ばない）");
+// ⚠ Webhook は**もう使わない**（chat.postMessage が上位互換）。
+//   残っていたら、使わない秘密が置きっぱなしという意味なので、そう言う。
+if (HOOK) line(false, "SLACK_WEBHOOK_URL", "⚠ 残っている。もう使わないので消す（使わない秘密を置かない）");
 line(!!APP, "SLACK_APP_TOKEN", shape(APP));
 line(!!BOT, "SLACK_BOT_TOKEN", shape(BOT));
 line(!!CH, "SLACK_CHANNEL_ID", CH ?? "無い");
