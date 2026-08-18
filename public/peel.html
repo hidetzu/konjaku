@@ -63,11 +63,14 @@
     /* ⚠ ここから下は index.html に無い段。3D は数字そのものが主役なので大きい。 */
     --text-4xl:22px;         /* 数字を出せないときの、ヒーローの代わりの文 */
     --text-hero:38px;
+    --text-hero-fit-max:11.5vw;
+    --text-chevron:17px;
     --text-hero-lg:60px;     /* 画面が狭いときは --text-hero に落とす（下のメディアクエリ） */
 
     --fs-label:var(--text-2xs);      /* 「実測」「推定」の印・節の見出し */
     --fs-evidence:var(--text-xs);    /* 根拠。出所の台帳・内訳 */
-    --fs-note:var(--text-xs);        /* 但し書き */
+    --fs-note:var(--text-xs);
+    --fs-chevron:var(--text-chevron);        /* 但し書き */
     --fs-badge:var(--text-sm);
     --fs-lead:var(--text-md);
     --fs-body:var(--text-base);
@@ -80,6 +83,10 @@
     --fs-hero-sm:var(--text-4xl);    /* 数字を出せないとき（「判定できません」） */
     --fs-hero:var(--text-hero);      /* 99.6% と年。この画面の主役 */
     --fs-hero-lg:var(--text-hero-lg);
+    /* ⚠ 狭い幅で年代を 1 行に収めるための大きさ。2 行に割れると 38px 損して、
+         そのぶん地図が減る（実測 2026-08-19・320幅で画面の 82% が箱になっていた）。
+       ⚠ 生の値をここ以外に書かない（--text-* と --fs-* の決まり）。 */
+    --fs-hero-fit:min(var(--text-hero), var(--text-hero-fit-max));
   }
   *{box-sizing:border-box}
   html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);overflow:hidden;
@@ -134,18 +141,33 @@
   .era-panel-head{position:relative;min-height:80px;display:flex;align-items:center;justify-content:center}
   .era-kicker{position:absolute;left:1px;top:3px;font-size:var(--fs-note);color:#b8c2cd;
     letter-spacing:.08em;text-shadow:none}
+  /* ⚠ 普段は名乗らない。空のときに場所を取らせない（主役＝年代の頭が下がる） */
+  .era-kicker:empty{display:none}
+  /* ⚠ 出ていないときだけ名乗る。そのときは目立ってよい（見落とされては困る） */
+  #era.failed .era-kicker{color:#f0c479}
   #era .era-readout{display:inline-block;min-width:148px;padding:0 76px}
-  #era .y{font-size:var(--fs-hero-lg);letter-spacing:.02em;font-weight:200;font-variant-numeric:tabular-nums}
+  /* ⚠ **年代は 1 行に収める。** 実測（2026-08-19・320幅）: 「1936–42」が 2 行に割れて
+       38px → 76px になり、そのぶん箱が伸びて地図が減っていた（画面の 82% が箱）。
+       ⚠ ハイフンで折り返すのを止める。字を小さくして逃げるのではなく、**折らない**。
+       ⚠ それでも入らない幅では字を詰める（読めなくなるより、詰まったほうがまし）。 */
+  #era .y{font-size:var(--fs-hero-lg);letter-spacing:.02em;font-weight:200;font-variant-numeric:tabular-nums;
+    white-space:nowrap}
   #era .s{display:block;margin-top:7px;font-size:var(--fs-note);letter-spacing:.16em;color:#cbd3dc}
   /* ⚠ 接続の話は、写真の話と**別の行**に置く。混ぜるとどちらが事実か読めなくなる。
      ⚠ 既存の .hint とは別物（あちらは根拠パネルの注記）。名前を分けている。 */
   #era .era-net{display:block;margin-top:4px;font-size:var(--fs-note);color:#f0c479}
   #era .era-net:empty{display:none}
   #era.failed .s{color:#f0c479}
-  #eraToggle{position:absolute;right:-5px;top:-4px;min-width:68px;min-height:var(--tap);padding:0 7px;
+  #eraToggle{position:absolute;right:-5px;top:-4px;min-width:var(--tap);min-height:var(--tap);padding:0 7px;
     border:0;border-radius:8px;background:transparent;color:#cbd3dc;font:inherit;cursor:pointer;text-shadow:none}
   #eraToggle:hover{background:rgba(255,255,255,.08);color:var(--ink)}
-  #eraToggle .chevron{display:inline-block;margin-left:5px;transition:transform .18s}
+  /* ⚠ 字を出さないぶん、記号だけが的になる。⚠ 実測で利用者役が「細くて角の飾りに見える」
+       「押したら何が起きるか想像できない」と答えた（2026-08-19）。
+       → 記号を大きくし、**丸い地色を敷いて押せる顔にする**。押す範囲 44px は変えない。 */
+  #eraToggle .chevron{display:inline-flex;align-items:center;justify-content:center;
+    width:30px;height:30px;border-radius:50%;margin-left:0;font-size:var(--fs-chevron);line-height:1;
+    background:rgba(255,255,255,.10);border:1px solid var(--line);transition:transform .18s}
+  #eraToggle:hover .chevron{background:rgba(255,255,255,.18)}
   #eraSummaryNote{display:none;font-size:var(--fs-note);color:var(--estimate);white-space:nowrap;text-shadow:none}
   #era.collapsed{width:auto;max-width:100%;padding:0 5px 0 11px}
   #era.collapsed .era-panel-head{min-height:var(--tap);justify-content:flex-start;gap:8px}
@@ -201,10 +223,14 @@
   .time-axis{font-size:var(--fs-note);color:#b8c2cd;letter-spacing:.04em}
   #timeSummary{display:none;font-size:var(--fs-body);color:var(--action);font-weight:600;
     overflow:hidden;text-overflow:ellipsis}
-  #timeToggle{flex:none;min-width:68px;min-height:var(--tap);padding:0 8px;border:0;background:transparent;
+  #timeToggle{flex:none;min-width:var(--tap);min-height:var(--tap);padding:0 8px;border:0;background:transparent;
     color:#cbd3dc;font:inherit;cursor:pointer;border-radius:8px}
   #timeToggle:hover{background:rgba(255,255,255,.08);color:var(--ink)}
-  #timeToggle .chevron{display:inline-block;margin-left:5px;transition:transform .18s}
+  /* ⚠ 年代の箱と同じ作り。押せる顔にする */
+  #timeToggle .chevron{display:inline-flex;align-items:center;justify-content:center;
+    width:30px;height:30px;border-radius:50%;margin-left:0;font-size:var(--fs-chevron);line-height:1;
+    background:rgba(255,255,255,.10);border:1px solid var(--line);transition:transform .18s}
+  #timeToggle:hover .chevron{background:rgba(255,255,255,.18)}
   #timePanel.collapsed #timePanelBody{display:none}
   #timePanel.collapsed #timeSummary{display:inline;max-width:120px}
   #timePanel.collapsed .time-axis{display:none}
@@ -444,6 +470,9 @@
   /* ⚠ ☰ が消えても「← もどる」は残す（開いていても帰りたい）。
        その分、開いたパネルの中身が下敷きにならないよう頭を空ける。 */
   #panel:not(.hide){padding-top:64px}
+  /* ⚠ 目で読む必要は無いが、読み上げには要る文字。⚠ display:none にすると読まれない */
+  .sr{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;
+    clip-path:inset(50%);white-space:nowrap;border:0}
   a{color:var(--action)}
   /* ⚠ **帰属表示を消さない。** 以前ここに `display:none!important` を置いていた（2026-08-17 に直した）。
        消したうえで手書きの出典を**左パネルの中**に置いていたので、
@@ -474,7 +503,11 @@
          ⚠ **これは別の不具合**（HUD が小さい画面で高すぎる）で、ここでは直していない。
          出典明示は利用の条件なので、先にこちらを満たす。
          ⚠ 375×667 は 354 → 340 で、中央 334 より下のまま（覆っていない）。 */
-    #era .y{font-size:var(--fs-hero)}#hud{padding:0 12px 26px;gap:9px}
+    /* ⚠ 狭い幅では、年代が 1 行に入る字にする。入らないと 2 行に割れて 38px 損する。
+       ⚠ ただし **nowrap だけでは切れる**（実測 2026-08-19: 344 / 320 / 280 幅で
+         「1936–42」の右端が欠けた）。読めなくなるのは 2 行になるより悪い。
+       ⚠ 字の大きさを幅に合わせて縮める。**箱の幅に収まる範囲でいちばん大きく**する。 */
+    #era .y{font-size:var(--fs-hero-fit)}#hud{padding:0 12px 26px;gap:9px}
     #era{padding:7px 10px 9px}
     .era-panel-head{min-height:60px}
     #era .era-readout{min-width:128px;padding:0 68px}
@@ -707,11 +740,18 @@
 <div id="land" aria-live="polite"></div>
 <div id="hud">
   <div id="era">
-    <div class="era-panel-head"><span class="era-kicker kick">表示中</span>
+    <div class="era-panel-head"><!-- ⚠ 空で始める。普段は名乗らないので、JS が消すまでの一瞬だけ「表示中」が光るのを防ぐ。
+           出ていないときは describe() が「選択中」「出せません」を入れる。 -->
+      <span class="era-kicker kick"></span>
       <div class="era-readout"><div class="y">現在</div><span class="s">&nbsp;</span><span class="era-net"></span></div>
       <span id="eraSummaryNote"></span>
-      <button id="eraToggle" type="button" aria-expanded="true" aria-controls="eraDetails">
-        <span id="eraToggleText">閉じる</span><span class="chevron" aria-hidden="true">⌄</span></button>
+      <!-- ⚠ 字を出さず記号だけにする。実測（2026-08-19・320幅）: 「閉じる⌄」は 69px＝箱の 23%。
+           同じものが下の帯にもあり、2 つで幅の半分近くを使っていた。
+           ⚠ **押せる大きさ 44×44 は削らない**（掟）。見た目だけ小さくする。
+           ⚠ 目が見えない人には記号が届かないので、名乗りは aria-label に残す。 -->
+      <button id="eraToggle" type="button" aria-expanded="true" aria-controls="eraDetails"
+        aria-label="この年代の説明を閉じる">
+        <span id="eraToggleText" class="sr">閉じる</span><span class="chevron" aria-hidden="true">⌄</span></button>
     </div>
     <div id="eraDetails">
     <!-- ⚠ 過去の年代では、**年と同じ強さで**「重ねている」と言う。
@@ -728,8 +768,10 @@
     <div class="time-panel-head">
       <div class="time-panel-name"><span id="timePanelTitle">年代を動かす</span>
         <span class="time-axis">現在 → 昔</span><strong id="timeSummary">現在</strong></div>
-      <button id="timeToggle" type="button" aria-expanded="true" aria-controls="timePanelBody">
-        <span id="timeToggleText">閉じる</span><span class="chevron" aria-hidden="true">⌄</span></button>
+      <!-- ⚠ 年代の箱と同じ作り。記号だけにして、名乗りは aria-label に残す -->
+      <button id="timeToggle" type="button" aria-expanded="true" aria-controls="timePanelBody"
+        aria-label="年代を動かす帯を閉じる">
+        <span id="timeToggleText" class="sr">閉じる</span><span class="chevron" aria-hidden="true">⌄</span></button>
     </div>
     <div id="timePanelBody">
       <!-- 共有された年代・建物がこの土地に無かったときの1行。
