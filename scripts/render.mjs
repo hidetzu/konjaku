@@ -26,6 +26,9 @@ const TOYOSU = "ll=35.65480,139.79750&q=%E8%B1%8A%E6%B4%B2";
 // ⚠ ここが寄りかかっているのは「国土地理院の整備範囲の外」であって、
 //   こちらの取り込みとは関係が無い。事物を取り込んでも、この性質は変わらない。
 const SAPPORO = "ll=43.06400,141.34700&q=%E6%9C%AD%E5%B9%8C%E9%A7%85";
+// ⚠ 取り込み済みの建物が無い土地。だから実行時に Overpass へ行く（＝待つ）。
+//   札幌は 2026-08-16 に取り込んだので、もう待たない（1364 件が即出る）。
+const NAGOYA_LL = "ll=35.17090,136.88160&q=%E5%90%8D%E5%8F%A4%E5%B1%8B";
 
 // ⚠ **取り込まない土地**。「未整備のときの振る舞い」を見る検査は、
 //   その土地が未整備であることに寄りかかっている。取り込んだ瞬間、検査は
@@ -507,6 +510,130 @@ const CASES = [
         `375×667: HUD が画面中央（調べている地点 y=${hud.mid}）を覆っている: HUD 上端 ${hud.top}`);
       return `国土地理院・© OpenStreetMap contributors が、開かなくても画面に出ている`
         + `（${out.join(" ／ ")}）／HUD 上端 ${hud.top} は中央 ${hud.mid} より下`;
+    },
+  },
+  {
+    // ⚠ **古い呼び出しが、あとから新しい結果を上書きしないこと。**
+    //   loadArea は 7 つの await を挟んでから area / statusEl / 地図のデータを書く。
+    //   2026-08-18 まで seq は取るだけで一度も見ておらず、番人が居なかった。
+    //   ⚠ 押せる経路がある: 低湿地データが読めないと再試行ボタンが出るが、
+    //     そのとき建物の問い合わせは最大 20 秒待っている最中で、その間ずっと押せる。
+    // ⚠ 相手先の速さに任せない。**こちらで 6 秒遅らせて**、確実に追い越させる。
+    name: "前の場所の結果が、あとから今の場所を上書きしない", path: `/peel?${NAGOYA_LL}`,
+    // ⚠ glob の `(a|b)` は選択にならない。URL 述語で書く（過去に一度踏んでいる）
+    setup: (page) => page.route((u) => /overpass/.test(u.href), async (r) => {
+      await new Promise((k) => setTimeout(k, 6000));
+      await r.fulfill({ status: 200, contentType: "application/json",
+        body: JSON.stringify({ elements: [] }) });
+    }),
+    async check(page) {
+      // ① 札幌が、建物の問い合わせで待ち始めるまで待つ
+      await page.waitForFunction(
+        () => /建物を取得中/.test(document.getElementById("status")?.textContent ?? ""),
+        null, { timeout: 30000 });
+      // ② 待っている最中に、別の場所へ移る（＝再試行を押したのと同じ形）
+      await page.evaluate(() => { loadArea(139.7975, 35.6548, "東京都江東区豊洲"); });
+      await page.waitForFunction(
+        () => /件の足元を判定/.test(document.getElementById("land")?.textContent ?? ""),
+        null, { timeout: 60000 });
+      const mid = await page.locator("#land").textContent();
+      // ③ 札幌の返事が返ってくるのを、追い越して待つ
+      await page.waitForTimeout(9000);
+      const land = await page.locator("#land").textContent();
+      const status = await page.locator("#status").textContent();
+      must(/件の足元を判定/.test(land),
+        `前の場所の返事が、いまの答えを消した: ${land.replace(/\s+/g, " ").slice(0, 80)}`);
+      must(land.replace(/\s+/g, "") === mid.replace(/\s+/g, ""),
+        `答えが書き換わった: ${mid.replace(/\s+/g, " ").slice(0, 60)} → ${land.replace(/\s+/g, " ").slice(0, 60)}`);
+      must(!/まだ用意できていません|建物ごとには出せません|OSM に登録された建物は 0 件/.test(status),
+        `前の場所の説明が、いまの場所の欄に出ている: ${status.replace(/\s+/g, " ").slice(0, 90)}`);
+      return `名古屋が 6 秒待っている最中に豊洲へ移り、返事が返ったあとも `
+        + `${land.replace(/\s+/g, " ").trim().slice(0, 40)}／説明も豊洲のまま`;
+    },
+  },
+  {
+    // 描画は「変わる速さ」で分けてある（peel3d.js の paint / describe）。
+    // ⚠ 分ける前の実測（2026-08-18・豊洲・1280×900）:
+    //   再生 1 回（11.1 秒）で台帳（17 要素）を **299 回**作り直していた。
+    //   段は 9 つしかないので、298 回は同じものを組み直していたことになる。
+    //
+    // ⚠ **「作り直さない」だけを見ると、更新を止めても緑になる。**
+    //   だから 2 つを対にして見る:
+    //     同じ段の中で動かす → 作り直さない（言葉は変わらないので）
+    //     隣の段へ移る       → 必ず作り直す（言葉が変わるので）
+    //   片方だけでは、どちらの壊れ方も見つけられない。
+    name: "同じ段で動かしても根拠は組み直さず、段が変われば必ず組み直す", path: `/peel?${TOYOSU}`,
+    async check(page) {
+      await peelReady(page);
+      // ⚠ 地表のタイルが届くと台帳は**正しく**組み直る。数え始める前に落ち着かせる
+      await page.waitForTimeout(4000);
+      const watch = () => page.evaluate(() => {
+        window.__provHits = 0;
+        window.__provObs?.disconnect();
+        window.__provObs = new MutationObserver((rs) => { window.__provHits += rs.length; });
+        window.__provObs.observe(document.getElementById("prov"),
+          { childList: true, subtree: true, characterData: true });
+      });
+      // ⚠ **数えるのは、動かし終えて 1 呼吸おいてから。** MutationObserver の通知は
+      //   マイクロタスクなので、同じ evaluate の中で読むと**必ず 0**になる。
+      //   最初これで書いて、「組み直していない」が理由もなく緑になった（2026-08-18）。
+      const scrub = async (from, to, n) => {
+        const r = await page.evaluate(([from, to, n]) => {
+          const s = document.getElementById("t");
+          for (let k = 0; k <= n; k++) {
+            s.value = String(from + (to - from) * k / n);
+            s.dispatchEvent(new Event("input", { bubbles: true }));
+          }
+          return { label: document.querySelector("#era .y").textContent,
+                   knob: document.querySelector("#track .knob").style.left };
+        }, [from, to, n]);
+        await page.waitForTimeout(200);
+        return { ...r, hits: await page.evaluate(() => window.__provHits) };
+      };
+
+      // ---- ① 同じ段の中を 40 回動かす。言葉は変わらないので、組み直してはいけない ----
+      await page.evaluate(() => { const s = document.getElementById("t");
+        s.value = "0"; s.dispatchEvent(new Event("input", { bubbles: true })); });
+      await page.waitForTimeout(300);
+      await watch();
+      const a = await scrub(0, 40, 40);
+      must(a.hits <= 2, `同じ段の中で動かしただけで、根拠を ${a.hits} 回組み直している`
+        + `（40 回動かした。分ける前はこれが 40 回だった）`);
+      // ⚠ 動いていないから組み直していない、では意味がない。**絵は毎回動いている**
+      must(a.knob !== "" && a.knob !== "0%", `つまみが動いていない（${a.knob}）。絵まで止めている`);
+
+      // ---- ② 隣の段へ移る。言葉が変わるので、必ず組み直す ----
+      const before = a.label;
+      await watch();
+      const b = await scrub(40, 100, 12);
+      must(b.label !== before, `段を移ったのに年代の表示が ${before} のまま`);
+      must(b.hits >= 1, `段が変わったのに根拠を組み直していない（${b.hits} 回）`
+        + `。⚠ 出所が古いまま残る`);
+      // ⚠ 段を 1 つ移っただけで 12 回組み直していたら、分けた意味が無い
+      must(b.hits <= 4, `段を 1 つ移るのに根拠を ${b.hits} 回組み直している`);
+
+      // ---- ③ 組み直したあとも、押せるボタンが生きている ----
+      //   ⚠ 台帳の中のボタンは組み直すたびに**新しい要素**になる。張り直しを忘れると、
+      //     押しても何も起きないボタンになる（掟: 押しても何も起きない導線を置かない）。
+      const peek = await page.$("#prov .peek");
+      must(peek, "台帳に「光らせる」ボタンが無い");
+      const colorBefore = await page.evaluate(() =>
+        JSON.stringify(map.getPaintProperty("bld", "fill-extrusion-color")));
+      const box = await peek.boundingBox();
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+      await page.mouse.down();
+      await page.waitForTimeout(150);
+      const colorDown = await page.evaluate(() =>
+        JSON.stringify(map.getPaintProperty("bld", "fill-extrusion-color")));
+      await page.mouse.up();
+      await page.waitForTimeout(150);
+      const colorUp = await page.evaluate(() =>
+        JSON.stringify(map.getPaintProperty("bld", "fill-extrusion-color")));
+      must(colorDown !== colorBefore, "組み直したあと、光らせるボタンが効いていない");
+      must(colorUp === colorBefore, "離しても色が戻っていない（別の意味の色が居座る）");
+      return `同じ段で 40 回動かして組み直し ${a.hits} 回（つまみは ${a.knob} まで動いた）`
+        + ` ／ 段を 1 つ移って ${b.hits} 回（${before} → ${b.label}）`
+        + ` ／ 組み直したあとも光らせるボタンは効く`;
     },
   },
   {

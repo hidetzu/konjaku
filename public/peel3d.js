@@ -656,6 +656,13 @@ async function loadArea(lon,lat,title,opt){
   // 表示の中心は要求された地点のままにするが、集計範囲を勝手にずらすと
   // 「この範囲の N 件すべてを判定した」が言えなくなる。
   const pre=findArea(await loadAreas(),lon,lat);
+  // ⚠ **await のたびに、自分がまだ最新の呼び出しかを確かめる。**
+  //   seq は 2026-08-18 まで取るだけで一度も見ていなかった（setTimeline の中だけが見ていた）。
+  //   loadArea は 7 つの await を挟んでから area / statusEl / setData を書くので、
+  //   古い呼び出しが**あとから**新しい結果を上書きできた。
+  //   ⚠ 押せる経路がある: 低湿地データが読めないと再試行ボタンが出る（この下）。
+  //     そのとき建物の問い合わせは最大 20 秒待っている最中で、その間ずっと押せる。
+  if(seq!==areaSeq) return;   // 別の場所へ移った／押し直された。古い結果で上書きしない
   const bbox=pre?pre.bbox:{w:lon-HALF_LON,e:lon+HALF_LON,s:lat-HALF_LAT,n:lat+HALF_LAT};
   map.jumpTo({center:[lon,lat],zoom:15.05,pitch:56,bearing:-20});
   // パネルを畳むと、どこを調べているのか分からなくなる。地図上に印を残す。
@@ -678,7 +685,7 @@ async function loadArea(lon,lat,title,opt){
   //   写真の判定（最悪 8 秒のタイムアウト）の後ろに並んでしまう
   setTimeline(lon,lat,seq);
   // 建物の集計とは独立に取る。集計が出せない土地でも、この土地そのものには答えられる
-  loadLandform(lon,lat);
+  loadLandform(lon,lat,seq);
   resultEl.style.display="none";
   // ⚠ 前の場所の答えを残さない。地図はもう新しい場所へ跳んでいるので、
   //   ここに古い割合が残ると「この土地の答え」として読まれる
@@ -691,6 +698,7 @@ async function loadArea(lon,lat,title,opt){
   let w=null;
   if(pre?.water){
     const gj=await loadJSON(pre.water);
+    if(seq!==areaSeq) return;   // 別の場所へ移った／押し直された。古い結果で上書きしない
     if(gj) w={ geojson:gj, ratio:gj.metadata?.waterRatio??0, rects:gj.features.length,
                tiles:{ok:1,absent:0,unreachable:0}, pre:true,
                classCounts:gj.metadata?.classCounts??null,
@@ -699,6 +707,7 @@ async function loadArea(lon,lat,title,opt){
                unknownPixels:gj.metadata?.unknownPixels??0 };
   }
   if(!w) w=await buildWater(bbox);
+  if(seq!==areaSeq) return;   // 別の場所へ移った／押し直された。古い結果で上書きしない
   map.getSource("water").setData(w.geojson);
 
   const waterRead=w.tiles.ok>0;
@@ -744,6 +753,7 @@ async function loadArea(lon,lat,title,opt){
   //   索引の単位は z14 で、ev（年つきの事物）とは**別の索引**。潰すと
   //   「建物が見たタイル」が「事物も見た」ことになる。
   const bl=await loadBuildingTiles(bbox);
+  if(seq!==areaSeq) return;   // 別の場所へ移った／押し直された。古い結果で上書きしない
   // ⚠ **なぜ静的で答えられなかったか**を、最後まで持ち回る。
   //   ここで捨てると、失敗の文が「混雑のせい」に化ける
   const blWhy=bl.state;
@@ -766,6 +776,7 @@ async function loadArea(lon,lat,title,opt){
   //   `!feats` にすると `[]` でも通ってしまい、上の判断が無かったことになる。
   if(feats===null && pre?.buildings){
     const gj=await loadJSON(pre.buildings);
+    if(seq!==areaSeq) return;   // 別の場所へ移った／押し直された。古い結果で上書きしない
     // ⚠ 0 件の GeoJSON も「読めた」。読めたかどうかは features の有無で見る（長さで見ない）
     if(gj?.features){ feats=gj.features; viaPre=true; bldSource="pre"; }
   }
@@ -784,6 +795,7 @@ async function loadArea(lon,lat,title,opt){
       line.textContent=(blWhy===BL_ABSENT?"この場所の建物データは、まだ用意できていません。":"")
         +m+"（最大20秒。取れなければ水域と写真だけで表示します）";
     });
+    if(seq!==areaSeq) return;   // 別の場所へ移った／押し直された。古い結果で上書きしない
     if(els){ feats=toGeoJSON(els).features; bldSource="overpass"; }
   }
 
@@ -838,6 +850,7 @@ async function loadArea(lon,lat,title,opt){
     if(Number.isFinite(sd)){f.properties.vanish=tFromYear(sd);f.properties.exact=1}
     else{f.properties.vanish=Number(f.properties.wasWater)===1?6.0:7.4;f.properties.exact=0}
   }));
+  if(seq!==areaSeq) return;   // 別の場所へ移った／押し直された。古い結果で上書きしない
   map.getSource("bld").setData(gj);
   resolveWantBld(feats);
 
@@ -898,9 +911,11 @@ async function loadArea(lon,lat,title,opt){
 // 「判定できません」で終わる。地形分類はその土地そのものには必ず答えられるので、
 // 集計が出せないときの受け皿として持つ。集計の代わりに使うのではない。
 let landform=null;
-async function loadLandform(lon,lat){
+async function loadLandform(lon,lat,seq){
   landform=null;
   try{ landform=await Konjaku.landform(lon,lat); }catch{ landform=null; }
+  // ⚠ ここも同じ。前の場所の地形分類が、あとから新しい場所の答えに乗らないように
+  if(seq!==areaSeq) return;
   showResult();
 }
 // 見出しに使う1行。粗い区分しか無いときは、そう書く
@@ -1109,6 +1124,12 @@ const knobEl=trackEl.querySelector(".knob"), gradeEl=document.getElementById("gr
 const mapEl=document.getElementById("map"), panel=document.getElementById("panel");
 const toggle=document.getElementById("toggle");
 
+// ⚠ 「狭い画面か」に答えるのは**ここだけ**。680px を 2 か所に書いていて、
+//   片方は読み込み時に 1 度だけ、もう片方はそのつど評価していた（＝同じ問いに 2 つの答え）。
+//   ⚠ PC / スマホで見せ方を分けるときは、まずこの 1 か所から分岐する。
+const NARROW_Q="(max-width:680px)";
+const narrow=()=>matchMedia(NARROW_Q).matches;
+
 // ============ 共有された状態を、URL に載せる／URL から戻す ============
 // ⚠ 年代はコマ番号ではなく**安定したレイヤID**で書く。段は地点ごとに間引かれるので
 //   （豊洲 9 段 / 広島 7 段 / 出島 4 段）、同じ位置が別の年代を指す。
@@ -1299,7 +1320,9 @@ buildTicks();
 // ============================================================
 let ground=null;                 // いま地表として出している source と、その到達
 const okTiles=new Map();         // source id → 読めたタイルの "z/x/y"
-map.on("data",(e)=>{
+// ⚠ **無名のまま置かない。** 名前が付いていれば、何を受けて何を決めているかが
+//   grep で読めるし、検査から名指しできる。
+function onTileData(e){
   if(e.dataType!=="source"||!e.tile||!e.coord||e.tile.state!=="loaded") return;
   const c=e.coord.canonical, k=`${c.z}/${c.x}/${c.y}`;
   let s=okTiles.get(e.sourceId); if(!s) okTiles.set(e.sourceId,s=new Set());
@@ -1308,30 +1331,66 @@ map.on("data",(e)=>{
   // 描き直すのは、地表の行が「未取得」から変わりうるときだけ。
   // タイル1枚ごとに全部描き直すと、再生中の負荷を無駄に増やす。
   if(ground&&!ground.ok&&ground.id===e.sourceId) render();
-});
+}
+map.on("data",onTileData);
 // その地点を覆うタイルが読めているか。どのズーム段で取りに行くかは地図側の都合で
 // 変わる（256px タイルは表示ズーム+1段で取る）ので、読めたタイルの側から
 // 「中心を含むか」で見る。段を決め打ちしないぶん、再生中のズーム変化にも耐える。
-function rasterArrived(id){
-  const s=okTiles.get(id);
-  if(!s) return false;
-  const c=map.getCenter(), xf=lon2xf(c.lng), yf=lat2yf(c.lat);
-  for(const k of s){
-    const [z,x,y]=k.split("/").map(Number), n=2**(z-Z);
+//
+// ⚠ **この関数は地図も DOM も見ない。** 覆っているかだけを答える。
+//   keys は読めたタイルの "z/x/y"、xf/yf は z0 段でのタイル座標（小数）。
+//   検査はこの関数だけを取り出して回す（ブラウザを立てずに境界を確かめられる）。
+function tilesCover(keys,xf,yf,z0){
+  for(const k of keys){
+    const [z,x,y]=k.split("/").map(Number), n=2**(z-z0);
     if(Math.floor(xf*n)===x&&Math.floor(yf*n)===y) return true;
   }
   return false;
 }
+function rasterArrived(id){
+  const s=okTiles.get(id);
+  if(!s) return false;
+  const c=map.getCenter();
+  return tilesCover(s,lon2xf(c.lng),lat2yf(c.lat),Z);
+}
 
-function render(){
-  if(!ready) return;
-  // pos は「何段目か」、tau は「いつか」。**混ぜない。**
-  //   目盛り・不透明度の混ぜ・ノブの位置は pos。
-  //   建物が消える年・水位・建物のフェードは tau（段を間引いても動かない）。
+// ============================================================
+// 描画は「変わる速さ」で 2 つに分ける
+//
+//   paint(v)     毎フレーム。地図の塗りと、つまみ・目盛りの位置。**言葉は書かない**
+//   describe(v)  言葉と台帳。**中身が変わったときだけ**書く
+//
+// ⚠ 混ぜていたときの実測（2026-08-18・豊洲・1280×900・tmp/probe-render-churn.mjs）:
+//   再生 1 回（11.1 秒）で台帳（17 要素）を **299 回**作り直していた。
+//   台帳が変わりうるのは「段が変わったとき」と「データが届いたとき」だけで、
+//   この地点の段は 9 つしかない。
+//
+// ⚠ **1 つの関数に混ぜると、例外 1 つで絵も言葉も両方止まる。**
+//   実際に TDZ で落ちて、そこから下の描画が丸ごと止まったことがある（画面は何も言わない）。
+//
+// ⚠ PC / スマホで見せ方を分けるときは、**describe() の側だけを分ける**。
+//   paint() は 1 つのままにする（地図の塗りに端末の別は無い）。
+// ============================================================
+
+// いま何段目・どの年代か。paint と describe が**同じ答え**を使う。
+// ⚠ pos は「何段目か」、tau は「いつか」。**混ぜない。**
+//   目盛り・不透明度の混ぜ・ノブの位置は pos。
+//   建物が消える年・水位・建物のフェードは tau（段を間引いても動かない）。
+function viewNow(){
   const nPhoto=photoSteps();
   const pos=Number(slider.value)/100, i=Math.min(Math.floor(pos),nPhoto-1), f=pos-i;
-  const tau=tauAt(pos);
+  // いま主に見えている段。明治期の段は写真ではないので near には入れない
+  const sNear=f<.5?steps[i]:(steps[i+1]??null);
+  const near=(sNear&&!sNear.meiji)?sNear:null;
+  return { nPhoto,pos,i,f,tau:tauAt(pos),near,cur:near??MEIJI,
+    // ⚠ 建物が見えているか。**下の3か所（重ね・案内・但し書き）が同じ判定を使う。**
+    bldVisible: !!(area&&area.total)&&pos<nPhoto-0.02 };
+}
 
+function render(){ if(!ready) return; const v=viewNow(); paint(v); describe(v); }
+
+function paint(v){
+  const {nPhoto,pos,i,f,tau}=v;
   // ⚠ 可視を先に決める。不透明度を上げてから可視にすると、1フレーム抜ける
   // ⚠ 段に載っていない年代は**一度も可視にしない**。ここが 404 を 202 件送っていた元。
   const vis=timelineReady?visibleEras(pos,nPhoto):new Set([0]);
@@ -1368,28 +1427,6 @@ function render(){
   gradeEl.style.opacity=String(wr*.95);
   mapEl.style.filter=`saturate(${1-wr*.42}) contrast(${1+wr*.10}) brightness(${1-wr*.10})`;
 
-  // いま主に見えている段。明治期の段は写真ではないので near には入れない
-  const sNear=f<.5?steps[i]:(steps[i+1]??null);
-  const near=(sNear&&!sNear.meiji)?sNear:null, cur=near??MEIJI;
-  // ⚠ 建物が見えているか。**下の3か所（重ね・案内・但し書き）が同じ判定を使う。**
-  //   ⚠ 使う場所より前で定義すること。以前これを下に置いたまま上で参照して
-  //     TDZ で例外になり、**そこから下の描画が丸ごと止まった**（画面は何も言わない）。
-  const bldVisible = !!(area && area.total) && pos < nPhoto - 0.02;
-  eraEl.querySelector(".y").textContent=cur.label;
-  const timeSummary=document.getElementById("timeSummary");
-  if(timeSummary) timeSummary.textContent=cur.label;
-  const eraSummaryNote=document.getElementById("eraSummaryNote");
-  if(eraSummaryNote) eraSummaryNote.textContent=(bldVisible&&pos>.02)?"いまの街を重ねています":"";
-  slider.setAttribute("aria-valuetext",cur.label);
-  // ⚠ 過去の年代に入ったら、年と同じ強さで「重ねている」と言う。
-  //   建物は現在のもので、地面だけが過去。そこを画面が言わないと、
-  //   利用者は自分の知識でしか判別できない（知識が無ければ判別できない）。
-  const overEl=document.getElementById("over");
-  if(overEl) overEl.innerHTML = (bldVisible && pos > 0.02)
-    ? `この街並みは<b>いまのもの</b>です。地面だけが ${cur.label} です。` : "";
-  eraEl.querySelector(".s").textContent=near?subOf(near):MEIJI.sub;
-  eraEl.classList.toggle("meiji",!near); trackEl.classList.toggle("meiji",!near);
-
   const pc=pos/nPhoto*100;
   fillEl.style.width=pc+"%"; knobEl.style.left=pc+"%";
   const selected=Math.max(0,Math.min(steps.length-1,Math.round(pos)));
@@ -1400,12 +1437,55 @@ function render(){
   });
   trackEl.querySelectorAll(".lab").forEach((el)=>
     el.classList.toggle("selected",Number(el.dataset.i)===selected));
+}
 
-  // ⚠ 建物についての但し書きを、畳まれない場所に出す。
-  //   空になるのは「建物が1件も立っていないとき」だけ。無いものは説明しない。
-  //   数字は必ず**主張範囲の分母**で書く（いま画面に立っている件数）。
+// ⚠ 静的 HTML にあるものを、毎フレーム引き直さない。**1 度だけ引いて持つ。**
+//   以前は 6 個を render() の中で getElementById していた（＝「あるか分からない」
+//   という不安がコードに残っていた）。無ければ**起動時に**分かるほうがよい。
+const timeSummaryEl=document.getElementById("timeSummary");
+const eraSummaryNoteEl=document.getElementById("eraSummaryNote");
+const overEl=document.getElementById("over");
+const tipEl=document.getElementById("tip");
+const estEl=document.getElementById("est");
+const provEl=document.getElementById("prov");
+
+// 言葉を変えうるものの一覧。
+// ⚠ **ここに挙げたものだけが、言葉を変える。**足したのに挙げ忘れると、
+//   データが変わったのに画面が古いまま残る（黙って古い数字を見せることになる）。
+function describeKey(v,gid,arrived){
+  return JSON.stringify([v.cur.label,gid,arrived,v.bldVisible,v.pos>.02,picked,
+    area&&[area.waterRead,area.waterUnread,area.bldState,area.total,area.bldSource,
+           area.dated,area.unread,
+           area.hSrc&&[area.hSrc.measured,area.hSrc.levels,area.hSrc.default]]]);
+}
+let described=null;
+
+function describe(v){
+  const {near,cur,bldVisible,pos}=v;
+  // 「いま画面に出ているもの」は、出ているものだけを説明する。
+  // 水面が出ていないのに「実測の水域」とは書かない。地表も同じで、
+  // タイルが届いていないなら「実測」とは言わない（届かなかっただけで、
+  // その年代の写真が無いとも言わない）。
+  const gid=near?near.id:"swale";
+  const arrived=rasterArrived(gid);
+  const key=describeKey(v,gid,arrived);
+  if(key===described) return;
+  described=key;
+  ground={ id:gid, ok:arrived };
+
+  eraEl.querySelector(".y").textContent=cur.label;
+  eraEl.querySelector(".s").textContent=near?subOf(near):MEIJI.sub;
+  eraEl.classList.toggle("meiji",!near); trackEl.classList.toggle("meiji",!near);
+  slider.setAttribute("aria-valuetext",cur.label);
+  if(timeSummaryEl) timeSummaryEl.textContent=cur.label;
+  if(eraSummaryNoteEl) eraSummaryNoteEl.textContent=(bldVisible&&pos>.02)?"いまの街を重ねています":"";
+  // ⚠ 過去の年代に入ったら、年と同じ強さで「重ねている」と言う。
+  //   建物は現在のもので、地面だけが過去。そこを画面が言わないと、
+  //   利用者は自分の知識でしか判別できない（知識が無ければ判別できない）。
+  if(overEl) overEl.innerHTML=(bldVisible&&pos>0.02)
+    ? `この街並みは<b>いまのもの</b>です。地面だけが ${cur.label} です。` : "";
+
   // ⚠ 触る前の案内。押したら消す。役目が終わったものを画面に置き続けない
-  const tipEl=document.getElementById("tip");
   // ⚠ 建物が1棟も見えていないとき（明治期の端）は、建物の話をしない。
   //   実測（2026-08-14）: 明治期では全建物の高さが 0 になり1棟も見えないのに、
   //   「建物は…件が推定」「建物を押すと分かります」が出続け、
@@ -1423,7 +1503,6 @@ function render(){
   // ⚠ 「建物はいまの形です」は落とした。過去の写真の上では #over が 15px で
   //   「この街並みはいまのものです」と言っており、51px 離れて同じ主張が
   //   2つの大きさで並んでいた（実測 SP: y=452 と y=503）。
-  const estEl=document.getElementById("est");
   if(estEl){
     estEl.innerHTML = bldVisible
       ? `<b>建物が消える年代は演出</b>です。建てられた年が分かるのは <b class="k">${
@@ -1432,115 +1511,50 @@ function render(){
       : "";
   }
 
-  const provEl=document.getElementById("prov");
   if(!provEl) return;
-  // 「いま画面に出ているもの」は、出ているものだけを説明する。
-  // 水面が出ていないのに「実測の水域」とは書かない。地表も同じで、
-  // タイルが届いていないなら「実測」とは言わない（届かなかっただけで、
-  // その年代の写真が無いとも言わない）。
-  const gid=near?near.id:"swale";
-  ground={ id:gid, ok:rasterArrived(gid) };
-  const rows=[ ground.ok
-    ? `<div class="prov ok"><span class="t">実測</span>地表は${
-        near?"<b>その年代の空中写真</b>":"<b>明治期の低湿地データ</b>"}そのもの。加工なし</div>`
-    : `<div class="prov no"><span class="t">未取得</span>地表の${
-        near?`<b>${near.label}の空中写真</b>`:"<b>明治期の低湿地データ</b>"}が届いていない
-      <span class="d">届いていないだけで、この年代の記録の有無は分かっていない</span></div>`];
-  if(!area || area.waterRead)
-    rows.push(`<div class="prov ok"><span class="t">実測</span>水面の形は低湿地データから起こした<b>実際の水域</b></div>`);
-  else
-    rows.push(`<div class="prov no"><span class="t">${area.waterUnread?"未取得":"欠落"}</span>${
-      area.waterUnread?"明治期の低湿地データを読み込めていない":"この範囲に明治期の低湿地データが無い"}</div>`);
-  // ⚠ 台帳の語彙は「未取得＝読めなかった／欠落＝本当に無い／実測＝読んだ」。
-  //   以前は件数の真偽（`!area.total`）だけで分岐していたので、
-  //   **待っている間も、正常に0件だったときも「欠落 取得できていない」**と書いていた。
-  //   0 件は「無い」ではなく**読んだ結果**なので、実測の側に置く。
-  //   ⚠ どの資料で 0 件だったかまで書く（台帳は出所を書く欄）。
-  if(!area || area.bldState==="loading")
-    rows.push(`<div class="prov no"><span class="t">未取得</span>建物データを<b>取得中</b>
-      <span class="d">まだ届いていないだけで、この範囲の建物の有無は分かっていない</span></div>`);
-  else if(area.bldState==="notyet")
-    // ⚠ 台帳の語彙に「未対応」を足した（2026-08-18）。
-    //   「未取得（＝届いていない）」と**こちらがまだ対応していない**は別のこと。
-    // ⚠ **進行形を使わない。**「取得中」「届いていない」は、利用者役 3/3 が
-    //   そろって**自分の通信の話**として読んだ。今この瞬間に動いている感じが出るため。
-    // ⚠ **「通信の問題ではありません」と言い切る。**野暮でも書く。
-    //   「毎回まず電波を疑う人間には、この一言がいちばん効く」（利用者役）。
-    rows.push(`<div class="prov no"><span class="t">未対応</span>建物ごとの判定は、<b>この場所ではまだ提供していません</b>
-      <span class="d">通信の問題ではありません。対応した場所から順に増やしています。
-      現地に建物が無いという意味でもありません</span></div>`);
-  else if(area.bldState==="fail")
-    rows.push(`<div class="prov no"><span class="t">未取得</span>建物データを<b>取得できていない</b>
-      <span class="d">届いていないだけで、この範囲の建物の有無は分かっていない</span></div>`);
-  else if(!area.total)
-    rows.push(`<div class="prov ok"><span class="t">実測</span>${
-      area.bldSource==="overpass" ? "OSM への問い合わせで<b>建物 0 件</b>"
-                                  : "取り込み済みの建物データで<b>建物 0 件</b>"}
-      <span class="d">OSM に登録が無いだけで、現地に建物が無いとは限らない</span></div>`);
-  else {
-    // ⚠ 高さは「いま見えている形」そのもの。消える年代の演出より手前の事実なので先に置く。
-    //   ここに無いことのほうが嘘になる（この節の存在意義が「出ているものの出所を全部言う」）
-    if(area.hSrc)
-      rows.push(`<div class="prov est"><span class="t">推定</span>建物の<b>高さ</b>は、ほとんどが
-        <b>こちらで決めた既定値</b>。
-        <span class="d">OSM に高さが入っているのは ${area.hSrc.measured} / ${area.total} 件。
-        階数から換算したものが ${area.hSrc.levels} 件、残る ${area.hSrc.default} 件は
-        「この種別ならこの高さ」としてこちらで立てた値
-        <button class="peek" id="peekH">高さが実測の ${area.hSrc.measured} 件を光らせる</button></span></div>`);
-    // ⚠ ここに「光らせる」を付けるまで、**建設年が分かる建物と、こちらが決めた建物は
-    //   画面上でまったく同じに見えていた**（exact は集計にしか使われていなかった）。
-    //   豊洲では 8 件と 525 件が同じ顔で、同じように消えていた。
-    //   ⚠ 525 件を半透明にする案は採らない。98.5% が半透明になり「半透明が既定の
-    //     見え方」になって区別の意味が消える。既定の色は明治期の判定そのものなので触らない。
-    //     押しているあいだだけ、**分かっている側**を光らせる（高さと同じ作法）。
-    // ⚠ 件数と「演出」はここに書かない。両方 #est（常時見える）にある。
-    //   ここは台帳なので行は残すが、同じ数字を持たない。
-    //   実測（2026-08-15）: 8 / 533 が #est・#prov・内訳 の **3か所**にあった。
-    rows.push(`<div class="prov est"><span class="t">推定</span>建物が<b>消える年代</b>は、
-      こちらが立てた概算。
-      <span class="d">根拠は「足元が水なら埋立前には無い」だけ`
-      + (area.dated ? `<button class="peek" id="peekY">建てられた年が分かる建物を光らせる</button>`
-                    : `。<b>この範囲では1件も分かっていない</b>`)
-      + `</span></div>`);
-  }
-  if(area?.unread)
-    rows.push(`<div class="prov no"><span class="t">未取得</span>${area.unread} 件は足元の判定ができていない
-      <span class="d">読み込めなかっただけで、明治期のデータが無いとは限らない</span></div>`);
-  provEl.innerHTML=rows.join("");
-  // ⚠ 押している間だけ。既定の色は wasWater（99.6% の色そのもの）なので、
-  //   恒久的に上書きすると「99.6% が水色」と言いながら画面は灰色、という食い違いになる。
-  //   高さそのものは触らない（推定を打ち消すために新しい推定を作ることになる）。
-  // 押しているあいだだけ、分かっている側を光らせる。
-  // ⚠ 離したら必ず既定の色（明治期の判定そのもの）に戻す。戻し忘れると、
-  //   別の意味の色が居座って「99.6% が水色」と言いながら画面が灰色になる
-  const BLD_COLOR=["case",["==",["get","wasWater"],1],"#8fb9dd","#d8cfa8"];
-  // ⚠ **押した先（地図）が見えていないと、押しても何も起きないボタンになる**（2026-08-18）。
-  //   狭い幅では根拠を全画面で読ませているので、このボタンを押しても地図が無い。
-  //   利用者役 3/3 が「押したらどうなるのか想像できない」「押して何も起きないように
-  //   見えると二度と押さない」と答えた。
-  //   → 押した瞬間に**パネルを閉じて地図を出す**。押しているあいだだけ光るのは変えない。
-  // ⚠ **離す場所はボタンの上とは限らない。**閉じた瞬間、指の下は地図になる。
-  //   ボタンにだけ pointerup を張ると、色が戻らないまま居座る。window で受ける。
-  const peek=(id,expr)=>{
-    const pk=document.getElementById(id);
-    if(!pk) return;
-    const on=()=>{ try{ map.setPaintProperty("bld","fill-extrusion-color",expr); }catch{} };
-    const off=()=>{ try{ map.setPaintProperty("bld","fill-extrusion-color",BLD_COLOR); }catch{} };
-    pk.addEventListener("pointerdown",(e)=>{
-      e.preventDefault();
-      // ⚠ 全画面で読んでいるときだけ閉じる。PC は地図が横に見えているので閉じない
-      if(matchMedia("(max-width:680px)").matches) closePanel();
-      on();
-      addEventListener("pointerup",off,{once:true});
-      addEventListener("pointercancel",off,{once:true});
-    });
-    for(const ev of ["pointerup","pointerleave","pointercancel","blur"])
-      pk.addEventListener(ev,off);
-  };
-  peek("peekH",["case",["==",["get","heightSource"],"default"],"#5b6470",
-                ["==",["get","wasWater"],1],"#8fb9dd","#d8cfa8"]);
+  // ⚠ 台帳の**文面と語彙は public/prov.js**（実測／未取得／欠落／未対応／推定）。
+  //   ここでは組み立てない。行を足したくなったら prov.js に足す。
+  //   分けた理由: あちらは DOM も地図も見ないので、検査がブラウザ抜きで
+  //   全組み合わせを回せる（掟: 取れなかったを「無い」と言わない、を字面ではなく tag で見る）。
+  provEl.innerHTML=KonjakuProv.html(KonjakuProv.rows({ groundArrived:arrived, era:near, area }));
+  wireProvPeek();
+}
+
+// ⚠ 押している間だけ。既定の色は wasWater（99.6% の色そのもの）なので、
+//   恒久的に上書きすると「99.6% が水色」と言いながら画面は灰色、という食い違いになる。
+//   高さそのものは触らない（推定を打ち消すために新しい推定を作ることになる）。
+// ⚠ 離したら必ず既定の色（明治期の判定そのもの）に戻す。
+const BLD_COLOR=["case",["==",["get","wasWater"],1],"#8fb9dd","#d8cfa8"];
+// ⚠ **押した先（地図）が見えていないと、押しても何も起きないボタンになる**（2026-08-18）。
+//   狭い幅では根拠を全画面で読ませているので、このボタンを押しても地図が無い。
+//   利用者役 3/3 が「押したらどうなるのか想像できない」「押して何も起きないように
+//   見えると二度と押さない」と答えた。
+//   → 押した瞬間に**パネルを閉じて地図を出す**。押しているあいだだけ光るのは変えない。
+// ⚠ **離す場所はボタンの上とは限らない。**閉じた瞬間、指の下は地図になる。
+//   ボタンにだけ pointerup を張ると、色が戻らないまま居座る。window で受ける。
+function peekOn(id,expr){
+  const pk=document.getElementById(id);
+  if(!pk) return;
+  const on=()=>{ try{ map.setPaintProperty("bld","fill-extrusion-color",expr); }catch{} };
+  const off=()=>{ try{ map.setPaintProperty("bld","fill-extrusion-color",BLD_COLOR); }catch{} };
+  pk.addEventListener("pointerdown",(e)=>{
+    e.preventDefault();
+    // ⚠ 全画面で読んでいるときだけ閉じる。PC は地図が横に見えているので閉じない
+    if(narrow()) closePanel();
+    on();
+    addEventListener("pointerup",off,{once:true});
+    addEventListener("pointercancel",off,{once:true});
+  });
+  for(const ev of ["pointerup","pointerleave","pointercancel","blur"])
+    pk.addEventListener(ev,off);
+}
+// ⚠ ボタンは台帳を組み直すたびに**新しい要素**になる。だから張り直す。
+//   組み直しは段が変わったときだけなので、毎フレームではない。
+function wireProvPeek(){
+  peekOn("peekH",["case",["==",["get","heightSource"],"default"],"#5b6470",
+                  ["==",["get","wasWater"],1],"#8fb9dd","#d8cfa8"]);
   // ⚠ exact（建設年が分かっている印）は、ここまで**描画に一度も使われていなかった**
-  peek("peekY",["case",["==",["get","exact"],1],"#e6c47a","#5b6470"]);
+  peekOn("peekY",["case",["==",["get","exact"],1],"#e6c47a","#5b6470"]);
 }
 // ⚠ URL を書くのは**段が変わったときだけ**。input は引いているあいだ連続で飛ぶので、
 //   毎回 replaceState すると 1 回の操作で数十回書くことになる。
@@ -1634,7 +1648,7 @@ let raf=null; const DUR_PER_STEP=11000/8;
 // 再生中は一時的に隠し、終わったら「利用者が望んだ状態」に戻す。
 // stop() が毎回 setChrome(false) を呼ぶので、状態を持たないと
 // スマホの初期折りたたみが打ち消されてしまう。
-const isNarrow = matchMedia("(max-width:680px)").matches;
+const isNarrow = narrow();   // ⚠ 初期状態は読み込み時の幅で決める（あとで変えない）
 let panelOpen = !isNarrow;              // スマホでは主役（3Dの絵）を隠さない
 const applyPanel = () => panel.classList.toggle("hide", !panelOpen);
 function setChrome(playing){ panel.classList.toggle("hide", playing || !panelOpen); }
