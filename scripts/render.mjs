@@ -513,6 +513,73 @@ const CASES = [
     },
   },
   {
+    // ⚠ **落ちたことを実際に観測できたときだけ「読み込めませんでした」と言う。**
+    //   実測（2026-08-18・tmp/probe-map-error.mjs・豊洲）。拾えるものは落とし方で違う:
+    //     404（写真が無い） … map.on("error") が来ない（MapLibre は 404 を異常と見なさない）
+    //     403（拒否）       … 106 回。status 403
+    //     通信断            … 76 回。status 0
+    //   ⚠ **404 は「遅い」と区別できない。** だから 404 は「まだ出ていません」に留める。
+    // ⚠ 接続の話は、こちらが知っている範囲でしか言わない。
+    //   圏外だと端末が言っているときだけ言い切り、つながっているなら「確認してください」。
+    name: "落ちたと分かったときだけ、そう言う（404 は断定しない）", path: `/peel?${TOYOSU}`,
+    // ⚠ glob の `(a|b)` は選択にならない。URL 述語で書く
+    setup: (page) => page.route((u) => /seamlessphoto/.test(u.href),
+      (r) => r.abort("connectionrefused")),
+    async check(page) {
+      await page.waitForTimeout(3500);
+      const r = await page.evaluate(() => {
+        const e = document.getElementById("era");
+        const t = (s) => e.querySelector(s)?.textContent.trim() ?? "";
+        return { kick: t(".kick"), y: t(".y"), s: t(".s"), net: t(".era-net") };
+      });
+      must(/読み込めませんでした/.test(r.s), `落ちたのに、そう書いていない: ${r.s}`);
+      must(/通信できません/.test(r.s), `観測した理由が書かれていない: ${r.s}`);
+      // ⚠ つながっている（onLine=true）ので、言い切らない
+      must(r.net === "接続を確認してください",
+        `つながっているのに「${r.net}」と言い切っている`);
+      must(!/が無い|存在しません/.test(r.s + r.net), `落ちたことを「無い」と書いている: ${r.s}`);
+      must(r.y === "現在", `どの年代を見ているのかが消えた: ${r.y}`);
+      return `${r.kick} / ${r.y} / ${r.s} ＋${r.net}`;
+    },
+  },
+  {
+    // ⚠ **404 は「読み込めませんでした」と言わない。**
+    //   MapLibre が error を出さないので、こちらは「遅い」のか「その写真が無い」のかを
+    //   知らない。知らないことを断定しない（掟: 取得できなかった ≠ 存在しなかった）。
+    name: "404 のときは、理由を断定しない", path: `/peel?${TOYOSU}`,
+    setup: (page) => page.route((u) => /seamlessphoto/.test(u.href),
+      (r) => r.fulfill({ status: 404, body: "" })),
+    async check(page) {
+      await page.waitForTimeout(3500);
+      const r = await page.evaluate(() => {
+        const e = document.getElementById("era");
+        const t = (s) => e.querySelector(s)?.textContent.trim() ?? "";
+        return { kick: t(".kick"), s: t(".s"), net: t(".era-net") };
+      });
+      must(r.kick !== "表示中", `出ていないのに「${r.kick}」と言っている`);
+      must(!/読み込めませんでした/.test(r.s),
+        `404 は observe できていないのに「読み込めませんでした」と断定している: ${r.s}`);
+      must(!r.net, `理由を知らないのに接続のせいにしている: ${r.net}`);
+      must(!/が無い|ありません|存在しません/.test(r.s), `「無い」と言い切っている: ${r.s}`);
+      return `${r.kick} / ${r.s}（接続の話はしない）`;
+    },
+  },
+  {
+    // ⚠ 圏外だと端末が言っているときだけ、言い切ってよい。
+    name: "圏外のときだけ、接続していないと言い切る", path: `/peel?${TOYOSU}`,
+    setup: async (page) => {
+      await page.addInitScript(() => Object.defineProperty(navigator, "onLine", { get: () => false }));
+      await page.route((u) => /seamlessphoto/.test(u.href), (r) => r.abort("connectionrefused"));
+    },
+    async check(page) {
+      await page.waitForTimeout(3500);
+      const net = await page.evaluate(() =>
+        document.querySelector("#era .era-net")?.textContent.trim() ?? "");
+      must(/接続していません/.test(net), `圏外なのに「${net}」に留めている`);
+      return `圏外 → 「${net}」`;
+    },
+  },
+  {
     // ⚠ **出ていないものを「表示中」と言わない。**
     //   実測（2026-08-18）: 地表のタイルを落としても画面はいちばん大きい文字で
     //   「表示中 現在 / 最新の空中写真」と言い続けた。写真は 1 枚も出ていないのに。

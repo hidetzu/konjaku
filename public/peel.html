@@ -137,6 +137,11 @@
   #era .era-readout{display:inline-block;min-width:148px;padding:0 76px}
   #era .y{font-size:var(--fs-hero-lg);letter-spacing:.02em;font-weight:200;font-variant-numeric:tabular-nums}
   #era .s{display:block;margin-top:7px;font-size:var(--fs-note);letter-spacing:.16em;color:#cbd3dc}
+  /* ⚠ 接続の話は、写真の話と**別の行**に置く。混ぜるとどちらが事実か読めなくなる。
+     ⚠ 既存の .hint とは別物（あちらは根拠パネルの注記）。名前を分けている。 */
+  #era .era-net{display:block;margin-top:4px;font-size:var(--fs-note);color:#f0c479}
+  #era .era-net:empty{display:none}
+  #era.failed .s{color:#f0c479}
   #eraToggle{position:absolute;right:-5px;top:-4px;min-width:68px;min-height:var(--tap);padding:0 7px;
     border:0;border-radius:8px;background:transparent;color:#cbd3dc;font:inherit;cursor:pointer;text-shadow:none}
   #eraToggle:hover{background:rgba(255,255,255,.08);color:var(--ink)}
@@ -674,7 +679,7 @@
 <div id="hud">
   <div id="era">
     <div class="era-panel-head"><span class="era-kicker kick">表示中</span>
-      <div class="era-readout"><div class="y">現在</div><span class="s">&nbsp;</span></div>
+      <div class="era-readout"><div class="y">現在</div><span class="s">&nbsp;</span><span class="era-net"></span></div>
       <span id="eraSummaryNote"></span>
       <button id="eraToggle" type="button" aria-expanded="true" aria-controls="eraDetails">
         <span id="eraToggleText">閉じる</span><span class="chevron" aria-hidden="true">⌄</span></button>
