@@ -635,6 +635,95 @@ const CASES = [
     },
   },
   {
+    // ⚠ **年代を選ぶのが「指の精度勝負」になっていた。**
+    //   実測（2026-08-18・`tmp/probe-era-sp.mjs`）:
+    //     1 段あたり 34.5px（375）／30.6px（344）／**27.6px（320）** ＝ 指の 63%
+    //     ノブ 25×25px ／ ▶ 36×36px ＝ どちらも 44px 割れ
+    //     ▶ とノブの隙間 5px ／ 右端（明治期）のノブは画面の縁から 10px
+    //   ⚠ この画面はズーム・ピン・読み上げを 44px にそろえてあるのに、
+    //     **年代の操作だけ規則から漏れていた。**
+    //
+    // ⚠ **文字を押すとその段へ飛ぶ機能は、前からあった**（peel3d.js の pointerup）。
+    //   足りなかったのは**当たり判定（19px）**と、押せると分かる見た目。
+    //   利用者役 3/3 が「ラベルを押せるようにしてほしい」と言ったのは、
+    //   機能が無いからではなく**押せると見えなかったから**（「枠も下線も無い薄い字」）。
+    //
+    // ⚠ **重なりを見る。** 当たり判定を広げたら、狭い画面で隣とぶつかった。
+    //   ・箱に横 padding を足したら 375 で「1945–50」が「1945–」に切れた
+    //   ・320 で「明治期」を押すと隣が当たり、値が 600 で止まった（DOM 順に最初の1つを
+    //     返していたため。いまは**中心がいちばん近いもの**を選ぶ）
+    //   ・字が触れて「1945–50明治期」と 1 語に読めた
+    //   → **並びと、押した結果の両方**を見る。
+    // ⚠ **狭い幅で読み込む。**PC 幅で開いてから縮めると、パネルが開いたままになり
+    //   （panelOpen は読み込み時の幅で決まる）、「読んでいるあいだ HUD を出さない」規則で
+    //   年代帯ごと消える。実際にそれで全部 0×0px になった（2026-08-18）。
+    name: "年代の文字が指で押せて、その段へ飛ぶ", path: `/peel?${TOYOSU}`,
+    viewport: { width: 375, height: 667 }, hasTouch: true,
+    async check(page) {
+      await page.waitForFunction(() => document.querySelectorAll("#track .lab").length > 0,
+        null, { timeout: 60000 });
+      // 念のため、根拠が開いていたら閉じる（開いていると年代帯が出ない）
+      await page.evaluate(() => { const p = document.getElementById("panel");
+        if (p && !p.classList.contains("hide")) document.getElementById("closePanel").click(); });
+      await page.waitForTimeout(500);
+      const out = [];
+      for (const [w, h] of [[375, 667], [344, 882], [320, 640]]) {
+        await page.setViewportSize({ width: w, height: h });
+        await page.waitForTimeout(700);
+        const g = await page.evaluate(() => {
+          const labs = [...document.querySelectorAll("#track .lab")]
+            .filter((e) => (e.textContent || "").trim())
+            .map((e) => { const r = e.getBoundingClientRect();
+              return { t: e.textContent.trim(), i: Number(e.dataset.i),
+                       x: r.left, r: r.right, w: Math.round(r.width), h: Math.round(r.height) }; })
+            .sort((a, b) => a.x - b.x);
+          const box = (sel) => { const e = document.querySelector(sel);
+            const r = e.getBoundingClientRect();
+            return { w: Math.round(r.width), h: Math.round(r.height), right: Math.round(r.right) }; };
+          return { labs, play: box("#play"), knob: box("#track .knob"), vw: innerWidth };
+        });
+        must(g.labs.length >= 2, `${w}: 年代の文字が並んでいない`);
+        // ⚠ 押す的は 44px 以上（この画面の他の操作と同じ規則）
+        const small = g.labs.filter((l) => l.h < 44);
+        must(!small.length,
+          `${w}: 年代の文字が指で押せる大きさでない: ${small.map((l) => `「${l.t}」${l.w}×${l.h}px`).join("・")}`);
+        must(g.play.h >= 44 && g.play.w >= 44, `${w}: 再生 ▶ が 44px 未満: ${g.play.w}×${g.play.h}px`);
+        // ⚠ 文字どうしが重ならない（実際に「1945–50明治期」と 1 語に読めた）
+        const hit = [];
+        for (let k = 1; k < g.labs.length; k++)
+          if (g.labs[k].x < g.labs[k - 1].r)
+            hit.push(`「${g.labs[k - 1].t}」と「${g.labs[k].t}」`);
+        must(!hit.length, `${w}: 年代の文字が重なっている: ${hit.join("・")}`);
+        out.push(`${w}: ${g.labs.length} 個・最小 ${Math.min(...g.labs.map((l) => l.h))}px`);
+      }
+      // ⚠ 押した結果まで見る。⚠ **狭い幅で確かめる**（重なりが出るのはそこ）
+      await page.setViewportSize({ width: 320, height: 640 });
+      await page.waitForTimeout(700);
+      for (const want of ["明治期", "現在"]) {
+        const pt = await page.evaluate((want) => {
+          const e = [...document.querySelectorAll("#track .lab")].find((x) => x.textContent.trim() === want);
+          if (!e) return null; const r = e.getBoundingClientRect();
+          return { x: Math.round(r.x + r.width / 2), y: Math.round(r.y + r.height / 2),
+                   i: Number(e.dataset.i) };
+        }, want);
+        must(pt, `320: 「${want}」の文字が無い`);
+        await page.mouse.click(pt.x, pt.y);
+        await page.waitForTimeout(500);
+        const got = await page.evaluate(() => Number(document.getElementById("t").value));
+        must(got === pt.i * 100,
+          `320: 「${want}」を押しても、その段へ飛ばない（${got} / 期待 ${pt.i * 100}）`);
+      }
+      // ⚠ 右端のノブが画面の縁に触れない（端末の「戻る」スワイプと喧嘩する）
+      await page.evaluate(() => { const t = document.getElementById("t");
+        t.value = t.max; t.dispatchEvent(new Event("input", { bubbles: true })); });
+      await page.waitForTimeout(400);
+      const edge = await page.evaluate(() =>
+        Math.round(innerWidth - document.querySelector("#track .knob").getBoundingClientRect().right));
+      must(edge >= 16, `320: 右端のノブが画面の縁に近すぎる（縁まで ${edge}px）`);
+      return `${out.join(" ／ ")} ／ 明治期・現在ともタップで飛ぶ ／ 縁まで ${edge}px`;
+    },
+  },
+  {
     // ズームは暗いパネルに載せたせいで黒地に黒になり、実測でボタンの存在すら見えなかった
     name: "さかのぼる（ズームが見えて、指で押せる）", path: `/peel?${TOYOSU}`,
     viewport: { width: 390, height: 844 }, hasTouch: true,

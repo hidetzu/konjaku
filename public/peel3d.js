@@ -1499,13 +1499,22 @@ const TAP_SLOP=6;         // これ以下の移動はタップ。指で押すと
 let labFrom=null;
 // ⚠ 文字は pointer-events:none なので e.target には出てこない。箱で当てる。
 //   文字を間引いた（空の）ラベルは的にしない（押しても何が選ばれたのか読めない）
+// ⚠ **重なったときは、中心がいちばん近いものを選ぶ。**
+//   箱を指の大きさ（44px）まで広げたら、狭い画面で隣と重なった。
+//   DOM の順に最初の1つを返していたので、320×640 で「明治期」を押すと
+//   手前の「1945–50」が当たり、**値が 600 で止まった**（実測 2026-08-18）。
+//   ⚠ 重なりを消す方向では直せない。320px では文字の間隔が 55px しかなく、
+//     「1984–86」の字だけで 53px ある。**重なる前提で、境目を中点に置く。**
 const labAt=(x,y)=>{
+  let best=null, bestD=Infinity;
   for(const el of trackEl.querySelectorAll(".lab")){
     if(!el.textContent.trim()) continue;
     const r=el.getBoundingClientRect();
-    if(x>=r.left&&x<=r.right&&y>=r.top&&y<=r.bottom) return el;
+    if(x<r.left||x>r.right||y<r.top||y>r.bottom) continue;
+    const d=Math.abs(x-(r.left+r.right)/2);
+    if(d<bestD){ bestD=d; best=el; }
   }
-  return null;
+  return best;
 };
 trackEl.addEventListener("pointerdown",(e)=>{
   const mark=labAt(e.clientX,e.clientY);
