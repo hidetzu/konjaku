@@ -785,14 +785,18 @@ async function loadArea(lon,lat,title,opt){
     //   いちばんがっかりする（利用者役の指摘 2026-08-18）。
     //   ⚠ そのうえで問い合わせは行う。名古屋で 5,845 件が実際に返った実測があり、
     //     やめると出せる情報が減る。ただし**先に言ってから**行く。
+    // ⚠ **待っているあいだと、終わったあとで、言い方を変えない。**
+    //   実測（2026-08-18）: 同じ「まだ提供していない」に 2 通りの文があり、
+    //   20 秒のあいだに入れ替わっていた（「まだ用意できていません」→「まだ提供していません」）。
+    //   ⚠ 入れ替わると、同じことを言っているのだと分からない。文は prov.js の 1 つを借りる。
     statusEl.innerHTML+=blWhy===BL_ABSENT
-      ? `<div style="margin-top:5px"><b>この場所の建物データは、まだ用意できていません。</b></div>`
+      ? `<div style="margin-top:5px"><b>${KonjakuProv.NOTYET}。</b></div>`
       : `<div style="margin-top:5px">建物を取得中…</div>`;
     const line=statusEl.querySelector("div:last-of-type");
     const els=await fetchBuildings(bbox,(m)=>{
       // ⚠ 何を待っていて、**駄目だったらどうなるか**を先に言う。
       //   黙って待たせると、止まっているのか動いているのか分からない
-      line.textContent=(blWhy===BL_ABSENT?"この場所の建物データは、まだ用意できていません。":"")
+      line.textContent=(blWhy===BL_ABSENT?`${KonjakuProv.NOTYET}。`:"")
         +m+"（最大20秒。取れなければ水域と写真だけで表示します）";
     });
     if(seq!==areaSeq) return;   // 別の場所へ移った／押し直された。古い結果で上書きしない
@@ -811,9 +815,8 @@ async function loadArea(lon,lat,title,opt){
       // ⚠ **⚠ の記号を使わない。**この画面の外（トップ）では ⚠ を「この土地で
       //   気をつけること」（＝災害リスク）に使っている。在庫の話に同じ印を出すと、
       //   利用者役 2/3 が「危ない土地の警告か」と読んだ（2026-08-18）。
-      ? `<span class="err">建物ごとの判定は、この場所ではまだ提供していません。</span>
-         <span style="color:var(--ink-dim)">通信の問題ではありません。対応した場所から順に増やしています。
-         現地に建物が無いという意味でもありません。</span>`
+      ? `<span class="err">${KonjakuProv.NOTYET}。</span>
+         <span style="color:var(--ink-dim)">${KonjakuProv.NOTYET_WHY}。</span>`
       : blWhy===BL_UNKNOWN
       ? `<span class="err">建物データを取得できませんでした。</span>
          <span style="color:var(--ink-dim)">用意してあるかどうかも確かめられていません。</span>`
@@ -824,8 +827,8 @@ async function loadArea(lon,lat,title,opt){
     // ⚠ **台帳（#prov）も組み直す。** ここで render() を呼んでいなかったので、
     //   台帳だけ「未取得 建物データを**取得中**／まだ**届いていない**だけで」のまま残っていた。
     //   利用者役 3/3 が、その 2 語を見て**自分の通信を疑った**（2026-08-18）。
-    //   上の文が「まだ用意できていません」と言っているのに、下の台帳が
-    //   「取得中」と言う。**同じ画面で主語が食い違っていた。**
+    //   上の文と下の台帳で主語が食い違っていた。⚠ 2026-08-18 に、
+    //   「まだ提供していない」の文そのものを prov.js の 1 つに寄せた（NOTYET）。
     showResult(); render(); return;
   }
 
@@ -979,7 +982,7 @@ function landVerdict(){
 const bldWhyArea=(bldState)=>
   bldState==="loading" ? "建物を取得中。揃うと建物ごとの割合になる"
   : bldState==="ok"    ? "OSM に登録された建物が 0 件のため、面積比で出している"
-  : bldState==="notyet"? "建物ごとの判定は、この場所ではまだ提供していません。範囲全体の面積で出しています"
+  : bldState==="notyet"? `${KonjakuProv.NOTYET}。範囲全体の面積で出しています`
                        : "建物が取れなかったため、面積比で出している";
 
 const landEl=document.getElementById("land");
@@ -1098,7 +1101,7 @@ function showResult(){
     : `<div class="hint">${
         area.bldState==="loading" ? "建物を取得中…"
         : area.bldState==="ok"    ? "OSM に登録された建物は 0 件です"
-        : area.bldState==="notyet"? "建物ごとの判定は、この場所ではまだ提供していません（通信の問題ではありません）"
+        : area.bldState==="notyet"? `${KonjakuProv.NOTYET}（通信の問題ではありません）`
                                   : "建物データを取得できませんでした（上の再試行から取り直せます）"}</div>`;
 }
 
