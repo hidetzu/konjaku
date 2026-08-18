@@ -656,6 +656,13 @@ async function loadArea(lon,lat,title,opt){
   // 表示の中心は要求された地点のままにするが、集計範囲を勝手にずらすと
   // 「この範囲の N 件すべてを判定した」が言えなくなる。
   const pre=findArea(await loadAreas(),lon,lat);
+  // ⚠ **await のたびに、自分がまだ最新の呼び出しかを確かめる。**
+  //   seq は 2026-08-18 まで取るだけで一度も見ていなかった（setTimeline の中だけが見ていた）。
+  //   loadArea は 7 つの await を挟んでから area / statusEl / setData を書くので、
+  //   古い呼び出しが**あとから**新しい結果を上書きできた。
+  //   ⚠ 押せる経路がある: 低湿地データが読めないと再試行ボタンが出る（この下）。
+  //     そのとき建物の問い合わせは最大 20 秒待っている最中で、その間ずっと押せる。
+  if(seq!==areaSeq) return;   // 別の場所へ移った／押し直された。古い結果で上書きしない
   const bbox=pre?pre.bbox:{w:lon-HALF_LON,e:lon+HALF_LON,s:lat-HALF_LAT,n:lat+HALF_LAT};
   map.jumpTo({center:[lon,lat],zoom:15.05,pitch:56,bearing:-20});
   // パネルを畳むと、どこを調べているのか分からなくなる。地図上に印を残す。
@@ -678,7 +685,7 @@ async function loadArea(lon,lat,title,opt){
   //   写真の判定（最悪 8 秒のタイムアウト）の後ろに並んでしまう
   setTimeline(lon,lat,seq);
   // 建物の集計とは独立に取る。集計が出せない土地でも、この土地そのものには答えられる
-  loadLandform(lon,lat);
+  loadLandform(lon,lat,seq);
   resultEl.style.display="none";
   // ⚠ 前の場所の答えを残さない。地図はもう新しい場所へ跳んでいるので、
   //   ここに古い割合が残ると「この土地の答え」として読まれる
@@ -691,6 +698,7 @@ async function loadArea(lon,lat,title,opt){
   let w=null;
   if(pre?.water){
     const gj=await loadJSON(pre.water);
+    if(seq!==areaSeq) return;   // 別の場所へ移った／押し直された。古い結果で上書きしない
     if(gj) w={ geojson:gj, ratio:gj.metadata?.waterRatio??0, rects:gj.features.length,
                tiles:{ok:1,absent:0,unreachable:0}, pre:true,
                classCounts:gj.metadata?.classCounts??null,
@@ -699,6 +707,7 @@ async function loadArea(lon,lat,title,opt){
                unknownPixels:gj.metadata?.unknownPixels??0 };
   }
   if(!w) w=await buildWater(bbox);
+  if(seq!==areaSeq) return;   // 別の場所へ移った／押し直された。古い結果で上書きしない
   map.getSource("water").setData(w.geojson);
 
   const waterRead=w.tiles.ok>0;
@@ -744,6 +753,7 @@ async function loadArea(lon,lat,title,opt){
   //   索引の単位は z14 で、ev（年つきの事物）とは**別の索引**。潰すと
   //   「建物が見たタイル」が「事物も見た」ことになる。
   const bl=await loadBuildingTiles(bbox);
+  if(seq!==areaSeq) return;   // 別の場所へ移った／押し直された。古い結果で上書きしない
   // ⚠ **なぜ静的で答えられなかったか**を、最後まで持ち回る。
   //   ここで捨てると、失敗の文が「混雑のせい」に化ける
   const blWhy=bl.state;
@@ -766,6 +776,7 @@ async function loadArea(lon,lat,title,opt){
   //   `!feats` にすると `[]` でも通ってしまい、上の判断が無かったことになる。
   if(feats===null && pre?.buildings){
     const gj=await loadJSON(pre.buildings);
+    if(seq!==areaSeq) return;   // 別の場所へ移った／押し直された。古い結果で上書きしない
     // ⚠ 0 件の GeoJSON も「読めた」。読めたかどうかは features の有無で見る（長さで見ない）
     if(gj?.features){ feats=gj.features; viaPre=true; bldSource="pre"; }
   }
@@ -784,6 +795,7 @@ async function loadArea(lon,lat,title,opt){
       line.textContent=(blWhy===BL_ABSENT?"この場所の建物データは、まだ用意できていません。":"")
         +m+"（最大20秒。取れなければ水域と写真だけで表示します）";
     });
+    if(seq!==areaSeq) return;   // 別の場所へ移った／押し直された。古い結果で上書きしない
     if(els){ feats=toGeoJSON(els).features; bldSource="overpass"; }
   }
 
@@ -838,6 +850,7 @@ async function loadArea(lon,lat,title,opt){
     if(Number.isFinite(sd)){f.properties.vanish=tFromYear(sd);f.properties.exact=1}
     else{f.properties.vanish=Number(f.properties.wasWater)===1?6.0:7.4;f.properties.exact=0}
   }));
+  if(seq!==areaSeq) return;   // 別の場所へ移った／押し直された。古い結果で上書きしない
   map.getSource("bld").setData(gj);
   resolveWantBld(feats);
 
@@ -898,9 +911,11 @@ async function loadArea(lon,lat,title,opt){
 // 「判定できません」で終わる。地形分類はその土地そのものには必ず答えられるので、
 // 集計が出せないときの受け皿として持つ。集計の代わりに使うのではない。
 let landform=null;
-async function loadLandform(lon,lat){
+async function loadLandform(lon,lat,seq){
   landform=null;
   try{ landform=await Konjaku.landform(lon,lat); }catch{ landform=null; }
+  // ⚠ ここも同じ。前の場所の地形分類が、あとから新しい場所の答えに乗らないように
+  if(seq!==areaSeq) return;
   showResult();
 }
 // 見出しに使う1行。粗い区分しか無いときは、そう書く

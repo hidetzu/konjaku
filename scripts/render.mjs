@@ -26,6 +26,9 @@ const TOYOSU = "ll=35.65480,139.79750&q=%E8%B1%8A%E6%B4%B2";
 // ⚠ ここが寄りかかっているのは「国土地理院の整備範囲の外」であって、
 //   こちらの取り込みとは関係が無い。事物を取り込んでも、この性質は変わらない。
 const SAPPORO = "ll=43.06400,141.34700&q=%E6%9C%AD%E5%B9%8C%E9%A7%85";
+// ⚠ 取り込み済みの建物が無い土地。だから実行時に Overpass へ行く（＝待つ）。
+//   札幌は 2026-08-16 に取り込んだので、もう待たない（1364 件が即出る）。
+const NAGOYA_LL = "ll=35.17090,136.88160&q=%E5%90%8D%E5%8F%A4%E5%B1%8B";
 
 // ⚠ **取り込まない土地**。「未整備のときの振る舞い」を見る検査は、
 //   その土地が未整備であることに寄りかかっている。取り込んだ瞬間、検査は
@@ -507,6 +510,45 @@ const CASES = [
         `375×667: HUD が画面中央（調べている地点 y=${hud.mid}）を覆っている: HUD 上端 ${hud.top}`);
       return `国土地理院・© OpenStreetMap contributors が、開かなくても画面に出ている`
         + `（${out.join(" ／ ")}）／HUD 上端 ${hud.top} は中央 ${hud.mid} より下`;
+    },
+  },
+  {
+    // ⚠ **古い呼び出しが、あとから新しい結果を上書きしないこと。**
+    //   loadArea は 7 つの await を挟んでから area / statusEl / 地図のデータを書く。
+    //   2026-08-18 まで seq は取るだけで一度も見ておらず、番人が居なかった。
+    //   ⚠ 押せる経路がある: 低湿地データが読めないと再試行ボタンが出るが、
+    //     そのとき建物の問い合わせは最大 20 秒待っている最中で、その間ずっと押せる。
+    // ⚠ 相手先の速さに任せない。**こちらで 6 秒遅らせて**、確実に追い越させる。
+    name: "前の場所の結果が、あとから今の場所を上書きしない", path: `/peel?${NAGOYA_LL}`,
+    // ⚠ glob の `(a|b)` は選択にならない。URL 述語で書く（過去に一度踏んでいる）
+    setup: (page) => page.route((u) => /overpass/.test(u.href), async (r) => {
+      await new Promise((k) => setTimeout(k, 6000));
+      await r.fulfill({ status: 200, contentType: "application/json",
+        body: JSON.stringify({ elements: [] }) });
+    }),
+    async check(page) {
+      // ① 札幌が、建物の問い合わせで待ち始めるまで待つ
+      await page.waitForFunction(
+        () => /建物を取得中/.test(document.getElementById("status")?.textContent ?? ""),
+        null, { timeout: 30000 });
+      // ② 待っている最中に、別の場所へ移る（＝再試行を押したのと同じ形）
+      await page.evaluate(() => { loadArea(139.7975, 35.6548, "東京都江東区豊洲"); });
+      await page.waitForFunction(
+        () => /件の足元を判定/.test(document.getElementById("land")?.textContent ?? ""),
+        null, { timeout: 60000 });
+      const mid = await page.locator("#land").textContent();
+      // ③ 札幌の返事が返ってくるのを、追い越して待つ
+      await page.waitForTimeout(9000);
+      const land = await page.locator("#land").textContent();
+      const status = await page.locator("#status").textContent();
+      must(/件の足元を判定/.test(land),
+        `前の場所の返事が、いまの答えを消した: ${land.replace(/\s+/g, " ").slice(0, 80)}`);
+      must(land.replace(/\s+/g, "") === mid.replace(/\s+/g, ""),
+        `答えが書き換わった: ${mid.replace(/\s+/g, " ").slice(0, 60)} → ${land.replace(/\s+/g, " ").slice(0, 60)}`);
+      must(!/まだ用意できていません|建物ごとには出せません|OSM に登録された建物は 0 件/.test(status),
+        `前の場所の説明が、いまの場所の欄に出ている: ${status.replace(/\s+/g, " ").slice(0, 90)}`);
+      return `名古屋が 6 秒待っている最中に豊洲へ移り、返事が返ったあとも `
+        + `${land.replace(/\s+/g, " ").trim().slice(0, 40)}／説明も豊洲のまま`;
     },
   },
   {

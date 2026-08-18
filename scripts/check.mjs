@@ -2654,6 +2654,71 @@ head("9. 画面の言葉");
     }
   }
 
+  // ⚠ loadArea は await を挟んだあと area / statusEl / 地図のデータを書く。
+  //   **その await のたびに「まだ自分が最新か」を確かめていないと、
+  //   古い呼び出しがあとから新しい結果を上書きする。**
+  //   2026-08-18 まで seq は取るだけで一度も見ていなかった（setTimeline の中だけが見ていた）。
+  //   ⚠ 押せる経路がある: 低湿地データが読めないと再試行ボタンが出て、
+  //     そのとき建物の問い合わせは最大 20 秒待っている最中で、その間ずっと押せる。
+  // ⚠ 目で数えない。**await を足したのに番人を付け忘れる**のがこの事故なので、機械で見る。
+  //
+  // ⚠ 見るのは「関数の直下にある await」。**`if` の中も直下**（そこで w や feats を決めている）。
+  //   除くのは**中の関数（`=>`）の中**にある await だけで、あれは自分の建物の
+  //   properties しか書かないので、外側の番人が守れば足りる。
+  // ⚠ 括弧の深さで数えると `if` の中まで除いてしまい、**7 箇所のうち 4 箇所しか
+  //   見ていない**状態になった（2026-08-18。静かに素通りするほうの間違い）。
+  //   なので「`{` の手前が `=>` で終わっているか」で、関数の枠だけを数える。
+  {
+    const js = seen["peel3d.js"] ?? "";
+    const body = /\nasync function loadArea\([\s\S]*?\n\}\n/.exec(js)?.[0];
+    if (!body) bad("peel3d.js の loadArea を取り出せない（この検査が何も見ていない）");
+    else {
+      // 文字列・テンプレートの中は数えない。各文字が「いくつの関数の枠の中か」を出す
+      const inFn = new Array(body.length).fill(0);
+      const stack = [];
+      let q = null, fn = 0;
+      for (let i = 0; i < body.length; i++) {
+        const c = body[i];
+        if (q) { if (c === "\\") i++; else if (c === q) q = null; inFn[i] = fn; continue; }
+        if (c === "'" || c === '"' || c === "`") { q = c; inFn[i] = fn; continue; }
+        if (c === "{") {
+          const before = body.slice(Math.max(0, i - 4), i).trimEnd();
+          const isFn = before.endsWith("=>");
+          stack.push(isFn); if (isFn) fn++;
+        } else if (c === "}") { if (stack.pop()) fn--; }
+        inFn[i] = fn;
+      }
+      // 行頭の深さ（その await が中の関数の中か）と、行末の深さ（その行で文が閉じたか）
+      const lines = body.split("\n"), head = [], tail = [];
+      for (let i = 0, pos = 0; i < lines.length; i++) {
+        head.push(inFn[pos] ?? 0);
+        tail.push(inFn[pos + Math.max(0, lines[i].length - 1)] ?? 0);
+        pos += lines[i].length + 1;
+      }
+
+      const naked = [], guard = /if\s*\(\s*seq\s*!==\s*areaSeq\s*\)\s*return/;
+      let top = 0, nested = 0;
+      for (let i = 0; i < lines.length; i++) {
+        if (!/\bawait\b/.test(lines[i])) continue;
+        if (head[i] > 0) { nested++; continue; }      // 中の関数の中。外側の番人が守る
+        top++;
+        let end = i;                                   // 文が閉じるまで進む（複数行にまたがる）
+        // ⚠ 閉じたかは**行末**の深さで見る。行頭で見ると、callback を跨いだ文が
+        //   閉じ括弧の行を飛ばして、番人の行そのものを「文の終わり」にしてしまう。
+        while (end < lines.length - 1 && !(tail[end] === 0 && /;\s*$/.test(lines[end]))) end++;
+        let j = end + 1;
+        while (j < lines.length && /^\s*(\/\/|$)/.test(lines[j])) j++;
+        if (!guard.test(lines[j] ?? "")) naked.push(lines[i].trim().slice(0, 56));
+      }
+      if (top < 5) bad(`loadArea の直下の await が ${top} 箇所しか見えていない（この検査が取りこぼしている）`);
+      else naked.length
+        ? bad(`loadArea の await ${naked.length} 箇所に、seq の番人が無い: ${naked.join(" / ")}`
+            + `（古い呼び出しが、あとから新しい結果を上書きする）`)
+        : ok(`loadArea の直下の await ${top} 箇所は、全部その直後に seq を確かめている`
+            + `（中の関数の中の ${nested} 箇所は、外側の番人が守る）`);
+    }
+  }
+
   // ⚠ 短い語（「自分」）は本文の検索で数えられない。宣言そのものを読む。
   {
     const m = /const TAG_LABEL\s*=\s*\{([^}]*)\}/.exec(seen["index.html"] ?? "");
