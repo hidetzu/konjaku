@@ -132,13 +132,14 @@ if (process.argv.includes("--post") && BOT && CH && APP) {
         ws.send(JSON.stringify({ envelope_id: m.envelope_id }));
         const act = m.payload?.actions?.[0];
         // ⚠ 自分が出したメッセージへの反応だけを見る
-        if (act && m.payload?.message?.ts === p.ts) { clearTimeout(t); res({ act, by: m.payload.user?.username }); }
+        // ⚠ 誰が押したかは見ない（名前を出力に混ぜない）
+        if (act && m.payload?.message?.ts === p.ts) { clearTimeout(t); res({ act }); }
       };
       ws.onerror = () => { clearTimeout(t); res(null); };
     });
     ws.close();
     line(!!got, "ボタンの反応が届く",
-      got ? `「${got.act.value}」を ${got.by ?? "誰か"} が押した` : "⚠ 60 秒待っても届かない（Interactivity が OFF の可能性）");
+      got ? `「${got.act.value}」が押された` : "⚠ 60 秒待っても届かない（Interactivity が OFF の可能性）");
     if (!got) fatal++;
     // ⚠ 私が出した選択肢と一致するものだけを答えとして採る
     if (got) line(OPTS.includes(got.act.value), "押された値が、出した選択肢と一致する",
@@ -194,7 +195,7 @@ if (process.argv.includes("--modal") && BOT && CH && APP) {
         if (pl?.type === "view_submission" && pl.view?.callback_id === "doctor_modal") {
           ws2.send(JSON.stringify({ envelope_id: m.envelope_id, payload: { response_action: "clear" } }));
           clearTimeout(t);
-          res({ text: pl.view.state.values.b.a.value, by: pl.user?.username, id: pl.user?.id });
+          res({ text: pl.view.state.values.b.a.value });
           return;
         }
         ws2.send(JSON.stringify({ envelope_id: m.envelope_id }));
@@ -203,7 +204,7 @@ if (process.argv.includes("--modal") && BOT && CH && APP) {
     });
     ws2.close();
     line(!out.err, "モーダルで自由文を受け取れる",
-      out.err ? `⚠ ${out.err}` : `${out.by ?? "誰か"}（${out.id}）が ${out.text.length} 文字書いた: 「${out.text.slice(0, 40)}」`);
+      out.err ? `⚠ ${out.err}` : `${out.text.length} 文字書かれた: 「${out.text.slice(0, 40)}」`);
     if (out.err) fatal++;
     else line(true, "⚠ 追加のスコープは要らなかった", "chat:write だけでモーダルが開いた");
   }

@@ -2298,11 +2298,23 @@ head("6. 外部リンク");
       // ⚠ 履歴を読みに行かないこと（読むと、そのチャンネルの全発言が届く）
       if (/conversations\.(history|replies)/.test(code))
         fails.push("チャンネルの履歴を読んでいる（答え 1 つのために全発言を読まない）");
+      // ⚠ **誰が答えたかを持ち出さない。** 答えの正しさに、誰が押したかは関係ない。
+      //   混ぜると transcript・ログ・PR 本文に人名が散る。要るなら Slack 側を見ればよい。
+      if (/\buser\?\.(username|id|name)|\buser\.(username|id|name)\b/.test(code))
+        fails.push("答えた人の名前や id を読んでいる（記録に人名を散らさない）");
       // ⚠ env ファイルを丸ごと読み込まない
       if (/\brequire\(.*\.envrc|source\s+\S*\.env/.test(code))
         fails.push("env ファイルを丸ごと読んでいる（任意のシェルコードが走る）");
       const { statSync } = await import("node:fs");
       if (!(statSync(join(ROOT, HOOK)).mode & 0o111)) fails.push("実行権が無い");
+    }
+    // 診断の道具も同じ扱い。⚠ 手元の出力でも人名を出さない
+    {
+      const doc = ".claude/hooks/slack-doctor.mjs";
+      if (!existsSync(join(ROOT, doc))) fails.push(`${doc} が無い`);
+      else if (/\buser\?\.(username|id|name)|\buser\.(username|id|name)\b/
+        .test((await readFile(join(ROOT, doc), "utf8")).split("\n").filter((l) => !/^\s*\/\//.test(l)).join("\n")))
+        fails.push(`${doc} が答えた人の名前や id を読んでいる`);
     }
     // settings.json が、実在する Hook を指していること
     if (!existsSync(join(ROOT, SETTINGS))) fails.push(`${SETTINGS} が無い`);
@@ -2331,7 +2343,8 @@ head("6. 外部リンク");
       ? bad(`人に聞けなくなりうる: ${fails.join(" / ")}`
           + `（Slack が駄目でも、必ず端末で聞けること）`)
       : ok(`人に聞けなくならない（待ち ${waitMs / 1000} 秒 < Hook の timeout ${hookTimeoutSec} 秒`
-          + `・落ちても exit 0・履歴を読まない・.envrc / .env は git に入っていない）`);
+          + `・落ちても exit 0・履歴を読まない・人名を持ち出さない`
+          + `・.envrc / .env は git に入っていない）`);
   }
 }
 

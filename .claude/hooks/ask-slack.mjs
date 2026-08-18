@@ -127,7 +127,6 @@ try {
 
   // ---- 上限つきで待つ ----
   const answers = new Array(questions.length).fill(null);
-  let who = null;
   const ws = new WebSocket(conn.url);
   const result = await new Promise((done) => {
     const timer = setTimeout(() => done(null), WAIT_MS);
@@ -147,7 +146,6 @@ try {
         const [qi, oi] = String(act?.value ?? "").split(":");
         const q = questions[Number(qi)];
         if (!q) return;
-        who = pl.user?.username ?? pl.user?.id ?? null;
         if (oi === FREE) {
           // ⚠ trigger_id は 3 秒で失効する。ack の直後に開く
           const v = await api("views.open", BOT, {
@@ -175,7 +173,6 @@ try {
         ack({ response_action: "clear" });
         const qi = Number(pl.view.private_metadata);
         const text = pl.view.state?.values?.b?.a?.value ?? "";
-        who = pl.user?.username ?? pl.user?.id ?? who;
         if (!questions[qi] || !text.trim()) return;
         answers[qi] = text.trim();
         if (answers.every((a) => a !== null)) finish(answers);
@@ -202,12 +199,15 @@ try {
     blocks: [{ type: "section", text: { type: "mrkdwn", text: head } },
       ...questions.map((q, i) => ({ type: "section", text: { type: "mrkdwn",
         text: `*${q.question ?? ""}*\n→ ${result[i]}` } })),
-      { type: "context", elements: [{ type: "mrkdwn", text: `✅ ${who ?? "誰か"} が答えました` }] }],
+      { type: "context", elements: [{ type: "mrkdwn", text: "✅ 回答ずみ" }] }],
   }).catch(() => {});
 
   const said = questions.map((q, i) => `・${q.question ?? ""} → ${result[i]}`).join("\n");
   // ⚠ **同じ問いをもう一度出させない。**そう書かないと、この道具を呼び直して堂々巡りになる
-  const reason = `Slack で回答がありました（${who ?? "不明"}）。\n${said}\n`
+  // ⚠ **誰が答えたかは載せない。** 答えの中身だけを返す。
+  //   名前や id を混ぜると、記録（transcript・ログ・PR 本文）に人名が散る。
+  //   ⚠ 答えの正しさに、誰が押したかは関係ない。要るなら Slack 側を見ればよい。
+  const reason = `Slack で回答がありました。\n${said}\n`
     + `これを利用者の回答として扱い、AskUserQuestion を呼び直さずに続けること。`;
   process.stdout.write(JSON.stringify({
     hookSpecificOutput: {
