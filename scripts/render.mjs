@@ -510,6 +510,91 @@ const CASES = [
     },
   },
   {
+    // 描画は「変わる速さ」で分けてある（peel3d.js の paint / describe）。
+    // ⚠ 分ける前の実測（2026-08-18・豊洲・1280×900）:
+    //   再生 1 回（11.1 秒）で台帳（17 要素）を **299 回**作り直していた。
+    //   段は 9 つしかないので、298 回は同じものを組み直していたことになる。
+    //
+    // ⚠ **「作り直さない」だけを見ると、更新を止めても緑になる。**
+    //   だから 2 つを対にして見る:
+    //     同じ段の中で動かす → 作り直さない（言葉は変わらないので）
+    //     隣の段へ移る       → 必ず作り直す（言葉が変わるので）
+    //   片方だけでは、どちらの壊れ方も見つけられない。
+    name: "同じ段で動かしても根拠は組み直さず、段が変われば必ず組み直す", path: `/peel?${TOYOSU}`,
+    async check(page) {
+      await peelReady(page);
+      // ⚠ 地表のタイルが届くと台帳は**正しく**組み直る。数え始める前に落ち着かせる
+      await page.waitForTimeout(4000);
+      const watch = () => page.evaluate(() => {
+        window.__provHits = 0;
+        window.__provObs?.disconnect();
+        window.__provObs = new MutationObserver((rs) => { window.__provHits += rs.length; });
+        window.__provObs.observe(document.getElementById("prov"),
+          { childList: true, subtree: true, characterData: true });
+      });
+      // ⚠ **数えるのは、動かし終えて 1 呼吸おいてから。** MutationObserver の通知は
+      //   マイクロタスクなので、同じ evaluate の中で読むと**必ず 0**になる。
+      //   最初これで書いて、「組み直していない」が理由もなく緑になった（2026-08-18）。
+      const scrub = async (from, to, n) => {
+        const r = await page.evaluate(([from, to, n]) => {
+          const s = document.getElementById("t");
+          for (let k = 0; k <= n; k++) {
+            s.value = String(from + (to - from) * k / n);
+            s.dispatchEvent(new Event("input", { bubbles: true }));
+          }
+          return { label: document.querySelector("#era .y").textContent,
+                   knob: document.querySelector("#track .knob").style.left };
+        }, [from, to, n]);
+        await page.waitForTimeout(200);
+        return { ...r, hits: await page.evaluate(() => window.__provHits) };
+      };
+
+      // ---- ① 同じ段の中を 40 回動かす。言葉は変わらないので、組み直してはいけない ----
+      await page.evaluate(() => { const s = document.getElementById("t");
+        s.value = "0"; s.dispatchEvent(new Event("input", { bubbles: true })); });
+      await page.waitForTimeout(300);
+      await watch();
+      const a = await scrub(0, 40, 40);
+      must(a.hits <= 2, `同じ段の中で動かしただけで、根拠を ${a.hits} 回組み直している`
+        + `（40 回動かした。分ける前はこれが 40 回だった）`);
+      // ⚠ 動いていないから組み直していない、では意味がない。**絵は毎回動いている**
+      must(a.knob !== "" && a.knob !== "0%", `つまみが動いていない（${a.knob}）。絵まで止めている`);
+
+      // ---- ② 隣の段へ移る。言葉が変わるので、必ず組み直す ----
+      const before = a.label;
+      await watch();
+      const b = await scrub(40, 100, 12);
+      must(b.label !== before, `段を移ったのに年代の表示が ${before} のまま`);
+      must(b.hits >= 1, `段が変わったのに根拠を組み直していない（${b.hits} 回）`
+        + `。⚠ 出所が古いまま残る`);
+      // ⚠ 段を 1 つ移っただけで 12 回組み直していたら、分けた意味が無い
+      must(b.hits <= 4, `段を 1 つ移るのに根拠を ${b.hits} 回組み直している`);
+
+      // ---- ③ 組み直したあとも、押せるボタンが生きている ----
+      //   ⚠ 台帳の中のボタンは組み直すたびに**新しい要素**になる。張り直しを忘れると、
+      //     押しても何も起きないボタンになる（掟: 押しても何も起きない導線を置かない）。
+      const peek = await page.$("#prov .peek");
+      must(peek, "台帳に「光らせる」ボタンが無い");
+      const colorBefore = await page.evaluate(() =>
+        JSON.stringify(map.getPaintProperty("bld", "fill-extrusion-color")));
+      const box = await peek.boundingBox();
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+      await page.mouse.down();
+      await page.waitForTimeout(150);
+      const colorDown = await page.evaluate(() =>
+        JSON.stringify(map.getPaintProperty("bld", "fill-extrusion-color")));
+      await page.mouse.up();
+      await page.waitForTimeout(150);
+      const colorUp = await page.evaluate(() =>
+        JSON.stringify(map.getPaintProperty("bld", "fill-extrusion-color")));
+      must(colorDown !== colorBefore, "組み直したあと、光らせるボタンが効いていない");
+      must(colorUp === colorBefore, "離しても色が戻っていない（別の意味の色が居座る）");
+      return `同じ段で 40 回動かして組み直し ${a.hits} 回（つまみは ${a.knob} まで動いた）`
+        + ` ／ 段を 1 つ移って ${b.hits} 回（${before} → ${b.label}）`
+        + ` ／ 組み直したあとも光らせるボタンは効く`;
+    },
+  },
+  {
     // ⚠ **根拠は、地図を中途半端に覆いながら読ませない。**
     //   実測（2026-08-18・`tmp/probe-panel-open-sp.mjs`。パネルを開いた状態）:
     //

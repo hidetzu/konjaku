@@ -2119,6 +2119,144 @@ head("6. 外部リンク");
   }
 }
 
+// 「いま画面に出ているもの」（台帳）は **public/prov.js の1か所**。
+// ⚠ ここが掟の一行目（取れなかった ≠ 無い）を、いちばん広い面で守っている。
+//   以前は peel3d.js の render() の中で組んでいたので、
+//   **ブラウザを立てて、その状態を実際に作れたときしか**確かめられなかった。
+//   DOM も地図も見ない形にしたので、ここで**全組み合わせ**を回す。
+// ⚠ 字面ではなく **tag**（実測／未取得／欠落／未対応／推定）で見る。
+//   文言は変わる。変わってはいけないのは「どの語を使ってよいか」のほう。
+{
+  await import(`file://${join(PUB, "prov.js")}`);
+  const P = globalThis.KonjakuProv;
+  const fails = [];
+  const eq = (got, want, what) => { if (got !== want) fails.push(`${what}: ${got} ≠ ${want}`); };
+  const yes = (c, what) => { if (!c) fails.push(what); };
+
+  if (!P) fails.push("prov.js を読み込めない（この検査が何も見ていない）");
+  else {
+    const ERA = { label: "1984–86" };
+    // ---- 地表。届いていないなら「実測」と言わない ----
+    eq(P.groundRow(true, ERA).tag, "実測", "届いた地表");
+    eq(P.groundRow(false, ERA).tag, "未取得", "届いていない地表");
+    yes(P.groundRow(false, ERA).body.includes("1984–86"), "届いていない地表に、どの年代かが無い");
+    yes(P.groundRow(false, null).body.includes("明治期"), "明治期の地表の呼び名");
+    // ⚠ ここが本丸。届いていないことを「無い」と言わせない
+    yes(/記録の有無は分かっていない/.test(P.groundRow(false, ERA).note ?? ""),
+      "届いていない地表に「記録の有無は分かっていない」が無い");
+
+    // ---- 水面。読めなかった（未取得）と、本当に無い（欠落）を混ぜない ----
+    eq(P.waterRow({ waterRead: true }).tag, "実測", "読めた水面");
+    eq(P.waterRow({ waterRead: false, waterUnread: true }).tag, "未取得", "読めなかった水面");
+    eq(P.waterRow({ waterRead: false, waterUnread: false }).tag, "欠落", "本当に無い水面");
+
+    // ---- 建物。0 件は「読んだ結果」なので実測の側 ----
+    eq(P.buildingRows({ bldState: "loading" })[0].tag, "未取得", "取得中の建物");
+    eq(P.buildingRows({ bldState: "notyet" })[0].tag, "未対応", "まだ提供していない建物");
+    eq(P.buildingRows({ bldState: "fail" })[0].tag, "未取得", "取れなかった建物");
+    eq(P.buildingRows({ bldState: "ok", total: 0, bldSource: "overpass" })[0].tag, "実測",
+      "正常に 0 件だった建物");
+    yes(/OSM に登録が無いだけで/.test(P.buildingRows({ bldState: "ok", total: 0 })[0].note ?? ""),
+      "0 件のときに「現地に無いとは限らない」が無い");
+    // ⚠ 「届かなかった」と言う行には、打ち消しの但し書きが要る。
+    //   ⚠ **水面の行だけ、いまこれを持っていない**（2026-08-18 にこの検査で見つけた）。
+    //     このリファクタでは文言を変えない約束なので直していない。`tmp/9/24` に記録した。
+    for (const [rowOf, what] of [
+      [() => P.groundRow(false, ERA), "地表"],
+      [() => P.buildingRows({ bldState: "loading" })[0], "取得中の建物"],
+      [() => P.buildingRows({ bldState: "fail" })[0], "取れなかった建物"],
+      [() => P.unreadRow({ unread: 232 })[0], "足元を判定できなかった建物"],
+    ]) {
+      const r = rowOf();
+      yes(/限らない|分かっていない/.test(r.note ?? ""), `${what}の「未取得」に打ち消しの但し書きが無い`);
+    }
+    // ⚠ 「未対応」は**こちらの都合**。通信の話に読ませない（CLAUDE.md §4-1）
+    {
+      const r = P.buildingRows({ bldState: "notyet" })[0];
+      yes(/通信の問題ではありません/.test(r.note ?? ""), "未対応に「通信の問題ではありません」が無い");
+      yes(!/取得中|取得できませんでした|届いていない/.test(r.body + (r.note ?? "")),
+        "未対応の行が、通信のせいに読める言い方をしている");
+      yes(/現地に建物が無いという意味でもありません/.test(r.note ?? ""),
+        "未対応に「現地に無いという意味ではない」が無い");
+    }
+    // 建設年が1件も分かっていないときは、光らせるボタンを出さない（押しても何も起きない導線）
+    eq(P.buildingRows({ bldState: "ok", total: 9, dated: 0 }).at(-1).peek, null,
+      "建設年 0 件なのに光らせるボタンがある");
+    yes(P.buildingRows({ bldState: "ok", total: 9, dated: 3 }).at(-1).peek?.id === "peekY",
+      "建設年があるのに光らせるボタンが無い");
+
+    // ---- 全組み合わせ。⚠ ここが「ブラウザでは作れない状態」を含む ----
+    const TAGS = new Set(Object.values(P.TAGS));
+    let n = 0;
+    for (const groundArrived of [true, false])
+    for (const era of [null, ERA])
+    for (const area of [null,
+        { waterRead: true, bldState: "loading" },
+        { waterRead: true, bldState: "notyet" },
+        { waterRead: true, bldState: "fail" },
+        { waterRead: false, waterUnread: true, bldState: "fail" },
+        { waterRead: false, waterUnread: false, bldState: "ok", total: 0, bldSource: "tile" },
+        { waterRead: true, bldState: "ok", total: 0, bldSource: "overpass" },
+        { waterRead: true, bldState: "ok", total: 533, dated: 8, unread: 0,
+          hSrc: { measured: 42, levels: 64, default: 427 } },
+        { waterRead: false, waterUnread: true, bldState: "ok", total: 5017, dated: 0, unread: 232 }]) {
+      const rows = P.rows({ groundArrived, era, area });
+      n++;
+      for (const r of rows) {
+        if (!TAGS.has(r.tag)) fails.push(`知らない語が台帳に出た: ${r.tag}`);
+        if (!["ok", "no", "est"].includes(r.level)) fails.push(`知らない level: ${r.level}`);
+        // ⚠ 「読めなかった」の行が、**その事物が無い**と言い切っていないか。
+        //   ⚠ 打ち消し（「無いとは限らない」等）は先に落とす。落とさないと、
+        //     守っている行のほうが引っかかる。
+        //   ⚠ 見るのは**事物の有無**だけ。「まだ提供していません」はこちらの都合の話で、
+        //     現地に無いとは言っていないので、当ててはいけない。
+        if (r.tag === "未取得" || r.tag === "未対応") {
+          const t = (r.body + " " + (r.note ?? ""))
+            .replace(/無いとは限らない|無いという意味でもありません|有無は分かっていない/g, "");
+          if (/(建物|記録|データ|写真|資料)(は|が)(無い|ありません|存在しません)/.test(t))
+            fails.push(`「${r.tag}」の行が、無いと言い切っている: ${r.body}`);
+        }
+      }
+      // 地表の行は必ず先頭に 1 つ。出ているものの出所を落とさない
+      if (rows[0].body.indexOf("地表") !== 0) fails.push("台帳の先頭が地表の行ではない");
+      // HTML は 1 か所でしか作らない。行の数だけ div が出る
+      const html = P.html(rows);
+      eq((html.match(/<div class="prov /g) ?? []).length, rows.length, "行の数と div の数");
+      if (/<script|onerror=|javascript:/i.test(html)) fails.push("台帳の HTML に危ないものが入った");
+    }
+    eq(n, 36, "回した組み合わせの数");
+  }
+  fails.length
+    ? bad(`prov.js の単体テストが失敗（${fails.length} 件）: ${fails.slice(0, 6).join(" / ")}`)
+    : ok(`prov.js を動かして確認（語彙 5・36 通りの状態で、読めなかったことを「無い」と言わない）`);
+}
+
+// 地表のタイルが「その地点を覆っているか」の計算（peel3d.js の tilesCover）。
+// ⚠ ブラウザでは、狙ったタイルだけを届かせる／届かせない状態を作れない。
+//   関数を取り出して直に回す。⚠ **取り出せなくなったら落とす**（黙って素通りさせない）。
+{
+  const m = /\nfunction tilesCover\(keys,xf,yf,z0\)\{[\s\S]*?\n\}/.exec(src["peel3d.js"] ?? "");
+  if (!m) bad("peel3d.js の tilesCover を取り出せない（この検査が何も見ていない）");
+  else {
+    const f = new Function(`${m[0]}\nreturn tilesCover;`)();
+    const fails = [];
+    const yes = (c, what) => { if (!c) fails.push(what); };
+    const Z = 16;
+    // 同じ段（z16）。中心が入っているタイルだけが根拠になる
+    yes(f(["16/58210/25806"], 58210.5, 25806.5, Z) === true, "同じ段で覆っている");
+    yes(f(["16/58210/25806"], 58211.5, 25806.5, Z) === false, "隣のタイルは根拠にならない");
+    // ⚠ 地図は表示ズーム+1段で取ることがある。段を決め打ちしない
+    yes(f(["17/116421/51613"], 58210.5, 25806.5, Z) === true, "1段下（z17）でも覆っていると分かる");
+    yes(f(["15/29105/12903"], 58210.5, 25806.5, Z) === true, "1段上（z15）でも覆っていると分かる");
+    yes(f([], 58210.5, 25806.5, Z) === false, "1枚も来ていなければ覆っていない");
+    // ⚠ 「1枚でも読めた」では駄目。別の場所のタイルは、この地点の根拠にならない
+    yes(f(["16/1/1", "16/2/2"], 58210.5, 25806.5, Z) === false, "別の場所のタイルは根拠にならない");
+    fails.length
+      ? bad(`tilesCover の単体テストが失敗（${fails.length} 件）: ${fails.join(" / ")}`)
+      : ok(`tilesCover を動かして確認（同じ段・上下1段・別の場所・空）`);
+  }
+}
+
 // ---------- 7. 外部から来た文字列を HTML として実行させない ----------
 head("7. 外部から来た文字列");
 // 実際に踏んだ（2026-08-15）。配信物は一切変えず、応答だけ差し替えて広島を開くと、
@@ -2469,8 +2607,10 @@ head("9. 画面の言葉");
       files: ["index.html", "verify.js", "share.js"], seat: "正常0件（明治期タイルは読めた）。共有カードにも出る" },
     { word: "判定できません", kind: "状態", live: 7, next: "#9c",
       files: ["index.html", "verify.js", "peel3d.js"], seat: "判定できない。「判定できませんでした」も含む" },
-    { word: "未取得", kind: "状態", live: 6, next: "#9e",
-      files: ["index.html", "peel3d.js"], seat: "取得方法バッジと、/peel の台帳。⚠ 2画面にある" },
+    { word: "未取得", kind: "状態", live: 7, next: "#9e",
+      files: ["index.html", "peel3d.js", "prov.js"],
+      seat: "取得方法バッジと、/peel の台帳。⚠ 2画面にある。"
+          + "⚠ 台帳の側は 2026-08-18 に prov.js へ寄せた（peel3d.js に残るのはコメントだけ）" },
   ];
   {
     const count = (w, fs) => fs.reduce((a, f) => a + (seen[f] ?? "").split(w).length - 1, 0);
@@ -2487,6 +2627,31 @@ head("9. 画面の言葉");
           + `（直したなら表も直す。増やしたなら、その語を画面に出してよいかを先に決める）`)
       : ok(`画面に出ている作り手側の語 ${SCREEN_WORDS.filter((w) => w.kind === "分類").length} 件・`
           + `状態を指す語 ${SCREEN_WORDS.filter((w) => w.kind === "状態").length} 件が、棚卸しのとおり`);
+  }
+
+  // ⚠ 台帳（prov.js）が読むものは、**言葉を組み直す鍵**（peel3d.js の describeKey）に
+  //   全部載っていなければならない。載っていないと、データが変わったのに
+  //   describe() が早期 return して、**画面が古い数字のまま残る**（黙って古いものを見せる）。
+  //
+  // ⚠ これは「同じ問いに答えるものを 2 つ持っている」状態そのもの（掟）。
+  //   1 つにはできない（片方は文面、片方は更新の判断）ので、**機械で突き合わせる**。
+  // ⚠ 読むのは **seen**（コメントを落としたあとの本文）。生のソースを読むと、
+  //   この照合を説明したコメントの字面を自分で拾う（CLAUDE.md §5。3 回踏んでいる）。
+  {
+    const provSrc = seen["prov.js"] ?? "";
+    const peelSrc = seen["peel3d.js"] ?? "";
+    const keyExpr = /function describeKey\([\s\S]*?\n\}/.exec(peelSrc)?.[0];
+    const read = [...new Set([...provSrc.matchAll(/\barea\.(\w+)/g)].map((m) => m[1]))].sort();
+    if (!keyExpr) bad("peel3d.js の describeKey を取り出せない（この照合が何も見ていない）");
+    else if (!read.length) bad("prov.js が area の何を読んでいるか取り出せない（この照合が何も見ていない）");
+    else {
+      const miss = read.filter((f) => !new RegExp(`area\\.${f}\\b`).test(keyExpr));
+      miss.length
+        ? bad(`台帳が読む area.${miss.join(" / area.")} が describeKey に載っていない`
+            + `（変わっても画面が組み直されず、古い数字が残る）`)
+        : ok(`台帳が読む area の ${read.length} 項目（${read.join("・")}）が、`
+            + `すべて describeKey に載っている`);
+    }
   }
 
   // ⚠ 短い語（「自分」）は本文の検索で数えられない。宣言そのものを読む。
