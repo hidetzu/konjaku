@@ -513,6 +513,95 @@ const CASES = [
     },
   },
   {
+    // ⚠ 年代の箱・年代を動かす帯の**頭**を細くする。狭い画面ほど地図が見えなくなるため。
+    //   実測（2026-08-19・320幅・1936–42 の段）: 箱が画面の **82%** を占めていた。
+    //     年代 76px（⚠ 2 行に割れて 38px 損）／但し書き 69px／いまのもの 42px／押すと 30px
+    // ⚠ **押せる大きさ 44×44 は削らない**（掟）。削るのは見た目の幅だけ。
+    // ⚠ 「表示中」は消すが、**出ていないときは必ず名乗る**
+    //   （「出ていないものを表示中と言わない」で入れた性質。崩さない）。
+    name: "年代の頭を細くしても、押せる大きさと名乗りは残る", path: `/peel?${TOYOSU}`,
+    viewport: { width: 320, height: 640 }, hasTouch: true,
+    async check(page) {
+      await page.waitForFunction(() => /件を判定しました/.test(document.body.innerText),
+        null, { timeout: 60000 });
+      await page.waitForTimeout(1500);
+      const at = (k) => page.evaluate((k) => {
+        const s = document.getElementById("t");
+        if (Number(s.max) < k * 100) return false;
+        s.value = String(k * 100); s.dispatchEvent(new Event("input", { bubbles: true }));
+        return true;
+      }, k);
+      const read = () => page.evaluate(() => {
+        const g = (sel) => { const e = document.querySelector(sel); if (!e) return null;
+          const r = e.getBoundingClientRect();
+          const cx = Math.round(r.x + r.width / 2), cy = Math.round(r.y + r.height / 2);
+          const who = document.elementFromPoint(cx, cy);
+          return { t: e.textContent.trim(), w: Math.round(r.width), h: Math.round(r.height),
+            right: Math.round(r.right),
+            hit: who ? (who.id || who.closest("[id]")?.id || who.tagName) : "無い" }; };
+        // ⚠ 文字が本当に箱に収まっているか。**枠ではなく文字の実寸**で見る
+        const y = document.querySelector("#era .y");
+        const rng = document.createRange(); rng.selectNodeContents(y);
+        const tr = rng.getBoundingClientRect();
+        const box = document.getElementById("era").getBoundingClientRect();
+        const kick = document.querySelector("#era .kick");
+        return { y: g("#era .y"), et: g("#eraToggle"), tt: g("#timeToggle"),
+          textW: Math.round(tr.width), boxRight: Math.round(box.right), textRight: Math.round(tr.right),
+          kickText: kick ? kick.textContent.trim() : null,
+          eraH: Math.round(box.height) };
+      });
+      // ---- ① どの段でも、年代は 1 行で、箱からはみ出さない ----
+      const heights = [];
+      for (let k = 0; k < 9; k++) {
+        if (!await at(k)) break;
+        await page.waitForTimeout(250);
+        const r = await read();
+        must(r.y.h <= 46, `年代「${r.y.t}」が 2 行に割れている（${r.y.h}px）。そのぶん地図が減る`);
+        must(r.textRight <= r.boxRight, `年代「${r.y.t}」が箱からはみ出している`);
+        // ⚠ **普段は名乗らない。**出ているのが当たり前のときに主役から目を奪わない
+        must(!r.kickText, `届いているのに「${r.kickText}」と名乗っている`);
+        heights.push(r.eraH);
+      }
+      must(heights.length >= 4, `段が少なすぎて検査にならない（${heights.length}）`);
+
+      // ---- ② 開閉は細いが、押せる大きさは 44px を割らない ----
+      const r = await read();
+      for (const [nm, x] of [["年代の開閉", r.et], ["帯の開閉", r.tt]]) {
+        must(x, `${nm} が無い`);
+        must(x.w >= 44 && x.h >= 44, `${nm} が指で押せない（${x.w}×${x.h}）`);
+        must(x.w <= 52, `${nm} が細くなっていない（${x.w}px）。狭い画面で幅を食う`);
+        must(x.hit === (nm === "年代の開閉" ? "eraToggle" : "timeToggle"),
+          `${nm} を押しても、当たるのは「${x.hit}」`);
+      }
+      // ⚠ 記号だけにしたぶん、**読み上げには名乗りを残す**
+      const aria = await page.evaluate(() => [
+        document.getElementById("eraToggle").getAttribute("aria-label"),
+        document.getElementById("timeToggle").getAttribute("aria-label")]);
+      for (const a of aria) must(a && a.length > 3, `開閉ボタンの読み上げの名乗りが無い（${a}）`);
+      // ⚠ 記号の向きは CSS が回す。**JS と二重に反転させない**（一度踏んだ）
+      const before = await page.evaluate(() => {
+        const c = document.querySelector("#eraToggle .chevron");
+        return { ch: c.textContent, rot: getComputedStyle(c).transform };
+      });
+      await page.click("#eraToggle");
+      await page.waitForTimeout(400);
+      const after = await page.evaluate(() => {
+        const c = document.querySelector("#eraToggle .chevron");
+        return { ch: c.textContent, rot: getComputedStyle(c).transform,
+          expanded: document.getElementById("eraToggle").getAttribute("aria-expanded"),
+          aria: document.getElementById("eraToggle").getAttribute("aria-label") };
+      });
+      must(after.ch === before.ch,
+        `記号そのものを差し替えている（${before.ch}→${after.ch}）。回転と二重になって向きが狂う`);
+      must(after.rot !== before.rot, `閉じても記号の向きが変わっていない`);
+      must(after.expanded === "false", `閉じたのに aria-expanded が ${after.expanded}`);
+      must(/開く/.test(after.aria ?? ""), `閉じたのに読み上げが「${after.aria}」のまま`);
+      return `320 幅・全 ${heights.length} 段とも年代は 1 行で箱に収まる`
+        + `／#era ${Math.min(...heights)}〜${Math.max(...heights)}px`
+        + `／開閉 ${r.et.w}×${r.et.h}px（読み上げあり）`;
+    },
+  },
+  {
     // ⚠ **根拠を全画面で読んでいる最中に、地図へ戻る手段が消えてはいけない。**
     //   実測（2026-08-18・375×667）: ✕ はパネルの中で position:absolute だったので、
     //   パネルと一緒に流れて **400px スクロールで y=-298**（画面外）。
@@ -705,7 +794,9 @@ const CASES = [
       // ② 届いたら、元に戻る
       await page.waitForTimeout(6000);
       const back = await read();
-      must(back.kick === "表示中", `届いたのに「${back.kick}」のまま`);
+      // ⚠ **届いたら名乗らない**（2026-08-19 に変えた）。名乗るのは出ていないときだけ。
+      //   ⚠ 守りたいのは「出ていないものを表示中と言わない」ほうで、名乗りの有無ではない。
+      must(!back.kick, `届いたのに「${back.kick}」と名乗っている（普段は名乗らない）`);
       must(/空中写真/.test(back.s), `届いたのに説明が戻っていない: ${back.s}`);
       return `届いていないあいだ「${away.kick} ${away.y} / ${away.s}」`
         + ` → 届いたら「${back.kick} ${back.y} / ${back.s}」`;
@@ -734,7 +825,8 @@ const CASES = [
         }
         return [...new Set(hit)];
       });
-      must(seen.join("／") === "表示中",
+      // ⚠ 普通につながっていれば、**一度も名乗らない**（＝空のまま）
+      must(seen.join("／") === "",
         `普通につながっているのに「${seen.join("／")}」が出た（猶予が効いていない）`);
       // 重なりを見る。⚠ 矩形だけでは足りない。その座標を誰が受け取るかで見る
       const lap = await page.evaluate(() => {
@@ -748,7 +840,7 @@ const CASES = [
       });
       must(!lap.over, `名乗りが「閉じる」と重なっている`);
       must(lap.right <= lap.W, `名乗りが画面からはみ出している（右端 ${lap.right} / 幅 ${lap.W}）`);
-      return `320 幅で段を 9 つ送っても名乗りは「${seen.join("／")}」だけ／`
+      return `320 幅で段を 9 つ送っても一度も名乗らない／`
         + `右端 ${lap.right} ≦ 幅 ${lap.W}／「閉じる」と重ならない`;
     },
   },
