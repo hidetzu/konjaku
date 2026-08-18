@@ -1333,6 +1333,32 @@ function onTileData(e){
   if(ground&&!ground.ok&&ground.id===e.sourceId) render();
 }
 map.on("data",onTileData);
+
+// 落ちたことを覚える。⚠ **成功しか数えていないと、「まだ来ていない」と「落ちた」が
+//   どちらも false になり、区別できない。**
+// ⚠ 実測（2026-08-18・tmp/probe-map-error.mjs・豊洲）。何が拾えるかは落とし方で違う:
+//     404（写真が無い） … **error が来ない**（MapLibre は 404 を異常と見なさない）
+//     403（拒否）       … 106 回。status 403
+//     通信断            … 76 回。status 0
+//     応答が返らない     … 来ない（まだ待っているので、それが正しい）
+// ⚠ **404 は「遅い」と区別できない。** ここは分からないままにする。
+//   分からないことを、分かったように書かない（掟）。
+const failedSources=new Map();   // source id → いちばん最近の落ち方
+function onMapError(e){
+  const id=e.sourceId;
+  if(!id) return;
+  const st=e.error?.status;
+  // ⚠ 語彙は places.js の whyOf に合わせる（掟: 同じ問いに答える実装を2つ持たない）
+  const why=st===0||st==null ? "通信できません"
+          : st===403||st===401 ? "サーバが拒否しました"
+          : st>=500 ? `サーバが ${st} を返しました`
+          : `サーバが ${st} を返しました`;
+  const had=failedSources.get(id);
+  failedSources.set(id,{ status:st??0, why });
+  // 落ち方が変わった／初めて落ちたときだけ描き直す。1枚ごとに描き直さない
+  if(!had||had.why!==why) render();
+}
+map.on("error",onMapError);
 // その地点を覆うタイルが読めているか。どのズーム段で取りに行くかは地図側の都合で
 // 変わる（256px タイルは表示ズーム+1段で取る）ので、読めたタイルの側から
 // 「中心を含むか」で見る。段を決め打ちしないぶん、再生中のズーム変化にも耐える。
@@ -1347,6 +1373,19 @@ function tilesCover(keys,xf,yf,z0){
   }
   return false;
 }
+// 地表がいまどういう状態か。⚠ **地図も DOM も見ない。**（検査が直に回す）
+//   arrived … その地点を覆うタイルが読めた
+//   late    … 猶予を過ぎても読めていない
+//   fail    … 落ちたことを実際に観測した（why はその理由）
+// ⚠ **fail と late を混ぜない。** late は「まだ来ていない／404 で写真が無い」を含み、
+//   こちらは理由を知らない。知らないことを「読み込めませんでした」と書かない。
+function groundState(arrived, late, fail){
+  if(arrived) return { kind:"ok" };
+  if(fail) return { kind:"fail", why:fail.why };
+  if(late) return { kind:"late" };
+  return { kind:"pending" };
+}
+
 function rasterArrived(id){
   const s=okTiles.get(id);
   if(!s) return false;
@@ -1452,8 +1491,8 @@ const provEl=document.getElementById("prov");
 // 言葉を変えうるものの一覧。
 // ⚠ **ここに挙げたものだけが、言葉を変える。**足したのに挙げ忘れると、
 //   データが変わったのに画面が古いまま残る（黙って古い数字を見せることになる）。
-function describeKey(v,gid,arrived,late){
-  return JSON.stringify([v.cur.label,gid,arrived,late,v.bldVisible,v.pos>.02,picked,
+function describeKey(v,gid,arrived,late,why,online){
+  return JSON.stringify([v.cur.label,gid,arrived,late,why,online,v.bldVisible,v.pos>.02,picked,
     area&&[area.waterRead,area.waterUnread,area.bldState,area.total,area.bldSource,
            area.dated,area.unread,
            area.hSrc&&[area.hSrc.measured,area.hSrc.levels,area.hSrc.default]]]);
@@ -1474,12 +1513,28 @@ const GROUND_GRACE_MS = 1200;
 // ⚠ 「表示中」は、その年代の地面が本当に画面に出ているときだけ。
 // ⚠ 「読み込めませんでした」とは書かない。落ちたのか、まだ来ていないのかを、いまは知らない。
 //   知らないことを断定しない（掟: 取得できなかった ≠ 存在しなかった）。
-function eraReadout(late, isLatest, isMeiji, sub){
-  if(!late) return { kick:"表示中", sub };
-  return { kick:"選択中",
-    sub: isMeiji  ? "明治期の地面は、まだ出ていません"
-       : isLatest ? "いまの街の写真は、まだ出ていません"
-                  : "この年代の写真は、まだ出ていません" };
+//
+// ⚠ **「まだ出ていません」と「読み込めませんでした」を混ぜない。**
+//   前者は理由を知らない（遅いのか、404 でその写真が無いのか、区別できない）。
+//   後者は**落ちたのを実際に観測した**ときだけ言う。
+//   実測（2026-08-18・tmp/probe-map-error.mjs）: 403 と通信断は map.on("error") で
+//   拾えるが、**404 は拾えない**（MapLibre は 404 を異常と見なさない）。
+//
+// ⚠ **接続の話は、こちらが知っている範囲でしか言わない。**
+//   online===false … 圏外だと端末が言っている。**言い切ってよい**
+//   online===true  … つながっているのに取れない理由を、こちらは知らない。
+//                    「確認してください」に留める（誰のせいとも断定しない）
+// ⚠ 語彙は places.js の検索側に合わせる（掟: 同じ問いに答える実装を2つ持たない）。
+function eraReadout(state, isLatest, isMeiji, sub, online){
+  const what = isMeiji ? "明治期の地面" : isLatest ? "いまの街の写真" : "この年代の写真";
+  if(state?.kind==="ok"||!state) return { kick:"表示中", sub };
+  if(state.kind==="fail")
+    return { kick:"出せません",
+      sub:`${what}を読み込めませんでした（${state.why}）`,
+      hint: online===false ? "インターネットに接続していません"
+                           : "接続を確認してください" };
+  if(state.kind==="late") return { kick:"選択中", sub:`${what}は、まだ出ていません` };
+  return { kick:"表示中", sub };
 }
 let groundGid=null, groundSince=0, groundTimer=null;
 function groundLate(gid, arrived){
@@ -1497,21 +1552,26 @@ function describe(v){
   const gid=near?near.id:"swale";
   const arrived=rasterArrived(gid);
   const late=groundLate(gid,arrived);
+  const gstate=groundState(arrived, late, failedSources.get(gid));
   // 猶予が明けたら、もう一度だけ描き直す（届けば onTileData が描き直す）
   if(groundTimer){ clearTimeout(groundTimer); groundTimer=null; }
   if(!arrived&&!late)
     groundTimer=setTimeout(render, GROUND_GRACE_MS-(performance.now()-groundSince)+30);
-  const key=describeKey(v,gid,arrived,late);
+  const key=describeKey(v,gid,arrived,late,gstate.why??"",navigator.onLine);
   if(key===described) return;
   described=key;
   ground={ id:gid, ok:arrived };
 
   eraEl.querySelector(".y").textContent=cur.label;
-  const read=eraReadout(late, !!near&&near.id===Konjaku.LATEST.id, !near,
-                        near?subOf(near):MEIJI.sub);
+  const read=eraReadout(gstate, !!near&&near.id===Konjaku.LATEST.id, !near,
+                        near?subOf(near):MEIJI.sub, navigator.onLine);
   eraEl.querySelector(".kick").textContent=read.kick;
   eraEl.querySelector(".s").textContent=read.sub;
-  eraEl.classList.toggle("waiting",late);
+  // ⚠ 接続の話は**別の行**に置く。写真の話と混ぜると、どちらが事実か読めなくなる
+  const netEl=eraEl.querySelector(".era-net");
+  if(netEl) netEl.textContent=read.hint ?? "";
+  eraEl.classList.toggle("waiting",gstate.kind==="late");
+  eraEl.classList.toggle("failed",gstate.kind==="fail");
   eraEl.classList.toggle("meiji",!near); trackEl.classList.toggle("meiji",!near);
   slider.setAttribute("aria-valuetext",cur.label);
   if(timeSummaryEl) timeSummaryEl.textContent=cur.label;
