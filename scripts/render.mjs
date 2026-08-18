@@ -592,9 +592,46 @@ const CASES = [
       must(again.center.inMap,
         `閉じたのに地図へ戻っていない（中心を受け取るのが ${again.center.name}）`);
       must(again.zoom && again.zoom.h >= 44, `閉じてもズームが押せる大きさで出ていない: ${JSON.stringify(again.zoom)}`);
+      // (4) ⚠ **← と ✕ の行き先が、押す前に分かること。**
+      //   利用者役 3/3 が「どちらが今の場所を捨てるボタンか分からない」「怖いので押さない」
+      //   と答えた（両方とも「もどる」系の見た目だったため）。
+      //   ⚠ 字が出ているだけでなく、**2 つが違う字**であること。
+      await page.click("#toggle"); await page.waitForTimeout(600);
+      //   ⚠ **記号（← / ✕）を落としてから比べる。**落とさずに比べると、
+      //     行き先の字が同じでも記号の差で「違う」になり、この検査は何も見ていない
+      //     （2026-08-18 に壊して気づいた）。
+      const label = await page.evaluate(() => {
+        const word = (id) => (document.getElementById(id)?.innerText ?? "")
+          .replace(/[←✕×\s]/g, "");
+        return { back: word("back"), close: word("closePanel") };
+      });
+      must(label.back.length > 1 && label.close.length > 1,
+        `全画面で、戻る手段の行き先が字で出ていない: ← 「${label.back}」／✕ 「${label.close}」`);
+      must(label.back !== label.close,
+        `← と ✕ の行き先が同じ字になっている: どちらも「${label.back}」`);
+      // (5) ⚠ **「光らせる」を押したら、光る先（地図）が見えること。**
+      //   全画面のままだと、押しても何も起きないボタンになる（3/3 が「二度と押さない」）。
+      const peek = page.locator("#peekH");
+      if (await peek.count()) {
+        const box = await peek.boundingBox();
+        await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+        await page.mouse.down();
+        await page.waitForTimeout(500);
+        const held = await page.evaluate(() => ({
+          open: !document.getElementById("panel").classList.contains("hide"),
+          inMap: (() => { const m = document.getElementById("map");
+            const e = document.elementFromPoint(Math.round(innerWidth / 2), Math.round(innerHeight / 2));
+            return !!m && !!e && m.contains(e); })(),
+        }));
+        await page.mouse.up();
+        must(!held.open && held.inMap,
+          "「光らせる」を押しても全画面のままで、光る先の地図が見えない"
+          + `（パネル開=${held.open} / 中心は地図=${held.inMap}）`);
+      }
       return `閉じ: 答えの板 ${shut.land.w}×${shut.land.h}px・中心は地図 ／`
-        + ` 開き: 画面の ${open.cover}%・✕ ${open.close.w}×${open.close.h}px・← ${open.back.w}×${open.back.h}px ／`
-        + ` 閉じ直し: 中心は地図・ズーム ${again.zoom.h}px`;
+        + ` 開き: 画面の ${open.cover}%・「${label.close}」${open.close.w}×${open.close.h}px・`
+        + `「${label.back}」${open.back.w}×${open.back.h}px ／`
+        + ` 光らせると地図が出る ／ 閉じ直し: 中心は地図・ズーム ${again.zoom.h}px`;
     },
   },
   {

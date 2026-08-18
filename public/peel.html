@@ -260,6 +260,8 @@
   #closePanel{position:absolute;top:11px;right:11px;width:26px;height:26px;border-radius:7px;
     border:1px solid var(--line);background:transparent;color:var(--ink-dim);cursor:pointer;font-size:var(--fs-note);padding:0}
   #closePanel:hover{border-color:var(--missing);color:var(--missing)}
+  /* ⚠ PC は地図が横に見えているので「地図へ」は嘘になる。字は狭い幅の全画面でだけ出す */
+  #closePanel span{display:none}
   h1{margin:0 0 2px;font-size:var(--fs-claim);letter-spacing:.05em}
   .lead{margin:0 0 12px;font-size:var(--fs-note);color:var(--ink-dim)}
   /* サービス名。共有リンクから来た人が「何のサイトか」「戻る先」を持てるように */
@@ -445,7 +447,12 @@
     #panel:not(.hide) ~ #hud{display:none}
     /* ⚠ 全画面から戻る手段は、指で押せる大きさにする（実測 26×26px だった）。
          ⚠ 「← もどる」はトップへ帰る別の操作。**混ぜない。** */
-    #closePanel{width:var(--tap);height:var(--tap);top:8px;right:8px;font-size:var(--fs-lead)}
+    /* ⚠ 全画面から戻る手段。字を添えて「← 今昔へ」と区別する（3/3 が区別できなかった） */
+    #closePanel{width:auto;min-width:var(--tap);height:var(--tap);top:8px;right:8px;
+      padding:0 12px;display:inline-flex;align-items:center;gap:6px;font-size:var(--fs-note)}
+    #closePanel span{display:inline}
+    /* ⚠ 全画面のときは幅に余裕がある。← の行き先を字で出す（狭い幅では既定で隠している） */
+    #panel:not(.hide) ~ #chrome a span{display:inline}
     /* ⚠ **「← もどる」は全画面の上にも残す。**（この画面の決まり: 戻る手段は常に見えている場所に置く）
          パネルを z-index 16 へ上げたとき、いったん ← が下敷きになった（実測 2026-08-18）。
          ✕ は「根拠を閉じて地図へ戻る」、← は「今昔へ帰る」で**別の操作**。混ぜない。
@@ -460,7 +467,7 @@
 
 
 <div id="panel" class="col">
-  <button id="closePanel" title="閉じる">✕</button>
+  <button id="closePanel" title="根拠を閉じて地図へもどる">✕<span>地図へ</span></button>
   <!-- ⚠ ここにあった「←今昔」は外した。地図の左上に「← もどる」（44px・常時）があり、
        同じことを2か所で言っていた。しかもパネルの中は 18px で、スマホでは
        パネルが閉じて始まるので**そもそも見えない**。 -->
@@ -543,7 +550,11 @@
 <div id="chrome">
   <!-- ⚠ href は loadArea が場所つきに書き換える（./?q=…&ll=…）。
        ここを "./" のままにすると、戻ったときに調べていた場所が消える -->
-  <a id="back" href="./" title="今昔にもどる">← <span>もどる</span></a>
+  <!-- ⚠ **「← 」と「✕」の行き先を、押す前に分かるようにする**（2026-08-18）。
+       利用者役 3/3 が「どちらが今の場所を捨てるボタンか分からない」「怖いので押さない」
+       と答えた。**両方とも「もどる」系の見た目**だったため。
+       → ← は**どこへ行くか**（今昔＝トップ）、✕ は**何をするか**（地図へ）を書く。 -->
+  <a id="back" href="./" title="今昔（トップ）にもどる">← <span>今昔へ</span></a>
   <button id="toggle" title="情報を開く">☰ <span>この土地について</span></button>
 </div>
 <!-- ⚠ この画面の中心の答え（建物の何%が明治期には水の上だったか）と、その分母。
