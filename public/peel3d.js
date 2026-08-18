@@ -1211,7 +1211,76 @@ function buildTicks(){
   // スライダーの目盛りと上限を、段の数に合わせる（1段 = 100）
   slider.max=String(n*100);
   if(Number(slider.value)>n*100) slider.value=String(n*100);
+  buildDrum();
 }
+
+// ============================================================
+// 横ドラムロール（狭い幅）
+//   段を横に並べ、指で回して真ん中で選ぶ。
+// ⚠ **値の正本は #t のまま。**ここは #t を動かすだけ。▶ もカメラも #t を見ている。
+//   別に値を持つと、再生中とドラム操作で答えが割れる（掟: 同じ問いに答える実装を2つ持たない）。
+// ⚠ 横棒では狭くて 4 段の名前を消していたが、ここは横スクロールなので**全段に名前を出す**。
+//   実測（2026-08-18）: 段は 9 つあり、**全部に名前はあった**（表示で間引いていただけ）。
+// ============================================================
+const drumEl=document.getElementById("drum");
+let drumSelf=false, drumTimer=null;
+function buildDrum(){
+  if(!drumEl) return;
+  drumEl.innerHTML=steps.map((s,k)=>
+    `<button class="d-it" type="button" data-i="${k}">${esc(s.label)}</button>`).join("");
+  // 全体のどこにいるかの点。⚠ 押せない（位置を知らせるだけ）
+  const pos=document.getElementById("drumPos");
+  if(pos) pos.innerHTML=steps.map(()=>"<i></i>").join("");
+  // 文字を押しても選べる（回すのが苦手な人の逃げ道）
+  drumEl.querySelectorAll(".d-it").forEach((b)=>{
+    b.onclick=()=>setStep(Number(b.dataset.i));
+  });
+  syncDrum(true);
+}
+// 段を選ぶ。⚠ #t を動かして input を投げる（既存の経路に一本化する）
+function setStep(k){
+  const v=Math.max(0,Math.min(steps.length-1,k))*100;
+  if(Number(slider.value)===v) return;
+  slider.value=String(v);
+  slider.dispatchEvent(new Event("input",{bubbles:true}));
+}
+// いまの値に合わせてドラムを寄せる。⚠ 自分で動かしている間は scroll を聞き返さない
+function syncDrum(instant){
+  if(!drumEl||!drumEl.offsetParent) return;      // PC（display:none）では何もしない
+  const it=drumEl.querySelectorAll(".d-it");
+  if(!it.length) return;
+  const pos=Number(slider.value)/100;
+  const i=Math.max(0,Math.min(it.length-1,Math.round(pos)));
+  it.forEach((b,k)=>b.classList.toggle("on",k===i));
+  document.getElementById("drumPos")?.querySelectorAll("i")
+    .forEach((d,k)=>d.classList.toggle("on",k===i));
+  // ⚠ 連続値（再生中）でも追えるよう、段と段の間を按分する
+  const a=it[Math.floor(pos)]??it[i], b2=it[Math.ceil(pos)]??it[i];
+  const f=pos-Math.floor(pos);
+  const cx=(a.offsetLeft+a.offsetWidth/2)*(1-f)+(b2.offsetLeft+b2.offsetWidth/2)*f;
+  const want=Math.round(cx-drumEl.clientWidth/2);
+  if(Math.abs(drumEl.scrollLeft-want)<1) return;
+  drumSelf=true;
+  drumEl.scrollTo({left:want,behavior:instant?"auto":"smooth"});
+  clearTimeout(drumTimer);
+  drumTimer=setTimeout(()=>{ drumSelf=false; },260);
+}
+// 指で回したら、真ん中に来た段を選ぶ
+let drumStill=null;
+drumEl?.addEventListener("scroll",()=>{
+  if(drumSelf) return;
+  clearTimeout(drumStill);
+  // ⚠ 止まってから決める。動いている途中で決めると、通り過ぎた段を全部選ぶことになる
+  drumStill=setTimeout(()=>{
+    const it=drumEl.querySelectorAll(".d-it");
+    if(!it.length) return;
+    const c=drumEl.scrollLeft+drumEl.clientWidth/2;
+    let best=0,bd=Infinity;
+    it.forEach((b,k)=>{ const d=Math.abs(b.offsetLeft+b.offsetWidth/2-c);
+      if(d<bd){bd=d;best=k;} });
+    setStep(best);
+  },90);
+});
 buildTicks();
 
 // ============================================================
@@ -1478,7 +1547,7 @@ function render(){
 //   載せたいのは段までなので、段が同じあいだは書く必要も無い。
 let urlStep=null;
 slider.addEventListener("input",()=>{
-  stop(); render();
+  stop(); render(); syncDrum(true);
   const k=stepNow();
   if(k!==urlStep){ urlStep=k; syncUrl(); }
 });
@@ -1499,13 +1568,22 @@ const TAP_SLOP=6;         // これ以下の移動はタップ。指で押すと
 let labFrom=null;
 // ⚠ 文字は pointer-events:none なので e.target には出てこない。箱で当てる。
 //   文字を間引いた（空の）ラベルは的にしない（押しても何が選ばれたのか読めない）
+// ⚠ **重なったときは、中心がいちばん近いものを選ぶ。**
+//   箱を指の大きさ（44px）まで広げたら、狭い画面で隣と重なった。
+//   DOM の順に最初の1つを返していたので、320×640 で「明治期」を押すと
+//   手前の「1945–50」が当たり、**値が 600 で止まった**（実測 2026-08-18）。
+//   ⚠ 重なりを消す方向では直せない。320px では文字の間隔が 55px しかなく、
+//     「1984–86」の字だけで 53px ある。**重なる前提で、境目を中点に置く。**
 const labAt=(x,y)=>{
+  let best=null, bestD=Infinity;
   for(const el of trackEl.querySelectorAll(".lab")){
     if(!el.textContent.trim()) continue;
     const r=el.getBoundingClientRect();
-    if(x>=r.left&&x<=r.right&&y>=r.top&&y<=r.bottom) return el;
+    if(x<r.left||x>r.right||y<r.top||y>r.bottom) continue;
+    const d=Math.abs(x-(r.left+r.right)/2);
+    if(d<bestD){ bestD=d; best=el; }
   }
-  return null;
+  return best;
 };
 trackEl.addEventListener("pointerdown",(e)=>{
   const mark=labAt(e.clientX,e.clientY);
@@ -1587,6 +1665,9 @@ playBtn.onclick=()=>{
     const u=v/end;
     map.jumpTo({center:c,zoom:z0-u*.55,bearing:b0+u*46,pitch:Math.min(78,p0+u*10)});
     render();
+    // ⚠ 再生は input を投げずに #t を直接動かすので、ドラムはここで追わせる。
+    //   追わせないと、再生し終わったあとドラムだけ前の段に取り残される。
+    syncDrum(true);
     if(p<1) raf=requestAnimationFrame(step); else stop();
   };
   raf=requestAnimationFrame(step);
