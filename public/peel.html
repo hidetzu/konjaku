@@ -190,7 +190,7 @@
     justify-content:space-between;gap:10px}
   /* 見出しの行では、名乗り → ▶ → 閉じる の順。名乗りだけが伸び縮みする */
   .time-panel-name{flex:1}
-  .time-panel-head #play{margin-left:auto}
+
   .time-panel-name{min-width:0;display:flex;align-items:baseline;gap:9px;white-space:nowrap}
   #timePanelTitle{font-size:var(--fs-body);font-weight:600;letter-spacing:.05em;color:var(--ink)}
   .time-axis{font-size:var(--fs-note);color:#b8c2cd;letter-spacing:.04em}
@@ -215,11 +215,14 @@
   /* ⚠ **ノブは track の左へ半径ぶん（16px）はみ出す。**gap をそのぶん足さないと、
        見た目の隙間はゼロに近づく。実測: ノブを 25→32px にしたら gap 26px でも
        隙間が 4px に**悪化**した（2026-08-18）。gap 36 − はみ出し 16 = 20px を残す。 */
-  /* ⚠ ▶ は見出しの行へ移した。帯は全幅を使う。
-     ⚠ ノブは左右へ半径ぶん（16px）はみ出すので、その分だけ内側に寄せる。
-       寄せないと、右端（明治期）のノブが画面の縁に触れて、端末の「戻る」スワイプと喧嘩する
-       （実測 2026-08-18: 縁まで 10px だった）。 */
-  #bar{width:100%;display:flex;align-items:center;padding:0 16px}
+  /* ============ 年代の操作 ============
+     ⚠ **PC（横棒）とスマホ（横ドラムロール）で、置き方を完全に分ける。**
+       共有の既定に片方の都合を書くと、**もう片方が黙って壊れる**。
+       実際に壊した（2026-08-18）: スマホ向けに gap を外したら、
+       PC で **▶ とノブが 16px かぶった**（1280 / 1024 / 900 すべてで再現）。
+     ⚠ ここ（既定）には、**どちらの形にも共通する骨組みだけ**を置く。
+       寸法・余白・どちらを出すかは、下の 2 つのブロックが持つ。 */
+  #bar{width:100%;display:flex;align-items:center}
   /* ⚠ 実測 36〜38px。44px を割っていた（この画面の他の操作はそろえてある）。
      ⚠ **左端のノブとの隙間が 5px しか無かった**（実測 2026-08-18・375/320 とも）。
        「現在」へ戻そうとしてノブを掴み損ね、再生が始まる。#bar の gap で空ける。 */
@@ -283,6 +286,17 @@
   #track .rail,#track .fill,#track .tick,#track .lab,#track .knob{pointer-events:none}
   #track input{position:absolute;inset:0;width:100%;height:100%;
     opacity:0;cursor:pointer;margin:0}
+
+  /* ---- PC: 横棒（スライダー） ---- */
+  /* ⚠ PC は 1 段 77px あり、横棒のほうが一覧できる。ドラムは出さない。 */
+  @media(min-width:681px){
+    #drum,#drumWrap,#drumMark,#drumPos{display:none}
+    /* ⚠ **ノブは横棒の外へ半径ぶん（16px）はみ出す。**
+       gap にそのぶんを含めないと、いちばん左（現在）で ▶ と重なる。
+       ⚠ 左右の padding も同じ理由（右端＝明治期のノブが画面の縁に触れる）。 */
+    #bar{padding:0 16px;gap:36px}
+  }
+  #drum::-webkit-scrollbar{display:none}
 
   /* ============ パネル ============ */
   #panel{position:absolute;top:14px;left:14px;z-index:11;width:300px;
@@ -460,6 +474,48 @@
     #timePanelTitle{font-size:var(--fs-lead)}
     .time-panel-head{padding-left:11px;padding-right:5px}
     #chrome a span,#toggle span{display:none}
+
+    /* ============ 横ドラムロール ============ */
+    /* ⚠ 横棒（#track）は出さない。ただし **#t は DOM に残す**（値の正本・▶ が動かす）。 */
+    #track{display:none}
+    /* ⚠ **▶ と年代の枠を離す。**くっつけたら隙間 0px になり、年代の文字が ▶ の真横で
+         切れた（実測 2026-08-18: 375 で 6px・320 で **33px** 切れ）。
+       ⚠ ▶ 自体も左へ寄せる（帯の左余白を削る）。 */
+    #bar{padding:0 8px;gap:14px}
+    #drumWrap{display:block;position:relative;flex:1;min-width:0}
+    #drum{display:flex;width:100%;overflow-x:auto;scrollbar-width:none;
+      scroll-snap-type:x mandatory;overscroll-behavior-x:contain;
+      /* ⚠ 端の段も真ん中に来られるよう、前後に枠の半分ぶんの余白を置く */
+      padding:0 calc(50% - 44px);gap:0;
+      /* ⚠ **両端をぼかす。**切れた段が読めない断片として ▶ の横に立つのを避ける。
+         ⚠ 切ること自体はやめない。「次がある」の手掛かりなので、薄く残す。 */
+      -webkit-mask-image:linear-gradient(90deg,transparent 0,#000 26px,#000 calc(100% - 26px),transparent 100%);
+      mask-image:linear-gradient(90deg,transparent 0,#000 26px,#000 calc(100% - 26px),transparent 100%)}
+    /* ⚠ **押せる／払えると見えるようにする。**利用者役 3/3 が
+         「枠も線も無いので、操作できる場所だと気づかない」と答えた。 */
+    /* ⚠ 幅は印（88px）と必ずそろえる。ずれると「選んだ段が枠から出る」。
+         ⚠ box-sizing はこのファイルの先頭で `*` に効かせてあるので、ここには書かない。
+           一度ここに書いて「これが無いと 99px に太る」とコメントしたが、**誤り**だった。
+           太らせていたのは transform:scale(1.12) のほう（外した）。 */
+    .d-it{flex:0 0 88px;height:var(--tap);scroll-snap-align:center;display:flex;
+      align-items:center;justify-content:center;background:transparent;
+      border:1px solid transparent;border-radius:10px;
+      color:#98a4b1;font:inherit;font-size:var(--fs-note);white-space:nowrap;
+      padding:0 4px;cursor:pointer;transition:color .15s}
+    /* ⚠ いま選ばれている段。**拡大しない。**scale(1.12) を掛けたら 88 → 99px に膨らみ、
+         真ん中の印（88px）からはみ出した（実測 2026-08-18）。
+         選ばれていることは、印と色と太さで足りる。 */
+    .d-it.on{color:var(--ink);font-weight:600}
+    /* 真ん中の印。⚠ どこで選ばれるのかを、回す前に見せる */
+    /* ⚠ スクロールしない側（#drumWrap）に置く。中に入れると中身と一緒に流れる */
+    #drumMark{display:block;position:absolute;left:50%;top:0;width:88px;height:var(--tap);
+      margin-left:-44px;border-radius:10px;border:1px solid rgba(255,255,255,.30);
+      background:rgba(255,255,255,.07);pointer-events:none}
+    /* 全体のどこにいるか。⚠ **押せない**（位置を知らせるだけ） */
+    #drumPos{display:flex;align-items:center;justify-content:center;gap:6px;
+      height:14px;pointer-events:none}
+    #drumPos i{width:5px;height:5px;border-radius:50%;background:rgba(255,255,255,.30)}
+    #drumPos i.on{width:16px;border-radius:3px;background:var(--action)}
     /* ⚠ 320px では帯が 242px しかなく、年代の文字の間隔が 60px。
          「1945–50」が 53px あるので、隣の「明治期」とくっついて
          **「1945–50明治期」と 1 語に読めた**（実測 2026-08-18）。
@@ -638,13 +694,6 @@
     <div class="time-panel-head">
       <div class="time-panel-name"><span id="timePanelTitle">年代を動かす</span>
         <span class="time-axis">現在 → 昔</span><strong id="timeSummary">現在</strong></div>
-      <!-- ⚠ **▶ は見出しの行に置く。**帯と同じ行に置くと、44px にした瞬間に
-           年代の文字が入らなくなる（実測 2026-08-18・375px）:
-             文字 5 つが重ならないのに要る帯の幅 276px
-             ＋ ▶ 44 ＋ ノブのはみ出し 16 ＋ 見た目の隙間 20 ＝ 356px
-             使える幅は 337px。**19px 足りない。**
-           ⚠ 実際に同じ行のまま試して、「1945–50」が「1945–5」に切れた。 -->
-      <button id="play" aria-pressed="false" aria-label="年代を自動再生" title="自動再生（Space）">▶</button>
       <button id="timeToggle" type="button" aria-expanded="true" aria-controls="timePanelBody">
         <span id="timeToggleText">閉じる</span><span class="chevron" aria-hidden="true">⌄</span></button>
     </div>
@@ -656,6 +705,29 @@
              初期状態は開いている（peel3d.js の timePanelOpen=true）。実描画で見ている。 -->
       <div id="stateMiss" hidden></div>
       <div id="bar">
+        <!-- ⚠ **狭い幅は横ドラムロール**（2026-08-18）。段を横に並べ、指で回して真ん中で選ぶ。
+             ⚠ 横棒は「1 段 27.6px（320）＝ 指の 63%」で、指の精度勝負になっていた。
+               9 段 × 44px = 396px は 375px に収まらないので、**スクロールで解く**。
+             ⚠ **地図を隠さない形にする。**ここは値を確定する入力欄ではなく、
+               動かすと絵が変わるスクラバー。選んでいる間に地図が見えないと意味が薄れる。
+             ⚠ 値の正本は下の range（#t）のまま。▶ もカメラも #t を見ている。
+             ⚠ 横棒では狭くて 4 段の名前を消していたが、ここでは**全段に名前が出せる**。 -->
+        <!-- ⚠ ▶ はドラムの隣に戻した。横棒のときは幅が足りずに見出し行へ逃がしたが、
+             **ドラムは横に流れるので、その制約が消えた**。
+             ⚠ 見出し行に置いたら「閉じる」との隙間が 10px になり、
+               利用者役 3/3 が「片手だと閉じてしまいそう」と答えた（実測 2026-08-18）。 -->
+        <button id="play" aria-pressed="false" aria-label="年代を自動再生" title="自動再生（Space）">▶</button>
+        <div id="drumWrap">
+          <div id="drum" role="group" aria-label="年代を選ぶ"></div>
+          <!-- ⚠ **真ん中の印は、スクロールしない側に置く。**中に入れたら中身と一緒に流れ、
+               「現在」のときだけ枠が付いて見えた（実測 2026-08-18・ずれ 704px）。 -->
+          <div id="drumMark"></div>
+          <!-- ⚠ **全体のどこにいるかを、押せない形で 1 本だけ出す。**
+               利用者役 3/3 が「何段あるか・あと何回で明治期か分からない」と答えた
+               （記事が挙げるドラムロールの欠点そのもの）。
+               「押す機能は要らない、位置だけ分かれば横棒の良さが戻る」（利用者役の言葉）。 -->
+          <div id="drumPos" aria-hidden="true"></div>
+        </div>
         <!-- ⚠ max は目安の初期値でしかない。**段の数は地点によって変わる**ので
              （その地点に残っている空中写真だけを段にする）、peel3d.js の buildTicks() が
              100 × 段数 に書き換える。ここに書いた数を当てにしない -->
