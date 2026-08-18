@@ -2281,6 +2281,12 @@ head("6. 外部リンク");
       if (!/\bexit 0\s*$/m.test(code)) fails.push("最後が exit 0 で終わっていない");
       // 送れないときに黙って諦める道があること
       if (!/SLACK_WEBHOOK_URL/.test(code)) fails.push("SLACK_WEBHOOK_URL を読んでいない");
+      // ⚠ env ファイルを **source しない**。`.envrc` は任意のシェルコードで、
+      //   読み込めば何でも走る。Hook は direnv を通さず直接起動されるので、
+      //   ここで丸ごと読むと「設定ファイル」が実行経路になる。
+      //   拾ってよいのは、SLACK_WEBHOOK_URL の**その 1 行だけ**。
+      if (/^\s*(\.|source)\s+\S*\.env/m.test(code))
+        fails.push("env ファイルを source している（任意のシェルコードが走る）");
       if (!/--max-time/.test(code)) fails.push("curl に --max-time が無い（相手が黙ると待ち続ける）");
       // ⚠ 実行できないと、Hook は動かない（動かないことに気づけない）
       const { statSync } = await import("node:fs");
@@ -2299,11 +2305,17 @@ head("6. 外部リンク");
         if (!existsSync(join(ROOT, rel))) fails.push(`指している ${rel} が無い`);
       }
     }
+    // ⚠ 送り先を書いたファイルが、追跡されていないこと。
+    //   ⚠ `.gitignore` を読んで確かめない。**git が実際にどう扱っているか**で見る
+    //     （無視の書き方は重なるので、読んで解釈すると外す）。
+    for (const f of [".envrc", ".env"])
+      if (tracked.includes(f)) fails.push(`${f} が git に入っている（送り先が履歴に残る）`);
     fails.length
       ? bad(`人に聞くときの Hook が、質問をせき止めうる: ${fails.join(" / ")}`
           + `（送れなくても質問は必ず出すこと）`)
       : ok(`人に聞くときの Hook は質問をせき止めない`
-          + `（set -e 無し・exit 0・--max-time あり・実行権あり・行き先が実在）`);
+          + `（set -e 無し・exit 0・--max-time あり・実行権あり・行き先が実在`
+          + `・env ファイルを source しない・.envrc / .env は git に入っていない）`);
   }
 }
 

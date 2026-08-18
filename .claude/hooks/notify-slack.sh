@@ -13,7 +13,11 @@
 #   → 何が起きても `exit 0`。送れなかったことは stderr に一行だけ書く。
 #
 # ⚠ **URL はリポジトリに置かない。** 環境変数 SLACK_WEBHOOK_URL から読む。
-#   未設定なら、黙って何もしない（この repo を clone しただけの人の邪魔をしない）。
+#   環境に無ければ、この repo の `.envrc` / `.env` の**その 1 行だけ**を読む
+#   （`.gitignore` の `.env*` で無視されている。追跡されていないことは検査が見る）。
+#   ⚠ **source しない。** `.envrc` は任意のシェルコードで、読み込めば何でも走る。
+#     direnv を通していないところ（Hook は直接起動される）で、それをやらない。
+#   どこにも無ければ、黙って何もしない（clone しただけの人の邪魔をしない）。
 #
 # 送るもの: 質問文・作業ディレクトリ・session_id。
 # ⚠ 質問文はそのまま外部（Slack）へ出る。書いた内容は社外に出せるものに保つこと。
@@ -24,10 +28,14 @@
 #   echo '{"cwd":"/tmp/x","session_id":"abc","tool_input":{"questions":[{"question":"どちらにしますか？"}]}}' \
 #     | .claude/hooks/notify-slack.sh
 #
-#   # 2. 実際に送る
+#   # 2. 実際に送る（環境変数か、この repo の .envrc に置いてあれば、そのまま送る）
 #   export SLACK_WEBHOOK_URL='<Slack の Incoming Webhook の URL>'   # ⚠ ここに実物を書かない
 #   echo '{"cwd":"/tmp/x","session_id":"abc","tool_input":{"questions":[{"question":"どちらにしますか？"}]}}' \
 #     | .claude/hooks/notify-slack.sh
+#
+#   # 2b. .envrc から拾えているかだけ見る（値は出さない）
+#   echo '{"tool_input":{"questions":[{"question":"x"}]}}' | .claude/hooks/notify-slack.sh
+#   #   → 「SLACK_WEBHOOK_URL が無いので送らない」が出なければ、拾えている
 #
 #   # 3. ⚠ せき止めないことを確かめる（全部 0 で終わること）
 #   echo 'これは JSON ではない' | .claude/hooks/notify-slack.sh; echo "exit=$?"
@@ -41,7 +49,27 @@ skip() { printf 'notify-slack: %s\n' "$1" >&2; exit 0; }
 
 INPUT=$(cat 2>/dev/null || true)
 
-# URL が無いのは異常ではない。この repo を触る人の多くは設定していない
+# ⚠ direnv を当てにしない。Hook は直接起動されるので、シェルの初期化を通らない。
+#   環境に無いときだけ、この repo の env ファイルから**この 1 つの変数の行だけ**を読む。
+if [ -z "${SLACK_WEBHOOK_URL:-}" ]; then
+  HOOK_ROOT="${CLAUDE_PROJECT_DIR:-$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd)}"
+  for f in "$HOOK_ROOT/.envrc" "$HOOK_ROOT/.env"; do
+    [ -r "$f" ] || continue
+    line=$(grep -m1 -E '^[[:space:]]*(export[[:space:]]+)?SLACK_WEBHOOK_URL[[:space:]]*=' "$f" 2>/dev/null) || continue
+    v=${line#*=}
+    v=${v%$'\r'}
+    v=$(printf '%s' "$v" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+    case "$v" in
+      \"*\") v=${v#\"}; v=${v%\"} ;;
+      \'*\') v=${v#\'}; v=${v%\'} ;;
+      # 囲んでいないときだけ、後ろのコメントを落とす（⚠ URL 自体の # は消さない）
+      *)      v=${v%%[[:space:]]#*} ;;
+    esac
+    [ -n "$v" ] && { SLACK_WEBHOOK_URL="$v"; break; }
+  done
+fi
+
+# URL がどこにも無いのは異常ではない。この repo を触る人の多くは設定していない
 [ -n "${SLACK_WEBHOOK_URL:-}" ] || skip "SLACK_WEBHOOK_URL が無いので送らない"
 command -v jq   >/dev/null 2>&1 || skip "jq が無いので送らない"
 command -v curl >/dev/null 2>&1 || skip "curl が無いので送らない"
