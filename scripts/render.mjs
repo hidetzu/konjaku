@@ -4597,26 +4597,36 @@ const CASES = [
       const yes = await top();
       must(yes.peel === 1 && yes.ownPeel === 1,
         `取り込んである場所で導線が出ていない: 一覧 ${yes.peel} / 根拠 ${yes.ownPeel}`);
-      must(!/まだ用意できていません/.test(yes.list),
-        `用意してある場所に、用意できていないと書いている: ${yes.list.slice(0, 80)}`);
+      must(!/順に増やしています/.test(yes.list),
+        `対応してある場所に、対応していないと書いている: ${yes.list.slice(0, 80)}`);
       // (2) まだ用意していない場所（名古屋）: ⚠ **出る。押せる。** そのうえで押す前に言う
       await page.goto(`${BASE}/?${NAGOYA}`, { waitUntil: "domcontentloaded" });
       const no = await top();
       must(no.peel === 1, `まだ用意していない場所で導線が消えている（機能の存在に気づけない）: ${no.peel} 本`);
-      must(/まだ用意できていません/.test(no.list),
-        `押す前に「まだ用意できていません」と言っていない: ${no.list.slice(0, 90)}`);
+      // ⚠ **できないことの通知ではなく、できることの案内から始める**（利用者役 3/3）。
+      //   「用意できていません」で始まる案を 3/3 が最下位にした（押す前に断られた、と読む）。
+      must(/空中写真|見くらべる/.test(no.list),
+        `押す前に、この場所でできることを言っていない: ${no.list.slice(0, 90)}`);
+      // ⚠ そのうえで、建物ごとの判定が出ないことは**押す前に**分かること
+      must(/対応した場所から順に増やしています/.test(no.list),
+        `押す前に、建物ごとの判定が出ないと分からない: ${no.list.slice(0, 90)}`);
+      // ⚠ **⚠ の記号を使わない。**すぐ上の「この土地で気をつけること」（災害リスク）と
+      //   同じ印になり、利用者役 2/3 が「危ない土地の警告か」と読んだ
+      const mark = await page.evaluate(() =>
+        document.querySelector('#list [href^="./peel"]')?.innerText ?? "");
+      must(!mark.includes("⚠"), `在庫の話に ⚠ を使っている（危険の印と紛らわしい）: ${mark.slice(0, 60)}`);
       // ⚠ 一覧と根拠カードで言うことが変わらない
-      must(no.ownPeel === 1 && /まだ用意できていません/.test(no.own),
+      must(no.ownPeel === 1 && /対応した場所から順に増やしています/.test(no.own),
         `根拠カードだけ言い方が違う: 導線 ${no.ownPeel} 本 / ${no.own.slice(0, 80)}`);
       // (3) ⚠ 索引を読めなかっただけのときは、何も断らない（取得できなかった ≠ 用意していない）
       await page.route("**/data/assets.json", (r) => r.abort());
       await page.goto(`${BASE}/?${NAGOYA}`, { waitUntil: "domcontentloaded" });
       const unknown = await top();
       must(unknown.peel === 1, `索引を読めないだけで導線を消している: ${unknown.peel} 本`);
-      must(!/まだ用意できていません/.test(unknown.list),
-        `索引を読めなかっただけなのに「用意できていない」と断定している: ${unknown.list.slice(0, 90)}`);
+      must(!/順に増やしています/.test(unknown.list),
+        `索引を読めなかっただけなのに「対応していない」と断定している: ${unknown.list.slice(0, 90)}`);
       await page.unroute("**/data/assets.json");
-      return `取り込み済み 1 本（断りなし）／未収録 1 本（押す前に断る・一覧と根拠で同じ）／`
+      return `対応済み 1 本（断りなし）／未対応 1 本（押す前に断る・⚠ なし・一覧と根拠で同じ）／`
         + `索引を読めないときは断らない`;
     },
   },
@@ -4629,28 +4639,39 @@ const CASES = [
     setup: (page) => page.route((u) => /overpass/i.test(u.href), (r) => r.abort()),
     async check(page) {
       await page.waitForFunction(
-        () => /まだ用意できていません|取得できませんでした/.test(
+        () => /まだ提供していません|取得できませんでした/.test(
           document.getElementById("status")?.innerText ?? ""), null, { timeout: 90000 });
       await page.waitForTimeout(800);
       const t = await page.evaluate(() => ({
         status: (document.getElementById("status")?.innerText ?? "").replace(/\s+/g, " "),
         land: (document.getElementById("land")?.innerText ?? "").replace(/\s+/g, " "),
+        // ⚠ 台帳はパネルの中。閉じていても DOM には入る
         prov: (document.getElementById("prov")?.innerText ?? "").replace(/\s+/g, " "),
       }));
-      must(/まだ用意できていません/.test(t.status),
-        `まだ用意していない、と言っていない: ${t.status.slice(0, 110)}`);
+      must(/まだ提供していません/.test(t.status),
+        `まだ対応していない、と言っていない: ${t.status.slice(0, 110)}`);
       // ⚠ 相手のせいにしない。一度も取り込んでいない場所で「混雑」は事実に反する
-      must(!/混雑/.test(t.status), `用意していないだけなのに、相手の混雑のせいにしている: ${t.status.slice(0, 110)}`);
-      must(!/建物が取れなかったため/.test(t.land),
-        `答えの板が「取れなかった」と言っている（利用者は自分の通信を疑う）: ${t.land.slice(0, 110)}`);
-      must(/まだ用意できていない/.test(t.land),
-        `答えの板が、まだ用意していないと言っていない: ${t.land.slice(0, 110)}`);
+      must(!/混雑/.test(t.status), `対応していないだけなのに、相手の混雑のせいにしている: ${t.status.slice(0, 110)}`);
+      // ⚠ **進行形を使わない。**「取得中」「届いていない」は、利用者役 3/3 がそろって
+      //   **自分の通信の話**として読んだ（いま動いている感じが出るため）。
+      //   ⚠ **台帳まで見る。** 実際に破れていた: 上の文が「まだ用意できていません」と
+      //     言っているのに、台帳だけ「未取得 建物データを**取得中**／まだ**届いていない**
+      //     だけで」のまま残っていた（fail の分岐で render() を呼んでいなかった）。
+      const wet = `${t.status} ${t.land} ${t.prov}`;
+      const ng = ["取得中", "届いていない", "取れなかった"].filter((w) => wet.includes(w));
+      must(!ng.length,
+        `対応していないだけなのに、通信の言い方をしている: 「${ng.join("・")}」／台帳「${t.prov.slice(0, 90)}」`);
+      // ⚠ **言い切る。**「毎回まず電波を疑う人間には、この一言がいちばん効く」（利用者役）
+      must(/通信の問題ではありません/.test(wet),
+        `通信のせいではない、と言い切っていない: ${wet.slice(0, 140)}`);
       // ⚠ 「無い」と言わない。現地に建物が無いという意味ではない
-      must(/現地に建物が無いという意味ではない|建物が無いという意味ではありません/.test(t.status + t.prov),
-        `「用意していない」を「無い」と読まれないよう断っていない: ${(t.status + " / " + t.prov).slice(0, 140)}`);
+      must(/現地に建物が無いという意味でもありません|現地に建物が無いという意味でもない/.test(wet),
+        `「対応していない」を「無い」と読まれないよう断っていない: ${wet.slice(0, 160)}`);
+      // ⚠ 台帳が、上の文と同じことを言っていること（同じ画面で主語を食い違わせない）
+      must(/未対応/.test(t.prov), `台帳が「未対応」と言っていない: ${t.prov.slice(0, 120)}`);
       // ⚠ 建物が出なくても、この画面は成立している（実測: 空中写真・年代・区分の内訳）
       must(/明治期/.test(t.land), `建物が無いだけで、答えの板まで空になっている: ${t.land.slice(0, 90)}`);
-      return `${t.status.slice(0, 52)}… ／ 板「${t.land.slice(0, 46)}…」`;
+      return `${t.status.slice(0, 46)}… ／ 台帳「${t.prov.slice(-52)}」`;
     },
   },
   // ⚠ **別の語へ変えたときも、古い候補が出ない。**

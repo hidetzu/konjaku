@@ -796,9 +796,12 @@ async function loadArea(lon,lat,title,opt){
       waterRatio:w.ratio, waterRead, waterUnread, bldState:notYet?"notyet":"fail",
       landSummary:summarizeLand(w.classCounts,w.classifiedPixels), buildingLand:null };
     statusEl.innerHTML=(notYet
-      ? `<span class="err">この場所の建物データは、まだ用意できていません。</span>
-         <span style="color:var(--ink-dim)">その場の問い合わせも通りませんでした。
-         ⚠ 現地に建物が無いという意味ではありません。</span>`
+      // ⚠ **⚠ の記号を使わない。**この画面の外（トップ）では ⚠ を「この土地で
+      //   気をつけること」（＝災害リスク）に使っている。在庫の話に同じ印を出すと、
+      //   利用者役 2/3 が「危ない土地の警告か」と読んだ（2026-08-18）。
+      ? `<span class="err">建物ごとの判定は、この場所ではまだ提供していません。</span>
+         <span style="color:var(--ink-dim)">通信の問題ではありません。対応した場所から順に増やしています。
+         現地に建物が無いという意味でもありません。</span>`
       : blWhy===BL_UNKNOWN
       ? `<span class="err">建物データを取得できませんでした。</span>
          <span style="color:var(--ink-dim)">用意してあるかどうかも確かめられていません。</span>`
@@ -806,7 +809,12 @@ async function loadArea(lon,lat,title,opt){
          <span style="color:var(--ink-dim)">用意はしてありますが、いま読めていません。</span>`)
       + `<span style="color:var(--ink-dim)">水域と空中写真だけで表示しています。</span> ${retryBtn(lon,lat,title)}`;
     wireRetry(lon,lat,title);
-    showResult(); return;
+    // ⚠ **台帳（#prov）も組み直す。** ここで render() を呼んでいなかったので、
+    //   台帳だけ「未取得 建物データを**取得中**／まだ**届いていない**だけで」のまま残っていた。
+    //   利用者役 3/3 が、その 2 語を見て**自分の通信を疑った**（2026-08-18）。
+    //   上の文が「まだ用意できていません」と言っているのに、下の台帳が
+    //   「取得中」と言う。**同じ画面で主語が食い違っていた。**
+    showResult(); render(); return;
   }
 
   const gj={type:"FeatureCollection",features:feats};
@@ -956,7 +964,7 @@ function landVerdict(){
 const bldWhyArea=(bldState)=>
   bldState==="loading" ? "建物を取得中。揃うと建物ごとの割合になる"
   : bldState==="ok"    ? "OSM に登録された建物が 0 件のため、面積比で出している"
-  : bldState==="notyet"? "この場所の建物データはまだ用意できていないため、面積比で出している"
+  : bldState==="notyet"? "建物ごとの判定は、この場所ではまだ提供していません。範囲全体の面積で出しています"
                        : "建物が取れなかったため、面積比で出している";
 
 const landEl=document.getElementById("land");
@@ -1075,7 +1083,7 @@ function showResult(){
     : `<div class="hint">${
         area.bldState==="loading" ? "建物を取得中…"
         : area.bldState==="ok"    ? "OSM に登録された建物は 0 件です"
-        : area.bldState==="notyet"? "この場所の建物データは、まだ用意できていません"
+        : area.bldState==="notyet"? "建物ごとの判定は、この場所ではまだ提供していません（通信の問題ではありません）"
                                   : "建物データを取得できませんでした（上の再試行から取り直せます）"}</div>`;
 }
 
@@ -1383,10 +1391,15 @@ function render(){
     rows.push(`<div class="prov no"><span class="t">未取得</span>建物データを<b>取得中</b>
       <span class="d">まだ届いていないだけで、この範囲の建物の有無は分かっていない</span></div>`);
   else if(area.bldState==="notyet")
-    // ⚠ 台帳の語彙に「未収録」を足した（2026-08-18）。
-    //   「未取得（＝届いていない）」と**こちらがまだ用意していない**は別のこと。
-    rows.push(`<div class="prov no"><span class="t">未収録</span>この場所の建物データを<b>まだ用意していない</b>
-      <span class="d">こちらの都合であって、現地に建物が無いという意味ではない</span></div>`);
+    // ⚠ 台帳の語彙に「未対応」を足した（2026-08-18）。
+    //   「未取得（＝届いていない）」と**こちらがまだ対応していない**は別のこと。
+    // ⚠ **進行形を使わない。**「取得中」「届いていない」は、利用者役 3/3 が
+    //   そろって**自分の通信の話**として読んだ。今この瞬間に動いている感じが出るため。
+    // ⚠ **「通信の問題ではありません」と言い切る。**野暮でも書く。
+    //   「毎回まず電波を疑う人間には、この一言がいちばん効く」（利用者役）。
+    rows.push(`<div class="prov no"><span class="t">未対応</span>建物ごとの判定は、<b>この場所ではまだ提供していません</b>
+      <span class="d">通信の問題ではありません。対応した場所から順に増やしています。
+      現地に建物が無いという意味でもありません</span></div>`);
   else if(area.bldState==="fail")
     rows.push(`<div class="prov no"><span class="t">未取得</span>建物データを<b>取得できていない</b>
       <span class="d">届いていないだけで、この範囲の建物の有無は分かっていない</span></div>`);

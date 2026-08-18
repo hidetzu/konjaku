@@ -8,21 +8,21 @@
      「地名も座標も送らない」と画面に書いている以上、ここを塞がないとその記述が嘘になる。
      実測で /t への referer に ?q= と ?ll= が乗っていた（掟: 地名も座標も送らない） -->
 <meta name="referrer" content="no-referrer">
-<title>立体で見る — いまの街と、明治期の地面</title>
+<title>この場所を深掘り — いまの街と、明治期の地面</title>
 <meta name="description" content="いまの街を立体で見て、建物1件ずつの足元を明治期の低湿地データで判定している。押すと、その建物の足元が分かる。">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="今昔">
-<meta property="og:title" content="立体で見る — いまの街と、明治期の地面">
+<meta property="og:title" content="この場所を深掘り — いまの街と、明治期の地面">
 <meta property="og:description" content="いまの街を立体で見て、建物1件ずつの足元を明治期の低湿地データで判定している。押すと、その建物の足元が分かる。">
 <meta property="og:url" content="https://konjaku.hidetzu.work/peel">
 <meta property="og:image" content="https://konjaku.hidetzu.work/ogp-peel.png">
-<meta property="og:image:alt" content="立体で見る — いまの街と、明治期の地面">
+<meta property="og:image:alt" content="この場所を深掘り — いまの街と、明治期の地面">
 <meta property="og:locale" content="ja_JP">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="立体で見る — いまの街と、明治期の地面">
+<meta name="twitter:title" content="この場所を深掘り — いまの街と、明治期の地面">
 <meta name="twitter:description" content="いまの街を立体で見て、建物1件ずつの足元を明治期の低湿地データで判定している。押すと、その建物の足元が分かる。">
 <meta name="twitter:image" content="https://konjaku.hidetzu.work/ogp-peel.png">
-<meta name="twitter:image:alt" content="立体で見る — いまの街と、明治期の地面">
+<meta name="twitter:image:alt" content="この場所を深掘り — いまの街と、明治期の地面">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="manifest" href="/manifest.webmanifest">
 <meta name="theme-color" content="#0b0e13">
@@ -435,7 +435,11 @@
        建設年が分かる 0.30%（10街40万件の実測）しか支えていない。約束をやめる。
        ⚠ 「（3D）」も出さない。利用者役のエージェント3体は「もっと見る」「立体で見る」「本当か確かめる」と言い、
        誰も「2D/3D」と言わなかった（利用者役のエージェントによる検証 2026-08-14）。 -->
-  <h1>立体で見る</h1>
+  <!-- ⚠ 2026-08-18: 「立体で見る」から「この場所を深掘り」へ。
+       トップの導線だけ変えて画面名は据え置いていたが、着いた先の名前が違うと
+       押した人が同じ場所に着いたか分からない。⚠ OGP 画像・og:title・SPEC も同時に直す
+       （名乗りが外へ出る面のあいだで割れないこと。npm run check が見ている）。 -->
+  <h1>この場所を深掘り</h1>
   <p class="lead">いまの街が、明治期の地面のどこに立っているか</p>
 
   <!-- ⚠ **ここに検索欄・クイック地点・現在地を置かない**（2026-08-18 方針）。
