@@ -2231,6 +2231,82 @@ head("6. 外部リンク");
     : ok(`prov.js を動かして確認（語彙 5・36 通りの状態で、読めなかったことを「無い」と言わない）`);
 }
 
+// 人の判断を待つときだけ Slack へ知らせる Hook（.claude/hooks/notify-slack.sh）。
+// ⚠ ここで見るのは 2 つだけ。**どちらも、間違えると静かに壊れる種類**のもの。
+//   1. 送り先（Webhook URL）がリポジトリに入っていないこと
+//   2. Hook が、質問そのものをせき止めないこと
+// ⚠ 何を聞くか・どこで聞くかの線引きは CLAUDE.md §7-1。ここでは見ない（責務が別）。
+{
+  const HOOK = ".claude/hooks/notify-slack.sh";
+  const SETTINGS = ".claude/settings.json";
+  const { execFileSync: exH } = await import("node:child_process");
+  let tracked = [];
+  try {
+    tracked = exH("git", ["ls-files"], { encoding: "utf8", cwd: ROOT }).split("\n").filter(Boolean);
+  } catch { bad("git ls-files が使えない（Hook の検査が何も見ていない）"); }
+
+  // ---- 1. 送り先をリポジトリに置かない ----
+  // ⚠ 一度でも入ると、履歴に残る。入る前に落とす。
+  // ⚠ ここに実物の形を書かない。書くと、この検査が自分のコメントを拾う（CLAUDE.md §5）。
+  {
+    const host = ["hooks", "slack", "com"].join(".");
+    const hits = [];
+    for (const f of tracked) {
+      let buf; try { buf = await readFile(join(ROOT, f)); } catch { continue; }
+      if (buf.includes(0)) continue;
+      const t = buf.toString("utf8");
+      t.split("\n").forEach((line, i) => {
+        // ホスト名だけなら説明。**その先に道が付いていたら**送り先そのもの
+        if (new RegExp(`${host.replace(/\./g, "\\.")}/\\S`).test(line)) hits.push(`${f}:${i + 1}`);
+      });
+    }
+    hits.length
+      ? bad(`Slack の送り先がリポジトリに入っている: ${hits.join("、")}`
+          + `（環境変数 SLACK_WEBHOOK_URL から読むこと。一度入ると履歴に残る）`)
+      : ok(`Slack の送り先はリポジトリに入っていない（${tracked.length} ファイルを走査）`);
+  }
+
+  // ---- 2. Hook は質問をせき止めない ----
+  // ⚠ PreToolUse の Hook が 0 以外で終わると、**その道具の呼び出しごと止まる**。
+  //   Slack が落ちている・jq が無い・URL 未設定のどれでも「人に聞けない」になる。
+  //   知らせるための仕掛けで聞けなくなるのは本末転倒なので、ここで縛る。
+  {
+    const fails = [];
+    if (!existsSync(join(ROOT, HOOK))) fails.push(`${HOOK} が無い`);
+    else {
+      const sh = await readFile(join(ROOT, HOOK), "utf8");
+      const code = sh.split("\n").filter((l) => !/^\s*#/.test(l)).join("\n");
+      // ⚠ set -e は、途中で落ちること自体がせき止めになる
+      if (/^\s*set\s+-[a-z]*e/m.test(code)) fails.push("set -e がある（途中で落ちると質問ごと止まる）");
+      if (!/\bexit 0\s*$/m.test(code)) fails.push("最後が exit 0 で終わっていない");
+      // 送れないときに黙って諦める道があること
+      if (!/SLACK_WEBHOOK_URL/.test(code)) fails.push("SLACK_WEBHOOK_URL を読んでいない");
+      if (!/--max-time/.test(code)) fails.push("curl に --max-time が無い（相手が黙ると待ち続ける）");
+      // ⚠ 実行できないと、Hook は動かない（動かないことに気づけない）
+      const { statSync } = await import("node:fs");
+      if (!(statSync(join(ROOT, HOOK)).mode & 0o111)) fails.push("実行権が無い");
+    }
+    // settings.json が、実在する Hook を指していること
+    if (!existsSync(join(ROOT, SETTINGS))) fails.push(`${SETTINGS} が無い`);
+    else {
+      let j; try { j = JSON.parse(await readFile(join(ROOT, SETTINGS), "utf8")); }
+      catch { fails.push(`${SETTINGS} が JSON として壊れている`); }
+      const cmds = (j?.hooks?.PreToolUse ?? []).flatMap((g) =>
+        (g.matcher === "AskUserQuestion" ? (g.hooks ?? []) : []).map((h) => h.command ?? ""));
+      if (!cmds.length) fails.push("AskUserQuestion の PreToolUse Hook が設定されていない");
+      for (const c of cmds) {
+        const rel = c.replace("${CLAUDE_PROJECT_DIR}/", "").replace(/^\$\{[^}]+\}\//, "");
+        if (!existsSync(join(ROOT, rel))) fails.push(`指している ${rel} が無い`);
+      }
+    }
+    fails.length
+      ? bad(`人に聞くときの Hook が、質問をせき止めうる: ${fails.join(" / ")}`
+          + `（送れなくても質問は必ず出すこと）`)
+      : ok(`人に聞くときの Hook は質問をせき止めない`
+          + `（set -e 無し・exit 0・--max-time あり・実行権あり・行き先が実在）`);
+  }
+}
+
 // 年代の名乗り（peel3d.js の eraReadout）。
 // ⚠ ここが画面でいちばん大きい文字で、**出ていないものを「表示中」と言っていた**。
 //   実測（2026-08-18）: 地表のタイルを落としても「表示中 現在 / 最新の空中写真」のまま。
