@@ -260,6 +260,8 @@
   #closePanel{position:absolute;top:11px;right:11px;width:26px;height:26px;border-radius:7px;
     border:1px solid var(--line);background:transparent;color:var(--ink-dim);cursor:pointer;font-size:var(--fs-note);padding:0}
   #closePanel:hover{border-color:var(--missing);color:var(--missing)}
+  /* ⚠ PC は地図が横に見えているので「地図へ」は嘘になる。字は狭い幅の全画面でだけ出す */
+  #closePanel span{display:none}
   h1{margin:0 0 2px;font-size:var(--fs-claim);letter-spacing:.05em}
   .lead{margin:0 0 12px;font-size:var(--fs-note);color:var(--ink-dim)}
   /* サービス名。共有リンクから来た人が「何のサイトか」「戻る先」を持てるように */
@@ -418,6 +420,45 @@
     #timePanelTitle{font-size:var(--fs-lead)}
     .time-panel-head{padding-left:11px;padding-right:5px}
     #chrome a span,#toggle span{display:none}
+
+    /* ============ 根拠は「全画面で読む」（2026-08-18） ============
+       ⚠ **部分的に覆わない。** 実測（パネルを開いた状態・`tmp/probe-panel-open-sp.mjs`）:
+
+         幅        パネルの占有   地図に触れる帯   ＋− の被覆
+         375×667      54%          **0px**         89%
+         344×882      53%           10px           89%
+         320×640      53%          **0px**         89%
+
+       ⚠ **画面の中心（＝いま調べている地点）を受け取るのは台帳だった**（地図ではない）。
+       ⚠ 指で押せるよう 44px に広げたズームが、開いた瞬間に押せなくなっていた。
+
+       → 中途半端に覆うのをやめ、**根拠を読むあいだは全画面**にする。
+         地図を触るのと根拠を読むのは、同時にやる操作ではない。
+       ⚠ PC は左の縦パネルのまま。**変えるのは根拠の見せ方だけ**（オーナー方針）。 */
+    #panel{top:0;left:0;right:0;bottom:0;width:auto;max-width:none;max-height:none;
+      border-radius:0;border:0;padding:14px 14px 24px;
+      /* ⚠ HUD（z-index 12）と地図の帰属表示（14）より上に出す。
+         これを忘れると、全画面のつもりで**年代帯がパネルの上に載る**。 */
+      z-index:16}
+    /* ⚠ 横へ滑らせる動きは全画面に合わない（画面の端から板が出る形ではない） */
+    #panel.hide{transform:translateY(10px)}
+    /* ⚠ 読んでいるあいだ、下の年代帯は出さない。全画面で読む画面に、
+         操作の板が透けて見える必要はない（押しても panel の裏で効かない）。 */
+    #panel:not(.hide) ~ #hud{display:none}
+    /* ⚠ 全画面から戻る手段は、指で押せる大きさにする（実測 26×26px だった）。
+         ⚠ 「← もどる」はトップへ帰る別の操作。**混ぜない。** */
+    /* ⚠ 全画面から戻る手段。字を添えて「← 今昔へ」と区別する（3/3 が区別できなかった） */
+    #closePanel{width:auto;min-width:var(--tap);height:var(--tap);top:8px;right:8px;
+      padding:0 12px;display:inline-flex;align-items:center;gap:6px;font-size:var(--fs-note)}
+    #closePanel span{display:inline}
+    /* ⚠ 全画面のときは幅に余裕がある。← の行き先を字で出す（狭い幅では既定で隠している） */
+    #panel:not(.hide) ~ #chrome a span{display:inline}
+    /* ⚠ **「← もどる」は全画面の上にも残す。**（この画面の決まり: 戻る手段は常に見えている場所に置く）
+         パネルを z-index 16 へ上げたとき、いったん ← が下敷きになった（実測 2026-08-18）。
+         ✕ は「根拠を閉じて地図へ戻る」、← は「今昔へ帰る」で**別の操作**。混ぜない。
+       ⚠ ← のぶん、中身の頭を空ける。空けないと 1 行目が下敷きになる。 */
+    #chrome{z-index:17}
+    #panel:not(.hide){padding-top:66px}
   }
 </style>
 </head>
@@ -426,7 +467,7 @@
 
 
 <div id="panel" class="col">
-  <button id="closePanel" title="閉じる">✕</button>
+  <button id="closePanel" title="根拠を閉じて地図へもどる">✕<span>地図へ</span></button>
   <!-- ⚠ ここにあった「←今昔」は外した。地図の左上に「← もどる」（44px・常時）があり、
        同じことを2か所で言っていた。しかもパネルの中は 18px で、スマホでは
        パネルが閉じて始まるので**そもそも見えない**。 -->
@@ -509,7 +550,11 @@
 <div id="chrome">
   <!-- ⚠ href は loadArea が場所つきに書き換える（./?q=…&ll=…）。
        ここを "./" のままにすると、戻ったときに調べていた場所が消える -->
-  <a id="back" href="./" title="今昔にもどる">← <span>もどる</span></a>
+  <!-- ⚠ **「← 」と「✕」の行き先を、押す前に分かるようにする**（2026-08-18）。
+       利用者役 3/3 が「どちらが今の場所を捨てるボタンか分からない」「怖いので押さない」
+       と答えた。**両方とも「もどる」系の見た目**だったため。
+       → ← は**どこへ行くか**（今昔＝トップ）、✕ は**何をするか**（地図へ）を書く。 -->
+  <a id="back" href="./" title="今昔（トップ）にもどる">← <span>今昔へ</span></a>
   <button id="toggle" title="情報を開く">☰ <span>この土地について</span></button>
 </div>
 <!-- ⚠ この画面の中心の答え（建物の何%が明治期には水の上だったか）と、その分母。
