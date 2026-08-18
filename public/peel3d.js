@@ -1452,13 +1452,41 @@ const provEl=document.getElementById("prov");
 // 言葉を変えうるものの一覧。
 // ⚠ **ここに挙げたものだけが、言葉を変える。**足したのに挙げ忘れると、
 //   データが変わったのに画面が古いまま残る（黙って古い数字を見せることになる）。
-function describeKey(v,gid,arrived){
-  return JSON.stringify([v.cur.label,gid,arrived,v.bldVisible,v.pos>.02,picked,
+function describeKey(v,gid,arrived,late){
+  return JSON.stringify([v.cur.label,gid,arrived,late,v.bldVisible,v.pos>.02,picked,
     area&&[area.waterRead,area.waterUnread,area.bldState,area.total,area.bldSource,
            area.dated,area.unread,
            area.hSrc&&[area.hSrc.measured,area.hSrc.levels,area.hSrc.default]]]);
 }
 let described=null;
+
+// ⚠ **届いていないうちは「表示中」と言わない。**
+//   ⚠ ただし届くのは速い。実測（2026-08-18・豊洲・tmp/probe-ground-arrival.mjs）:
+//     通常回線 … 現在 69ms ／ 段の切替 0〜403ms
+//     3G 相当  … 現在 9,515ms ／ 段の切替 3.4〜7.0 秒、5 段は 20 秒たっても届かない
+//   すぐ切り替えると、**通常回線で段を送るたびに 0〜0.4 秒だけ光る**。
+//   だから「この時間たっても来ていない」を見てから言う。
+//   ⚠ この猶予は**観測であって推測ではない**。1.2 秒たっても届いていないのは事実。
+//   ⚠ ここで**理由は言わない**。落ちたのか、まだ来ていないのかを、いまは知らない
+//     （区別する仕組みは別に足す。`tmp/9/24`）。
+const GROUND_GRACE_MS = 1200;
+// 年代の名乗りに何と書くか。⚠ **地図も DOM も見ない。**（検査がこの関数だけを取り出して回す）
+// ⚠ 「表示中」は、その年代の地面が本当に画面に出ているときだけ。
+// ⚠ 「読み込めませんでした」とは書かない。落ちたのか、まだ来ていないのかを、いまは知らない。
+//   知らないことを断定しない（掟: 取得できなかった ≠ 存在しなかった）。
+function eraReadout(late, isLatest, isMeiji, sub){
+  if(!late) return { kick:"表示中", sub };
+  return { kick:"選択中",
+    sub: isMeiji  ? "明治期の地面は、まだ出ていません"
+       : isLatest ? "いまの街の写真は、まだ出ていません"
+                  : "この年代の写真は、まだ出ていません" };
+}
+let groundGid=null, groundSince=0, groundTimer=null;
+function groundLate(gid, arrived){
+  if(gid!==groundGid){ groundGid=gid; groundSince=performance.now(); }
+  if(arrived) return false;
+  return performance.now()-groundSince >= GROUND_GRACE_MS;
+}
 
 function describe(v){
   const {near,cur,bldVisible,pos}=v;
@@ -1468,13 +1496,22 @@ function describe(v){
   // その年代の写真が無いとも言わない）。
   const gid=near?near.id:"swale";
   const arrived=rasterArrived(gid);
-  const key=describeKey(v,gid,arrived);
+  const late=groundLate(gid,arrived);
+  // 猶予が明けたら、もう一度だけ描き直す（届けば onTileData が描き直す）
+  if(groundTimer){ clearTimeout(groundTimer); groundTimer=null; }
+  if(!arrived&&!late)
+    groundTimer=setTimeout(render, GROUND_GRACE_MS-(performance.now()-groundSince)+30);
+  const key=describeKey(v,gid,arrived,late);
   if(key===described) return;
   described=key;
   ground={ id:gid, ok:arrived };
 
   eraEl.querySelector(".y").textContent=cur.label;
-  eraEl.querySelector(".s").textContent=near?subOf(near):MEIJI.sub;
+  const read=eraReadout(late, !!near&&near.id===Konjaku.LATEST.id, !near,
+                        near?subOf(near):MEIJI.sub);
+  eraEl.querySelector(".kick").textContent=read.kick;
+  eraEl.querySelector(".s").textContent=read.sub;
+  eraEl.classList.toggle("waiting",late);
   eraEl.classList.toggle("meiji",!near); trackEl.classList.toggle("meiji",!near);
   slider.setAttribute("aria-valuetext",cur.label);
   if(timeSummaryEl) timeSummaryEl.textContent=cur.label;

@@ -513,6 +513,90 @@ const CASES = [
     },
   },
   {
+    // ⚠ **出ていないものを「表示中」と言わない。**
+    //   実測（2026-08-18）: 地表のタイルを落としても画面はいちばん大きい文字で
+    //   「表示中 現在 / 最新の空中写真」と言い続けた。写真は 1 枚も出ていないのに。
+    //   利用者役 3/3 が「これが主犯」「間違ったことを自信満々に書いている画面は、
+    //   他の記述も疑わしくなる」と答えた。
+    // ⚠ **すぐには切り替えない。**実測（tmp/probe-ground-arrival.mjs）:
+    //   通常回線は 69ms〜403ms で届く。すぐ切り替えると段を送るたびに光る。
+    //   1.2 秒たっても来ていないときだけ言う。
+    name: "出ていない地面を「表示中」と言わない", path: `/peel?${TOYOSU}`,
+    // ⚠ glob の `(a|b)` は選択にならない。URL 述語で書く
+    setup: (page) => page.route((u) => /seamlessphoto/.test(u.href), async (r) => {
+      await new Promise((k) => setTimeout(k, 6000));
+      await r.continue();
+    }),
+    async check(page) {
+      const read = () => page.evaluate(() => {
+        const e = document.getElementById("era");
+        const t = (s) => e.querySelector(s)?.textContent.trim() ?? "";
+        return { kick: t(".kick"), y: t(".y"), s: t(".s") };
+      });
+      // ① 地表が来ていないあいだ
+      await page.waitForTimeout(2500);
+      const away = await read();
+      must(away.kick !== "表示中",
+        `写真が出ていないのに「${away.kick}」と言っている`);
+      must(!/空中写真$/.test(away.s),
+        `出ていない写真を、出ているように書いている: ${away.s}`);
+      // ⚠ 理由は知らない。断定しない
+      must(!/読み込めませんでした|取得できませんでした/.test(away.s),
+        `落ちたのか、まだなのかを知らないのに断定している: ${away.s}`);
+      must(!/通信|電波|接続/.test(away.s), `通信のせいにしている: ${away.s}`);
+      // ⚠ 段そのものは選ばれている。年は消さない
+      must(away.y === "現在", `どの年代を見ているのかが消えた: ${away.y}`);
+      // ② 届いたら、元に戻る
+      await page.waitForTimeout(6000);
+      const back = await read();
+      must(back.kick === "表示中", `届いたのに「${back.kick}」のまま`);
+      must(/空中写真/.test(back.s), `届いたのに説明が戻っていない: ${back.s}`);
+      return `届いていないあいだ「${away.kick} ${away.y} / ${away.s}」`
+        + ` → 届いたら「${back.kick} ${back.y} / ${back.s}」`;
+    },
+  },
+  {
+    // ⚠ **普通につながっている人には、一度も出さない。**
+    //   実測（tmp/probe-ground-arrival.mjs・2026-08-18）: 現在 69ms・段の切替 0〜403ms。
+    //   猶予（1.2 秒）を外すと、段を送るたびに 0〜0.4 秒だけ「まだ出ていません」が光る。
+    // ⚠ 320 幅では 2 行になる。隣（閉じる）と重ならないことまで見る。
+    name: "普通につながっていれば「まだ出ていません」は出ない", path: `/peel?${TOYOSU}`,
+    viewport: { width: 320, height: 640 },
+    async check(page) {
+      await peelReady(page);
+      const seen = await page.evaluate(async () => {
+        const e = document.getElementById("era"), hit = [];
+        // 段を全部送りながら、名乗りを拾い続ける
+        for (let k = 0; k < 9; k++) {
+          const s = document.getElementById("t");
+          if (Number(s.max) < k * 100) break;
+          s.value = String(k * 100); s.dispatchEvent(new Event("input", { bubbles: true }));
+          for (let i = 0; i < 40; i++) {
+            hit.push(e.querySelector(".kick").textContent.trim());
+            await new Promise((r) => setTimeout(r, 25));
+          }
+        }
+        return [...new Set(hit)];
+      });
+      must(seen.join("／") === "表示中",
+        `普通につながっているのに「${seen.join("／")}」が出た（猶予が効いていない）`);
+      // 重なりを見る。⚠ 矩形だけでは足りない。その座標を誰が受け取るかで見る
+      const lap = await page.evaluate(() => {
+        const e = document.getElementById("era");
+        const s = e.querySelector(".s").getBoundingClientRect();
+        const who = document.elementFromPoint(Math.round(s.x + s.width / 2), Math.round(s.y + s.height / 2));
+        const btn = document.getElementById("eraToggle").getBoundingClientRect();
+        return { taken: who?.className || who?.id || who?.tagName,
+          over: !(s.right <= btn.left || btn.right <= s.left || s.bottom <= btn.top || btn.bottom <= s.top),
+          right: Math.round(s.right), W: innerWidth };
+      });
+      must(!lap.over, `名乗りが「閉じる」と重なっている`);
+      must(lap.right <= lap.W, `名乗りが画面からはみ出している（右端 ${lap.right} / 幅 ${lap.W}）`);
+      return `320 幅で段を 9 つ送っても名乗りは「${seen.join("／")}」だけ／`
+        + `右端 ${lap.right} ≦ 幅 ${lap.W}／「閉じる」と重ならない`;
+    },
+  },
+  {
     // ⚠ **古い呼び出しが、あとから新しい結果を上書きしないこと。**
     //   loadArea は 7 つの await を挟んでから area / statusEl / 地図のデータを書く。
     //   2026-08-18 まで seq は取るだけで一度も見ておらず、番人が居なかった。
