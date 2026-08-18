@@ -4558,55 +4558,120 @@ const CASES = [
     },
   },
   {
-    // ⚠ **3D の下地が無い場所に、深掘りの導線を出さない。**
-    //   （掟: 押しても何も起きない導線を置かない）
+    // ⚠ **「まだ用意していない」を「取得できなかった」と言わない**（2026-08-18）。
+    //   このリポジトリが何度も直してきた並びに、1 行足りていなかった:
     //
-    //   取り込んであるのは z14 タイル 87 枚・7 かたまり（実測 2026-08-18）。
-    //   そこから外れると /peel は Overpass に落ちる。⚠ **必ず失敗するわけではない**
-    //   （名古屋で 8 秒・5,845 件が返った回がある）。問題は**出るか出ないかが相手次第**なこと。
+    //       観測されていない   ≠  存在しなかった
+    //       取得できなかった   ≠  存在しなかった
+    //       データにない       ≠  現実にない
+    //       まだ用意していない ≠  取得できなかった   ← これ
     //
-    // ⚠ **判定は ground.js の1か所。** トップと /peel が同じ答えを使う。
-    //   別々に持つと「トップは深掘りできると言ったのに、/peel は Overpass に落ちる」が作れる。
+    //   前者は**こちらの都合**、後者は**相手や回線の都合**。
+    //   利用者にとっては「押し直すべきか」が変わるので、意味がまるで違う。
     //
-    // ⚠ **「読めなかった」と「無い」を混ぜない**（掟: 取得できなかった ≠ 存在しなかった）。
-    //   索引そのものを引けないときは、導線を**出したまま**にする。ここも一緒に見る。
+    // ⚠ 実際に破れていた: 一度も取り込んでいない名古屋で
+    //   「建物データを取得できませんでした（**Overpass 混雑**）」と書いていた。
+    //   利用者役 3/3 がこれを「**自分の通信のせい**」と読み、2 名が「押し直す」と答えた。
     //
-    // ⚠ 行動一覧だけでなく**根拠カード**も見る。片方だけ消すと、
-    //   一覧に無いのに根拠パネルからは行ける状態になる。
-    name: "3D の下地が無い場所には、深掘りの導線を出さない", path: "/",
+    // ⚠ **導線は消さない。** 一度「下地が無い場所では出さない」にしたが、戻した。
+    //   出さないと「まだ用意していない」が「この場所には機能そのものが無い」に見え、
+    //   利用者役 3/3 が「機能があること自体に気づけない」と答えた。
+    // ⚠ そのかわり**押す前に**言う。押して、待たされてから言われるのが最悪、という指摘。
+    name: "まだ用意していない場所を、取得できなかったと言わない", path: "/",
     async check(page) {
       const NAGOYA = "q=%E5%90%8D%E5%8F%A4%E5%B1%8B&ll=35.17090,136.88160";
-      const look = async () => {
+      const top = async () => {
         await page.waitForFunction(
           () => /です|ません/.test(document.querySelector("#verdict .v-head")?.innerText ?? ""),
           null, { timeout: 45000 });
         await page.waitForTimeout(1200);
         return page.evaluate(() => ({
-          list: (document.getElementById("list")?.innerText ?? "").replace(/\s+/g, " "),
-          listPeel: document.querySelectorAll('#list [href^="./peel"]').length,
+          peel: document.querySelectorAll('#list [href^="./peel"]').length,
           ownPeel: document.querySelectorAll('#own a[href^="./peel"]').length,
+          list: (document.getElementById("list")?.innerText ?? "").replace(/\s+/g, " "),
+          own: (document.getElementById("own")?.innerText ?? "").replace(/\s+/g, " "),
         }));
       };
-      // (1) 取り込んである場所（豊洲）では出る
+      // (1) 取り込んである場所（豊洲）: 出る。⚠ 断り書きは付けない
       await page.goto(`${BASE}/?${TOYOSU}`, { waitUntil: "domcontentloaded" });
-      const yes = await look();
-      must(yes.listPeel === 1, `取り込んである場所で導線が出ていない: 行動一覧 ${yes.listPeel} 本`);
-      must(/この場所を深掘り/.test(yes.list), `名乗りが「この場所を深掘り」でない: ${yes.list.slice(0, 60)}`);
-      must(yes.ownPeel === 1, `取り込んである場所で、根拠カードの導線が出ていない: ${yes.ownPeel} 本`);
-      // (2) 取り込んでいない場所（名古屋。z14 タイル 4 枚とも索引に無い）では出ない
+      const yes = await top();
+      must(yes.peel === 1 && yes.ownPeel === 1,
+        `取り込んである場所で導線が出ていない: 一覧 ${yes.peel} / 根拠 ${yes.ownPeel}`);
+      must(!/順に増やしています/.test(yes.list),
+        `対応してある場所に、対応していないと書いている: ${yes.list.slice(0, 80)}`);
+      // (2) まだ用意していない場所（名古屋）: ⚠ **出る。押せる。** そのうえで押す前に言う
       await page.goto(`${BASE}/?${NAGOYA}`, { waitUntil: "domcontentloaded" });
-      const no = await look();
-      must(no.listPeel === 0, `下地が無い場所に導線が出ている: 行動一覧 ${no.listPeel} 本`);
-      must(!/この場所を深掘り/.test(no.list), `下地が無い場所に名乗りが出ている: ${no.list.slice(0, 60)}`);
-      must(no.ownPeel === 0, `下地が無い場所に、根拠カードの導線が出ている: ${no.ownPeel} 本`);
-      // (3) ⚠ 索引を引けないときは「無い」と言わない。導線は出したまま
+      const no = await top();
+      must(no.peel === 1, `まだ用意していない場所で導線が消えている（機能の存在に気づけない）: ${no.peel} 本`);
+      // ⚠ **できないことの通知ではなく、できることの案内から始める**（利用者役 3/3）。
+      //   「用意できていません」で始まる案を 3/3 が最下位にした（押す前に断られた、と読む）。
+      must(/空中写真|見くらべる/.test(no.list),
+        `押す前に、この場所でできることを言っていない: ${no.list.slice(0, 90)}`);
+      // ⚠ そのうえで、建物ごとの判定が出ないことは**押す前に**分かること
+      must(/対応した場所から順に増やしています/.test(no.list),
+        `押す前に、建物ごとの判定が出ないと分からない: ${no.list.slice(0, 90)}`);
+      // ⚠ **⚠ の記号を使わない。**すぐ上の「この土地で気をつけること」（災害リスク）と
+      //   同じ印になり、利用者役 2/3 が「危ない土地の警告か」と読んだ
+      const mark = await page.evaluate(() =>
+        document.querySelector('#list [href^="./peel"]')?.innerText ?? "");
+      must(!mark.includes("⚠"), `在庫の話に ⚠ を使っている（危険の印と紛らわしい）: ${mark.slice(0, 60)}`);
+      // ⚠ 一覧と根拠カードで言うことが変わらない
+      must(no.ownPeel === 1 && /対応した場所から順に増やしています/.test(no.own),
+        `根拠カードだけ言い方が違う: 導線 ${no.ownPeel} 本 / ${no.own.slice(0, 80)}`);
+      // (3) ⚠ 索引を読めなかっただけのときは、何も断らない（取得できなかった ≠ 用意していない）
       await page.route("**/data/assets.json", (r) => r.abort());
       await page.goto(`${BASE}/?${NAGOYA}`, { waitUntil: "domcontentloaded" });
-      const unknown = await look();
-      must(unknown.listPeel === 1,
-        `索引を読めなかっただけなのに、導線を消している（取得できなかった ≠ 無い）: ${unknown.listPeel} 本`);
+      const unknown = await top();
+      must(unknown.peel === 1, `索引を読めないだけで導線を消している: ${unknown.peel} 本`);
+      must(!/順に増やしています/.test(unknown.list),
+        `索引を読めなかっただけなのに「対応していない」と断定している: ${unknown.list.slice(0, 90)}`);
       await page.unroute("**/data/assets.json");
-      return `取り込み済み 1 本（一覧・根拠とも）／未取り込み 0 本／索引を読めないときは 1 本のまま`;
+      return `対応済み 1 本（断りなし）／未対応 1 本（押す前に断る・⚠ なし・一覧と根拠で同じ）／`
+        + `索引を読めないときは断らない`;
+    },
+  },
+  {
+    // ⚠ 上と対になる、/peel 側。**まだ用意していない場所で「混雑」のせいにしない。**
+    //   ⚠ Overpass は止めて測る。止めないと、返ってきた回はこの主張を確かめられない
+    //     （名古屋は実測で 8 秒・5,845 件が返ったことがある。**必ず失敗はしない**）。
+    name: "まだ用意していない場所で、通信のせいにしない",
+    path: "/peel?ll=35.17090,136.88160&q=%E5%90%8D%E5%8F%A4%E5%B1%8B",
+    setup: (page) => page.route((u) => /overpass/i.test(u.href), (r) => r.abort()),
+    async check(page) {
+      await page.waitForFunction(
+        () => /まだ提供していません|取得できませんでした/.test(
+          document.getElementById("status")?.innerText ?? ""), null, { timeout: 90000 });
+      await page.waitForTimeout(800);
+      const t = await page.evaluate(() => ({
+        status: (document.getElementById("status")?.innerText ?? "").replace(/\s+/g, " "),
+        land: (document.getElementById("land")?.innerText ?? "").replace(/\s+/g, " "),
+        // ⚠ 台帳はパネルの中。閉じていても DOM には入る
+        prov: (document.getElementById("prov")?.innerText ?? "").replace(/\s+/g, " "),
+      }));
+      must(/まだ提供していません/.test(t.status),
+        `まだ対応していない、と言っていない: ${t.status.slice(0, 110)}`);
+      // ⚠ 相手のせいにしない。一度も取り込んでいない場所で「混雑」は事実に反する
+      must(!/混雑/.test(t.status), `対応していないだけなのに、相手の混雑のせいにしている: ${t.status.slice(0, 110)}`);
+      // ⚠ **進行形を使わない。**「取得中」「届いていない」は、利用者役 3/3 がそろって
+      //   **自分の通信の話**として読んだ（いま動いている感じが出るため）。
+      //   ⚠ **台帳まで見る。** 実際に破れていた: 上の文が「まだ用意できていません」と
+      //     言っているのに、台帳だけ「未取得 建物データを**取得中**／まだ**届いていない**
+      //     だけで」のまま残っていた（fail の分岐で render() を呼んでいなかった）。
+      const wet = `${t.status} ${t.land} ${t.prov}`;
+      const ng = ["取得中", "届いていない", "取れなかった"].filter((w) => wet.includes(w));
+      must(!ng.length,
+        `対応していないだけなのに、通信の言い方をしている: 「${ng.join("・")}」／台帳「${t.prov.slice(0, 90)}」`);
+      // ⚠ **言い切る。**「毎回まず電波を疑う人間には、この一言がいちばん効く」（利用者役）
+      must(/通信の問題ではありません/.test(wet),
+        `通信のせいではない、と言い切っていない: ${wet.slice(0, 140)}`);
+      // ⚠ 「無い」と言わない。現地に建物が無いという意味ではない
+      must(/現地に建物が無いという意味でもありません|現地に建物が無いという意味でもない/.test(wet),
+        `「対応していない」を「無い」と読まれないよう断っていない: ${wet.slice(0, 160)}`);
+      // ⚠ 台帳が、上の文と同じことを言っていること（同じ画面で主語を食い違わせない）
+      must(/未対応/.test(t.prov), `台帳が「未対応」と言っていない: ${t.prov.slice(0, 120)}`);
+      // ⚠ 建物が出なくても、この画面は成立している（実測: 空中写真・年代・区分の内訳）
+      must(/明治期/.test(t.land), `建物が無いだけで、答えの板まで空になっている: ${t.land.slice(0, 90)}`);
+      return `${t.status.slice(0, 46)}… ／ 台帳「${t.prov.slice(-52)}」`;
     },
   },
   // ⚠ **別の語へ変えたときも、古い候補が出ない。**
