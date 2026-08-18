@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" role="img" aria-labelledby="title desc">
-  <title id="title">立体で見る — いまの街と、明治期の地面</title>
+  <title id="title">この場所を深掘り — いまの街と、明治期の地面</title>
   <desc id="desc">いまの街と、明治期の地面</desc>
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
@@ -30,7 +30,7 @@
   <ellipse cx="930" cy="310" rx="390" ry="330" fill="url(#glow)"/>
   <rect x="54" y="54" width="1092" height="522" rx="30" fill="none" stroke="#eaeef3" stroke-opacity=".10"/>
   <text x="86" y="126" class="brand">今昔</text>
-  <text x="86" y="286" class="headline">立体で見る</text>
+  <text x="86" y="286" class="headline">この場所を深掘り</text>
   <text x="88" y="350" class="subtitle">いまの街と、明治期の地面</text>
   <text x="88" y="528" class="url">konjaku.hidetzu.work</text>
   

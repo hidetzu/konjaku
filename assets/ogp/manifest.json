@@ -19,13 +19,13 @@
     {
       "id": "peel",
       "source": "assets/ogp/peel.svg",
-      "sourceSha256": "cd7c60b6f065986b40df879365305b5e8465daa547b496ac3efe0e7fda3cf8aa",
+      "sourceSha256": "95a8ea7b0f9ff904d6bd0dff62ec34d4a9a3ef699db7860e7c69f5fb2c510545",
       "output": "public/ogp-peel.png",
-      "outputSha256": "eba9b76758016cedf2022896196a0ba97f1ebf2784e062097bd56802f0d21926",
+      "outputSha256": "041e7328a639e905e070fd2fb7c44d2882c847343f689fd3e225748608f68fe3",
       "width": 1200,
       "height": 630,
-      "title": "立体で見る — いまの街と、明治期の地面",
-      "headline": "立体で見る",
+      "title": "この場所を深掘り — いまの街と、明治期の地面",
+      "headline": "この場所を深掘り",
       "subtitle": "いまの街と、明治期の地面"
     }
   ]
