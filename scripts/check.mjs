@@ -576,6 +576,81 @@ head("3.5. 事前計算データ（data/areas.json）");
   else bad("peel3d.js が data/areas.json を参照していない（事前計算データが死んでいる）");
 }
 
+// ⚠ **「この場所に 3D の下地があるか」に答える実装を、2 つ持たない**（掟6）。
+//   トップは「この場所を深掘り」の導線を出すかどうかを、/peel は建物を静的に描けるかを、
+//   **同じ答え**で決めている。別々に書くと、
+//   **トップが「深掘りできる」と言った場所で /peel が Overpass に落ちる**状態が作れる
+//   （＝出るか出ないかが相手次第。押しても何も起きない導線を置かない、に反する）。
+//   ⚠ 判定の材料は 2 つある。どちらも ground.js だけが持つこと。
+//     1) 集計する範囲（HALF_LON / HALF_LAT）  2) z14 タイル索引の引き方
+head("3.6. 3D の下地の判定（public/ground.js の1か所）");
+{
+  const g = src["ground.js"];
+  if (!g) bad("public/ground.js が無い（下地の判定の置き場所）");
+  else {
+    const needs = [
+      ["HALF_LON", "集計する範囲（この値がずれると、導線を出したのに建物が出ない場所ができる）"],
+      ["hasSync", "トップが同期で引く入口"],
+      ["tilesFor", "/peel が読むタイルの並び"],
+    ];
+    const miss = needs.filter(([k]) => !g.includes(k));
+    if (miss.length) bad(`ground.js に ${miss.map(([k, w]) => `${k}（${w}）`).join("・")} が無い`);
+    else ok("ground.js が、範囲・トップ側の入口・/peel 側の入口を持っている");
+
+    // ⚠ 使う側が、同じ判断を自分でも書いていないこと。
+    //   ⚠ **コメントを先に落とす。** 落とさないと、この決まりを説明したコメントの字面を拾う
+    //     （CLAUDE.md §5。2 回踏んでいる）。
+    const strip = (s) => s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/[^\n]*/g, "$1")
+      .replace(/<!--[\s\S]*?-->/g, "");
+    for (const f of ["index.html", "peel3d.js"]) {
+      const s = strip(src[f] ?? "");
+      const own = [
+        [/const\s*\{?\s*HALF_LON/, "範囲（HALF_LON）を自分で宣言している"],
+        [/z14of\s*=/, "z14 タイルの求め方を自分で書いている"],
+        [/bl\/index\.json/, "タイル索引の場所を直に書いている（assets.json 経由にする）"],
+      ].filter(([re]) => re.test(s.replace(/const\s*\{HALF_LON,HALF_LAT\}\s*=\s*KonjakuGround/, "")));
+      if (own.length) bad(`${f} が下地の判定を自分でも持っている: ${own.map(([, w]) => w).join("・")}`);
+      else if (!s.includes("KonjakuGround")) bad(`${f} が KonjakuGround を使っていない（判定の出どころが不明）`);
+      else ok(`${f} は ground.js の答えを使っている`);
+    }
+    // 読み込み忘れ。読み込まないと ReferenceError で画面が丸ごと止まる
+    for (const f of ["index.html", "peel.html"])
+      if ((src[f] ?? "").includes('src="./ground.js"')) ok(`${f} が ground.js を読み込んでいる`);
+      else bad(`${f} が ground.js を読み込んでいない（KonjakuGround が未定義になる）`);
+  }
+}
+
+// ⚠ **場所を探す口は 1 つ**（2026-08-18 方針）。
+//   `/peel` は「トップで選んだ場所を深掘りする画面」で、場所を決めるのはトップの責務。
+//   ⚠ ここに検索が生えると、2 つが同時に壊れる:
+//     1) トップは **3D の下地がある場所にだけ**導線を出しているのに、
+//        あちらの検索からは**下地の無い場所へ入れてしまう**（地図は動くのに建物が出ない）
+//     2) 検索の作法（時間切れ・再試行・古い応答の追い越し防止）を 2 か所で守ることになる
+//        （実際に破れていた: 2026-08-14 まで /peel だけ古い実装で、
+//         取れなかったときに「見つかりませんでした」と書いていた）
+//   ⚠ **並びを突き合わせる検査を、これで置き換えている。**
+//     以前は「同じ応答ならトップと 3D の候補が一致する」で 2 実装のずれを見ていた。
+//     実装が 1 つになったので、**2 つ目が生えないこと**を見るほうが強い。
+head("3.7. 場所を探す口は 1 つ（トップだけ）");
+{
+  const strip = (s) => (s ?? "").replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/(^|[^:])\/\/[^\n]*/g, "$1").replace(/<!--[\s\S]*?-->/g, "");
+  const ph = strip(src["peel.html"]), pj = strip(src["peel3d.js"]);
+  const ui = [['id="q"', "検索欄"], ['id="cands"', "候補の置き場"],
+              ['id="quick"', "クイック地点"], ['id="here"', "現在地"],
+              ["findBox", "「別の場所を見る」の枠"]].filter(([k]) => ph.includes(k));
+  const impl = [["KonjakuPlaces", "places.js の検索"], ["AddressSearch", "住所検索を直に叩いている"],
+                ["createSearch", "検索の入れ物"]].filter(([k]) => pj.includes(k));
+  const loads = ph.includes('src="./places.js"');
+  if (ui.length) bad(`peel.html に場所を探す口が残っている: ${ui.map(([, w]) => w).join("・")}`);
+  else if (impl.length) bad(`peel3d.js に検索の実装が残っている: ${impl.map(([, w]) => w).join("・")}`);
+  else if (loads) bad("peel.html が places.js を読み込んでいる（この画面に使う相手がいない）");
+  else ok("/peel に場所を探す口が無い（場所を決めるのはトップ）");
+  // ⚠ 「1 つ」なので、**トップ側は必ず持っている**こと。両方消えたら探せなくなる
+  if (strip(src["index.html"]).includes("KonjakuPlaces")) ok("トップが places.js の検索を使っている");
+  else bad("トップにも検索が無い（場所を探す手段が 1 つも無い）");
+}
+
 // ---------- 4. 出典表記 ----------
 head("4. 出典表記");
 for (const f of htmlFiles) {
