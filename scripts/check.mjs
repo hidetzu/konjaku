@@ -2231,6 +2231,45 @@ head("6. 外部リンク");
     : ok(`prov.js を動かして確認（語彙 5・36 通りの状態で、読めなかったことを「無い」と言わない）`);
 }
 
+// 年代の名乗り（peel3d.js の eraReadout）。
+// ⚠ ここが画面でいちばん大きい文字で、**出ていないものを「表示中」と言っていた**。
+//   実測（2026-08-18）: 地表のタイルを落としても「表示中 現在 / 最新の空中写真」のまま。
+//   利用者役 3/3 が「これが主犯」と名指しした。
+// ⚠ ブラウザでは「まだ来ていない」状態を狙って作りにくい。関数を取り出して直に回す。
+//   ⚠ **取り出せなくなったら落とす**（黙って素通りさせない）。
+{
+  const m = /\nfunction eraReadout\(late, isLatest, isMeiji, sub\)\{[\s\S]*?\n\}/.exec(src["peel3d.js"] ?? "");
+  if (!m) bad("peel3d.js の eraReadout を取り出せない（この検査が何も見ていない）");
+  else {
+    const f = new Function(`${m[0]}\nreturn eraReadout;`)();
+    const fails = [];
+    const yes = (c, what) => { if (!c) fails.push(what); };
+    // 届いているときは、これまでどおり
+    yes(f(false, true, false, "最新の空中写真").kick === "表示中", "届いているのに「表示中」と言わない");
+    yes(f(false, true, false, "最新の空中写真").sub === "最新の空中写真", "届いているときの説明が変わった");
+    // ⚠ 届いていないとき: 「表示中」と言わない
+    for (const [isLatest, isMeiji, what] of [[true, false, "現在"], [false, false, "過去の年代"], [false, true, "明治期"]]) {
+      const r = f(true, isLatest, isMeiji, "最新の空中写真");
+      yes(r.kick !== "表示中", `${what}: 出ていないのに「表示中」と言っている`);
+      yes(!/空中写真$|写真です|表示しています/.test(r.sub), `${what}: 出ていない写真を、出ているように書いている`);
+      // ⚠ 落ちたのか、まだ来ていないのかを**こちらは知らない**。断定しない
+      yes(!/読み込めませんでした|取得できませんでした|失敗/.test(r.sub),
+        `${what}: 理由を知らないのに「読み込めませんでした」と断定している`);
+      // ⚠ 「無い」と言わない（掟の一行目）
+      yes(!/写真は無い|ありません|存在しません/.test(r.sub), `${what}: 「無い」と言い切っている`);
+      // ⚠ 通信のせいにしない（こちらは相手の回線を知らない）
+      yes(!/通信|電波|オフライン|接続/.test(r.sub), `${what}: 通信のせいにしている`);
+    }
+    // 3 つは別の文。同じ文を使い回すと、どれが出ていないのか分からない
+    const subs = new Set([f(true, true, false, "x").sub, f(true, false, false, "x").sub, f(true, false, true, "x").sub]);
+    yes(subs.size === 3, `出ていないときの説明が ${subs.size} 種類しかない（現在・過去・明治期で書き分ける）`);
+    fails.length
+      ? bad(`eraReadout の単体テストが失敗（${fails.length} 件）: ${fails.join(" / ")}`)
+      : ok(`eraReadout を動かして確認（届いた／届いていない × 現在・過去・明治期。`
+          + `出ていないものを「表示中」と言わず、理由も断定しない）`);
+  }
+}
+
 // 地表のタイルが「その地点を覆っているか」の計算（peel3d.js の tilesCover）。
 // ⚠ ブラウザでは、狙ったタイルだけを届かせる／届かせない状態を作れない。
 //   関数を取り出して直に回す。⚠ **取り出せなくなったら落とす**（黙って素通りさせない）。
