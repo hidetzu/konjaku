@@ -2348,42 +2348,70 @@ head("6. 外部リンク");
   }
 }
 
-// 年代の名乗り（peel3d.js の eraReadout）。
+// 年代の名乗り（peel3d.js の eraReadout と groundState）。
 // ⚠ ここが画面でいちばん大きい文字で、**出ていないものを「表示中」と言っていた**。
-//   実測（2026-08-18）: 地表のタイルを落としても「表示中 現在 / 最新の空中写真」のまま。
-//   利用者役 3/3 が「これが主犯」と名指しした。
+//   利用者役 3/3 が「これが主犯」と名指しした（2026-08-18）。
+// ⚠ そのうえで **「まだ出ていません」と「読み込めませんでした」を混ぜない**。
+//   前者は理由を知らない。後者は落ちたのを**実際に観測した**ときだけ。
+//   実測（tmp/probe-map-error.mjs）: 403 と通信断は map.on("error") で拾えるが、
+//   **404 は拾えない**（MapLibre は 404 を異常と見なさない）。だから 404 は前者に留まる。
 // ⚠ ブラウザでは「まだ来ていない」状態を狙って作りにくい。関数を取り出して直に回す。
 //   ⚠ **取り出せなくなったら落とす**（黙って素通りさせない）。
 {
-  const m = /\nfunction eraReadout\(late, isLatest, isMeiji, sub\)\{[\s\S]*?\n\}/.exec(src["peel3d.js"] ?? "");
-  if (!m) bad("peel3d.js の eraReadout を取り出せない（この検査が何も見ていない）");
+  const gm = /\nfunction groundState\(arrived, late, fail\)\{[\s\S]*?\n\}/.exec(src["peel3d.js"] ?? "");
+  const em = /\nfunction eraReadout\(state, isLatest, isMeiji, sub, online\)\{[\s\S]*?\n\}/.exec(src["peel3d.js"] ?? "");
+  if (!gm || !em) bad(`peel3d.js の ${!gm ? "groundState" : "eraReadout"} を取り出せない（この検査が何も見ていない）`);
   else {
-    const f = new Function(`${m[0]}\nreturn eraReadout;`)();
+    const G = new Function(`${gm[0]}\nreturn groundState;`)();
+    const f = new Function(`${em[0]}\nreturn eraReadout;`)();
     const fails = [];
     const yes = (c, what) => { if (!c) fails.push(what); };
-    // 届いているときは、これまでどおり
-    yes(f(false, true, false, "最新の空中写真").kick === "表示中", "届いているのに「表示中」と言わない");
-    yes(f(false, true, false, "最新の空中写真").sub === "最新の空中写真", "届いているときの説明が変わった");
-    // ⚠ 届いていないとき: 「表示中」と言わない
-    for (const [isLatest, isMeiji, what] of [[true, false, "現在"], [false, false, "過去の年代"], [false, true, "明治期"]]) {
-      const r = f(true, isLatest, isMeiji, "最新の空中写真");
-      yes(r.kick !== "表示中", `${what}: 出ていないのに「表示中」と言っている`);
-      yes(!/空中写真$|写真です|表示しています/.test(r.sub), `${what}: 出ていない写真を、出ているように書いている`);
-      // ⚠ 落ちたのか、まだ来ていないのかを**こちらは知らない**。断定しない
-      yes(!/読み込めませんでした|取得できませんでした|失敗/.test(r.sub),
+    const FAIL = { why: "通信できません" };
+
+    // ---- 3 つの状態を取り違えない ----
+    yes(G(true, false, null).kind === "ok", "届いているのに ok にならない");
+    yes(G(true, true, FAIL).kind === "ok", "届いているのに、落ちた扱いになる");
+    yes(G(false, true, FAIL).kind === "fail", "落ちたのに fail にならない");
+    yes(G(false, false, FAIL).kind === "fail", "落ちたのに、猶予中だと fail にならない");
+    yes(G(false, true, null).kind === "late", "猶予を過ぎたのに late にならない");
+    yes(G(false, false, null).kind === "pending", "まだ猶予中なのに pending にならない");
+
+    for (const [isLatest, isMeiji, what] of [[true, false, "現在"], [false, false, "過去"], [false, true, "明治期"]]) {
+      // ---- 届いているとき ----
+      const ok = f(G(true, false, null), isLatest, isMeiji, "最新の空中写真", true);
+      yes(ok.kick === "表示中", `${what}: 届いているのに「表示中」と言わない`);
+      yes(!ok.hint, `${what}: 届いているのに接続の話をしている`);
+
+      // ---- 猶予切れ（理由を知らない）----
+      const late = f(G(false, true, null), isLatest, isMeiji, "最新の空中写真", true);
+      yes(late.kick !== "表示中", `${what}: 出ていないのに「表示中」と言っている`);
+      // ⚠ **理由を知らないのに断定しない。** 404 はここに来る
+      yes(!/読み込めませんでした|取得できませんでした|失敗/.test(late.sub),
         `${what}: 理由を知らないのに「読み込めませんでした」と断定している`);
-      // ⚠ 「無い」と言わない（掟の一行目）
-      yes(!/写真は無い|ありません|存在しません/.test(r.sub), `${what}: 「無い」と言い切っている`);
-      // ⚠ 通信のせいにしない（こちらは相手の回線を知らない）
-      yes(!/通信|電波|オフライン|接続/.test(r.sub), `${what}: 通信のせいにしている`);
+      yes(!late.hint, `${what}: 理由を知らないのに接続のせいにしている`);
+      yes(!/が無い|ありません|存在しません/.test(late.sub), `${what}: 「無い」と言い切っている`);
+
+      // ---- 落ちたのを観測したとき ----
+      const bad1 = f(G(false, true, FAIL), isLatest, isMeiji, "最新の空中写真", true);
+      yes(/読み込めませんでした/.test(bad1.sub), `${what}: 落ちたのに、そう書いていない`);
+      yes(bad1.sub.includes("通信できません"), `${what}: 観測した理由を落としている`);
+      // ⚠ つながっているときは**言い切らない**。取れない理由をこちらは知らない
+      yes(bad1.hint === "接続を確認してください",
+        `${what}: online=true なのに「${bad1.hint}」と言っている（言い切らない）`);
+      const off = f(G(false, true, FAIL), isLatest, isMeiji, "最新の空中写真", false);
+      yes(/接続していません/.test(off.hint ?? ""),
+        `${what}: 圏外だと端末が言っているのに、そう伝えていない`);
+      // ⚠ 落ちても「無い」とは言わない（掟の一行目）
+      yes(!/写真が無い|存在しません/.test(bad1.sub + (bad1.hint ?? "")), `${what}: 落ちたことを「無い」と書いている`);
     }
-    // 3 つは別の文。同じ文を使い回すと、どれが出ていないのか分からない
-    const subs = new Set([f(true, true, false, "x").sub, f(true, false, false, "x").sub, f(true, false, true, "x").sub]);
+    // 3 つは別の文。どれが出ていないのか分かること
+    const subs = new Set(["現在", "過去", "明治期"].map((_, i) =>
+      f(G(false, true, null), i === 0, i === 2, "x", true).sub));
     yes(subs.size === 3, `出ていないときの説明が ${subs.size} 種類しかない（現在・過去・明治期で書き分ける）`);
     fails.length
-      ? bad(`eraReadout の単体テストが失敗（${fails.length} 件）: ${fails.join(" / ")}`)
-      : ok(`eraReadout を動かして確認（届いた／届いていない × 現在・過去・明治期。`
-          + `出ていないものを「表示中」と言わず、理由も断定しない）`);
+      ? bad(`eraReadout / groundState の単体テストが失敗（${fails.length} 件）: ${fails.slice(0, 5).join(" / ")}`)
+      : ok(`eraReadout / groundState を動かして確認（ok・pending・late・fail × 現在／過去／明治期。`
+          + `理由を知らないときは断定せず、圏外のときだけ言い切る）`);
   }
 }
 
