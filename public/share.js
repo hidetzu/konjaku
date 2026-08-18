@@ -18,7 +18,7 @@ window.KonjakuShare = (function (w) {
   const BANNER = "この土地は、昔なんだったのか？";
   const BG = "#0b0e13", FG = "#eaeef3", DIM = "#8b96a3";
   const WATER = "#5ba3e0", LAND = "#d8cfa8", EST = "#e6c47a";
-  const WATERY = new Set(["水部", "旧水部", "河川敷･浜", "湖", "干拓地", "落堀"]);
+  // ⚠ 6 語を書き写さない。verify.js の isWatery が唯一の持ち主
 
   // ---- 計測 ----
   // 記録するのは「何が起きたか」だけ。地名も座標も送らない。
@@ -109,7 +109,7 @@ window.KonjakuShare = (function (w) {
     cv.width = W; cv.height = H;
     const g = cv.getContext("2d");
     const l = f.byKey.landform, m = f.byKey.meiji, e = f.byKey.elevation, p = f.byKey.photos;
-    const wet = l.ok && (WATERY.has(l.value) || WATERY.has(l.artificial ?? ""));
+    const wet = l.ok && (Konjaku.isWatery(l.value) || Konjaku.isWatery(l.artificial ?? ""));
     const accent = wet ? WATER : LAND;
 
     g.fillStyle = BG; g.fillRect(0, 0, W, H);

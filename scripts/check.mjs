@@ -2903,6 +2903,110 @@ head("9. 画面の言葉");
     }
   }
 
+  // ⚠ **同じ問いに答える定義を、2 か所に書かない**（掟）。
+  //   表そのものは §6 が見ている（14 区分・凡例）。ここが見るのは**それ以外の並びと式**。
+  //
+  // 実測（2026-08-18）: 2 種類の重複があった。⚠ **どちらも「表」ではないので、
+  //   既存の検査では素通りしていた。**
+  //     ① 「水由来の地形分類」6 語 … verify.js / share.js / index.html×2 の 4 か所
+  //     ② `SWALE.find(c => c.name === x)?.water` … peel3d.js×3 / swale.js の 4 か所
+  //   ⚠ ② は式なので、grep しても目に留まらない。並びだけを見ていては見つからない。
+  //
+  // ⚠ ①と②は**別の問い**。混ぜない。
+  //     ① いまの地形分類が水に由来するか（Konjaku.isWatery）
+  //     ② 明治期の地図で水域だったか（KonjakuSwale.isWater）
+  {
+    const jsHtml = [...htmlFiles, ...jsFiles];
+    const body = {};
+    for (const f of jsHtml) body[f] = seen[f] ?? "";
+  
+    // ---- ① 語の並びを書き写していないか ----
+    {
+      const where = new Map();
+      for (const f of jsHtml) {
+        for (const m of body[f].matchAll(/\[\s*("(?:[^"\\]|\\.)*"\s*,\s*){2,}"(?:[^"\\]|\\.)*"\s*\]/g)) {
+          const words = [...m[0].matchAll(/"((?:[^"\\]|\\.)*)"/g)].map((x) => x[1]);
+          if (!words.some((w) => /[ぁ-んァ-ヶ一-龠]/.test(w))) continue;
+          const k = words.join("｜");
+          if (!where.has(k)) where.set(k, []);
+          where.get(k).push(f);
+        }
+      }
+      const dup = [...where.entries()].filter(([, fs]) => fs.length > 1);
+      dup.length
+        ? bad(`同じ語の並びを 2 か所以上に書いている: `
+            + dup.map(([k, fs]) => `[${k.split("｜").slice(0, 3).join("、")}…] → ${fs.join("、")}`).join(" / ")
+            + `（1 か所に寄せて、そこから呼ぶこと）`)
+        : ok(`日本語を含む語の並び ${where.size} 種類は、どれも 1 か所にしかない`);
+    }
+  
+    // ---- ② 「名前から水域を引く」式を書き写していないか ----
+    // ⚠ 持ち主（swale.js）の中だけは、定義そのものなので許す
+    {
+      const hits = [];
+      for (const f of jsHtml) {
+        if (f === "swale.js") continue;
+        const n = (body[f].match(/SWALE\s*\.\s*find\s*\([^)]*\)\s*\?\.\s*water/g) ?? []).length;
+        if (n) hits.push(`${f}${n > 1 ? `×${n}` : ""}`);
+      }
+      hits.length
+        ? bad(`区分名から水域を引く式を書き写している: ${hits.join("、")}`
+            + `（KonjakuSwale.isWater を呼ぶこと。式なので grep しても目に留まらない）`)
+        : ok(`区分名から水域を引くのは swale.js の isWater ただ1つ`);
+    }
+  
+    // ---- ③ 持ち主が、実際に配れているか ----
+    // ⚠ 「1 か所にした」と言いながら、公開していなければ呼べない
+    {
+      const missing = [];
+      if (!/isWatery/.test(body["verify.js"] ?? "")) missing.push("verify.js に isWatery が無い");
+      else if (!/global\.Konjaku\s*=\s*\{[^}]*isWatery/.test(body["verify.js"]))
+        missing.push("isWatery を Konjaku から配っていない（他のファイルが呼べない）");
+      if (!/isWater/.test(body["swale.js"] ?? "")) missing.push("swale.js に isWater が無い");
+      else if (!/KonjakuSwale\s*=\s*\{[^}]*isWater/.test(body["swale.js"]))
+        missing.push("isWater を KonjakuSwale から配っていない");
+      missing.length
+        ? bad(`1 か所に寄せた答えを配れていない: ${missing.join(" / ")}`)
+        : ok(`水の判定は 2 つとも持ち主から配っている（Konjaku.isWatery ／ KonjakuSwale.isWater）`);
+    }
+  }
+
+  // ⚠ **検査の件数が、本当に数字になっているか。**
+  //   実測（2026-08-18）: SPEC の「静的 **N件**」が **`****`** になったまま main へ出た。
+  //   置換に使ったシェル変数が空に展開されて、数字が消えていた。
+  //   ⚠ **文書は誰も実行しないので、壊れても誰も気づかない。**（一度出した）
+  // ⚠ 中身の正しさ（本当に N 件か）はここでは見ない。**空と 0 だけ**を見る。
+  //   ⚠ 最初は「（静的 …）」の形だけを見ていて、`--group=core`（**0件**…）を
+  //     取りこぼした（あちらは名前が括弧の**外**にある）。名前の場所で分けない。
+  {
+    const spec = await readFile(join(ROOT, "docs", "SPEC.md"), "utf8").catch(() => "");
+    const holes = [];
+    if (!spec) holes.push("docs/SPEC.md を読めない");
+    else {
+      if (/\*\*\s*\*\*/.test(spec)) holes.push(`空の強調が ${[...spec.matchAll(/\*\*\s*\*\*/g)].length} 箇所`);
+      // 検査の件数を名乗っている所を、名前の位置に関係なく拾う
+      const LABELS = ["静的", "実描画", "--group=core", "--group=search"];
+      for (const line of spec.split("\n")) {
+        for (const lab of LABELS) {
+          if (!line.includes(lab)) continue;
+          // その名前の**後ろ**にある最初の「**N件**」を見る
+          const after = line.slice(line.indexOf(lab) + lab.length);
+          const m = /\*\*(\d+)件\*\*/.exec(after);
+          if (!m) { if (/件/.test(after)) holes.push(`${lab}: 件数が **N件** の形で書かれていない`); continue; }
+          if (Number(m[1]) === 0) holes.push(`${lab}: 0件`);
+        }
+      }
+      // ⚠ 4 つとも名乗っていること（行ごと消えても気づけるように）
+      for (const lab of LABELS)
+        if (!new RegExp(`${lab.replace(/[-]/g, "\\-")}[^\\n]*\\*\\*\\d+件\\*\\*`).test(spec))
+          holes.push(`${lab} の件数が書かれていない`);
+    }
+    holes.length
+      ? bad(`docs/SPEC.md の検査の件数が壊れている: ${[...new Set(holes)].join("、")}`
+          + `（置換に失敗しても、文書は誰も実行しないので気づけない）`)
+      : ok(`docs/SPEC.md の検査の件数は、4 つとも数字で書かれている`);
+  }
+
   // ⚠ 短い語（「自分」）は本文の検索で数えられない。宣言そのものを読む。
   {
     const m = /const TAG_LABEL\s*=\s*\{([^}]*)\}/.exec(seen["index.html"] ?? "");

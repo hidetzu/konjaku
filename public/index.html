@@ -3119,7 +3119,7 @@ async function openPlace(lon,lat,title,opt){
             // 面の内訳（この範囲で 1 画素ずつ数えた結果）。⚠ 判定側（verify.js）が測ったものを
             //   そのまま持つ。ここで数え直さない（掟6: 同じ問いに答える実装を2つ持たない）
             area: m.area ?? null,
-            water: lf.ok ? ["水部","旧水部","河川敷･浜","湖","干拓地","落堀"].includes(lf.value) : !!m.water };
+            water: lf.ok ? Konjaku.isWatery(lf.value) : !!m.water };
   if (current && current.lon===lon && current.lat===lat) {
     renderVerdict();
     // 押した場所を見失わないよう、同じ位置で地図を戻す
@@ -3154,7 +3154,7 @@ async function openPlace(lon,lat,title,opt){
   // 地形分類が先頭。見出しで言い切っているのはこれなので、根拠も最初に出す（掟: 根拠のないことは書かない）
   const lfBody = lf.state === "unreachable" ? unread
     : lf.ok
-      ? `<div class="v ${["水部","旧水部","河川敷･浜","湖","干拓地","落堀"].includes(lf.value) ? "w" : ""}">${
+      ? `<div class="v ${Konjaku.isWatery(lf.value) ? "w" : ""}">${
           lf.value}${lf.artificial ? `　<span style="font-size:var(--fs-note)">＋ ${lf.artificial}</span>` : ""}</div>`
         + (lf.why ? `<div class="d" style="margin-top:3px">${lf.why}</div>` : "")
         + (lf.risk ? `<div class="d" style="margin-top:3px">災害リスク: ${lf.risk}</div>` : "")
