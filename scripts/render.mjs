@@ -635,6 +635,150 @@ const CASES = [
     },
   },
   {
+    // ⚠ **年代を選ぶのが「指の精度勝負」になっていた。**
+    //   実測（2026-08-18・横棒のころ）:
+    //     1 段あたり 34.5px（375）／30.6px（344）／**27.6px（320）** ＝ 指の 63%
+    //     ノブ 25×25px ／ ▶ 36×36px ＝ どちらも 44px 割れ
+    //     ▶ とノブの隙間 5px ／ 右端（明治期）のノブは画面の縁から 10px
+    //     年代の文字の当たり判定 24×19px 〜 53×19px
+    //   ⚠ この画面はズーム・ピン・読み上げを 44px にそろえてあるのに、
+    //     **年代の操作だけ規則から漏れていた。**
+    //
+    // ⚠ 9 段 × 44px = 396px は 375px に収まらない。**スクロールで解く**（横ドラムロール）。
+    //   ⚠ 横棒では狭くて 4 段の名前を消していたが、**段は最初から全部に名前を持っていた**。
+    //     横に流せば全段に名前が出る（利用者役 3/3 が「名前が無いと何年か分からない」）。
+    //
+    // ⚠ **地図を隠さない形にする。**ここは値を確定する入力欄ではなく、
+    //   動かすと絵が変わるスクラバー。選んでいる間に地図が見えないと意味が薄れる。
+    //
+    // ⚠ 作っている途中で、実測に 5 回否定されている。全部ここで見る:
+    //   1. 真ん中の印を**スクロールする箱の中**に置いた → 中身と一緒に流れ、
+    //      「現在」のときだけ枠付きに見えた（ずれ 704px）
+    //   2. box-sizing が無く、段が 88 → 99px に太って印と食い違った
+    //   3. transform:scale(1.12) でも膨らんだ
+    //   4. ▶ を「閉じる」の隣に置いたら隙間 10px（3/3 が「閉じてしまいそう」）
+    //   5. ▶ と年代の枠の隙間が 0px で、文字が ▶ の真横で切れた（320 で 33px 切れ）
+    //
+    // ⚠ **狭い幅で読み込む。**PC 幅から縮めるとパネルが開いたままになり、年代帯ごと消える
+    //   （「読んでいるあいだ HUD を出さない」規則。実際に全部 0×0px になった）。
+    name: "狭い幅の年代は、指で回して選べて、いまどこかが分かる", path: `/peel?${TOYOSU}`,
+    viewport: { width: 375, height: 667 }, hasTouch: true,
+    async check(page) {
+      await page.waitForFunction(() => document.querySelectorAll("#drum .d-it").length > 0,
+        null, { timeout: 60000 });
+      await page.evaluate(() => { const p = document.getElementById("panel");
+        if (p && !p.classList.contains("hide")) document.getElementById("closePanel").click(); });
+      await page.waitForTimeout(600);
+      const look = () => page.evaluate(() => {
+        const drum = document.getElementById("drum");
+        const it = [...drum.querySelectorAll(".d-it")];
+        const box = (e) => { const r = e.getBoundingClientRect();
+          return { w: Math.round(r.width), h: Math.round(r.height),
+                   l: Math.round(r.left), r: Math.round(r.right) }; };
+        const on = drum.querySelector(".d-it.on"), mk = document.getElementById("drumMark");
+        const dr = drum.getBoundingClientRect(), pl = document.getElementById("play").getBoundingClientRect();
+        const tg = document.getElementById("timeToggle").getBoundingClientRect();
+        const dots = [...(document.getElementById("drumPos")?.querySelectorAll("i") ?? [])];
+        return {
+          n: it.length, named: it.filter((e) => (e.textContent || "").trim()).length,
+          item: it.length ? box(it[0]) : null,
+          on: on ? { t: on.textContent.trim(), ...box(on) } : null,
+          mark: mk ? box(mk) : null,
+          gapPlay: Math.round(dr.left - pl.right),
+          gapClose: Math.round(tg.left - pl.right),
+          play: { w: Math.round(pl.width), h: Math.round(pl.height) },
+          dots: dots.length, dotsOn: dots.filter((d) => d.classList.contains("on")).length,
+          drumShown: getComputedStyle(drum).display !== "none",
+          trackShown: getComputedStyle(document.getElementById("track")).display !== "none",
+          t: Number(document.getElementById("t").value),
+        };
+      });
+      const g = await look();
+      must(g.drumShown && !g.trackShown, `狭い幅でドラムが出ていない（ドラム=${g.drumShown} / 横棒=${g.trackShown}）`);
+      // ⚠ 全段に名前が出る（横棒のころは 9 段中 5 段だけだった）
+      must(g.named === g.n, `名前の無い段がある: ${g.named} / ${g.n} 段`);
+      must(g.item.h >= 44 && g.item.w >= 44, `段が指で押せる大きさでない: ${g.item.w}×${g.item.h}px`);
+      must(g.play.h >= 44 && g.play.w >= 44, `再生 ▶ が 44px 未満: ${g.play.w}×${g.play.h}px`);
+      // ⚠ ▶ と年代がくっつくと、文字が ▶ の真横で切れる
+      must(g.gapPlay >= 10, `▶ と年代の枠がくっついている（隙間 ${g.gapPlay}px。文字が真横で切れる）`);
+      // ⚠ ▶ と「閉じる」が近いと、片手で閉じてしまう
+      must(g.gapClose >= 40, `▶ と「閉じる」が近い（隙間 ${g.gapClose}px。押し間違える）`);
+      // ⚠ 全体のどこにいるかが分かる（3/3 が「何段あるか分からない」と答えた）
+      must(g.dots === g.n, `全体の位置を示す点が段の数と合わない: 点 ${g.dots} / 段 ${g.n}`);
+      must(g.dotsOn === 1, `いまどこかを示す点が 1 つでない: ${g.dotsOn} 個`);
+      // ⚠ 選ばれた段が、真ん中の印に収まる（印がスクロールすると崩れる）
+      const fits = (x) => x.on && x.mark && x.on.l >= x.mark.l - 2 && x.on.r <= x.mark.r + 2;
+      must(fits(g), `選んだ段が真ん中の印に収まっていない: 段 ${JSON.stringify(g.on)} / 印 ${JSON.stringify(g.mark)}`);
+      // ⚠ 端まで動かしても崩れない（印がスクロールしていた不具合は、端で出た）
+      const seen = [];
+      for (const want of ["明治期", "現在"]) {
+        const i = await page.evaluate((want) => {
+          const e = [...document.querySelectorAll("#drum .d-it")].find((x) => x.textContent.trim() === want);
+          return e ? Number(e.dataset.i) : null;
+        }, want);
+        must(i !== null, `「${want}」の段が無い`);
+        const pt = { i };
+        // ⚠ 画面の外にある段を座標で押さない。**利用者は回してから押す**ので、
+        //   locator（見えるところまで送ってから押す）で、その道筋ごと確かめる
+        await page.locator("#drum .d-it").filter({ hasText: new RegExp(`^${want}$`) }).click();
+        await page.waitForTimeout(800);
+        const after = await look();
+        must(after.t === pt.i * 100, `「${want}」を押しても、その段へ飛ばない（${after.t} / 期待 ${pt.i * 100}）`);
+        must(fits(after), `「${want}」で、選んだ段が真ん中の印からずれる（印がスクロールしている）`);
+        seen.push(`${want}→${after.t}`);
+      }
+      // ⚠ 指で回しても選べる（押すだけでなく、回す道も残っていること）
+      await page.evaluate(() => { document.getElementById("drum").scrollLeft = 0;
+        document.getElementById("drum").dispatchEvent(new Event("scroll")); });
+      await page.waitForTimeout(700);
+      const rolled = await look();
+      must(rolled.t === 0, `回しても段が選ばれない（t=${rolled.t}）`);
+      // ⚠ **畳めること**も見る。狭い幅の年代帯は画面の 49% を占めるので、
+      //   畳めないと地図が出てこない。⚠ 畳んだあとも「開き直せる」ことまで。
+      //   （PC 側の同じ主張は「年代を動かす操作パネルが、見えて畳める（PC の横棒）」）
+      await page.click("#timeToggle");
+      await page.waitForTimeout(500);
+      const shut = await page.evaluate(() => ({
+        drum: document.getElementById("drum").getBoundingClientRect().height,
+        toggle: document.getElementById("timeToggle").getBoundingClientRect().height,
+      }));
+      must(shut.drum < 4, `畳んでも年代が出たまま: ${Math.round(shut.drum)}px`);
+      must(shut.toggle >= 44, `畳んだら開き直す入口が指で押せない: ${Math.round(shut.toggle)}px`);
+      await page.click("#timeToggle");
+      await page.waitForTimeout(500);
+      must(await page.evaluate(() => document.getElementById("drum").getBoundingClientRect().height) >= 44,
+        "畳んだあと、開き直せない");
+
+      // ⚠ **PC 側も同じケースで見る。**形を 2 つに分けた意味は「片方を触っても、
+      //   もう片方が壊れないこと」なので、**壊れていないほうも一緒に確かめる**。
+      //   実際に壊した（2026-08-18）: スマホ向けに gap を外したら、PC で
+      //   **▶ とノブが 16px かぶった**（1280 / 1024 / 900 すべてで再現）。
+      const pc = [];
+      for (const [w, h] of [[1280, 800], [900, 700]]) {
+        await page.setViewportSize({ width: w, height: h });
+        await page.waitForTimeout(700);
+        // ⚠ いちばん左（現在）でしか出ない。ノブが横棒の外へはみ出す側だから
+        await page.evaluate(() => { const t = document.getElementById("t");
+          t.value = "0"; t.dispatchEvent(new Event("input", { bubbles: true })); });
+        await page.waitForTimeout(400);
+        const r = await page.evaluate(() => {
+          const R = (s2) => document.querySelector(s2).getBoundingClientRect();
+          const pl = R("#play"), kn = R("#track .knob"), dr = document.getElementById("drum");
+          return { lap: Math.round(pl.right - kn.left),
+                   trackShown: getComputedStyle(document.getElementById("track")).display !== "none",
+                   drumShown: getComputedStyle(dr).display !== "none" };
+        });
+        must(r.trackShown && !r.drumShown,
+          `${w}: PC で横棒が出ていない（横棒=${r.trackShown} / ドラム=${r.drumShown}）`);
+        must(r.lap <= 0, `${w}: PC で ▶ とノブが ${r.lap}px かぶっている`);
+        pc.push(`${w}: 重なり無し`);
+      }
+      return `${g.n} 段すべて名前あり・${g.item.w}×${g.item.h}px ／ 点 ${g.dots} 個で現在地 1 つ ／`
+        + ` ▶ ${g.play.w}px（年代と ${g.gapPlay}px・閉じると ${g.gapClose}px） ／ ${seen.join(" ")} ／ 回して t=0`
+        + ` ／ ${pc.join(" ")}`;
+    },
+  },
+  {
     // ズームは暗いパネルに載せたせいで黒地に黒になり、実測でボタンの存在すら見えなかった
     name: "さかのぼる（ズームが見えて、指で押せる）", path: `/peel?${TOYOSU}`,
     viewport: { width: 390, height: 844 }, hasTouch: true,
@@ -3576,8 +3720,13 @@ const CASES = [
   {
     // ⚠ 端の文字は見た目の中心が range の端からずれる。
     //   実際の座標を押し、右端の段まで値が届くことを確認する。
-    name: "年代帯の端の文字を押すと最後の段になる", path: `/peel?${TOYOSU}`,
-    viewport: { width: 375, height: 667 }, hasTouch: true,
+    // ⚠ **PC 幅で見る**（2026-08-18 に移した）。狭い幅は横ドラムロールに替えたので、
+    //   ここが守っている「端の文字の見た目の中心が range の端からずれる」は
+    //   **横棒が残る PC だけの問題**になった。
+    //   ⚠ 狭い幅の同じ主張（端の段を選べる）は
+    //     「狭い幅の年代は、指で回して選べて、いまどこかが分かる」が見ている。
+    name: "年代帯の端の文字を押すと最後の段になる（PC の横棒）", path: `/peel?${TOYOSU}`,
+    viewport: { width: 1280, height: 800 },
     async check(page) {
       await peelReady(page);
       // ⚠ 「目盛りが2つ以上ある」では足りない。仮の段でも満たすので、
@@ -3615,8 +3764,11 @@ const CASES = [
     //     ノブの上     0 →  37 →  98 → 160 → 222 → 283 → 345
     //     レールの上 188 → 249 → 311 → 372 → 434 → 495 → 557
     //   「押せば段へ寄る」と「引けば連続して動く」は**同じ的の上で両方**成り立つ必要がある。
-    name: "年代帯の文字は、押せば段へ寄り、引けば連続して動く", path: `/peel?${TOYOSU}`,
-    viewport: { width: 375, height: 667 }, hasTouch: true,
+    // ⚠ **PC 幅で見る**（2026-08-18 に移した）。狭い幅は横ドラムロールに替えたので、
+    //   「同じ的の上で、押す（段へ寄る）と引く（連続して動く）が両立する」は
+    //   **横棒が残る PC だけの主張**になった。
+    name: "年代帯の文字は、押せば段へ寄り、引けば連続して動く（PC の横棒）", path: `/peel?${TOYOSU}`,
+    viewport: { width: 1280, height: 800 },
     async check(page) {
       await peelReady(page);
       // 同じ穴を残さない。仮の段の上で座標を測ると、組み直しで的がずれる
@@ -3670,9 +3822,13 @@ const CASES = [
     //   文字・2px の線・14px のノブを背景へ直接置いていたときは、明るい地面でも
     //   暗い水面でも読みづらかった。板・見出し・指で分かるノブを実寸で見る。
     // ⚠ 畳んだあとも入口と選択中の年代は残す。閉じた結果、開き方まで消してはいけない。
-    name: "年代を動かす操作パネルが、見えて畳める",
+    // ⚠ **PC 幅で見る**（2026-08-18 に移した）。レール・ノブの実寸は横棒の話で、
+    //   狭い幅は横ドラムロールに替わった。
+    //   ⚠ **「畳める」はスマホでも要る。**そちらは
+    //     「狭い幅の年代は、指で回して選べて、いまどこかが分かる」に足した。
+    name: "年代を動かす操作パネルが、見えて畳める（PC の横棒）",
     path: `/peel?ll=34.39500,132.45500&q=%E5%BA%83%E5%B3%B6`,
-    viewport: { width: 375, height: 667 }, hasTouch: true,
+    viewport: { width: 1280, height: 800 },
     async check(page) {
       await peelReady(page);
       await page.waitForFunction(() => document.querySelectorAll("#track .tick").length === 7,
@@ -4143,8 +4299,12 @@ const CASES = [
   {
     // ⚠ 目盛りとノブは input を覆わず、ラベルは押した段へ明示選択する。
     //   以前は飾りが input を覆って年代帯の操作を奪っていたため、役割を分けて検査する。
-    name: "年代の帯は、目盛りも文字もノブも押せる", path: `/peel?${TOYOSU}`,
-    viewport: { width: 375, height: 667 }, hasTouch: true,
+    // ⚠ **PC 幅で見る**（2026-08-18 に移した）。「飾りが input を覆って操作を奪わない」は
+    //   **横棒が残る PC だけの主張**になった。狭い幅は横ドラムロールに替わり、
+    //   同じ主張（段が押せる・回せる）は
+    //   「狭い幅の年代は、指で回して選べて、いまどこかが分かる」が見ている。
+    name: "年代の帯は、目盛りも文字もノブも押せる（PC の横棒）", path: `/peel?${TOYOSU}`,
+    viewport: { width: 1280, height: 800 },
     async check(page) {
       await page.waitForFunction(() => /件を判定しました/.test(document.body.innerText),
         null, { timeout: 60000 });
@@ -4154,8 +4314,14 @@ const CASES = [
         const mid = (e) => { const r = e.getBoundingClientRect();
           return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) }; };
         return { x: Math.round(t.left), w: Math.round(t.width),
-          lab: [...document.querySelectorAll("#track .lab")].map((e) =>
-            ({ ...mid(e), t: e.textContent.trim() })),
+          // ⚠ **名前の無いラベルは的にしない。**間引いた段のラベルは中身が空で、
+          //   `#track .lab:empty{display:none}` で消してある（下線だけが残るのを避けるため）。
+          //   消えた要素の矩形は 0,0 を返すので、そのまま押すと画面の左上を押すことになる
+          //   （2026-08-18 に実際に踏んだ。「目盛り(0)」が 4 つ出た）。
+          //   ⚠ **同じ位置の目盛り（.tick）は下で押している**ので、抜けは出ない。
+          lab: [...document.querySelectorAll("#track .lab")]
+            .filter((e) => e.textContent.trim())
+            .map((e) => ({ ...mid(e), t: e.textContent.trim() })),
           tick: [...document.querySelectorAll("#track .tick")].map(mid),
           knob: mid(document.querySelector("#track .knob")) };
       });
