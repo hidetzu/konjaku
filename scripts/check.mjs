@@ -2971,6 +2971,42 @@ head("9. 画面の言葉");
     }
   }
 
+  // ⚠ **検査の件数が、本当に数字になっているか。**
+  //   実測（2026-08-18）: SPEC の「静的 **N件**」が **`****`** になったまま main へ出た。
+  //   置換に使ったシェル変数が空に展開されて、数字が消えていた。
+  //   ⚠ **文書は誰も実行しないので、壊れても誰も気づかない。**（一度出した）
+  // ⚠ 中身の正しさ（本当に N 件か）はここでは見ない。**空と 0 だけ**を見る。
+  //   ⚠ 最初は「（静的 …）」の形だけを見ていて、`--group=core`（**0件**…）を
+  //     取りこぼした（あちらは名前が括弧の**外**にある）。名前の場所で分けない。
+  {
+    const spec = await readFile(join(ROOT, "docs", "SPEC.md"), "utf8").catch(() => "");
+    const holes = [];
+    if (!spec) holes.push("docs/SPEC.md を読めない");
+    else {
+      if (/\*\*\s*\*\*/.test(spec)) holes.push(`空の強調が ${[...spec.matchAll(/\*\*\s*\*\*/g)].length} 箇所`);
+      // 検査の件数を名乗っている所を、名前の位置に関係なく拾う
+      const LABELS = ["静的", "実描画", "--group=core", "--group=search"];
+      for (const line of spec.split("\n")) {
+        for (const lab of LABELS) {
+          if (!line.includes(lab)) continue;
+          // その名前の**後ろ**にある最初の「**N件**」を見る
+          const after = line.slice(line.indexOf(lab) + lab.length);
+          const m = /\*\*(\d+)件\*\*/.exec(after);
+          if (!m) { if (/件/.test(after)) holes.push(`${lab}: 件数が **N件** の形で書かれていない`); continue; }
+          if (Number(m[1]) === 0) holes.push(`${lab}: 0件`);
+        }
+      }
+      // ⚠ 4 つとも名乗っていること（行ごと消えても気づけるように）
+      for (const lab of LABELS)
+        if (!new RegExp(`${lab.replace(/[-]/g, "\\-")}[^\\n]*\\*\\*\\d+件\\*\\*`).test(spec))
+          holes.push(`${lab} の件数が書かれていない`);
+    }
+    holes.length
+      ? bad(`docs/SPEC.md の検査の件数が壊れている: ${[...new Set(holes)].join("、")}`
+          + `（置換に失敗しても、文書は誰も実行しないので気づけない）`)
+      : ok(`docs/SPEC.md の検査の件数は、4 つとも数字で書かれている`);
+  }
+
   // ⚠ 短い語（「自分」）は本文の検索で数えられない。宣言そのものを読む。
   {
     const m = /const TAG_LABEL\s*=\s*\{([^}]*)\}/.exec(seen["index.html"] ?? "");
