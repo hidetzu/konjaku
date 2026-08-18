@@ -1445,12 +1445,26 @@ function render(){
   // ⚠ 離したら必ず既定の色（明治期の判定そのもの）に戻す。戻し忘れると、
   //   別の意味の色が居座って「99.6% が水色」と言いながら画面が灰色になる
   const BLD_COLOR=["case",["==",["get","wasWater"],1],"#8fb9dd","#d8cfa8"];
+  // ⚠ **押した先（地図）が見えていないと、押しても何も起きないボタンになる**（2026-08-18）。
+  //   狭い幅では根拠を全画面で読ませているので、このボタンを押しても地図が無い。
+  //   利用者役 3/3 が「押したらどうなるのか想像できない」「押して何も起きないように
+  //   見えると二度と押さない」と答えた。
+  //   → 押した瞬間に**パネルを閉じて地図を出す**。押しているあいだだけ光るのは変えない。
+  // ⚠ **離す場所はボタンの上とは限らない。**閉じた瞬間、指の下は地図になる。
+  //   ボタンにだけ pointerup を張ると、色が戻らないまま居座る。window で受ける。
   const peek=(id,expr)=>{
     const pk=document.getElementById(id);
     if(!pk) return;
     const on=()=>{ try{ map.setPaintProperty("bld","fill-extrusion-color",expr); }catch{} };
     const off=()=>{ try{ map.setPaintProperty("bld","fill-extrusion-color",BLD_COLOR); }catch{} };
-    pk.addEventListener("pointerdown",(e)=>{ e.preventDefault(); on(); });
+    pk.addEventListener("pointerdown",(e)=>{
+      e.preventDefault();
+      // ⚠ 全画面で読んでいるときだけ閉じる。PC は地図が横に見えているので閉じない
+      if(matchMedia("(max-width:680px)").matches) closePanel();
+      on();
+      addEventListener("pointerup",off,{once:true});
+      addEventListener("pointercancel",off,{once:true});
+    });
     for(const ev of ["pointerup","pointerleave","pointercancel","blur"])
       pk.addEventListener(ev,off);
   };
