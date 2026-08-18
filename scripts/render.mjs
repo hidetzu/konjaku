@@ -513,6 +513,95 @@ const CASES = [
     },
   },
   {
+    // ⚠ **根拠を全画面で読んでいる最中に、地図へ戻る手段が消えてはいけない。**
+    //   実測（2026-08-18・375×667）: ✕ はパネルの中で position:absolute だったので、
+    //   パネルと一緒に流れて **400px スクロールで y=-298**（画面外）。
+    //   押した座標には**何も無かった**（掟: 押しても何も起きない導線を置かない）。
+    //   ⚠ 残る「← 今昔へ」はトップへ帰る**別の操作**なので、代わりにならない。
+    // ⚠ 直し方は「位置を固定値で足す」ではなく、**同じ積み上げに入れる**
+    //   （CLAUDE.md §9「隣り合うものは同じ積み上げに入れる。固定値で避けない」）。
+    name: "根拠を全画面で読んでも、戻る 2 つが上に残る", path: `/peel?${TOYOSU}`,
+    viewport: { width: 375, height: 667 }, hasTouch: true,
+    async check(page) {
+      await page.waitForFunction(() => /件を判定しました/.test(document.body.innerText),
+        null, { timeout: 60000 });
+      await page.waitForTimeout(1200);
+      // ⚠ 地図だけ見ているときは ✕ を出さない（押しても何も起きない導線を置かない）
+      const beforeOpen = await page.evaluate(() => {
+        const e = document.getElementById("closePanel");
+        return { shown: !!e && getComputedStyle(e).display !== "none" && e.getBoundingClientRect().width > 0 };
+      });
+      must(!beforeOpen.shown, "根拠を開いていないのに「✕ 地図へ」が出ている");
+
+      await page.click("#toggle");
+      await page.waitForTimeout(600);
+      const look = () => page.evaluate(() => {
+        const g = (sel) => { const e = document.querySelector(sel); if (!e) return null;
+          const r = e.getBoundingClientRect();
+          const cx = Math.round(r.x + r.width / 2), cy = Math.round(r.y + r.height / 2);
+          const who = document.elementFromPoint(cx, cy);
+          return { x: Math.round(r.x), right: Math.round(r.right), y: Math.round(r.y),
+            w: Math.round(r.width), h: Math.round(r.height),
+            inView: r.top >= 0 && r.bottom <= innerHeight,
+            // ⚠ 矩形だけでは足りない。**その座標を誰が受け取るか**で見る
+            hit: who ? (who.id || who.closest("[id]")?.id || who.tagName) : "無い" }; };
+        const pan = document.getElementById("panel");
+        return { back: g("#back"), close: g("#closePanel"), scrollH: pan.scrollHeight, viewH: innerHeight };
+      });
+      const a = await look();
+      must(a.close, "「✕ 地図へ」が無い");
+      // ⚠ 指で押せる大きさ
+      for (const [nm, b] of [["← 今昔へ", a.back], ["✕ 地図へ", a.close]]) {
+        must(b.w >= 44 && b.h >= 44, `${nm} が指で押せない（${b.w}×${b.h}）`);
+        must(b.hit === (nm === "← 今昔へ" ? "back" : "closePanel"),
+          `${nm} を押しても、当たるのは「${b.hit}」`);
+      }
+      // ⚠ 2 つは離れていること。以前 10px まで詰まって 3/3 が苦情を出した
+      must(a.close.x - a.back.right >= 80,
+        `2 つが近すぎる（間隔 ${a.close.x - a.back.right}px）。押し間違える`);
+
+      // ⚠ **本題。** パネルの中身より深くスクロールしても、両方が残る
+      must(a.scrollH > a.viewH, `中身が画面に収まっていて、スクロールの検査にならない`);
+      await page.evaluate(() => { document.getElementById("panel").scrollTop = 400; });
+      await page.waitForTimeout(400);
+      const b = await look();
+      for (const [nm, x] of [["← 今昔へ", b.back], ["✕ 地図へ", b.close]]) {
+        must(x.inView, `スクロールしたら ${nm} が画面から出た（y=${x.y}）`);
+        must(x.hit === (nm === "← 今昔へ" ? "back" : "closePanel"),
+          `スクロール後に ${nm} を押しても、当たるのは「${x.hit}」`);
+      }
+      // ⚠ 帯が中身を覆っていないこと。**いちばん上まで戻してから**見る。
+      //   ⚠ スクロールしたあとで見て取りこぼした（中身が上へ逃げているので当たらない）。
+      //   ⚠ 余白を外すと、地名と答え（99.6%）がそのまま帯の下に入る（実測 2026-08-19）。
+      await page.evaluate(() => { document.getElementById("panel").scrollTop = 0; });
+      await page.waitForTimeout(300);
+      const under = await page.evaluate(() => {
+        const bar = document.getElementById("chrome").getBoundingClientRect();
+        const hit = [];
+        for (const el of document.querySelectorAll("#panel #placeName, #panel #heroNum, #panel #result")) {
+          const r = el.getBoundingClientRect();
+          if (r.width < 1 || r.height < 1) continue;
+          if (r.top < bar.bottom && r.bottom > bar.top && r.left < bar.right && r.right > bar.left)
+            hit.push(`${el.id} y=${Math.round(r.top)}`);
+        }
+        return { hit, barBottom: Math.round(bar.bottom) };
+      });
+      must(!under.hit.length,
+        `帯が中身を覆っている（帯の下端 ${under.barBottom} / ${under.hit.join("、")}）`);
+
+      // ⚠ ✕ を押したら本当に地図へ戻る
+      await page.click("#closePanel");
+      await page.waitForTimeout(500);
+      const closed = await page.evaluate(() => ({
+        hidden: document.getElementById("panel").classList.contains("hide"),
+        closeShown: getComputedStyle(document.getElementById("closePanel")).display !== "none" }));
+      must(closed.hidden, "✕ を押しても根拠が閉じない");
+      must(!closed.closeShown, "閉じたのに ✕ が残っている");
+      return `← x=${a.back.x}..${a.back.right} ／ ✕ x=${a.close.x}..${a.close.right}（間隔 ${a.close.x - a.back.right}px）`
+        + ` ／ 中身 ${a.scrollH}px を 400px スクロールしても両方 y=${b.back.y}・${b.close.y} で残る`;
+    },
+  },
+  {
     // ⚠ **落ちたことを実際に観測できたときだけ「読み込めませんでした」と言う。**
     //   実測（2026-08-18・tmp/probe-map-error.mjs・豊洲）。拾えるものは落とし方で違う:
     //     404（写真が無い） … map.on("error") が来ない（MapLibre は 404 を異常と見なさない）
