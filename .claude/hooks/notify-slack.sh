@@ -80,14 +80,33 @@ QUESTION=$(printf '%s' "$INPUT" | jq -r '
 ' 2>/dev/null) || skip "入力を読めないので送らない"
 [ -n "$QUESTION" ] || skip "質問が空なので送らない"
 
-CWD=$(printf '%s' "$INPUT" | jq -r '.cwd // "unknown"' 2>/dev/null || echo unknown)
+CWD=$(printf '%s' "$INPUT" | jq -r '.cwd // ""' 2>/dev/null || echo "")
+
+# どのプロジェクトかを、**毎回 cwd から出す**。
+# ⚠ .envrc に固定で書かない。理由は 3 つ、うち 2 つは実害:
+#   1. direnv が .envrc を読む時点で $CWD は存在しない（＝空文字で固定される）
+#   2. .envrc は機械ごとに固定なので、別の clone や worktree で違う名前を名乗る
+#   3. cwd がサブディレクトリだと basename は意味を失う（…/konjaku/tmp/9 なら「9」）
+# ⚠ だから repo の名前（git の根）と、そこからの相対を出す。
+#   git が使えないところでは basename に落ちる。**落ちても止まらない**。
+PROJECT=""
+if [ -n "$CWD" ] && command -v git >/dev/null 2>&1; then
+  TOP=$(git -C "$CWD" rev-parse --show-toplevel 2>/dev/null || true)
+  if [ -n "$TOP" ]; then
+    REL=${CWD#"$TOP"}; REL=${REL#/}
+    PROJECT="$(basename "$TOP")${REL:+ / $REL}"
+  fi
+fi
+[ -n "$PROJECT" ] && [ -n "$CWD" ] || PROJECT=$(basename "${CWD:-unknown}")
+[ -n "$PROJECT" ] || PROJECT="unknown"
 SESSION_ID=$(printf '%s' "$INPUT" | jq -r '.session_id // "unknown"' 2>/dev/null || echo unknown)
 
 MESSAGE=$(cat <<EOF
 🤖 *Claude Code が判断待ちです*
 
 *Project*
-\`$CWD\`
+\`$PROJECT\`
+${CWD:-unknown}
 
 *Question*
 $QUESTION

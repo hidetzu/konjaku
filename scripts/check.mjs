@@ -2288,6 +2288,20 @@ head("6. 外部リンク");
       if (/^\s*(\.|source)\s+\S*\.env/m.test(code))
         fails.push("env ファイルを source している（任意のシェルコードが走る）");
       if (!/--max-time/.test(code)) fails.push("curl に --max-time が無い（相手が黙ると待ち続ける）");
+      // ⚠ どのプロジェクトかは、**毎回 cwd から出す**。env ファイルに固定で持たない。
+      //   direnv が読む時点で cwd は分からないし、別の clone や worktree で
+      //   違う名前を名乗る（＝ Slack を見た人が、別の場所の話だと思う）。
+      // ⚠ 「どこかに `.cwd` と書いてあるか」で見ない。**代入している行**を見る。
+      //   最初そう書いて、名前を環境変数から取る形に変えても緑のままだった
+      //   （jq の `.cwd` は別の用で残るので、何も見ていない検査になっていた）。
+      {
+        const asg = code.split("\n").filter((l) => /(^|\s|\|\|\s*)PROJECT=/.test(l));
+        const top = code.split("\n").filter((l) => /(^|\s)TOP=/.test(l));
+        if (asg.length && !asg.some((l) => /\$\{?(CWD|TOP)\b/.test(l)))
+          fails.push("プロジェクト名を cwd から出していない（固定だと別の clone で嘘になる）");
+        if (top.length && !top.some((l) => /\$\{?CWD\b/.test(l)))
+          fails.push("repo の根を cwd から出していない");
+      }
       // ⚠ 実行できないと、Hook は動かない（動かないことに気づけない）
       const { statSync } = await import("node:fs");
       if (!(statSync(join(ROOT, HOOK)).mode & 0o111)) fails.push("実行権が無い");
