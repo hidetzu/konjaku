@@ -874,13 +874,54 @@ for (const f of htmlFiles) {
   };
   const idx = await readFile(join(PUB, "index.html"), "utf8");
   const peel = await readFile(join(PUB, "peel.html"), "utf8");
-  // 畳まずに見える1行は、**一字一句そろえる**（短く、両画面で同じ約束をするところ）。
+  // 畳まずに見える1行（トップ）。⚠ /peel は 2026-08-18 に**短い版**へ替えた（下）
   {
-    const a = grab(idx, "data-privacy-lead"), b = grab(peel, "data-privacy-lead");
+    const a = grab(idx, "data-privacy-lead");
     if (!a) bad("index.html に畳まずに見える1行（data-privacy-lead）が無い（この検査が何も見ていない）");
-    else if (!b) bad("peel.html に畳まずに見える1行（data-privacy-lead）が無い。/peel も URL に地名と座標を載せる");
-    else if (a !== b) bad(`プライバシーの畳まずに見える1行が2つの画面で違う: / →「${a}」/ /peel →「${b}」`);
-    else ok("プライバシーの畳まずに見える1行が2つの画面で一字一句そろっている");
+    else ok("index.html に畳まずに見える1行がある");
+  }
+  // ⚠ **/peel は短い版だが、3 段を落とさない。**
+  //   2026-08-18 に、この画面から「サイト全体の情報」（作者・プライバシーの詳しい説明・
+  //   データについて）を外した。⚠ **プライバシーをゼロにはしない。**
+  //   この画面も判定すると URL に ?q=&ll= を載せるので、トップと同じことが起きる
+  //   （2026-08-15 に「説明が1つも無い」を問題として直した経緯がある）。
+  // ⚠ **1 段でも落ちると、いちばん強い約束だけが残って「通信していない」と読める。**
+  //   それは 2026-08-15 に直した嘘へ戻ること。だから 3 段を項目で見る。
+  // ⚠ 一字一句そろえない（短い版なので正当に違う）。**言っていることで見る。**
+  {
+    const short = grab(peel, "data-privacy-short");
+    const NEED3 = [
+      [/URL|アドレス欄/, "調べた場所が URL に載ること（載る）"],
+      [/(Cloudflare|配信元)[^。]*(届|渡)/, "その URL を開くと配信元へ届くこと（届く）"],
+      [/こちらの記録には[^。]*残りません|こちらの記録に[^。]*残りません/, "こちらの記録には残らないこと（残らない）"],
+    ];
+    if (!short)
+      bad("peel.html に短いプライバシー（data-privacy-short）が無い。/peel も URL に地名と座標を載せる");
+    else {
+      const miss = NEED3.filter(([re]) => !re.test(short)).map(([, n]) => n);
+      miss.length
+        ? bad(`peel.html の短いプライバシーから段が落ちている: ${miss.join("、")}`
+            + "（1 段でも落ちると、いちばん強い約束だけが残って「通信していない」と読める）")
+        : ok("peel.html の短いプライバシーに「載る → 届く → 残らない」の3段がある");
+    }
+  }
+  // ⚠ **サイト全体の情報を、この画面へ戻さない**（2026-08-18）。
+  //   戻すなら、この検査を「何を守っていたか」を読んでから外すこと。
+  //   ⚠ 「データについて」は、外した時点で**2 か所が事実と違っていた**
+  //     （住所検索の説明＝この画面から検索を外した／areas.json から建物を読む＝実測で読まれない）。
+  {
+    // ⚠ **コメントを先に落とす。**落とさないと、
+    //   「何を外したか」を説明したコメントの字面を、この検査自身が拾う。
+    //   ⚠ CLAUDE.md §5 の落とし穴。**3 回目**（2026-08-18 に踏んだ）。
+    const peelNoComment = peel.replace(/<!--[\s\S]*?-->/g, "");
+    const back = [["作 hidetzu", "作者（出典ではない）"],
+                  ["data-privacy-body", "プライバシーの詳しい説明"],
+                  ["データについて", "データの説明"]]
+      .filter(([w]) => peelNoComment.includes(w));
+    back.length
+      ? bad(`peel.html にサイト全体の情報が戻っている: ${back.map(([, n]) => n).join("・")}`
+          + "（この画面は地図を触って見る道具。全文はトップのフッターが正本）")
+      : ok("peel.html にサイト全体の情報を置いていない（作者・プライバシー全文・データ説明）");
   }
   // ⚠ 詳しい説明は**一字一句そろえない**（index には 🔊 の行があるなど、正当に違う）。
   //   ⚠ **だからといって「片方に URL の字があるか」で済ませない。**
@@ -907,9 +948,11 @@ for (const f of htmlFiles) {
       [/ログにも場所は残りません|ログにも場所が残りません/, "こちらのログに場所が残らないこと"],
       [/Logpush/, "記録を外部へ出す設定を使っていないこと"],
     ];
-    for (const [f, src] of [["index.html", idx], ["peel.html", peel]]) {
+    // ⚠ 詳しい説明は**トップだけが持つ**（2026-08-18。/peel からは外した）。
+    //   ⚠ /peel 側は上の「3 段」で見ている。**両方で緩めない。**
+    for (const [f, src] of [["index.html", idx]]) {
       const body = grab(src, "data-privacy-body");
-      if (!body) { bad(`${f} に詳しい説明（data-privacy-body）が無い。/peel も URL に地名と座標を載せる`); continue; }
+      if (!body) { bad(`${f} に詳しい説明（data-privacy-body）が無い`); continue; }
       const missing = NEED.filter(([re]) => !re.test(body)).map(([, n]) => n);
       missing.length
         ? bad(`${f} のプライバシーの説明に書かれていないことがある: ${missing.join("、")}`)
@@ -931,7 +974,8 @@ for (const f of htmlFiles) {
   //   そもそも当てはまらない可能性がある。掟「確認できないことを『検査済み』と呼ばない」。
   //   ⚠ **「届く」までは実測で言える**ので、そこで止める。確認できたらこの検査を外す。
   for (const [f, src] of [["index.html", idx], ["peel.html", peel]]) {
-    const body = grab(src, "data-privacy-body") ?? "";
+    // ⚠ /peel は短い版なので、そちらを見る。**どちらの画面でも保持期間を書かせない**
+    const body = (grab(src, "data-privacy-body") ?? "") + (grab(src, "data-privacy-short") ?? "");
     /保持|保存期間|日間|ログに残/.test(body)
       ? bad(`${f} に、確認していない保持期間の話が書かれている`
           + `（プラン・Logpush・Workers Logs を見ていない。「届く」までに留める）`)
@@ -2415,8 +2459,8 @@ head("9. 画面の言葉");
       files: ["verify.js"], seat: "取得方法バッジ。うち1件は「ベクトル直読み」の一部" },
     { word: "境目", kind: "分類", live: 5, next: "#9d",
       files: ["index.html", "verify.js"], seat: "取得方法バッジと、その説明文" },
-    { word: "データについて", kind: "分類", live: 2, next: "#9d",
-      files: ["index.html", "peel.html"], seat: "フッターの畳み見出し。中身は判定方法・位置誤差・提供範囲・限界" },
+    { word: "データについて", kind: "分類", live: 1, next: "#9d",
+      files: ["index.html"], seat: "フッターの畳み見出し。中身は判定方法・位置誤差・提供範囲・限界。⚠ 2026-08-18 に /peel から外した" },
     { word: "この範囲にできていたもの", kind: "分類", live: 1, next: "#9d",
       files: ["index.html"], seat: "フッターの出典欄。年の意味（開業／設立／完成）を区別できない" },
     { word: "記録のある変化はありません", kind: "状態", live: 1, next: "#9c",
