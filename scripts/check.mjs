@@ -620,6 +620,37 @@ head("3.6. 3D の下地の判定（public/ground.js の1か所）");
   }
 }
 
+// ⚠ **場所を探す口は 1 つ**（2026-08-18 方針）。
+//   `/peel` は「トップで選んだ場所を深掘りする画面」で、場所を決めるのはトップの責務。
+//   ⚠ ここに検索が生えると、2 つが同時に壊れる:
+//     1) トップは **3D の下地がある場所にだけ**導線を出しているのに、
+//        あちらの検索からは**下地の無い場所へ入れてしまう**（地図は動くのに建物が出ない）
+//     2) 検索の作法（時間切れ・再試行・古い応答の追い越し防止）を 2 か所で守ることになる
+//        （実際に破れていた: 2026-08-14 まで /peel だけ古い実装で、
+//         取れなかったときに「見つかりませんでした」と書いていた）
+//   ⚠ **並びを突き合わせる検査を、これで置き換えている。**
+//     以前は「同じ応答ならトップと 3D の候補が一致する」で 2 実装のずれを見ていた。
+//     実装が 1 つになったので、**2 つ目が生えないこと**を見るほうが強い。
+head("3.7. 場所を探す口は 1 つ（トップだけ）");
+{
+  const strip = (s) => (s ?? "").replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/(^|[^:])\/\/[^\n]*/g, "$1").replace(/<!--[\s\S]*?-->/g, "");
+  const ph = strip(src["peel.html"]), pj = strip(src["peel3d.js"]);
+  const ui = [['id="q"', "検索欄"], ['id="cands"', "候補の置き場"],
+              ['id="quick"', "クイック地点"], ['id="here"', "現在地"],
+              ["findBox", "「別の場所を見る」の枠"]].filter(([k]) => ph.includes(k));
+  const impl = [["KonjakuPlaces", "places.js の検索"], ["AddressSearch", "住所検索を直に叩いている"],
+                ["createSearch", "検索の入れ物"]].filter(([k]) => pj.includes(k));
+  const loads = ph.includes('src="./places.js"');
+  if (ui.length) bad(`peel.html に場所を探す口が残っている: ${ui.map(([, w]) => w).join("・")}`);
+  else if (impl.length) bad(`peel3d.js に検索の実装が残っている: ${impl.map(([, w]) => w).join("・")}`);
+  else if (loads) bad("peel.html が places.js を読み込んでいる（この画面に使う相手がいない）");
+  else ok("/peel に場所を探す口が無い（場所を決めるのはトップ）");
+  // ⚠ 「1 つ」なので、**トップ側は必ず持っている**こと。両方消えたら探せなくなる
+  if (strip(src["index.html"]).includes("KonjakuPlaces")) ok("トップが places.js の検索を使っている");
+  else bad("トップにも検索が無い（場所を探す手段が 1 つも無い）");
+}
+
 // ---------- 4. 出典表記 ----------
 head("4. 出典表記");
 for (const f of htmlFiles) {

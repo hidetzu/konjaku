@@ -3845,7 +3845,11 @@ const CASES = [
   {
     // ⚠ 場所を変えたら段も変わる。組み直しを忘れると、前の場所の段のまま
     //   別の土地のタイルを引く（＝また存在しない年代を取りに行く）。
-    name: "場所を変えるたびに、年代の段を組み直す",
+    // ⚠ 2026-08-18 まで、この検査は /peel の中のピンを押して場所を変えていた。
+    //   ⚠ **その口は外した**（場所を決めるのはトップ）。守りたい主張
+    //   「段は地点ごとに組み直す」は変わらないので、**地点ごとに開いて**確かめる。
+    //   ⚠ 画面の中で場所が変わる経路は、もう無い（loadArea を呼ぶのは初回と再試行だけ）。
+    name: "年代の段は、地点ごとに組み直す",
     path: `/peel?ll=34.39500,132.45500&q=%E5%BA%83%E5%B3%B6`,
     async check(page) {
       const shape = () => page.evaluate(() => ({
@@ -3853,22 +3857,23 @@ const CASES = [
         ticks: document.querySelectorAll("#track .tick").length }));
       const wait = (n) => page.waitForFunction(
         (want) => document.querySelectorAll("#track .tick").length === want, n, { timeout: 60000 });
-      await peelReady(page);
-      await wait(7);
-      const hiroshima = await shape();
-      must(hiroshima.max === 600, `広島のスライダーの端が 600 でない: ${hiroshima.max}`);
-      // ⚠ 探す枠は畳まれているので、開けないとピンが押せない
-      await page.click("#findBox summary");
-      const pin = (name) => page.locator("#quick button").filter({ hasText: name }).first().click();
-      await pin("豊洲"); await wait(9);
-      const toyosu = await shape();
-      must(toyosu.max === 800, `豊洲のスライダーの端が 800 でない: ${toyosu.max}`);
-      await page.click("#findBox summary");
-      await pin("長崎 出島"); await wait(4);
-      const dejima = await shape();
-      must(dejima.max === 300, `出島のスライダーの端が 300 でない: ${dejima.max}`);
-      return `広島 ${hiroshima.ticks}段/${hiroshima.max} → 豊洲 ${toyosu.ticks}段/${toyosu.max}`
-        + ` → 出島 ${dejima.ticks}段/${dejima.max}`;
+      const SPOTS = [
+        ["広島", "ll=34.39500,132.45500&q=%E5%BA%83%E5%B3%B6", 7, 600],
+        ["豊洲", TOYOSU, 9, 800],
+        ["長崎 出島", "ll=32.74400,129.87300&q=%E5%87%BA%E5%B3%B6", 4, 300],
+      ];
+      const out = [];
+      for (const [name, qs, ticks, max] of SPOTS) {
+        await page.goto(`${BASE}/peel?${qs}`, { waitUntil: "domcontentloaded" });
+        await peelReady(page);
+        await wait(ticks);
+        const sh = await shape();
+        must(sh.max === max, `${name}のスライダーの端が ${max} でない: ${sh.max}`);
+        out.push(`${name} ${sh.ticks}段/${sh.max}`);
+      }
+      // ⚠ 全部同じ形なら、この検査は何も見ていない
+      must(new Set(out).size === SPOTS.length, `地点ごとに組み直していない: ${out.join(" / ")}`);
+      return out.join(" → ");
     },
   },
   {
@@ -4466,87 +4471,60 @@ const CASES = [
     },
   },
   {
-    // ⚠ /peel の検索が、トップと同じ作法であること。
-    //   以前はここだけ別実装で、取れなかったときに「見つかりませんでした」と書いていた。
-    // ⚠ 畳んだ「別の場所を見る」を押したら、必ず検索欄と地名が出ること。
-    //   214px をパネルの中段から外した代わりに、ここが唯一の探し口になった。
-    //   `/peel` は ll が無くても既定の場所を読むので、この枠を見る人は
-    //   必ず何かの場所を見ている。名乗りが「別の場所を見る」で正しい。
-    name: "畳んだ「別の場所を見る」を押すと、探せる", path: "/peel",
+    // ⚠ **/peel に場所を探す口を置かない**（2026-08-18 方針）。
+    //   この画面は「トップで選んだ場所を深掘りする画面」で、場所を決めるのはトップの責務。
+    //
+    //   ⚠ 以前ここには「別の場所を見る」（畳んだ検索欄・地名 10 件・現在地）があり、
+    //     それを守る検査（畳んで 27px → 押すと 218px）が立っていた。外した理由は 2 つ:
+    //       ・トップは **3D の下地がある場所にだけ**導線を出しているのに、
+    //         こちらの検索からは**下地の無い場所へ入れてしまう**
+    //         （地図は動くのに建物が出ない。出るかどうかは Overpass の混雑しだい）
+    //       ・検索の作法（時間切れ・再試行・古い応答の追い越し防止）を 2 か所で守ることになる
+    //
+    // ⚠ **消しただけの検査にしない。** 元の検査が守っていたのは
+    //   「この画面から場所を変えられること」なので、**その手段が残っていること**を見る。
+    //   いまの手段は「← もどる」→ トップの ✕ の一本だけ。
+    //   だから、もどる先が**いま見ている場所を持っている**ことまで確かめる。
+    name: "3D に場所を探す口は無く、もどると同じ場所のトップへ出る", path: `/peel?${TOYOSU}`,
     async check(page) {
-      await page.waitForSelector("#findBox");
-      // ⚠ 畳んだ <details> の中身を getBoundingClientRect() で測ってはいけない。
-      //   中身は content-visibility:hidden になるだけで、**直前の寸法を返し続ける**。
-      //   実際に踏んだ: 閉じているのに 268×38 と読め、「開いている」と誤判定した。
-      //   枠そのものの高さ（23px ⇄ 202px）と checkVisibility() で見る。
-      const look = () => page.evaluate(() => ({
-        open: document.getElementById("findBox").open,
-        h: Math.round(document.getElementById("findBox").getBoundingClientRect().height),
-        label: document.getElementById("findLabel").innerText.trim(),
-        q: document.getElementById("q").checkVisibility({ checkVisibilityCSS: true }),
-        chips: [...document.querySelectorAll("#quick button")]
-          .filter((e) => e.checkVisibility({ checkVisibilityCSS: true })).length,
-        here: document.getElementById("here").checkVisibility({ checkVisibilityCSS: true }) }));
-      const shut = await look();
-      must(!shut.open && !shut.q, "探す枠が最初から開いている（判定の数字が下へ押し出される）");
-      must(shut.chips === 0 && !shut.here, "畳んでいるのに中身が見えている");
-      must(shut.label === "別の場所を見る", `名乗りが「別の場所を見る」でない: ${shut.label}`);
-      await page.click("#findLabel");
-      const open = await look();
-      must(open.q, "押しても検索欄が出ない（押して何も起きない導線）");
-      must(open.chips > 0, "押しても地名が出ない");
-      must(open.here, "押しても「現在地から調べる」が出ない");
-      return `畳んで ${shut.h}px → 押すと ${open.h}px（検索欄・地名 ${open.chips} 個・現在地）`;
+      await page.waitForFunction(() => /件を判定しました/.test(document.body.innerText),
+        null, { timeout: 60000 });
+      const got = await page.evaluate(() => ({
+        // 探す口の残骸。id が残っていると、CSS だけ消したつもりが押せる状態になりうる
+        ids: ["q", "cands", "quick", "here", "hereMsg", "findBox", "findLabel"]
+          .filter((k) => document.getElementById(k)),
+        // ⚠ 年代のつまみ（input[type=range]）は探す口ではない。文字を打つ入れ物だけ数える
+        typed: [...document.querySelectorAll("input, textarea")]
+          .filter((e) => e.tagName === "TEXTAREA"
+            || !["range", "checkbox", "radio", "button", "hidden"].includes(e.type))
+          .map((e) => e.id || e.type),
+        places: typeof window.KonjakuPlaces,
+        back: document.getElementById("back")?.getAttribute("href") ?? "",
+      }));
+      must(!got.ids.length, `探す口が残っている: ${got.ids.join("・")}`);
+      must(!got.typed.length, `文字を打つ入れ物が残っている: ${got.typed.join("・")}`);
+      // ⚠ 使う相手がいないのに配らない。⚠ ただし「検索を書くなら places.js」の決まりは生きている
+      must(got.places === "undefined", "places.js を読み込んでいる（この画面に使う相手がいない）");
+      // 場所を変える手段が、画面から消えていないこと
+      must(/^\.\/\?q=/.test(got.back) && /ll=/.test(got.back),
+        `もどる先が、いま見ている場所を持っていない: ${JSON.stringify(got.back)}`);
+      const back = await page.evaluate(() => {
+        const b = document.getElementById("back"), r = b.getBoundingClientRect();
+        return { w: Math.round(r.width), h: Math.round(r.height),
+                 vis: b.checkVisibility({ checkVisibilityCSS: true }) };
+      });
+      must(back.vis, "「← もどる」が見えていない（場所を変える手段が画面に無い）");
+      must(back.h >= 44, `「← もどる」が指で押せる大きさでない: ${back.w}×${back.h}px`);
+      return `探す口 0 個／文字入力 0 個／places.js 未読込／もどる先 ${got.back.slice(0, 34)}…`
+        + `（${back.w}×${back.h}px）`;
     },
   },
-  // ⚠ **同じ応答を渡したとき、トップと 3D が同じ並び・同じ自動選択になること。**
-  //   AC の本体。以前は画面ごとに実装があり、**片方だけ直す事故**が起きうる状態だった。
-  //   ⚠ **実通信しない。** 42 語をトップと 3D で別々に叩くと 84 リクエストになり、
-  //   地理院への負荷が倍になる（掟: 地理院への負荷は自分の請求とは別に見る）。
-  //   同じ固定の応答を両画面へ流して、出てきた並びを突き合わせる。
-  //   ⚠ 応答は「渋谷」の実際の形（都道府県コードの昇順＝**先頭が別の土地**）を模してある。
-  {
-    name: "同じ応答なら、トップと 3D の候補が一致する", dep: "search", path: "/",
-    setup: (page) => page.route("**/AddressSearch*", (r) => r.fulfill({
-      status: 200, contentType: "application/json",
-      // ⚠ **自動選択が発火する組み合わせにする。** 先に「福島県猪苗代町渋谷」を混ぜた
-      //   3 件で試したが pick=-1（発火しない）で、**「自動選択が一致する」の主張が
-      //   空振りしていた**（2026-08-15 に気づいた）。区＋駅なら発火する（実測）。
-      body: JSON.stringify([
-        { properties: { title: "東京都渋谷区" }, geometry: { coordinates: [139.700, 35.660] } },
-        { properties: { title: "渋谷駅" },       geometry: { coordinates: [139.701, 35.658] } },
-      ]),
-    })),
-    async check(page) {
-      await page.fill("#q", "渋谷");
-      await page.waitForFunction(() => document.querySelectorAll("#list .tx b").length > 0,
-        null, { timeout: 30000 });
-      const top = await page.evaluate(() => ({
-        rows: [...document.querySelectorAll("#list .tx b")].map((e) => e.textContent.trim()),
-        picked: document.querySelector("#list .sel .tx b")?.textContent?.trim() ?? null,
-      }));
-      // 同じ入れ物のまま /peel を開いて、同じ応答で比べる（route は生きたまま）
-      await page.goto(BASE + "/peel", { waitUntil: "domcontentloaded" });
-      await page.click("#findLabel");
-      await page.fill("#q", "渋谷");
-      await page.waitForFunction(() => document.querySelectorAll("#cands button").length > 0,
-        null, { timeout: 30000 });
-      const peel = await page.evaluate(() => ({
-        rows: [...document.querySelectorAll("#cands button")].map((b) => b.childNodes[0].textContent.trim()),
-        picked: document.querySelector("#cands button.on")?.childNodes[0]?.textContent?.trim() ?? null,
-      }));
-      must(top.rows.length > 0, "トップに候補が出ていない");
-      must(peel.rows.length > 0, "3D に候補が出ていない");
-      must(JSON.stringify(top.rows) === JSON.stringify(peel.rows),
-        `同じ応答なのに並びが違う: トップ ${JSON.stringify(top.rows)} / 3D ${JSON.stringify(peel.rows)}`);
-      // ⚠ **どちらも null なら、この主張は空振りする。** 発火することまで見る。
-      must(top.picked !== null,
-        "自動選択が発火していない。この応答では発火するはずで、発火しないと下の突き合わせが空振りする");
-      must(top.picked === peel.picked,
-        `同じ応答なのに自動選択が違う: トップ ${JSON.stringify(top.picked)} / 3D ${JSON.stringify(peel.picked)}`);
-      return `${top.rows.length} 件が一致（選択 ${JSON.stringify(top.picked)}）`;
-    },
-  },
+  // ⚠ ここに「同じ応答なら、トップと 3D の候補が一致する」があった（2026-08-18 に外した）。
+  //   守っていたのは「検索の実装が 2 つあって、片方だけ直る事故」。
+  //   ⚠ **並びを突き合わせるのをやめたのではない。**/peel から検索そのものを外したので、
+  //     検索は 1 つになった。⚠ 「2 つ持っていない」ことは scripts/check.mjs が静的に見る
+  //     （peel 側に検索の実装が生えたら落ちる）。画面側は上の
+  //     「3D に場所を探す口は無く…」が見る。
   // ⚠ **画面が別のことを始めたときも、古い候補が出ない。**
   //   打つたびに切るだけでは足りない（2026-08-16 の指摘・実測で再現）。
   //   「渋谷」の応答待ちのままクイック地点を選ぶと、行動一覧（立体で見る等）が出たあと、
@@ -4638,7 +4616,9 @@ const CASES = [
   //   ⚠ その候補を押せば**違う場所へ飛ぶ**。数え方の問題ではなく、行き先の問題。
   //   ⚠ 新しい検索が始まるのはデバウンスのあとなので、run() の中で世代を進めるだけでは
   //   間に合わない。**入力の瞬間に cancel() する**必要がある。
-  ...[["トップ", "/", "#list", false], ["3D", "/peel", "#cands", true]].map(([who, path, listSel, needOpen]) => ({
+  // ⚠ 3D の側は 2026-08-18 に外した（あちらから検索そのものを外したため）。
+  //   ⚠ **組の形は残す。** 検索を持つ画面が増えたら、ここへ足せば同じ穴を両方で見られる。
+  ...[["トップ", "/", "#list", false]].map(([who, path, listSel, needOpen]) => ({
     name: `${who}: 別の語へ変えたら、前の語の候補が出ない`, dep: "search", path,
     // ⚠ 「渋谷」だけ遅らせる。実際の地理院には出ない
     setup: (page) => page.route("**/AddressSearch*", async (r) => {
@@ -4670,7 +4650,9 @@ const CASES = [
   //   検索の世代を進めていなかった」こと。**同じ実装が2つあったので、両方に同じ穴があった。**
   //   いまは places.js の createSearch().cancel() を両画面が呼ぶ。
   //   ⚠ 応答を遅らせて作る。実際の地理院には出ない。
-  ...[["トップ", "/", "#list", false], ["3D", "/peel", "#cands", true]].map(([who, path, listSel, needOpen]) => ({
+  // ⚠ 3D の側は 2026-08-18 に外した（あちらから検索そのものを外したため）。
+  //   ⚠ **組の形は残す。** 検索を持つ画面が増えたら、ここへ足せば同じ穴を両方で見られる。
+  ...[["トップ", "/", "#list", false]].map(([who, path, listSel, needOpen]) => ({
     name: `${who}: 入力を消したら、遅れて返った候補が復活しない`, dep: "search", path,
     setup: (page) => page.route("**/AddressSearch*", async (r) => {
       await new Promise((x) => setTimeout(x, 2500));
@@ -4692,25 +4674,10 @@ const CASES = [
       return `入力欄 空 ／ 一覧 ${shown ? JSON.stringify(shown.slice(0, 20)) : "空"}`;
     },
   })),
-  {
-    name: "3D の検索も、取れなかったときに「無い」と言わない", path: `/peel?${TOYOSU}`,
-    setup: (page) => page.route("**/address-search/**", (r) => r.abort()),
-    async check(page) {
-      // 探す枠は畳んである（実測 214px を中段から外した）。押して開く
-      await page.click("#findLabel");
-      await page.waitForFunction(() => document.getElementById("findBox")?.open === true);
-      await page.fill("#q", "豊洲");
-      await page.waitForFunction(() => {
-        const t = document.getElementById("cands")?.textContent ?? "";
-        return t.length > 0 && !t.includes("検索中");
-      }, null, { timeout: 30000 });
-      const t = (await page.locator("#cands").textContent()).replace(/\s+/g, " ");
-      must(/取れませんでした|取れなかった/.test(t), `取れなかったと言っていない: ${t}`);
-      must(!/見つかりませんでした/.test(t), `落ちているのに「見つかりませんでした」と書いている: ${t}`);
-      must(await page.locator("#reSearch").count() === 1, "再試行が出ていない");
-      return t.slice(0, 60);
-    },
-  },
+  // ⚠ ここに「3D の検索も、取れなかったときに『無い』と言わない」があった
+  //   （2026-08-18 に外した。/peel から検索を外したため）。
+  //   ⚠ **掟は生きている。**同じ主張は「検索が失敗したとき「無い」と言わない」（トップ）が見ている。
+  //   ⚠ /peel に検索を戻すなら、この検査も一緒に戻すこと。
   {
     // ⚠ 豊洲は「事前計算の bbox」を持つ唯一の土地なので、豊洲が通っても
     //   他の9つのピンが通る証明にはならない。取り込んだだけの土地で1つ通す。
@@ -4886,16 +4853,12 @@ const CASES = [
   {
     // ⚠ 建物を取り込んでいない土地を使う。取り込み済みだと静的タイルで答えるので、
     //   Overpass の差し替えが効かない（＝何も確かめずに必ず通る検査になる）
-    name: "外部の文字列が、3D の検索候補と建物カードで実行されない",
-    path: `/peel?${URAYASU}`,
+    // ⚠ 検索候補の経路は 2026-08-18 に消えた（/peel から検索を外した）。
+    //   ⚠ **代わりに、いま残っている経路を見る。**地名は共有された URL の `?q=` から入り、
+    //     画面に地名として描かれる。押させるだけで届くので、injection の経路としては同じ。
+    name: "外部の文字列が、3D の地名と建物カードで実行されない",
+    path: `/peel?ll=35.65360,139.90200&q=${encodeURIComponent(`千葉県浦安市${XSS}`)}`,
     setup: (page) => Promise.all([
-      page.route("**/address-search/**", (r) => r.fulfill({
-        status: 200, contentType: "application/json",
-        body: JSON.stringify([
-          { geometry: { type: "Point", coordinates: [139.9020, 35.6540] },
-            properties: { title: `千葉県浦安市${XSS}`, dataSource: "", addressCode: "12227" } },
-        ]),
-      })),
       // 建物の種別（building）と建設年（start_date）は OSM のタグそのもの
       page.route((u) => /overpass/i.test(u.href), (r) => {
         const ring = (lon, lat, d) => [[lon - d, lat - d], [lon + d, lat - d],
@@ -4933,19 +4896,12 @@ const CASES = [
       await shownAsText(page, "#pick", "建物カードの種別と建設年");
       // 押した場所に出す吹き出しも同じ文字列を描いている
       await notRun(page, ".pick-pop", "建物の吹き出し");
-      // ---- 検索候補 ----
-      // ⚠ 検索欄は「別の場所を見る」に畳んである（既にその場所を見ている人には要らない）。
-      //   開かないと、入力欄は存在するのに見えていない
-      await page.click("#findBox summary");
-      await page.fill("#q", "浦安");
-      await page.waitForFunction(() => document.querySelectorAll("#cands button").length > 0,
-        null, { timeout: 30000 });
-      await notRun(page, "#cands", "3D の検索候補");
-      const t = await shownAsText(page, "#cands button", "3D の検索候補の地名");
-      // data-title は押すと入力欄へ戻る。実体参照が元の文字に戻っていること
-      const dt = await page.locator("#cands button").first().getAttribute("data-title");
-      must(dt?.includes("<img"), `data-title が元の文字に戻っていない: ${dt}`);
-      return `建物カード・吹き出し・候補で発火 0 ／ 表示は生のまま「${t.trim().slice(0, 16)}…」`;
+      // ---- 共有された URL の地名（?q=）----
+      // ⚠ パネルを開かないと出ない場所も見る。開かない人には見えないが、DOM には入る
+      await page.evaluate(() => document.getElementById("panel")?.classList.remove("hide"));
+      await notRun(page, "#placeName", "3D の地名");
+      const t = await shownAsText(page, "#placeName", "3D の地名（共有された URL 由来）");
+      return `建物カード・吹き出し・地名で発火 0 ／ 表示は生のまま「${t.trim().slice(0, 16)}…」`;
     },
   },
   {

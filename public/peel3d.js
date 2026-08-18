@@ -453,7 +453,7 @@ map.on("load",()=>{
   const opt={ era:sp.get("era"), bld:sp.get("b") };
   if(ll && /^-?[\d.]+,-?[\d.]+$/.test(ll)){
     const [la,lo]=ll.split(",").map(Number);
-    qEl.value=q??""; loadArea(lo,la,q||`${la.toFixed(4)}, ${lo.toFixed(4)}`,opt);
+    loadArea(lo,la,q||`${la.toFixed(4)}, ${lo.toFixed(4)}`,opt);
   } else {
     loadArea(139.7975,35.6548,"東京都江東区豊洲");   // 既定
   }
@@ -1038,126 +1038,17 @@ function showResult(){
 }
 
 // ============================================================
-// 住所検索
+// 場所を決めるのは、この画面ではない
 // ============================================================
-const qEl=document.getElementById("q"), candsEl=document.getElementById("cands");
-let timer=null;
-
-// ⚠ トップ（index.html）と同じ作法にする。以前はここだけ別実装で、
-//   時間切れも再試行も、古い応答の追い越し防止も無く、
-//   **取れなかったときに「見つかりませんでした」と書いていた**。
-//   この製品がいちばんやってはいけない形が、片方のページにだけ残っていた。
-// ⚠ 通信・時間切れ・再試行・古い応答の追い越し防止は **places.js の1か所**にある
-//   （掟: 同じ問いに答える実装を2つ持たない）。ここに残すのは**描くことだけ**。
-//   以前はここだけ別実装で、時間切れも再試行も追い越し防止も無く、
-//   **取れなかったときに「見つかりませんでした」と書いていた**。
-//   この製品がいちばんやってはいけない形が、片方のページにだけ残っていた。
-const search$=KonjakuPlaces.createSearch();
-async function search(q){
-  candsEl.innerHTML=`<div class="hint" style="padding:4px 2px">検索中…</div>`;
-  const r=await search$.run(q,10);
-  if(r.state==="stale") return;                // 遅れて返った古い応答。画面に触らない
-  if(r.state==="error"){
-    candsEl.innerHTML=`<div class="hint" style="padding:4px 2px;color:var(--missing)">
-      検索の応答を取れませんでした（${r.why}）。<b>「見つからなかった」ではありません。</b>
-      <button class="retry-btn" id="reSearch">再試行</button></div>`;
-    document.getElementById("reSearch").onclick=()=>search(q);
-    return;
-  }
-  if(r.state==="empty"){
-    candsEl.innerHTML=`<div class="hint" style="padding:4px 2px">見つかりませんでした</div>`;
-    return;
-  }
-  // ⚠ 地名も副題も地理院の応答そのもの。data-title は下で dataset.title として
-  //   読み戻すが、ブラウザが実体参照を元の文字に戻すので、渡る値は生のままになる。
-  //   （以前は " だけを &quot; にしていた。< は素通りしていた）
-  candsEl.innerHTML=r.rows.map((x,i)=>
-    `<button data-lon="${esc(x.ll[0])}" data-lat="${esc(x.ll[1])}"
-       data-title="${esc(x.title)}"${i===r.pick?' class="on"':''}>
-      ${esc(x.title)}<small>${esc(x.sub)}</small></button>`).join("");
-  candsEl.querySelectorAll("button").forEach((b)=>{
-    b.onclick=()=>{ candsEl.innerHTML=""; qEl.value=b.dataset.title;
-      loadArea(+b.dataset.lon,+b.dataset.lat,b.dataset.title); };
-  });
-}
-qEl.addEventListener("input",()=>{
-  clearTimeout(timer);
-  const v=qEl.value.trim();
-  // ⚠ **打つたびに世代を進める。** 「2文字未満のときだけ」では足りない。
-  //   実測（2026-08-16）: 「渋谷」の応答待ちのまま「新宿」へ変えると、
-  //   デバウンスの 350ms のあいだに古い応答が届き、**入力欄は「新宿」なのに
-  //   「東京都渋谷区」が並ぶ**。その候補を押せば違う場所へ飛ぶ。
-  //   ⚠ 新しい検索が始まるのは 350ms 後なので、run() の中で世代を進めるだけでは間に合わない。
-  //   **入力の瞬間に切る。**
-  search$.cancel();
-  if(v.length<2){ candsEl.innerHTML=""; return; }
-  timer=setTimeout(()=>search(v),350);
-});
-
-// 低湿地データが整備されていて、対比が面白い場所
-
-// ============ 現在地 ============
-// 一度拒否すると、ブラウザは二度と許可を尋ねない。
-// 数秒でラベルを戻すだけだと、押しても何も起きないボタンが残って利用者が詰む。
-// 復帰のしかたと、代わりの手段（地名検索）を必ず示す。
-function hereDenied(btn,msg){
-  btn.disabled=true; btn.textContent="現在地は使えません";
-  const ios=/iP(hone|ad|od)/.test(navigator.userAgent);
-  msg.innerHTML='<b>位置情報が拒否されています。</b>設定から許可し直す必要があります。<br>'
-    + (ios ? 'Safari：アドレスバー左の <b>ぁあ</b> → <b>Webサイトの設定</b> → 位置情報 を「許可」に。'
-           : 'アドレスバーの鍵アイコン → サイトの設定 → 位置情報 を「許可」に。')
-    + '<br><span class="dim">許可しなくても、<b>地名を入力すれば同じことが調べられます。</b></span>';
-  msg.style.display="";
-}
-function hereFailed(btn,msg,label,text){
-  btn.disabled=false; btn.textContent=label;
-  msg.innerHTML=text+'<br><span class="dim">地名を入力すれば同じことが調べられます。</span>';
-  msg.style.display="";
-}
-function setupHere(btn,msg,label,onOk){
-  if(!navigator.geolocation){ btn.disabled=true; btn.textContent="この端末では使えません"; return; }
-  navigator.permissions?.query({name:"geolocation"})
-    .then((st)=>{ if(st.state==="denied") hereDenied(btn,msg);
-      st.onchange=()=>{ if(st.state!=="denied"){ btn.disabled=false; btn.textContent=label;
-        msg.style.display="none"; } }; }).catch(()=>{});
-  btn.onclick=()=>{
-    btn.disabled=true; btn.textContent="現在地を取得中…"; msg.style.display="none";
-    navigator.geolocation.getCurrentPosition(
-      (pos)=>{ btn.disabled=false; btn.textContent=label; onOk(pos.coords.longitude,pos.coords.latitude); },
-      (err)=>{ if(err.code===1) hereDenied(btn,msg);
-        else hereFailed(btn,msg,label,
-          err.code===3?"現在地の取得が時間切れになりました。":"現在地を取得できませんでした。"); },
-      { enableHighAccuracy:true, timeout:12000, maximumAge:60000 });
-  };
-}
-setupHere(document.getElementById("here"), document.getElementById("hereMsg"),
-  "現在地から調べる", (lo,la)=>loadArea(lo,la,"現在地"));
-
-// ⚠ トップと3Dで同じ公開候補地を使う。
-//   以前はここだけ旧6件のままで、実測すると **6件中5件が建物の索引に無く、
-//   押すと Overpass を最大20秒待つ**状態だった（天王洲は seeds/areas.jsonl にも無い）。
-//   3D の入口が、押すと失敗する入口になっていた。
-//   scripts/check.mjs が、両方のピンが取り込み済みの土地であることを見ている。
-const quickEl=document.getElementById("quick");
-function loadQuickPlaces(){
-  quickEl.replaceChildren();
-  fetch("./data/quick-places.json",{cache:"no-cache"}).then(r=>{
-    if(!r.ok) throw new Error(`quick places ${r.status}`);
-    return r.json();
-  }).then(data=>{
-    for(const p of data?.places??[]){
-      const b=document.createElement("button"); b.textContent=p.name;
-      b.onclick=()=>{ qEl.value=p.title; candsEl.innerHTML=""; loadArea(p.lon,p.lat,p.title); };
-      quickEl.appendChild(b);
-    }
-  }).catch(()=>{
-    const msg=document.createElement("span"); msg.className="quick-error";
-    msg.textContent="候補地を読み込めませんでした。";
-    const retry=document.createElement("button"); retry.type="button"; retry.textContent="再試行";
-    retry.onclick=loadQuickPlaces; msg.append(" ",retry); quickEl.appendChild(msg);
-  });
-}
-loadQuickPlaces();
+// ⚠ **ここに検索欄・クイック地点・現在地を置かない**（2026-08-18 方針）。
+//   /peel は「トップで選んだ場所を深掘りする画面」で、場所を決めるのはトップの責務。
+//   同じ問いに答える入口を 2 か所に置くと、
+//     ・トップは「下地がある場所」にだけ導線を出しているのに、
+//       こちらの検索からは**下地の無い場所へ入れてしまう**（実測: 地図は動くのに建物が出ない）
+//     ・検索の作法（時間切れ・再試行・古い応答の追い越し防止）を 2 か所で守ることになる
+//   という 2 つが同時に起きる。
+//   ⚠ 場所を変える導線は「← もどる」→ トップの ✕ の一本だけ（掟: 同じ問いに答える実装を2つ持たない）。
+//   ⚠ 共有された URL で直接ここへ来る経路は残っている。URL に場所が入っているので困らない。
 
 // ============================================================
 // 描画・再生
@@ -1628,4 +1519,12 @@ playBtn.onclick=()=>{
 };
 toggle.onclick=openPanel;
 addEventListener("keydown",(e)=>{
-  if(e.code==="Space"&&document.activeElement!==qEl){e.preventDefault();playBtn.onclick()}});
+  // ⚠ 以前は「検索欄に入力中は除く」を見ていた。検索欄を外した（2026-08-18）ので、
+  //   入力中の要素そのもので見る。⚠ 「入力欄が無いから素通しでよい」にしない。
+  //   建物カードやパネルに入力欄が増えたときに、また空白で再生が始まる。
+  //   ⚠ **年代のつまみ（input[type=range]）を除外に入れない。** つまみを触ったあとに
+  //     空白で再生できるのは、いまの操作の中心。文字を打つ入れ物だけを除く。
+  const TYPE_IN=["text","search","url","email","tel","password","number"];
+  const typing=(el)=>!!el&&(el.isContentEditable||el.tagName==="TEXTAREA"
+    ||(el.tagName==="INPUT"&&TYPE_IN.includes(el.type)));
+  if(e.code==="Space"&&!typing(document.activeElement)){e.preventDefault();playBtn.onclick()}});
