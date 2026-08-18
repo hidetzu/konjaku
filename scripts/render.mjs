@@ -510,6 +510,94 @@ const CASES = [
     },
   },
   {
+    // ⚠ **根拠は、地図を中途半端に覆いながら読ませない。**
+    //   実測（2026-08-18・`tmp/probe-panel-open-sp.mjs`。パネルを開いた状態）:
+    //
+    //     幅        パネルの占有   地図に触れる帯   ＋− の被覆
+    //     375×667      54%          **0px**         89%
+    //     344×882      53%           10px           89%
+    //     320×640      53%          **0px**         89%
+    //
+    //   ⚠ **画面の中心（＝いま調べている地点）を受け取るのは台帳だった**（地図ではない）。
+    //   ⚠ 指で押せるよう 44px に広げたズームが、開いた瞬間に押せなくなっていた。
+    //
+    //   → スマホでは「根拠を読むあいだは全画面」にした。地図を触るのと根拠を読むのは、
+    //     同時にやる操作ではない。⚠ PC は左の縦パネルのまま（変えるのは見せ方だけ）。
+    //
+    // ⚠ **「閉じれば地図に戻れること」まで見る。** 全画面にしただけで戻れなければ、
+    //   0px の状態と変わらない（掟: 押しても何も起きない導線を置かない）。
+    // ⚠ **戻る手段を 2 つとも見る。** ✕ は「根拠を閉じて地図へ」、
+    //   ← は「今昔へ帰る」で**別の操作**。全画面にしたとき ← が下敷きになった（実測）。
+    name: "スマホの根拠は全画面で読み、閉じれば地図に戻る", path: `/peel?${TOYOSU}`,
+    viewport: { width: 375, height: 667 }, hasTouch: true,
+    async check(page) {
+      await page.waitForFunction(() => /件を判定しました/.test(document.body.innerText),
+        null, { timeout: 60000 });
+      await page.waitForTimeout(1500);
+      const look = () => page.evaluate(() => {
+        const W = innerWidth, H = innerHeight;
+        const pan = document.getElementById("panel");
+        const pr = pan.getBoundingClientRect();
+        const open = !pan.classList.contains("hide");
+        const box = (sel) => { const e = document.querySelector(sel);
+          if (!e) return null; const r = e.getBoundingClientRect();
+          return { w: Math.round(r.width), h: Math.round(r.height),
+                   x: Math.round(r.x), y: Math.round(r.y) }; };
+        // その座標を実際に受け取るのは誰か。⚠ 地図かどうかは **#map の中か**で見る
+        //   （className を文字にすると SVG は "[object SVGAnimatedString]" になる。一度踏んだ）
+        const map = document.getElementById("map");
+        const who = (x, y) => { const e = document.elementFromPoint(x, y);
+          if (!e) return { inMap: false, name: "無い" };
+          return { inMap: !!map && map.contains(e),
+                   name: e.id || e.tagName.toLowerCase() }; };
+        return { open,
+          cover: open ? Math.round(pr.width * pr.height / (W * H) * 100) : 0,
+          center: who(Math.round(W / 2), Math.round(H / 2)),
+          land: box("#land"), close: box("#closePanel"), back: box("#back"),
+          zoom: box(".maplibregl-ctrl-group"),
+          // ⚠ **箱があるだけでは「見えている」ではない。**その座標を自分が受け取るかまで見る
+          //   （矩形は覆われていても返る。このリポジトリが何度も踏んでいる）
+          backOnTop: (() => { const e = document.getElementById("back");
+            if (!e) return false; const r = e.getBoundingClientRect();
+            const t = document.elementFromPoint(Math.round(r.x + r.width / 2), Math.round(r.y + r.height / 2));
+            return !!t && (e === t || e.contains(t)); })() };
+      });
+      // (1) 閉じている初期状態: 答えは地図の上に出ていて、地図の中心は地図が受け取る
+      const shut = await look();
+      must(!shut.open, "スマホでパネルが開いて始まっている（地図が見えない）");
+      must(shut.land && shut.land.h > 0, "閉じているのに、答えの板が出ていない");
+      must(shut.center.inMap,
+        `閉じているのに、画面の中心（＝調べている地点）を地図が受け取っていない: ${shut.center.name}`);
+      // (2) 開いたら**全画面**。中途半端に覆わない
+      await page.click("#toggle");
+      await page.waitForTimeout(700);
+      const open = await look();
+      must(open.open, "☰ を押しても開かない");
+      must(open.cover >= 95,
+        `根拠が地図を中途半端に覆っている: 画面の ${open.cover}%（全画面にするか、覆わないかの二択）`);
+      // ⚠ 戻る手段が 2 つとも、指で押せる大きさで見えていること
+      must(open.close && open.close.h >= 44 && open.close.w >= 44,
+        `根拠を閉じる ✕ が指で押せない: ${JSON.stringify(open.close)}`);
+      must(open.back && open.back.h >= 44 && open.back.y >= 0 && open.back.y < 200,
+        `全画面で「← もどる」が指で押せる大きさで無い: ${JSON.stringify(open.back)}`);
+      // ⚠ **覆われていないことまで見る。**矩形だけ見ていたときは、
+      //   パネルの下敷きにしても緑のままだった（2026-08-18 に壊して気づいた）
+      must(open.backOnTop,
+        "全画面で「← もどる」がパネルの下敷きになっている（戻る手段は常に見えている場所に）");
+      // (3) 閉じれば地図に戻る
+      await page.click("#closePanel");
+      await page.waitForTimeout(700);
+      const again = await look();
+      must(!again.open, "✕ を押しても閉じない");
+      must(again.center.inMap,
+        `閉じたのに地図へ戻っていない（中心を受け取るのが ${again.center.name}）`);
+      must(again.zoom && again.zoom.h >= 44, `閉じてもズームが押せる大きさで出ていない: ${JSON.stringify(again.zoom)}`);
+      return `閉じ: 答えの板 ${shut.land.w}×${shut.land.h}px・中心は地図 ／`
+        + ` 開き: 画面の ${open.cover}%・✕ ${open.close.w}×${open.close.h}px・← ${open.back.w}×${open.back.h}px ／`
+        + ` 閉じ直し: 中心は地図・ズーム ${again.zoom.h}px`;
+    },
+  },
+  {
     // ズームは暗いパネルに載せたせいで黒地に黒になり、実測でボタンの存在すら見えなかった
     name: "さかのぼる（ズームが見えて、指で押せる）", path: `/peel?${TOYOSU}`,
     viewport: { width: 390, height: 844 }, hasTouch: true,
