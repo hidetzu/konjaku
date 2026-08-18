@@ -250,7 +250,13 @@
 
   // 水に由来する区分。バッジの色と、文章の言い回しを変えるためだけに使う。
   // 判定そのものは変えない（ここで区分を作り直すと、国土地理院の分類ではなくなる）。
+  // ⚠ **この 6 語を書き写さない。** 下の isWatery を呼ぶこと。
+  //   実測（2026-08-18）: 同じ並びが share.js に 1 か所・index.html に 2 か所あり、
+  //   **同じ問いに 4 か所が答えていた**。片方だけ直すと、画面の色と文章がずれる。
+  // ⚠ 明治期の低湿地区分（swale.js の isWater）とは**別の問い**。混ぜない。
+  //   あちらは「明治期の地図で水域だったか」、こちらは「いまの地形分類が水に由来するか」。
   const WATERY = new Set(["水部", "旧水部", "河川敷･浜", "湖", "干拓地", "落堀"]);
+  const isWatery = (value) => WATERY.has(value);
 
   let tableP = null;
   function table() {
@@ -858,7 +864,7 @@
     return out;
   }
 
-  global.Konjaku = { GSI, SWALE, ERAS, LATEST, AREA, tileOf, loadImage, classify,
+  global.Konjaku = { GSI, SWALE, ERAS, LATEST, AREA, tileOf, loadImage, classify, isWatery,
     landform, meiji, elevation, photos, facts, narrate, badges, suggestions,
     STATE: { OK, ABSENT, UNREACHABLE }, TIMEOUT_MS };
 })(window);

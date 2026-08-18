@@ -88,7 +88,7 @@
       .map(([name, n]) => ({
         name, n,
         share: classified ? n / classified : 0,
-        water: !!SWALE.find((c) => c.name === name)?.water,
+        water: !!isWater(name),
       }))
       .sort((a, b) => b.n - a.n);
     return {
@@ -102,5 +102,12 @@
     };
   }
 
-  g.KonjakuSwale = { SWALE, TOLERANCE, classify, tally };
+  // 区分の名前から「水域だったか」を引く、ただ 1 か所。
+  // ⚠ 呼ぶ側が `SWALE.find(c => c.name === x)?.water` を書き写さない。
+  //   実測（2026-08-18）: 同じ式が peel3d.js に 3 か所・ここに 1 か所あった。
+  //   ⚠ 表そのものを書き写すより見つけにくい（式なので grep しても目に留まらない）。
+  // ⚠ 知らない名前は false ではなく **undefined**。「水ではない」と「知らない」は別。
+  const isWater = (name) => SWALE.find((c) => c.name === name)?.water;
+
+  g.KonjakuSwale = { SWALE, TOLERANCE, classify, tally, isWater };
 })(typeof globalThis !== "undefined" ? globalThis : this);
