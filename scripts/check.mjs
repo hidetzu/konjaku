@@ -2237,7 +2237,7 @@ head("6. 外部リンク");
 //   2. Hook が、質問そのものをせき止めないこと
 // ⚠ 何を聞くか・どこで聞くかの線引きは CLAUDE.md §7-1。ここでは見ない（責務が別）。
 {
-  const HOOK = ".claude/hooks/notify-slack.sh";
+  const HOOK = ".claude/hooks/ask-slack.mjs";
   const SETTINGS = ".claude/settings.json";
   const { execFileSync: exH } = await import("node:child_process");
   let tracked = [];
@@ -2247,62 +2247,60 @@ head("6. 外部リンク");
 
   // ---- 1. 送り先をリポジトリに置かない ----
   // ⚠ 一度でも入ると、履歴に残る。入る前に落とす。
-  // ⚠ ここに実物の形を書かない。書くと、この検査が自分のコメントを拾う（CLAUDE.md §5）。
+  // ⚠ ここに実物の形を書かない。書くと、この検査が自分のコメントを拾う（CLAUDE.md §5。4 回目に踏んだ）。
   {
     const host = ["hooks", "slack", "com"].join(".");
+    const tok = ["xoxb", "xapp", "xoxp"];
     const hits = [];
     for (const f of tracked) {
       let buf; try { buf = await readFile(join(ROOT, f)); } catch { continue; }
       if (buf.includes(0)) continue;
-      const t = buf.toString("utf8");
-      t.split("\n").forEach((line, i) => {
+      buf.toString("utf8").split("\n").forEach((line, i) => {
         // ホスト名だけなら説明。**その先に道が付いていたら**送り先そのもの
-        if (new RegExp(`${host.replace(/\./g, "\\.")}/\\S`).test(line)) hits.push(`${f}:${i + 1}`);
+        if (new RegExp(`${host.replace(/\./g, "\\.")}/\\S`).test(line)) hits.push(`${f}:${i + 1} 送り先`);
+        // ⚠ トークンは、印のあとに中身が続いていたら本物とみなす
+        for (const t of tok) if (new RegExp(`${t}-[A-Za-z0-9]{8}`).test(line)) hits.push(`${f}:${i + 1} ${t}`);
       });
     }
     hits.length
-      ? bad(`Slack の送り先がリポジトリに入っている: ${hits.join("、")}`
-          + `（環境変数 SLACK_WEBHOOK_URL から読むこと。一度入ると履歴に残る）`)
-      : ok(`Slack の送り先はリポジトリに入っていない（${tracked.length} ファイルを走査）`);
+      ? bad(`Slack の秘密がリポジトリに入っている: ${hits.join("、")}`
+          + `（環境変数か .envrc から読むこと。一度入ると履歴に残る）`)
+      : ok(`Slack の秘密はリポジトリに入っていない（${tracked.length} ファイル・送り先とトークン 3 種を走査）`);
   }
 
-  // ---- 2. Hook は質問をせき止めない ----
-  // ⚠ PreToolUse の Hook が 0 以外で終わると、**その道具の呼び出しごと止まる**。
-  //   Slack が落ちている・jq が無い・URL 未設定のどれでも「人に聞けない」になる。
-  //   知らせるための仕掛けで聞けなくなるのは本末転倒なので、ここで縛る。
+  // ---- 2. 人に聞けなくならないこと ----
+  // ⚠ **守りたいのは「exit 0」ではない。「人に聞けなくならないこと」。**
+  //   2026-08-18 に、この Hook は「知らせるだけ（待たない）」から
+  //   「Slack で聞いて答えを受け取る（待つ）」に変わった。**待つのが目的**なので、
+  //   「絶対に止まらない」はもう成り立たない。縛り直したのは次の 3 つ:
+  //     ① 待ちに上限があること（無限に待たない）
+  //     ② 上限が Hook 自身の timeout より内側であること
+  //     ③ 何が起きても exit 0（＝答えが取れなければ端末で聞く形に落ちる）
+  //   ⚠ ①②が無いと、Slack を見ていない日に**セッションが黙って固まる**。
   {
     const fails = [];
+    let waitMs = null, hookTimeoutSec = null;
     if (!existsSync(join(ROOT, HOOK))) fails.push(`${HOOK} が無い`);
     else {
-      const sh = await readFile(join(ROOT, HOOK), "utf8");
-      const code = sh.split("\n").filter((l) => !/^\s*#/.test(l)).join("\n");
-      // ⚠ set -e は、途中で落ちること自体がせき止めになる
-      if (/^\s*set\s+-[a-z]*e/m.test(code)) fails.push("set -e がある（途中で落ちると質問ごと止まる）");
-      if (!/\bexit 0\s*$/m.test(code)) fails.push("最後が exit 0 で終わっていない");
-      // 送れないときに黙って諦める道があること
-      if (!/SLACK_WEBHOOK_URL/.test(code)) fails.push("SLACK_WEBHOOK_URL を読んでいない");
-      // ⚠ env ファイルを **source しない**。`.envrc` は任意のシェルコードで、
-      //   読み込めば何でも走る。Hook は direnv を通さず直接起動されるので、
-      //   ここで丸ごと読むと「設定ファイル」が実行経路になる。
-      //   拾ってよいのは、SLACK_WEBHOOK_URL の**その 1 行だけ**。
-      if (/^\s*(\.|source)\s+\S*\.env/m.test(code))
-        fails.push("env ファイルを source している（任意のシェルコードが走る）");
-      if (!/--max-time/.test(code)) fails.push("curl に --max-time が無い（相手が黙ると待ち続ける）");
-      // ⚠ どのプロジェクトかは、**毎回 cwd から出す**。env ファイルに固定で持たない。
-      //   direnv が読む時点で cwd は分からないし、別の clone や worktree で
-      //   違う名前を名乗る（＝ Slack を見た人が、別の場所の話だと思う）。
-      // ⚠ 「どこかに `.cwd` と書いてあるか」で見ない。**代入している行**を見る。
-      //   最初そう書いて、名前を環境変数から取る形に変えても緑のままだった
-      //   （jq の `.cwd` は別の用で残るので、何も見ていない検査になっていた）。
-      {
-        const asg = code.split("\n").filter((l) => /(^|\s|\|\|\s*)PROJECT=/.test(l));
-        const top = code.split("\n").filter((l) => /(^|\s)TOP=/.test(l));
-        if (asg.length && !asg.some((l) => /\$\{?(CWD|TOP)\b/.test(l)))
-          fails.push("プロジェクト名を cwd から出していない（固定だと別の clone で嘘になる）");
-        if (top.length && !top.some((l) => /\$\{?CWD\b/.test(l)))
-          fails.push("repo の根を cwd から出していない");
-      }
-      // ⚠ 実行できないと、Hook は動かない（動かないことに気づけない）
+      const js = await readFile(join(ROOT, HOOK), "utf8");
+      const code = js.split("\n").filter((l) => !/^\s*\/\//.test(l)).join("\n");
+      // ① 上限
+      const w = /WAIT_MS\s*=\s*([\d_]+)/.exec(code);
+      if (!w) fails.push("待ちの上限（WAIT_MS）が無い（無限に待ちうる）");
+      else waitMs = Number(w[1].replace(/_/g, ""));
+      // ③ 落ちても、聞けなくならない
+      if (!/process\.exit\(0\)/.test(code)) fails.push("exit 0 で終わる道が無い");
+      // ⚠ `.catch(() => {})` を数えない。**外側の try/catch** があるかを見る。
+      //   最初 /catch\s*\(/ で書いて、外側の受け皿を消しても緑のままだった（2026-08-18）。
+      if (!/^\}\s*catch\s*\(/m.test(code)) fails.push("外側の受け皿（try/catch）が無い（例外で質問ごと止まる）");
+      // 答えとして採ってよいものが絞られていること
+      if (!/optionsOf|options/.test(code)) fails.push("こちらが出した選択肢と突き合わせていない");
+      // ⚠ 履歴を読みに行かないこと（読むと、そのチャンネルの全発言が届く）
+      if (/conversations\.(history|replies)/.test(code))
+        fails.push("チャンネルの履歴を読んでいる（答え 1 つのために全発言を読まない）");
+      // ⚠ env ファイルを丸ごと読み込まない
+      if (/\brequire\(.*\.envrc|source\s+\S*\.env/.test(code))
+        fails.push("env ファイルを丸ごと読んでいる（任意のシェルコードが走る）");
       const { statSync } = await import("node:fs");
       if (!(statSync(join(ROOT, HOOK)).mode & 0o111)) fails.push("実行権が無い");
     }
@@ -2311,25 +2309,29 @@ head("6. 外部リンク");
     else {
       let j; try { j = JSON.parse(await readFile(join(ROOT, SETTINGS), "utf8")); }
       catch { fails.push(`${SETTINGS} が JSON として壊れている`); }
-      const cmds = (j?.hooks?.PreToolUse ?? []).flatMap((g) =>
-        (g.matcher === "AskUserQuestion" ? (g.hooks ?? []) : []).map((h) => h.command ?? ""));
-      if (!cmds.length) fails.push("AskUserQuestion の PreToolUse Hook が設定されていない");
-      for (const c of cmds) {
-        const rel = c.replace("${CLAUDE_PROJECT_DIR}/", "").replace(/^\$\{[^}]+\}\//, "");
+      const hs = (j?.hooks?.PreToolUse ?? []).flatMap((g) =>
+        g.matcher === "AskUserQuestion" ? (g.hooks ?? []) : []);
+      if (!hs.length) fails.push("AskUserQuestion の PreToolUse Hook が設定されていない");
+      for (const h of hs) {
+        const rel = (h.command ?? "").replace(/^\$\{[^}]+\}\//, "");
         if (!existsSync(join(ROOT, rel))) fails.push(`指している ${rel} が無い`);
+        if (typeof h.timeout === "number") hookTimeoutSec = h.timeout;
       }
+      if (hookTimeoutSec == null) fails.push("Hook の timeout が書かれていない（既定 600 秒に任せない）");
     }
-    // ⚠ 送り先を書いたファイルが、追跡されていないこと。
-    //   ⚠ `.gitignore` を読んで確かめない。**git が実際にどう扱っているか**で見る
-    //     （無視の書き方は重なるので、読んで解釈すると外す）。
+    // ② 待ちの上限は、Hook の timeout の内側
+    if (waitMs != null && hookTimeoutSec != null && waitMs >= hookTimeoutSec * 1000)
+      fails.push(`待ちの上限 ${waitMs / 1000} 秒が Hook の timeout ${hookTimeoutSec} 秒の外側`
+        + `（先に Hook ごと切られる＝スレッドに一言返す道が通らない）`);
+    // 送り先を書いたファイルが、追跡されていないこと
+    // ⚠ .gitignore を読んで確かめない。**git が実際にどう扱っているか**で見る
     for (const f of [".envrc", ".env"])
-      if (tracked.includes(f)) fails.push(`${f} が git に入っている（送り先が履歴に残る）`);
+      if (tracked.includes(f)) fails.push(`${f} が git に入っている（秘密が履歴に残る）`);
     fails.length
-      ? bad(`人に聞くときの Hook が、質問をせき止めうる: ${fails.join(" / ")}`
-          + `（送れなくても質問は必ず出すこと）`)
-      : ok(`人に聞くときの Hook は質問をせき止めない`
-          + `（set -e 無し・exit 0・--max-time あり・実行権あり・行き先が実在`
-          + `・env ファイルを source しない・.envrc / .env は git に入っていない）`);
+      ? bad(`人に聞けなくなりうる: ${fails.join(" / ")}`
+          + `（Slack が駄目でも、必ず端末で聞けること）`)
+      : ok(`人に聞けなくならない（待ち ${waitMs / 1000} 秒 < Hook の timeout ${hookTimeoutSec} 秒`
+          + `・落ちても exit 0・履歴を読まない・.envrc / .env は git に入っていない）`);
   }
 }
 
