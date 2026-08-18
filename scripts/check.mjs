@@ -2903,6 +2903,74 @@ head("9. 画面の言葉");
     }
   }
 
+  // ⚠ **同じ問いに答える定義を、2 か所に書かない**（掟）。
+  //   表そのものは §6 が見ている（14 区分・凡例）。ここが見るのは**それ以外の並びと式**。
+  //
+  // 実測（2026-08-18）: 2 種類の重複があった。⚠ **どちらも「表」ではないので、
+  //   既存の検査では素通りしていた。**
+  //     ① 「水由来の地形分類」6 語 … verify.js / share.js / index.html×2 の 4 か所
+  //     ② `SWALE.find(c => c.name === x)?.water` … peel3d.js×3 / swale.js の 4 か所
+  //   ⚠ ② は式なので、grep しても目に留まらない。並びだけを見ていては見つからない。
+  //
+  // ⚠ ①と②は**別の問い**。混ぜない。
+  //     ① いまの地形分類が水に由来するか（Konjaku.isWatery）
+  //     ② 明治期の地図で水域だったか（KonjakuSwale.isWater）
+  {
+    const jsHtml = [...htmlFiles, ...jsFiles];
+    const body = {};
+    for (const f of jsHtml) body[f] = seen[f] ?? "";
+  
+    // ---- ① 語の並びを書き写していないか ----
+    {
+      const where = new Map();
+      for (const f of jsHtml) {
+        for (const m of body[f].matchAll(/\[\s*("(?:[^"\\]|\\.)*"\s*,\s*){2,}"(?:[^"\\]|\\.)*"\s*\]/g)) {
+          const words = [...m[0].matchAll(/"((?:[^"\\]|\\.)*)"/g)].map((x) => x[1]);
+          if (!words.some((w) => /[ぁ-んァ-ヶ一-龠]/.test(w))) continue;
+          const k = words.join("｜");
+          if (!where.has(k)) where.set(k, []);
+          where.get(k).push(f);
+        }
+      }
+      const dup = [...where.entries()].filter(([, fs]) => fs.length > 1);
+      dup.length
+        ? bad(`同じ語の並びを 2 か所以上に書いている: `
+            + dup.map(([k, fs]) => `[${k.split("｜").slice(0, 3).join("、")}…] → ${fs.join("、")}`).join(" / ")
+            + `（1 か所に寄せて、そこから呼ぶこと）`)
+        : ok(`日本語を含む語の並び ${where.size} 種類は、どれも 1 か所にしかない`);
+    }
+  
+    // ---- ② 「名前から水域を引く」式を書き写していないか ----
+    // ⚠ 持ち主（swale.js）の中だけは、定義そのものなので許す
+    {
+      const hits = [];
+      for (const f of jsHtml) {
+        if (f === "swale.js") continue;
+        const n = (body[f].match(/SWALE\s*\.\s*find\s*\([^)]*\)\s*\?\.\s*water/g) ?? []).length;
+        if (n) hits.push(`${f}${n > 1 ? `×${n}` : ""}`);
+      }
+      hits.length
+        ? bad(`区分名から水域を引く式を書き写している: ${hits.join("、")}`
+            + `（KonjakuSwale.isWater を呼ぶこと。式なので grep しても目に留まらない）`)
+        : ok(`区分名から水域を引くのは swale.js の isWater ただ1つ`);
+    }
+  
+    // ---- ③ 持ち主が、実際に配れているか ----
+    // ⚠ 「1 か所にした」と言いながら、公開していなければ呼べない
+    {
+      const missing = [];
+      if (!/isWatery/.test(body["verify.js"] ?? "")) missing.push("verify.js に isWatery が無い");
+      else if (!/global\.Konjaku\s*=\s*\{[^}]*isWatery/.test(body["verify.js"]))
+        missing.push("isWatery を Konjaku から配っていない（他のファイルが呼べない）");
+      if (!/isWater/.test(body["swale.js"] ?? "")) missing.push("swale.js に isWater が無い");
+      else if (!/KonjakuSwale\s*=\s*\{[^}]*isWater/.test(body["swale.js"]))
+        missing.push("isWater を KonjakuSwale から配っていない");
+      missing.length
+        ? bad(`1 か所に寄せた答えを配れていない: ${missing.join(" / ")}`)
+        : ok(`水の判定は 2 つとも持ち主から配っている（Konjaku.isWatery ／ KonjakuSwale.isWater）`);
+    }
+  }
+
   // ⚠ 短い語（「自分」）は本文の検索で数えられない。宣言そのものを読む。
   {
     const m = /const TAG_LABEL\s*=\s*\{([^}]*)\}/.exec(seen["index.html"] ?? "");

@@ -988,7 +988,7 @@ function renderLand(v){
   if(!v){ landEl.innerHTML=""; return; }        // 場所を切り替えた直後。前の答えを残さない
   const sub=(t)=>t?`<div class="land-sub">${t}</div>`:"";
   if(v.kind==="ratio"||v.kind==="area"){
-    const landIsWater=v.land&&SWALE.find(c=>c.name===v.land.name)?.water;
+    const landIsWater=v.land&&KonjakuSwale.isWater(v.land.name);
     // 数字だけを置かない。**何の割合か**と**分母**を必ず同じ板に出す
     const what=v.kind==="ratio"
       ? (v.land && !landIsWater
@@ -1042,7 +1042,7 @@ function showResult(){
   const v=landVerdict();
   renderLand(v);
   if(v.kind==="ratio"){
-    const landIsWater=v.land&&SWALE.find(c=>c.name===v.land.name)?.water;
+    const landIsWater=v.land&&KonjakuSwale.isWater(v.land.name);
     if(v.land&&!landIsWater){
       heroEl.innerHTML=`<span class="hero-alt">${esc(v.land.name)}</span>`;
       capEl.innerHTML=`建物の足元は、明治期には<b>${esc(v.land.name)}</b>が最多でした<br>
@@ -1084,7 +1084,7 @@ function showResult(){
 
   document.getElementById("breakdown").innerHTML = area.total
     ? Object.entries(area.counts).sort((a,b)=>b[1]-a[1]).map(([k,v])=>{
-        const isW=SWALE.find(c=>c.name===k)?.water;
+        const isW=KonjakuSwale.isWater(k);
         return `<div class="stat"><span><i class="swatch" style="background:${isW?"#8fb9dd":"#d8cfa8"}"></i>${k}</span>
           <b>${v}<span style="color:var(--ink-dim);font-weight:400"> / ${area.total}</span></b></div>`;
       }).join("")
