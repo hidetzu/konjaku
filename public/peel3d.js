@@ -1530,14 +1530,21 @@ const GROUND_GRACE_MS = 1200;
 // ⚠ 語彙は places.js の検索側に合わせる（掟: 同じ問いに答える実装を2つ持たない）。
 function eraReadout(state, isLatest, isMeiji, sub, online){
   const what = isMeiji ? "明治期の地面" : isLatest ? "いまの街の写真" : "この年代の写真";
-  if(state?.kind==="ok"||!state) return { kick:"表示中", sub };
+  // ⚠ **普段は名乗らない。** 出ているのが当たり前のときに「表示中」と書いても、
+  //   何のことか分からないまま**主役（年代）から目を奪う**（実測 2026-08-19・320幅:
+  //   年代の字 38px に対して「表示中」は 12px だが、行の頭に居るので先に読まれる）。
+  //   ⚠ **消すのは「普段」だけ。**出ていないときは必ず名乗る
+  //     （「出ていないものを表示中と言わない」を直したときの性質。崩さない）。
+  if(state?.kind==="ok"||!state) return { kick:"", sub };
   if(state.kind==="fail")
     return { kick:"出せません",
       sub:`${what}を読み込めませんでした（${state.why}）`,
       hint: online===false ? "インターネットに接続していません"
                            : "接続を確認してください" };
   if(state.kind==="late") return { kick:"選択中", sub:`${what}は、まだ出ていません` };
-  return { kick:"表示中", sub };
+  // ⚠ 猶予の中（pending）。まだ届いていないが、**普通の回線ならすぐ届く**
+  //   （実測: 通常回線 69〜403ms）。ここで名乗ると、読み込みのたびに一瞬光る。
+  return { kick:"", sub };
 }
 let groundGid=null, groundSince=0, groundTimer=null;
 function groundLate(gid, arrived){
@@ -1723,7 +1730,11 @@ function applyEraPanel(){
   eraEl.classList.toggle("collapsed",!eraPanelOpen);
   eraDetails.hidden=!eraPanelOpen;
   eraToggle.setAttribute("aria-expanded",String(eraPanelOpen));
+  // ⚠ 画面には記号だけ出す。名乗りは読み上げに残す（.sr）。
+  //   ⚠ **記号の向きは CSS が回す（.collapsed で rotate(180deg)）。ここで文字を差し替えない。**
+  //   両方やると二重に反転して、閉じているのに「閉じる」向きになる（2026-08-19 に踏んだ）。
   eraToggleText.textContent=eraPanelOpen?"閉じる":"開く";
+  eraToggle.setAttribute("aria-label",`この年代の説明を${eraPanelOpen?"閉じる":"開く"}`);
 }
 eraToggle.onclick=()=>{ eraPanelOpen=!eraPanelOpen; applyEraPanel(); };
 applyEraPanel();
@@ -1736,7 +1747,11 @@ function applyTimePanel(){
   timePanel.classList.toggle("collapsed",!timePanelOpen);
   timePanelBody.hidden=!timePanelOpen;
   timeToggle.setAttribute("aria-expanded",String(timePanelOpen));
+  // ⚠ 画面には記号だけ出す。名乗りは読み上げに残す（.sr）。
+  //   ⚠ **記号の向きは CSS が回す（.collapsed で rotate(180deg)）。ここで文字を差し替えない。**
+  //   両方やると二重に反転して、閉じているのに「閉じる」向きになる（2026-08-19 に踏んだ）。
   timeToggleText.textContent=timePanelOpen?"閉じる":"開く";
+  timeToggle.setAttribute("aria-label",`年代を動かす帯を${timePanelOpen?"閉じる":"開く"}`);
 }
 timeToggle.onclick=()=>{ timePanelOpen=!timePanelOpen; applyTimePanel(); };
 applyTimePanel();
