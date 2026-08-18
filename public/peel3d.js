@@ -184,26 +184,42 @@ let blAt=null, blTrunc=false;
 //   ここに書き写すと、**トップが「深掘りできる」と言った場所で、こちらが
 //   Overpass に落ちる**状態を作れてしまう。
 //   ⚠ peel.html が ground.js を peel3d.js より先に読み込んでいる。
+// ⚠ **「答えられなかった」を1つに潰さない**（2026-08-18）。
+//   以前はここが 4 つの別々の理由を全部 `null` で返していた。
+//   受け手はそれを「取得できませんでした（Overpass 混雑）」と1つの文にしていたので、
+//   **一度も取り込んでいない場所で「混雑のせい」と書いていた**（実測: 名古屋）。
+//   利用者役 3/3 が、その文を「自分の通信のせい」と読み、2 名が押し直すと答えた。
+//
+//   ⚠ このリポジトリが何度も直してきた並びに、1 行足りていなかった:
+//       まだ用意していない  ≠  取得できなかった
+//   前者は**こちらの都合**、後者は**相手や回線の都合**。
+//   利用者にとっては「押し直すべきか」が変わるので、意味がまるで違う。
+const BL_OK="ok", BL_ABSENT="absent", BL_UNREACHABLE="unreachable",
+      BL_UNKNOWN="unknown", BL_STALE="stale";
 async function loadBuildingTiles(bbox){
   await KonjakuGround.load();
+  const known=KonjakuGround.hasSync((bbox.w+bbox.e)/2,(bbox.s+bbox.n)/2);
+  // 索引そのものを読めていない。⚠ 「無い」と言わない
+  if(known===null) return { state:BL_UNKNOWN };
   const spec=KonjakuGround.tilesFor(bbox);   // 1枚でも欠けたら null（静的では答えない）
-  if(!spec) return null;
+  if(!spec) return { state:BL_ABSENT };      // ⚠ **未登録**。こちらがまだ用意していない
   const got=await Promise.all(spec.keys.map(k=>{
     const [x,y]=k.split("/");
     const path=spec.tile.replace("{x}",x).replace("{y}",y);
     return fetch(path).then(r=>r.ok?r.json():null).catch(()=>null);
   }));
-  if(got.some(g=>!g)) return null;
+  // 索引は「見た」と言っているのに読めない。⚠ こちらの配信の問題で、未登録ではない
+  if(got.some(g=>!g)) return { state:BL_UNREACHABLE };
   const features=[]; let at=null, truncated=false;
   for(const g of got){
     // ⚠ 詰めた形（現行版）でないものは使わない。GeoJSON のまま配っていた古いファイルが
     //   残っていたら、静かに混ぜるより Overpass の道に落ちたほうがよい
-    if(g.v!==BL_V) return null;
+    if(g.v!==BL_V) return { state:BL_STALE };
     features.push(...unpackBuildings(g));
     if(!at||(g.at&&g.at<at)) at=g.at;      // いちばん古い区画に合わせる
     if(g.truncated) truncated=true;
   }
-  return { features, at, truncated };
+  return { state:BL_OK, features, at, truncated };
 }
 // 詰めた建物を戻す。⚠ 詰める側は scripts/bl-format.mjs。**必ず対で直す**。
 //   片方だけ直すと、建物の形が静かにずれる（画面は何も言わない）。
@@ -719,7 +735,8 @@ async function loadArea(lon,lat,title,opt){
   //   以前は「この範囲に1件も無い」を `feats=null` に潰していたので、
   //   正常に 0 件と確認できた事実が「未取得」に化け、画面は同時に
   //   「建物 0 件を判定しました」「建物を取得中…」「欠落 取得できていない」を出していた。
-  //   状態は area.bldState（loading / ok / fail）が1つだけ持つ
+  //   状態は area.bldState（loading / ok / notyet / fail）が1つだけ持つ
+  //   ⚠ notyet = **こちらがまだ用意していない**。fail = 用意はあるが取れなかった。混ぜない
   //   （掟: 同じ問いに答える実装を2つ持たない。以前は pending と source:"none" の2つで表していた）。
   let feats=null, viaPre=false, bldSource=null;
   // ⚠ まずタイル索引を見る。取り込んであれば Overpass に出ない。
@@ -727,7 +744,10 @@ async function loadArea(lon,lat,title,opt){
   //   索引の単位は z14 で、ev（年つきの事物）とは**別の索引**。潰すと
   //   「建物が見たタイル」が「事物も見た」ことになる。
   const bl=await loadBuildingTiles(bbox);
-  if(bl){
+  // ⚠ **なぜ静的で答えられなかったか**を、最後まで持ち回る。
+  //   ここで捨てると、失敗の文が「混雑のせい」に化ける
+  const blWhy=bl.state;
+  if(bl.state===BL_OK){
     // ⚠ タイルは z14 の全面なので、集計したい範囲より広い。
     //   そのまま数えると「豊洲の建物の◯%」が、豊洲ではない範囲の割合になる。
     //   実測で 99.4% → 40.9% に化けた（隣の街区が混ざったため）。
@@ -750,23 +770,41 @@ async function loadArea(lon,lat,title,opt){
     if(gj?.features){ feats=gj.features; viaPre=true; bldSource="pre"; }
   }
   if(feats===null){
-    statusEl.innerHTML+=`<div style="margin-top:5px">建物を取得中…</div>`;
+    // ⚠ **未登録なら、先にそう言う。**待たせてから「取れなかった」と言うのが、
+    //   いちばんがっかりする（利用者役の指摘 2026-08-18）。
+    //   ⚠ そのうえで問い合わせは行う。名古屋で 5,845 件が実際に返った実測があり、
+    //     やめると出せる情報が減る。ただし**先に言ってから**行く。
+    statusEl.innerHTML+=blWhy===BL_ABSENT
+      ? `<div style="margin-top:5px"><b>この場所の建物データは、まだ用意できていません。</b></div>`
+      : `<div style="margin-top:5px">建物を取得中…</div>`;
+    const line=statusEl.querySelector("div:last-of-type");
     const els=await fetchBuildings(bbox,(m)=>{
       // ⚠ 何を待っていて、**駄目だったらどうなるか**を先に言う。
       //   黙って待たせると、止まっているのか動いているのか分からない
-      statusEl.querySelector("div").textContent=
-        m+"（最大20秒。取れなければ水域と写真だけで表示します）";
+      line.textContent=(blWhy===BL_ABSENT?"この場所の建物データは、まだ用意できていません。":"")
+        +m+"（最大20秒。取れなければ水域と写真だけで表示します）";
     });
     if(els){ feats=toGeoJSON(els).features; bldSource="overpass"; }
   }
 
   if(feats===null){
     map.getSource("bld").setData({type:"FeatureCollection",features:[]});
+    // ⚠ **理由ごとに違う文を出す。**「まだ用意していない」を「取得できませんでした」と
+    //   言わない（利用者役 3/3 が後者を「自分の通信のせい」と読んだ）。
+    const notYet=blWhy===BL_ABSENT;
     area={ title, total:0, wet:0, classified:0, unread:0, counts:{}, dated:0,
-      waterRatio:w.ratio, waterRead, waterUnread, bldState:"fail",
+      waterRatio:w.ratio, waterRead, waterUnread, bldState:notYet?"notyet":"fail",
       landSummary:summarizeLand(w.classCounts,w.classifiedPixels), buildingLand:null };
-    statusEl.innerHTML=`<span class="err">建物データを取得できませんでした（Overpass 混雑）。</span>
-      <span style="color:var(--ink-dim)">水域と空中写真だけで表示しています。</span> ${retryBtn(lon,lat,title)}`;
+    statusEl.innerHTML=(notYet
+      ? `<span class="err">この場所の建物データは、まだ用意できていません。</span>
+         <span style="color:var(--ink-dim)">その場の問い合わせも通りませんでした。
+         ⚠ 現地に建物が無いという意味ではありません。</span>`
+      : blWhy===BL_UNKNOWN
+      ? `<span class="err">建物データを取得できませんでした。</span>
+         <span style="color:var(--ink-dim)">用意してあるかどうかも確かめられていません。</span>`
+      : `<span class="err">建物データを取得できませんでした。</span>
+         <span style="color:var(--ink-dim)">用意はしてありますが、いま読めていません。</span>`)
+      + `<span style="color:var(--ink-dim)">水域と空中写真だけで表示しています。</span> ${retryBtn(lon,lat,title)}`;
     wireRetry(lon,lat,title);
     showResult(); return;
   }
@@ -913,9 +951,12 @@ function landVerdict(){
 // 面積比を出している理由。⚠ HUD（#land）と情報パネル（#heroCap）が同じ文を出すので、
 //   **ここ1か所**で作る（掟: 同じ問いに答える実装を2つ持たない。
 //   以前は2か所に同じ三項演算子が書いてあり、片方だけ直すと同じ画面で言うことが食い違った）。
+// ⚠ 「まだ用意していない」と「取れなかった」を書き分ける（2026-08-18）。
+//   以前は両方「建物が取れなかったため」で、利用者役 3/3 が自分の通信を疑った。
 const bldWhyArea=(bldState)=>
   bldState==="loading" ? "建物を取得中。揃うと建物ごとの割合になる"
   : bldState==="ok"    ? "OSM に登録された建物が 0 件のため、面積比で出している"
+  : bldState==="notyet"? "この場所の建物データはまだ用意できていないため、面積比で出している"
                        : "建物が取れなかったため、面積比で出している";
 
 const landEl=document.getElementById("land");
@@ -1034,6 +1075,7 @@ function showResult(){
     : `<div class="hint">${
         area.bldState==="loading" ? "建物を取得中…"
         : area.bldState==="ok"    ? "OSM に登録された建物は 0 件です"
+        : area.bldState==="notyet"? "この場所の建物データは、まだ用意できていません"
                                   : "建物データを取得できませんでした（上の再試行から取り直せます）"}</div>`;
 }
 
@@ -1340,6 +1382,11 @@ function render(){
   if(!area || area.bldState==="loading")
     rows.push(`<div class="prov no"><span class="t">未取得</span>建物データを<b>取得中</b>
       <span class="d">まだ届いていないだけで、この範囲の建物の有無は分かっていない</span></div>`);
+  else if(area.bldState==="notyet")
+    // ⚠ 台帳の語彙に「未収録」を足した（2026-08-18）。
+    //   「未取得（＝届いていない）」と**こちらがまだ用意していない**は別のこと。
+    rows.push(`<div class="prov no"><span class="t">未収録</span>この場所の建物データを<b>まだ用意していない</b>
+      <span class="d">こちらの都合であって、現地に建物が無いという意味ではない</span></div>`);
   else if(area.bldState==="fail")
     rows.push(`<div class="prov no"><span class="t">未取得</span>建物データを<b>取得できていない</b>
       <span class="d">届いていないだけで、この範囲の建物の有無は分かっていない</span></div>`);
