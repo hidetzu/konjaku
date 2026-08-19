@@ -3750,6 +3750,73 @@ const CASES = [
     },
   },
   {
+    // ⚠ **深掘りの画面の再生で、カメラを振らない。**
+    //   ⚠ CSS では止まらない（requestAnimationFrame + map.jumpTo の自前実装）。
+    //   ⚠ **姿勢は MapLibre のコンパスの style から読む。**地図を外へ公開しない。
+    //     実測（2026-08-19）: rotateX が pitch、末尾の rotateZ が -bearing。
+    //   ⚠ **zoom は画面に出ていないので、ここでは測っていない**（経路は静的検査が見る）。
+    name: "「動きを減らす」を入れると、深掘りの再生でカメラを振らない",
+    path: `/peel?${TOYOSU}`, group: "core",
+    setup: (page) => page.emulateMedia({ reducedMotion: "reduce" }),
+    async check(page) {
+      const cam = () => page.evaluate(() => {
+        const st = document.querySelector(".maplibregl-ctrl-compass .maplibregl-ctrl-icon")
+          ?.getAttribute("style") ?? "";
+        const one = (re) => { const m = re.exec(st); return m ? Math.round(parseFloat(m[1]) * 10) / 10 : null; };
+        return { pitch: one(/rotateX\(([-\d.]+)deg\)/), bearing: one(/rotateZ\(([-\d.]+)deg\);?\s*$/),
+                 year: document.getElementById("rlYear")?.innerText.trim() ?? null };
+      });
+      await page.waitForFunction(() => document.getElementById("play")?.checkVisibility() === true,
+        null, { timeout: 90000 });
+      const a = await cam();
+      // ⚠ 読めていないのに「動いていない」と言わない
+      must(a.pitch !== null && a.bearing !== null,
+        `コンパスから姿勢を読めない（この検査が何も見ていない）: ${JSON.stringify(a)}`);
+      await page.click("#play");
+      await page.waitForTimeout(6000);
+      const b = await cam();
+      await page.waitForTimeout(9000);
+      const c = await cam();
+      for (const [when, r] of [["6 秒後", b], ["15 秒後", c]]) {
+        must(r.pitch === a.pitch, `${when} に傾斜が変わった: ${a.pitch}° → ${r.pitch}°`);
+        must(r.bearing === a.bearing, `${when} に向きが変わった: ${a.bearing} → ${r.bearing}`);
+      }
+      // ⚠ **止めてはいない。**年代は最後まで送られること（押しても何も起きない状態にしない）
+      must(b.year !== a.year, `年代が送られていない（${a.year} のまま）`);
+      must(/明治/.test(c.year ?? ""), `最後まで送られていない: ${c.year}`);
+      return `傾斜 ${a.pitch}° ／ 向き ${a.bearing} が動かず、年代は ${a.year} → ${b.year} → ${c.year}`;
+    },
+  },
+  {
+    // ⚠ **減らしていない人の見え方を変えない。**
+    //   ⚠ これが無いと、**カメラを全員から止めてしまっても**上の検査は通る。
+    name: "「動きを減らす」でない人には、深掘りの再生でカメラが振れる",
+    path: `/peel?${TOYOSU}`, group: "core",
+    setup: (page) => page.emulateMedia({ reducedMotion: "no-preference" }),
+    async check(page) {
+      const cam = () => page.evaluate(() => {
+        const st = document.querySelector(".maplibregl-ctrl-compass .maplibregl-ctrl-icon")
+          ?.getAttribute("style") ?? "";
+        const one = (re) => { const m = re.exec(st); return m ? Math.round(parseFloat(m[1]) * 10) / 10 : null; };
+        return { pitch: one(/rotateX\(([-\d.]+)deg\)/), bearing: one(/rotateZ\(([-\d.]+)deg\);?\s*$/),
+                 year: document.getElementById("rlYear")?.innerText.trim() ?? null };
+      });
+      await page.waitForFunction(() => document.getElementById("play")?.checkVisibility() === true,
+        null, { timeout: 90000 });
+      const a = await cam();
+      await page.click("#play");
+      await page.waitForTimeout(15000);
+      const c = await cam();
+      // ⚠ 実測（2026-08-19）: 終点は pitch +10°・bearing +46°（rotateZ は -bearing なので -46）
+      must(c.pitch - a.pitch >= 9 && c.pitch - a.pitch <= 11,
+        `傾斜の変化が +10° でない: ${a.pitch}° → ${c.pitch}°`);
+      must(Math.abs((a.bearing - c.bearing) - 46) <= 2,
+        `向きの変化が 46° でない: ${a.bearing} → ${c.bearing}`);
+      must(/明治/.test(c.year ?? ""), `最後まで送られていない: ${c.year}`);
+      return `傾斜 ${a.pitch}° → ${c.pitch}° ／ 向き ${a.bearing} → ${c.bearing}（いままでどおり）`;
+    },
+  },
+  {
     // ⚠ **「動きを減らす」を入れている人に、動きだけを消す。**
     //   ⚠ 静的検査は媒体クエリが「ある」ことしか見られない。
     //     ⚠ **効いているか**は、計算後の値を読まないと分からない。
