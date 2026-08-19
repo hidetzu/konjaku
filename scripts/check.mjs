@@ -2426,6 +2426,68 @@ head("6. 外部リンク");
   }
 }
 
+// 言葉を決めるところ（index.html の TOPWORD / RELOCATE_HOW）。
+// ⚠ peel3d.js の WORD と同じ理由で外へ出した。**持ち主が違うので 1 つにまとめていない**
+//   （WORD は /peel の答えと出どころ、TOPWORD はトップの根拠カードと導線）。
+//   ⚠ 取り出せなくなったら落とす（黙って素通りさせない）。
+{
+  const js = [...(src["index.html"] ?? "").matchAll(
+    /<script(?![^>]*src)[^>]*>([\s\S]*?)<\/script>/g)].map((m) => m[1]).join("\n");
+  const mw = /\nconst TOPWORD = \{[\s\S]*?\n\};/.exec(js);
+  const mr = /\nconst RELOCATE_HOW = [\s\S]*?;\n/.exec(js);
+  if (!mw || !mr) bad("index.html の TOPWORD / RELOCATE_HOW を取り出せない（この検査が何も見ていない）");
+  else {
+    const [T, R] = new Function(`${mw[0]}${mr[0]}\nreturn [TOPWORD, RELOCATE_HOW];`)();
+    const fails = [];
+    const yes = (c, what) => { if (!c) fails.push(what); };
+
+    // ---- ⚠ 掟の核心。読めたうえで 0 件 と、答えを出せない は別 ----
+    yes(T.meiji(null, true) !== T.meiji(null, false),
+      "「記録なし」と「判定できません」を書き分けていない");
+    yes(/記録/.test(T.meiji(null, true)), `読めて 0 件のときの言い方が変わった: ${T.meiji(null, true)}`);
+    yes(!/無い|ありません/.test(T.meiji(null, false)),
+      `判定できないのに「無い」と言っている: ${T.meiji(null, false)}`);
+    // ⚠ 値があるときは、but でも but でもなく、その値をそのまま出す
+    yes(T.meiji("旧水部", true) === "旧水部", "値があるのに、言い換えている");
+
+    // ---- ⚠ 取得方法の呼び名。掟の語彙 ----
+    yes(T.method("unreachable", false, "raster") === "未取得",
+      "読めなかったのに「未取得」と言っていない");
+    yes(T.method("ok", true, "raster") === "境目", "答えが割れたのに「境目」と言っていない");
+    yes(T.method("ok", false, "raster") === "raster", "普通に取れたのに取得方法を書き換えている");
+    // ⚠ 読めなかったが先。読めていないのに「境目」と言わない
+    yes(T.method("unreachable", true, "raster") === "未取得",
+      "読めていないのに「境目」と言っている（割れたのではなく、読めていない）");
+
+    // ---- 但し書きは、当てはまるときだけ ----
+    yes(T.clipped(false) === "" && /切れ/.test(T.clipped(true)), "枠の切れを書き分けていない");
+    yes(T.gone(false) === "" && /無くなった/.test(T.gone(true)), "無くなったかを書き分けていない");
+    // ⚠ 0m は「海面より低い」ではない（境界を取り違えない）
+    yes(T.belowSea(0) === "" && T.belowSea(0.1) === "", "0m 以上なのに「海面より低い」と言っている");
+    yes(/海面より低い/.test(T.belowSea(-1)), "負の標高なのに、そう言っていない");
+    // ⚠ 生の font-size を書かない（トークンを通す）
+    yes(!/font-size:\s*\d/.test(T.belowSea(-1)), `生の文字サイズが入っている: ${T.belowSea(-1)}`);
+
+    // ---- ⚠ 深掘りの案内。できないことから書き始めない（CLAUDE.md §4-1）----
+    const lead = T.peelLead(false);
+    yes(T.peelLead(true) !== lead, "下地の有無で書き分けていない");
+    yes(!/^[^。]*?(できていません|ありません|未対応)/.test(lead),
+      `できないことから書き始めている: ${lead}`);
+    yes(/切りかえ|見くらべ/.test(lead), `先に「何ができるか」を書いていない: ${lead}`);
+    // ⚠ 在庫の話に ⚠ を使わない（危険の印と混ざる）
+    for (const t of [T.peelLead(true), lead]) yes(!/⚠|⚠️/.test(t), `在庫の話に ⚠ を使っている: ${t}`);
+
+    // ---- 位置情報の許し直し方。⚠ 端末で本当に違うので、1 つにしない ----
+    yes(R(true) !== R(false), "iOS とそれ以外で手順を書き分けていない");
+    yes(/Safari/.test(R(true)) && !/Safari/.test(R(false)), "iOS の手順が iOS 以外にも出ている");
+
+    fails.length
+      ? bad(`TOPWORD の単体テストが失敗（${fails.length} 件）: ${fails.slice(0, 5).join(" / ")}`)
+      : ok(`TOPWORD を動かして確認（記録なしと判定できませんを分ける・読めなかったが「境目」より先・`
+          + `0m を「海面より低い」と言わない・できないことから書き始めない）`);
+  }
+}
+
 // 年代の名乗り（peel3d.js の eraReadout と groundState）。
 // ⚠ ここが画面でいちばん大きい文字で、**出ていないものを「表示中」と言っていた**。
 //   利用者役 3/3 が「これが主犯」と名指しした（2026-08-18）。
@@ -3125,15 +3187,17 @@ head("9. 画面の言葉");
   //
   // 実測（2026-08-19）。HTML を含むテンプレートの中の分岐を、2 つに分けて数えた:
   //   見た目（class / style だけ）… ⚠ **これは問題ない**（数えない）
-  //   意味（引用符つきの日本語が分岐している）… index.html 7・peel3d.js 9 → **これを外へ出す**
+  //   意味（引用符つきの日本語が分岐している）… index.html 7・peel3d.js 9 → **外へ出した**
   //   ⚠ うち 2 つは**同じ判断を 2 か所・3 か所**に書いていた
   //     （「（事前に取り込んだデータ）」×2、「建物ごとには出せません／判定できません」×3）。
   //
-  // ⚠ **一度に全部は割らない。**利用者に見える変化がゼロなのに、実描画が全部かかる。
-  //   いまの数を上限として置き、**増えたら落ちる**。減らすときは上限も一緒に下げる。
+  // 2026-08-19 に **両方 0 になった**（peel3d.js → WORD、index.html → TOPWORD）。
+  // ⚠ **0 は「上限」ではなく「もう増やさない」。**ここから 1 個でも増えたら落ちる。
+  //   ⚠ 通行証: トップ 12 画面（1280×900 / 375×667 × 豊洲・札幌・那覇 × 閉／開）の
+  //     字面が 1 文字も変わらないことを確かめてから外へ出した。
   {
     // その日の実測。⚠ 減らしたら、この数も下げること（下げないと歯止めが緩む）
-    const CAP = { "index.html": 7, "peel3d.js": 0 };
+    const CAP = { "index.html": 0, "peel3d.js": 0 };
     // ⚠ **引用符で囲まれた日本語**が分岐にあることまで求める。
     //   `?` だけで数えると、markup の中の `?`（`<i class="q">?</i>` など）を
     //   三項演算子と読む（実測 2026-08-18: それで 7 個が 8 個になった）。
