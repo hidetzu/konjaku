@@ -267,6 +267,20 @@ const peelReady = (page) => page.waitForFunction(
   () => /件|ありません|読み込めませんでした/.test(document.getElementById("status")?.textContent ?? ""),
   null, { timeout: 60000 });
 
+// ⚠ **この 2 つは「何かが起きるのを待つ」ものではない。**
+//   何が起きたかは、直前の条件待ち／押した操作そのものが見ている。
+//   ⚠ **残っているのは、変わった DOM が描き終わるまでのぶんだけ。**
+//   ⚠ **待つ長さが主張になっている検査には使わない**（「6 秒後の姿勢」「20 秒で諦める」など）。
+//   実測（2026-08-20・`--group=core` 126 件・手元）: 置き換え前 341 秒 → 置き換え後 286 秒。
+//   ⚠ 3 回連続で 126 件すべて通ることを確かめてから、この形にした。
+
+// 直前の `waitForFunction` が既に条件を見ている。その後の描き終わりぶん
+const settleAfterCondition = (page) => page.waitForTimeout(300);
+
+// 押した結果が描き終わるまで。⚠ **この画面は枠組みを使っていないので DOM は同期で変わる**。
+//   残っているのは CSS の遷移ぶん
+const settleAfterClick = (page) => page.waitForTimeout(400);
+
 const SWALE_ROUTE = "**://cyberjapandata.gsi.go.jp/xyz/swale/**";
 const LFC_ROUTE = "**://maps.gsi.go.jp/xyz/experimental_landformclassification*/**";
 const DEM_ROUTE = "**://cyberjapandata.gsi.go.jp/xyz/dem*/**";
@@ -448,7 +462,7 @@ const CASES = [
     async check(page) {
       await page.waitForFunction(() => document.querySelectorAll(".maplibregl-ctrl-group button").length > 0,
         null, { timeout: 45000 });
-      await page.waitForTimeout(4000);
+      await settleAfterCondition(page);
       const out = [];
       // ⚠ 3 幅で見る。狭い幅は板が増えて裏に入りやすい
       for (const [w, h] of [[1280, 800], [375, 667], [320, 640]]) {
@@ -526,7 +540,7 @@ const CASES = [
     async check(page) {
       await page.waitForFunction(() => /件を判定しました/.test(document.body.innerText),
         null, { timeout: 60000 });
-      await page.waitForTimeout(2000);
+      await settleAfterCondition(page);
       // ⚠ 過去の段がいちばん厳しい（#over が増える）
       await page.evaluate(() => { const s = document.getElementById("t");
         s.value = "500"; s.dispatchEvent(new Event("input", { bubbles: true })); });
@@ -568,7 +582,7 @@ const CASES = [
     async check(page) {
       await page.waitForFunction(() => /件を判定しました/.test(document.body.innerText),
         null, { timeout: 60000 });
-      await page.waitForTimeout(2000);
+      await settleAfterCondition(page);
       const leaks = () => page.evaluate(() => {
         const bad = [...document.querySelectorAll("button,input,a[href]")].filter((e) => {
           const r = e.getBoundingClientRect();
@@ -599,7 +613,7 @@ const CASES = [
 
       // ---- 根拠を全画面で読んでいるとき ----
       await page.click("#toggle");
-      await page.waitForTimeout(600);
+      await settleAfterClick(page);
       const b = await leaks();
       must(!b.length, `根拠を読んでいるのに、地図側の操作に焦点が当たる: ${b.join("、")}`);
       // ⚠ 戻る手段は閉じない
@@ -608,7 +622,7 @@ const CASES = [
 
       // ---- 閉じたら元に戻る ----
       await page.click("#closePanel");
-      await page.waitForTimeout(600);
+      await settleAfterClick(page);
       const c = await used(["rlPrev", "rlNext", "toggle"]);
       must(!c.length, `根拠を閉じたのに、操作が閉じたまま: ${c.join("、")}`);
       return `地図のとき ${aBad.length} 件／根拠を読むとき ${b.length} 件／閉じたら戻る`;
@@ -626,7 +640,7 @@ const CASES = [
     async check(page) {
       await page.waitForFunction(() => /件を判定しました/.test(document.body.innerText),
         null, { timeout: 60000 });
-      await page.waitForTimeout(1500);
+      await settleAfterCondition(page);
       const at = (k) => page.evaluate((k) => {
         const s = document.getElementById("t");
         if (Number(s.max) < k * 100) return false;
@@ -725,7 +739,7 @@ const CASES = [
     async check(page) {
       await page.waitForFunction(() => /件を判定しました/.test(document.body.innerText),
         null, { timeout: 60000 });
-      await page.waitForTimeout(1200);
+      await settleAfterCondition(page);
       // ⚠ 地図だけ見ているときは ✕ を出さない（押しても何も起きない導線を置かない）
       const beforeOpen = await page.evaluate(() => {
         const e = document.getElementById("closePanel");
@@ -734,7 +748,7 @@ const CASES = [
       must(!beforeOpen.shown, "根拠を開いていないのに「✕ 地図へ」が出ている");
 
       await page.click("#toggle");
-      await page.waitForTimeout(600);
+      await settleAfterClick(page);
       const look = () => page.evaluate(() => {
         const g = (sel) => { const e = document.querySelector(sel); if (!e) return null;
           const r = e.getBoundingClientRect();
@@ -791,7 +805,7 @@ const CASES = [
 
       // ⚠ ✕ を押したら本当に地図へ戻る
       await page.click("#closePanel");
-      await page.waitForTimeout(500);
+      await settleAfterClick(page);
       const closed = await page.evaluate(() => ({
         hidden: document.getElementById("panel").classList.contains("hide"),
         closeShown: getComputedStyle(document.getElementById("closePanel")).display !== "none" }));
@@ -815,7 +829,12 @@ const CASES = [
     setup: (page) => page.route((u) => /seamlessphoto/.test(u.href),
       (r) => r.abort("connectionrefused")),
     async check(page) {
-      await page.waitForTimeout(3500);
+      // ⚠ **時間ではなく、接続の断りが出たことを待つ。**
+      //   ⚠ 断りが出たことだけを待ち、⚠ **何と書いてあるかは下で確かめる**（待ちに主張を混ぜない）
+      await page.waitForFunction(
+        () => (document.querySelector("#era .era-net")?.textContent.trim() ?? "") !== "",
+        null, { timeout: 30000 });
+      await settleAfterCondition(page);
       const r = await page.evaluate(() => {
         const e = document.getElementById("era");
         const t = (s) => e.querySelector(s)?.textContent.trim() ?? "";
@@ -861,7 +880,12 @@ const CASES = [
       await page.route((u) => /seamlessphoto/.test(u.href), (r) => r.abort("connectionrefused"));
     },
     async check(page) {
-      await page.waitForTimeout(3500);
+      // ⚠ **時間ではなく、接続の断りが出たことを待つ。**
+      //   ⚠ 断りが出たことだけを待ち、⚠ **何と書いてあるかは下で確かめる**（待ちに主張を混ぜない）
+      await page.waitForFunction(
+        () => (document.querySelector("#era .era-net")?.textContent.trim() ?? "") !== "",
+        null, { timeout: 30000 });
+      await settleAfterCondition(page);
       const net = await page.evaluate(() =>
         document.querySelector("#era .era-net")?.textContent.trim() ?? "");
       must(/接続していません/.test(net), `圏外なのに「${net}」に留めている`);
@@ -902,8 +926,13 @@ const CASES = [
       must(!/通信|電波|接続/.test(away.s), `通信のせいにしている: ${away.s}`);
       // ⚠ 段そのものは選ばれている。年は消さない
       must(away.y === "現在", `どの年代を見ているのかが消えた: ${away.y}`);
-      // ② 届いたら、元に戻る
-      await page.waitForTimeout(6000);
+      // ② ⚠ **届いたら、元に戻る。**
+      //   ⚠ 6 秒と決め打たず、⚠ **名乗りが消えたこと**（＝届いた合図）を待つ。
+      //   ⚠ 説明が戻っているかは下で確かめる（待ちに主張を混ぜない）
+      await page.waitForFunction(
+        () => !(document.querySelector("#era .kick")?.textContent.trim() ?? ""),
+        null, { timeout: 30000 });
+      await settleAfterCondition(page);
       const back = await read();
       // ⚠ **届いたら名乗らない**（2026-08-19 に変えた）。名乗るのは出ていないときだけ。
       //   ⚠ 守りたいのは「出ていないものを表示中と言わない」ほうで、名乗りの有無ではない。
@@ -968,6 +997,10 @@ const CASES = [
       await new Promise((k) => setTimeout(k, 6000));
       await r.fulfill({ status: 200, contentType: "application/json",
         body: JSON.stringify({ elements: [] }) });
+      // ⚠ **返したことを、ページ側に印として残す。**
+      //   ⚠ 下で「何秒たったか」ではなく「**古い返事が実際に返ったか**」を待つため。
+      //   ⚠ 移動中は evaluate が落ちる。落ちても検査の主張は変わらない（下で待ち切れる）
+      await page.evaluate(() => { window.__staleReplied = true; }).catch(() => {});
     }),
     async check(page) {
       // ① 札幌が、建物の問い合わせで待ち始めるまで待つ
@@ -984,8 +1017,15 @@ const CASES = [
           && typeof landform !== "undefined" && landform !== null,
         null, { timeout: 60000 });
       const mid = await page.locator("#land").textContent();
-      // ③ 札幌の返事が返ってくるのを、追い越して待つ
-      await page.waitForTimeout(9000);
+      // ③ ⚠ **古い呼び出しの返事が、実際に返ってくるまで待つ。**
+      //   ⚠ 決め打ちの秒数ではなく、返ったことを見る（上の印）。
+      //   ⚠ **返る前に読むと、この検査は何も見ていないことになる**
+      await page.waitForFunction(() => window.__staleReplied === true,
+        null, { timeout: 30000 });
+      // ⚠ **ここは 300ms では足りない。**印が立つのは「返した」時点で、
+      //   ⚠ **上書きするかもしれない側の処理は、そのあとに走る**。
+      //   ⚠ 早く読むと「上書きされなかった」ではなく「まだ上書きしていない」を見てしまう
+      await page.waitForTimeout(1000);
       const land = await page.locator("#land").textContent();
       const status = await page.locator("#status").textContent();
       must(/件の足元を判定/.test(land),
@@ -1113,7 +1153,7 @@ const CASES = [
     async check(page) {
       await page.waitForFunction(() => /件を判定しました/.test(document.body.innerText),
         null, { timeout: 60000 });
-      await page.waitForTimeout(1500);
+      await settleAfterCondition(page);
       const look = () => page.evaluate(() => {
         const W = innerWidth, H = innerHeight;
         const pan = document.getElementById("panel");
@@ -1150,7 +1190,7 @@ const CASES = [
         `閉じているのに、画面の中心（＝調べている地点）を地図が受け取っていない: ${shut.center.name}`);
       // (2) 開いたら**全画面**。中途半端に覆わない
       await page.click("#toggle");
-      await page.waitForTimeout(700);
+      await settleAfterClick(page);
       const open = await look();
       must(open.open, "☰ を押しても開かない");
       must(open.cover >= 95,
@@ -1166,7 +1206,7 @@ const CASES = [
         "全画面で「← もどる」がパネルの下敷きになっている（戻る手段は常に見えている場所に）");
       // (3) 閉じれば地図に戻る
       await page.click("#closePanel");
-      await page.waitForTimeout(700);
+      await settleAfterClick(page);
       const again = await look();
       must(!again.open, "✕ を押しても閉じない");
       must(again.center.inMap,
@@ -1245,7 +1285,7 @@ const CASES = [
     async check(page) {
       await page.waitForFunction(() => typeof steps !== "undefined" && timelineReady,
         null, { timeout: 60000 });
-      await page.waitForTimeout(1500);
+      await settleAfterCondition(page);
       const look = () => page.evaluate(() => {
         const g = (sel) => { const e = document.querySelector(sel); if (!e) return null;
           const r = e.getBoundingClientRect();
@@ -2128,7 +2168,7 @@ const CASES = [
       must(g.label.length > 0, "▶ が何をするものか、言葉で書いていない");
       // 押して本当に効くこと
       await page.click("#playBtn");
-      await page.waitForTimeout(900);
+      await settleAfterClick(page);
       must(await page.locator("#playBtn.on").count() === 1, "▶ を押しても、流れている印が出ない");
       await page.click("#playBtn");
       return `▶ は帯の ${g.gap}px 上（移す前は 487px）／${g.w}×${g.h}px／`
@@ -2158,7 +2198,7 @@ const CASES = [
       must(/q=/.test(before.url) && before.strip > 0,
         `前提が崩れている（URL に場所が載っていない / 段が無い）: ${JSON.stringify(before)}`);
       await page.locator("#chipX").click();
-      await page.waitForTimeout(900);
+      await settleAfterClick(page);
       const after = await look();
       must(after.mode === "place", `✕ を押したのに場所選択中のまま: ${after.mode}`);
       must(after.url === "", `✕ を押しても URL に場所が残っている: ${after.url}`);
@@ -2181,7 +2221,7 @@ const CASES = [
 
       // ⚠ **画面から選んだ経路でも同じこと。** URL で着いた場合しか見ていなかった
       await page.locator("#chipX").click();
-      await page.waitForTimeout(900);
+      await settleAfterClick(page);
       const afterPicked = await look();
       must(afterPicked.mode === "place" && afterPicked.url === ""
         && afterPicked.chip === "" && afterPicked.strip === 0,
@@ -2570,14 +2610,14 @@ const CASES = [
       const a = await read();
       must(a.on === 0, `着いたときに左端（明治期）が選ばれていない: ${a.on} 番目`);
       await photoFrames(page).first().click();
-      await page.waitForTimeout(500);
+      await settleAfterClick(page);
       must(a.pressed === 1, `選択状態が1つでない: ${a.pressed}`);
       must(a.year.includes(a.years[0]), `大きい写真の年代が帯と食い違う: 「${a.year}」/「${a.years[0]}」`);
 
       // 4枚目を押す
       const i = 4;
       await page.locator("#strip .f").nth(i).click();
-      await page.waitForTimeout(600);
+      await settleAfterClick(page);
       const b = await read();
       must(b.on === i, `押した年代が選ばれていない: ${b.on} 番目`);
       // 1枚だと狭すぎて「この時点までにできていたもの」がほぼ空になる（実測 豊洲2件・浦安0件）
@@ -2634,7 +2674,7 @@ const CASES = [
       await waitVerdict(page);
       await waitStrip(page);
       await page.locator("#strip .f").nth(2).click();
-      await page.waitForTimeout(500);
+      await settleAfterClick(page);
       const moved2 = ticks.filter((t) => t === "era.moved").length;
       must(moved2 === 2, `場所を変えても数え直していない: ${moved2} 件`);
 
@@ -2686,7 +2726,7 @@ const CASES = [
       }));
 
       await photoFrames(page).first().click();
-      await page.waitForTimeout(700);
+      await settleAfterClick(page);
       const oldest = await read();
       // 1936–42 の写真のとき、1936年より後にできたものを並べていないこと
       const y0 = Number((oldest.year.match(/(\d{4})/) ?? [])[1]);
@@ -2706,7 +2746,7 @@ const CASES = [
       //   「いまこの範囲にあるもの」に出していた。「開業年 ≤ 撮影年なら存在していた」は
       //   過去にしか効かない含意で、現在について言うには使えない。
       await page.locator("#strip .f").last().click();
-      await page.waitForTimeout(900);
+      await settleAfterClick(page);
       const now = await read();
       // 選んだ年に近いものから並ぶこと（古い順に切ると、密な土地では帯を動かしても中身が変わらない）
       const desc = now.years.every((y, i, a) => i === 0 || a[i - 1] >= y);
@@ -2764,7 +2804,7 @@ const CASES = [
       await waitVerdict(page);
       await waitStrip(page);
       await photoFrames(page).first().click();
-      await page.waitForTimeout(600);
+      await settleAfterClick(page);
       await page.waitForSelector(".ev-note.warn", { timeout: 40000 });
       const note = (await page.locator(".ev-note.warn").textContent()).replace(/\s+/g, " ").trim();
       for (const w of LIES) must(!note.includes(w), `断定している: 「${w}」`);
@@ -2876,7 +2916,7 @@ const CASES = [
 
       // 一方、その年代には在ったものは、過去の年代でちゃんと出ること
       await photoFrames(page).first().click();              // 1936–42
-      await page.waitForTimeout(900);
+      await settleAfterClick(page);
       const old1936 = await page.$$eval(".ev-it .ev-l", (els) => els.map((e) => e.textContent.trim()));
       // 1936年には在った（1885 渋谷駅 / 1927 並木橋駅 / 1934 東横店）。1092 渋谷城は 1524 で消えている
       must(old1936.includes("並木橋駅") && old1936.includes("東急百貨店東横店"),
@@ -2888,7 +2928,7 @@ const CASES = [
 
       // ⚠ 年代を動かすと、中身が入れ替わること（目録なら8段すべて同じになる）
       await photoFrames(page).nth(1).click();               // 1936–42 → 1945–50
-      await page.waitForTimeout(800);
+      await settleAfterClick(page);
       const mid = await rowsOf();
       must(mid.some((r) => r.label === "並木橋駅" && r.gone),
         `1945年に廃止された駅が「無くなった」として出ていない: ${JSON.stringify(mid)}`);
@@ -2912,7 +2952,7 @@ const CASES = [
 
       // (1) ☆ を押したら、記録のパネルが**見えるところ**に出ること
       await page.click("#mineToggle");
-      await page.waitForTimeout(500);
+      await settleAfterClick(page);
       const mine = await page.$eval("#mine", (e) => {
         const r = e.getBoundingClientRect();
         return { y: Math.round(r.y), h: Math.round(r.height), inView: r.y < innerHeight && r.bottom > 0 };
@@ -3178,7 +3218,7 @@ const CASES = [
       await page.locator("#zIn").click();
       await page.waitForFunction(() => document.querySelector("#big.map-on"),
         null, { timeout: 60000 });
-      await page.waitForTimeout(1500);
+      await settleAfterCondition(page);
       // 中心から離れたところを押す
       const box = await page.locator("#big").boundingBox();
       await page.mouse.click(box.x + box.width * 0.22, box.y + box.height * 0.28);
@@ -3236,7 +3276,7 @@ const CASES = [
       await page.locator("#ovSwale").check();
       await page.waitForFunction(() => document.querySelector("#big.map-on"),
         null, { timeout: 60000 });
-      await page.waitForTimeout(2500);
+      await settleAfterCondition(page);
       const shotOn = await page.locator("#big").screenshot();
       await page.locator("#ovSwale").uncheck();
       await page.waitForTimeout(1800);
@@ -3363,7 +3403,7 @@ const CASES = [
       await page.locator("#big").click({ position: { x: 180, y: 120 } });   // 地図を起こす
       await page.waitForFunction(() => document.querySelector("#big.map-on"),
         null, { timeout: 60000 });
-      await page.waitForTimeout(3000);
+      await settleAfterCondition(page);
       const onMap = await colors();
       must(onMap >= 24, `地図の経路でも下地が透けていない: ${onMap} 色`);
       // 地図が出た状態で、入り切りが効くこと（層だけを切り分けて見る）
@@ -3378,18 +3418,18 @@ const CASES = [
       //   という取り違えを生んだ。「明治期の水域を見ているか」は1つの問いなので、状態も1つ。
       //   ⚠ ここは**切った状態**のまま移る（直前で uncheck している）。切ったまま引き継ぐこと。
       await page.locator("#strip .f").nth(1).click();
-      await page.waitForTimeout(2000);
+      await settleAfterClick(page);
       must(await page.$eval("#ovSwale", (e) => e.checked) === false,
         "切ったのに、写真の年代へ移ったら入に戻った");
       await page.locator("#strip .f").nth(0).click();
-      await page.waitForTimeout(2000);
+      await settleAfterClick(page);
       must(await page.$eval("#ovSwale", (e) => e.checked) === false,
         "明治期のコマへ戻ったのに、切っておいた設定が戻っていない");
       // 入れ直して、写真の年代へ**入のまま**引き継ぐこと（今回の指摘そのもの）
       await page.locator("#ovSwale").check();
       await page.waitForTimeout(800);
       await page.locator("#strip .f").nth(1).click();
-      await page.waitForTimeout(3000);
+      await settleAfterClick(page);
       must(await page.$eval("#ovSwale", (e) => e.checked) === true,
         "明治期で入にしたのに、写真の年代へ移ると切れている");
       // ⚠ チェックが入っているだけでは足りない。**層まで効いていること**を見る
@@ -3454,11 +3494,11 @@ const CASES = [
         "明治期のコマで、重ねる操作が出ていない（下地の地図を出し入れできない）");
       // 写真の年代（1936–42）へ移ると、出る
       await page.evaluate(() => document.querySelectorAll("#strip .f")[1]?.click());
-      await page.waitForTimeout(900);
+      await settleAfterClick(page);
       // ⚠ **地図を載せてから見る。** 国土地理院の帰属表示は地図が載って初めて出る。
       //   載せずに見ていたら、帰属表示に重なっていることを一度も捕まえられない。
       await page.click("#zIn");
-      await page.waitForTimeout(3000);
+      await settleAfterClick(page);
       const geom = () => page.evaluate(() => {
         const R = (s) => {
           const e = document.querySelector(s); if (!e) return null;
@@ -3541,7 +3581,7 @@ const CASES = [
       await page.locator("#ovSwale").uncheck();
       await page.waitForTimeout(600);
       await page.evaluate(() => document.querySelectorAll("#strip .f")[1]?.click());
-      await page.waitForTimeout(900);
+      await settleAfterClick(page);
       const before = (await st()).trim();
       must(before === "", `切っているだけなのに、何か書いてある: 「${before}」`);
       // ⚠ この検査は以前「押していないのに、もう地図の層がある」を見ていた。
@@ -3583,11 +3623,11 @@ const CASES = [
       await page.route(SWALE_ROUTE, (r) => { denied++;
         r.fulfill({ status: 403, contentType: "text/html", body: "403 Forbidden" }); });
       await page.evaluate(() => document.querySelectorAll("#strip .f")[1]?.click());
-      await page.waitForTimeout(900);
+      await settleAfterClick(page);
       await page.locator("#ovSwale").check();
       await page.waitForFunction(() => document.querySelector("#big.map-on"),
         null, { timeout: 60000 });
-      await page.waitForTimeout(3000);
+      await settleAfterCondition(page);
       const bad = (await page.locator("#ovState").textContent()).trim();
       // ⚠ 前提が消えたら落とす。1本も拒めていないなら、この検査は何も確かめていない
       must(denied > 0, "水域のタイルを1本も拒めていない（検査の前提が消えた）");
@@ -3649,7 +3689,7 @@ const CASES = [
       await page.waitForSelector("#ovRow", { state: "attached", timeout: 30000 });
       // 重ねる相手は空中写真なので、写真の年代へ移ってから押す（明治期では出さない）
       await page.evaluate(() => document.querySelectorAll("#strip .f")[1]?.click());
-      await page.waitForTimeout(900);
+      await settleAfterClick(page);
       await page.locator("#ovSwale").check();
       // ⚠ 「読み込んでいます…」のまま止まるのも失敗。**終わったと言うところ**まで待つ。
       //   待ち切れなかったときに Timeout とだけ出ると、何が起きたのか読めないので、
@@ -3830,7 +3870,7 @@ const CASES = [
       await peelReady(page);
       await page.waitForFunction(() => document.querySelectorAll("#landAll .land-q").length > 0
         && typeof landform !== "undefined" && landform !== null, null, { timeout: 60000 });
-      await page.waitForTimeout(1200);
+      await settleAfterCondition(page);
       const look = () => page.evaluate(() => {
         const eff = (el) => { if (!el || !el.checkVisibility()) return 0;
           let o = 1; for (let n = el; n && n !== document.documentElement; n = n.parentElement) {
@@ -3860,7 +3900,7 @@ const CASES = [
       await peelReady(page);
       await page.waitForFunction(() => document.querySelectorAll("#land .land-q").length > 0
         && typeof landform !== "undefined" && landform !== null, null, { timeout: 60000 });
-      await page.waitForTimeout(1200);
+      await settleAfterCondition(page);
       const sp = await look();
       must(sp.qs.length === 2, `スマホの HUD が第1層＋1 つでない: ${sp.qs.join(" / ")}`);
       must((sp.seen.match(/99\.6/g) || []).length === 1,
@@ -3886,7 +3926,7 @@ const CASES = [
       //   途中を読むと層が 1 つだけの瞬間を捕まえる（実測 2026-08-19: 2 回に 1 回落ちた）。
       await page.waitForFunction(() => (document.querySelectorAll("#land .land-q").length > 0)
         && typeof landform !== "undefined" && landform !== null, null, { timeout: 60000 });
-      await page.waitForTimeout(1200);
+      await settleAfterCondition(page);
       const r = await page.evaluate(() => {
         const el = document.getElementById("land");
         const q = el.getBoundingClientRect();
@@ -3920,7 +3960,7 @@ const CASES = [
       await peelReady(page);
       await page.waitForFunction(() => (document.querySelectorAll("#land .land-q").length > 0)
         && typeof landform !== "undefined" && landform !== null, null, { timeout: 60000 });
-      await page.waitForTimeout(1200);
+      await settleAfterCondition(page);
       const r = await page.evaluate(() => {
         const el = document.getElementById("land");
         return { qs: [...el.querySelectorAll(".land-q")].map((x) => x.textContent.trim()),
@@ -3965,6 +4005,7 @@ const CASES = [
       must(a.pitch !== null && a.bearing !== null,
         `コンパスから姿勢を読めない（この検査が何も見ていない）: ${JSON.stringify(a)}`);
       await page.click("#play");
+      // ⚠ ここは短くしない。下で「6 秒後」の姿勢を主張している
       await page.waitForTimeout(6000);
       const b = await cam();
       await page.waitForTimeout(9000);
@@ -4045,7 +4086,7 @@ const CASES = [
       // ⚠ 寄せる操作も滑らかにしない。**実際に押して、渡った値を読む**
       for (const sel of ["#whyBtn", ".area-item"]) {
         await page.locator(sel).first().click({ timeout: 4000 }).catch(() => {});
-        await page.waitForTimeout(700);
+        await settleAfterClick(page);
       }
       const siv = await page.evaluate(() => window.__siv.map((o) => o && o.behavior));
       // ⚠ 1 件も起きていないなら、この検査は寄せる操作を見ていない。**起きたことを要求する**
@@ -4082,7 +4123,7 @@ const CASES = [
       //   ⚠ これが無いと、**全部 auto にしてしまっても**上の検査は通る
       for (const sel of ["#whyBtn", ".area-item"]) {
         await page.locator(sel).first().click({ timeout: 4000 }).catch(() => {});
-        await page.waitForTimeout(700);
+        await settleAfterClick(page);
       }
       const siv = await page.evaluate(() => window.__siv.map((o) => o && o.behavior));
       must(siv.length > 0, "寄せる操作が一度も起きていない（この検査が何も見ていない）");
@@ -4099,7 +4140,7 @@ const CASES = [
     async check(page) {
       await page.waitForFunction(() => document.querySelector("#map canvas") !== null,
         null, { timeout: 90000 });
-      await page.waitForTimeout(1500);
+      await settleAfterCondition(page);
       const r = await page.evaluate(() => {
         const sec = (v) => v.split(",").map((x) => x.trim())
           .map((x) => x.endsWith("ms") ? parseFloat(x) / 1000 : parseFloat(x));
@@ -4170,7 +4211,7 @@ const CASES = [
         return t.length > 0 && !t.includes("調べています");
       }, null, { timeout: 40000 });
       await page.locator("#strip .f").last().click();       // 現在
-      await page.waitForTimeout(900);
+      await settleAfterClick(page);
 
       // 外へ出ていないこと
       must(reqs.filter((u) => /query\.wikidata\.org/.test(u)).length === 0,
@@ -4202,7 +4243,7 @@ const CASES = [
       }, null, { timeout: 40000 });
       // 明治期のコマは年で絞れないので、写真の年代へ移ってから見る
       await photoFrames(page).first().click();
-      await page.waitForTimeout(900);
+      await settleAfterClick(page);
       // 束のファイルは取りに行ってよいが、**それを答えにしない**
       must(reqs.filter((u) => /query\.wikidata\.org/.test(u)).length > 0,
         "見ていない区画なのに、束があることを理由に答えている");
@@ -4274,7 +4315,7 @@ const CASES = [
         await photoFrames(page).nth(n).click();
         await page.waitForFunction(() => !/調べています/.test(
           document.getElementById("ev")?.textContent ?? ""), null, { timeout: 20000 });
-        await page.waitForTimeout(400);
+        await settleAfterCondition(page);
         return page.$$eval(".ev-row", (els) => els.map((e) => ({
           y: e.querySelector(".ev-y")?.textContent.trim() ?? "",
           l: e.querySelector(".ev-l")?.textContent.trim() ?? "" })));
@@ -4418,7 +4459,7 @@ const CASES = [
     async check(page, reqs) {
       await page.waitForFunction(() => /件を判定しました/.test(document.body.innerText),
         null, { timeout: 60000 });
-      await page.waitForTimeout(1000);
+      await settleAfterCondition(page);
       const t = (await page.evaluate(() => document.body.innerText)).replace(/\s+/g, " ");
       must(reqs.filter((u) => /overpass/i.test(u)).length === 0,
         "取り込み済みなのに Overpass を叩いている");
@@ -4441,7 +4482,7 @@ const CASES = [
       // 直接開いている（トップの導線を通っていない）
       await page.waitForFunction(() => /件を判定しました/.test(document.body.innerText),
         null, { timeout: 60000 }).catch(() => {});
-      await page.waitForTimeout(1200);
+      await settleAfterCondition(page);
       const t = reqs.filter((u) => /\/t(\?|$)/.test(u));
       must(t.length === 1, `直接開いたのに ${t.length} 回数えている（1回であること）`);
       return `直接開いて /t 1 回`;
@@ -4478,7 +4519,7 @@ const CASES = [
       //   最初の写真の年代へ送っていた版は、豊洲で 0 件だった（埋立前なので当然）。
       //   「押しても何も起きない一歩」を置かない
       await step.click();
-      await page.waitForTimeout(1200);
+      await settleAfterClick(page);
       const after = (await page.locator("#strip .f.on .yr").textContent()).trim();
       must(after !== "明治期", `押しても年代が動いていない: ${after}`);
       const rows = await page.$$eval("#ev .ev-it .ev-l", (els) => els.length);
@@ -4499,7 +4540,7 @@ const CASES = [
     async check(page) {
       await page.waitForFunction(() => /件を判定しました/.test(document.body.innerText),
         null, { timeout: 60000 });
-      await page.waitForTimeout(1800);
+      await settleAfterCondition(page);
       const at = async (v) => { await page.$eval("#t", (e, v) => {
           e.value = String(v); e.dispatchEvent(new Event("input")); }, v);
         await page.waitForTimeout(1600);
@@ -5164,7 +5205,7 @@ const CASES = [
     async check(page) {
       await page.waitForFunction(() => /件を判定しました/.test(document.body.innerText),
         null, { timeout: 60000 });
-      await page.waitForTimeout(1500);
+      await settleAfterCondition(page);
       const set = async (v) => { await page.$eval("#t", (e, v) => {
         e.value = String(v); e.dispatchEvent(new Event("input")); }, v);
         await page.waitForTimeout(1800); };
@@ -5208,7 +5249,7 @@ const CASES = [
       await waitStrip(page);
       await page.waitForFunction(() => document.querySelectorAll(".ev-it").length > 0,
         null, { timeout: 40000 });
-      await page.waitForTimeout(1200);
+      await settleAfterCondition(page);
       // 一覧を読んでいる位置（画面の真ん中）から押す
       await page.evaluate(() => document.querySelector(".ev-it")?.scrollIntoView({ block: "center" }));
       await page.waitForTimeout(400);
@@ -5220,7 +5261,7 @@ const CASES = [
       const before = await seen();
       const name = (await page.locator(".ev-it").first().locator(".ev-l").innerText()).trim();
       await page.locator(".ev-it").first().click();
-      await page.waitForTimeout(1800);
+      await settleAfterClick(page);
       const after = await seen();
       must(after.zoom, "押しても寄っていない");
       // ⚠ ここが本体。寄っただけで見えていなければ、押しても何も起きないのと同じ。
@@ -5280,7 +5321,7 @@ const CASES = [
         must(on === 1, `${k}の印が強調されていない: ${n} 個中 ${on} 個`);
       // 戻したら、名前も強調も消える（前の年代の名前が写真の上に残らない）
       await page.click("#unzoom");
-      await page.waitForTimeout(600);
+      await settleAfterClick(page);
       const back = await page.evaluate(() => ({
         fx: document.getElementById("fx").innerText.trim(),
         on: document.querySelectorAll(".big .pin.on,.ev-it.on").length }));
@@ -5304,7 +5345,7 @@ const CASES = [
     async check(page) {
       await page.waitForFunction(() => /件を判定しました/.test(document.body.innerText),
         null, { timeout: 60000 });
-      await page.waitForTimeout(1500);
+      await settleAfterCondition(page);
       const geo = await page.evaluate(() => {
         const t = document.getElementById("track").getBoundingClientRect();
         const mid = (e) => { const r = e.getBoundingClientRect();
@@ -5357,7 +5398,7 @@ const CASES = [
     async check(page) {
       await page.waitForFunction(() => /件を判定しました/.test(document.body.innerText),
         null, { timeout: 60000 });
-      await page.waitForTimeout(1500);
+      await settleAfterCondition(page);
       // ⚠ 触る前に、押せることが**画面に出ている**こと。
       //   以前は左パネルの中に案内があったが、スマホはパネルが閉じて始まり、
       //   PC は内スクロールの外だったので、誰も読んでいなかった。
@@ -5371,7 +5412,7 @@ const CASES = [
       must(/押す|押し/.test(tip.text), `何をすればよいか書かれていない: ${tip.text}`);
 
       await page.mouse.click(187, 333);                 // 画面の真ん中の建物
-      await page.waitForTimeout(900);
+      await settleAfterClick(page);
       // ⚠ 役目が終わった案内を、画面に置き続けない
       const tipAfter = await page.evaluate(() =>
         (document.getElementById("tip")?.textContent ?? "").trim());
@@ -5415,7 +5456,7 @@ const CASES = [
     async check(page) {
       await page.waitForFunction(() => /件を判定しました/.test(document.body.innerText),
         null, { timeout: 60000 });
-      await page.waitForTimeout(1200);
+      await settleAfterCondition(page);
       const r = await page.evaluate(() => {
         const e = document.getElementById("est"), rc = e?.getBoundingClientRect();
         return { text: (e?.textContent ?? "").replace(/\s+/g, " ").trim(),
@@ -5502,7 +5543,7 @@ const CASES = [
     async check(page) {
       await page.waitForFunction(() => /件を判定しました/.test(document.body.innerText),
         null, { timeout: 60000 });
-      await page.waitForTimeout(1000);
+      await settleAfterCondition(page);
       const t = (await page.evaluate(() => document.body.innerText)).replace(/\s+/g, " ");
       must(/建物が消える年代は演出/.test(t), "「消える年代は演出」の断りが消えている");
       // ⚠ 言い方も1つにする。#est が「建てられた年」、#prov が「建設年」と、
@@ -5559,7 +5600,7 @@ const CASES = [
       const n = await page.locator("#strip .f").count();
       // いちばん右（現在）を選ぶ。着いたときの既定は最古なので、必ず動く
       await page.evaluate(() => [...document.querySelectorAll("#strip .f")].at(-1).click());
-      await page.waitForTimeout(700);
+      await settleAfterClick(page);
       const url = page.url();
       must(/[?&]era=seamlessphoto/.test(url), `選んだ年代が URL に載っていない: ${url}`);
 
@@ -5572,7 +5613,7 @@ const CASES = [
         await p2.goto(url, { waitUntil: "domcontentloaded", timeout: 45000 });
         await p2.waitForFunction(() => document.querySelectorAll("#strip .f").length > 0,
           null, { timeout: 60000 });
-        await p2.waitForTimeout(700);
+        await p2.waitForTimeout(300);
         top = await p2.evaluate(() => [...document.querySelectorAll("#strip .f")]
           .findIndex((e) => e.classList.contains("on")));
         must(top === n - 1, `共有先で年代が既定に戻っている: ${top} / ${n - 1}`);
@@ -5608,7 +5649,7 @@ const CASES = [
       await waitVerdict(page);
       await page.waitForFunction(() => document.querySelectorAll("#strip .f").length > 0,
         null, { timeout: 60000 });
-      await page.waitForTimeout(700);
+      await settleAfterCondition(page);
       must(await page.locator("#eraMiss").count() === 1,
         "復元できなかったことを、画面で言っていない");
       const t = (await page.locator("#eraMiss").textContent()).replace(/\s+/g, " ").trim();
@@ -5629,7 +5670,7 @@ const CASES = [
       must(!/era=ort_riku10/.test(page.url()), `出ていない年代が URL に残っている: ${page.url()}`);
       // 自分で選び直したら、案内は役目を終える
       await page.evaluate(() => [...document.querySelectorAll("#strip .f")].at(-1).click());
-      await page.waitForTimeout(500);
+      await settleAfterClick(page);
       must(await page.locator("#eraMiss").count() === 0,
         "年代を選び直しても、案内が残っている");
       return `「${t.slice(0, 34)}」／帯の上に見えている／選び直すと消える`;
@@ -5644,7 +5685,7 @@ const CASES = [
       await peelReady(page);
       await page.waitForFunction(() => /件を判定しました/.test(document.body.innerText),
         null, { timeout: 90000 });
-      await page.waitForTimeout(2000);
+      await settleAfterCondition(page);
       // ⚠ 内部フィールドに触らない。描かれている素性から鍵を読む
       const key = await page.evaluate(() =>
         map.querySourceFeatures("bld").find((f) => f.properties.k)?.properties.k ?? null);
@@ -5688,7 +5729,7 @@ const CASES = [
     async check(page) {
       await page.waitForFunction(() => /件を判定しました/.test(document.body.innerText),
         null, { timeout: 60000 });
-      await page.waitForTimeout(800);
+      await settleAfterCondition(page);
       // ⚠ 戻る手段が、最初から画面に見えていること。
       //   以前はパネルの中の「←今昔」だけで、実測すると
       //     スマホ y=688・18px・パネルは閉じて始まる → 画面に戻る手段が1つも無い
@@ -5733,7 +5774,7 @@ const CASES = [
       await waitVerdict(page);
       await page.waitForFunction(() => document.querySelectorAll(".ev-it").length > 0,
         null, { timeout: 40000 });
-      await page.waitForTimeout(1000);
+      await settleAfterCondition(page);
       const rows = await page.evaluate(() => [...document.querySelectorAll(".ev-it")].map((e) => ({
         name: e.querySelector(".ev-l")?.innerText.trim() ?? "",
         d: e.querySelector(".ev-d")?.innerText.trim() ?? "",
@@ -5851,7 +5892,7 @@ const CASES = [
         null, { timeout: 20000 });
       const acted = (await page.locator("#list").innerText()).trim();
       must(/この場所を深掘り/.test(acted), `場所を選んでも行動一覧が出ていない: ${JSON.stringify(acted.slice(0, 40))}`);
-      await page.waitForTimeout(2500);         // ⚠ ここで古い応答が届く
+      await settleAfterCondition(page);         // ⚠ ここで古い応答が届く
       const after = (await page.locator("#list").innerText()).trim();
       must(!/渋谷区/.test(after),
         `場所を選んだのに、行動一覧が古い候補で上書きされた: ${JSON.stringify(after.slice(0, 40))}`);
@@ -5889,7 +5930,7 @@ const CASES = [
         await page.waitForFunction(
           () => /です|ません/.test(document.querySelector("#verdict .v-head")?.innerText ?? ""),
           null, { timeout: 45000 });
-        await page.waitForTimeout(1200);
+        await settleAfterCondition(page);
         return page.evaluate(() => ({
           peel: document.querySelectorAll('#list [href^="./peel"]').length,
           ownPeel: document.querySelectorAll('#own a[href^="./peel"]').length,
@@ -5946,7 +5987,7 @@ const CASES = [
       await page.waitForFunction(
         () => /まだ提供していません|取得できませんでした/.test(
           document.getElementById("status")?.innerText ?? ""), null, { timeout: 90000 });
-      await page.waitForTimeout(800);
+      await settleAfterCondition(page);
       const t = await page.evaluate(() => ({
         status: (document.getElementById("status")?.innerText ?? "").replace(/\s+/g, " "),
         land: (document.getElementById("land")?.innerText ?? "").replace(/\s+/g, " "),
@@ -6057,7 +6098,7 @@ const CASES = [
     async check(page, reqs) {
       await page.waitForFunction(() => /件を判定しました/.test(document.body.innerText),
         null, { timeout: 60000 });
-      await page.waitForTimeout(1000);
+      await settleAfterCondition(page);
       const t = (await page.evaluate(() => document.body.innerText)).replace(/\s+/g, " ");
       must(reqs.filter((u) => /overpass/i.test(u)).length === 0,
         "取り込み済みなのに Overpass を叩いている");
@@ -6132,7 +6173,7 @@ const CASES = [
     async check(page) {
       await page.waitForFunction(() => /件を判定しました/.test(document.body.innerText),
         null, { timeout: 60000 });
-      await page.waitForTimeout(1200);
+      await settleAfterCondition(page);
       const t = (await page.evaluate(() => document.body.innerText)).replace(/\s+/g, " ");
       const total = Number((t.match(/建物 (\d+) 件を判定しました/) ?? [])[1]);
       must(total > 0, `件数が読めない: ${t.slice(0, 80)}`);
@@ -6247,7 +6288,7 @@ const CASES = [
     async check(page) {
       await page.waitForFunction(() => /件を判定しました/.test(document.body.innerText),
         null, { timeout: 60000 });
-      await page.waitForTimeout(1500);
+      await settleAfterCondition(page);
       // ---- 建物カード（押した先）----
       const pt = await page.evaluate(() => {
         const cv = map.getCanvas();
