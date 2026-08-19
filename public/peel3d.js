@@ -957,6 +957,13 @@ const WORD = {
     : bldState === "ok"    ? "OSM に登録された建物は 0 件です"
     : bldState === "notyet" ? `${KonjakuProv.NOTYET}（通信の問題ではありません）`
                             : "建物データを取得できませんでした（上の再試行から取り直せます）",
+  // ⚠ 内訳に出す「分割ではないもの」。**足元を判定できなかった件数**。
+  //   ⚠ **これは分類ではない。**「明治期は○○だった」とは言わない。
+  //     言うのは**資料の側の話**（読めていない／範囲の外）であって、土地の話ではない。
+  //   ⚠ 「無い」と言わない（データにない ≠ 現実にない）。
+  notClassified: (kind, n, all) =>
+    (all ? `${n} 件すべて、` : `ほか ${n} 件は、`) + "明治期の低湿地データを"
+      + (kind === "unread" ? "読み込めていません" : "整備している範囲の外でした"),
   // ⚠ 答えを出せないときの見出し（3 か所で使う）。
   //   地形分類が受け皿として答えられるなら「建物ごとには」と範囲を限る。
   //   受け皿も無いなら「判定できません」。⚠ **どちらも数値を作らない**（0% を出さない）。
@@ -1127,21 +1134,56 @@ function showResult(){
       : `この範囲は明治期の低湿地データの<b>整備対象外</b>です`);
   }
 
-  document.getElementById("breakdown").innerHTML = area.total
-    ? Object.entries(area.counts).sort((a,b)=>b[1]-a[1]).map(([k,v])=>{
-        const isW=KonjakuSwale.isWater(k);
-        return `<div class="stat"><span><i class="swatch" style="background:${isW?"#8fb9dd":"#d8cfa8"}"></i>${k}</span>
-          <b>${v}<span style="color:var(--ink-dim);font-weight:400"> / ${area.total}</span></b></div>`;
-      }).join("")
-    // ⚠ ここは足元の判定の**分割**（足すと総数になる）。
-    //   「建設年が分かる 8 / 533」「高さが実測 42 / 533」は分割ではなく**素性**なので、
-    //   同じ表に混ぜていた。素性は #est（常時見える）と #prov（台帳）が持つ。
-    //   実測（2026-08-15）: 8 / 533 が #est・#prov・内訳 の 3 か所にあった。
-    // ⚠ 取得中・正常に0件・取得失敗を書き分ける。
+  paintBreakdown(document.getElementById("breakdown"), breakdown(area.counts, area.total), area.bldState);
+}
+
+// 内訳は「足元の判定の**分割**」。足すと、判定できた件数になる。
+// ⚠ **判定できなかったものは、分割ではない。**
+//
+// 実測（2026-08-19, 375×667 札幌）: 内訳に 1 行だけ「データなし 1364 / 1364」が出ていた。
+//   ⚠ `isWater("データなし")` は false なので**陸の色見本**が付き、
+//     「明治期は陸だった建物が 1364 件」と読める。データの話が土地の話に化けている。
+//   ⚠ 掟: データにない ≠ 現実にない。
+//   → 分類の行と、判定できなかった件数を、**別のもの**として返す。
+//
+// ⚠ **分割（足すと判定できた件数になる）と、素性（そうである件数）を混ぜない。**
+//   「建設年が分かる 8 / 533」「高さが実測 42 / 533」は分割ではなく**素性**なので、
+//   同じ表に混ぜていた。素性は #est（常時見える）と #prov（台帳）が持つ。
+//   実測（2026-08-15）: 8 / 533 が #est・#prov・内訳 の 3 か所にあった。
+//
+// ⚠ 地図も DOM も見ない。検査がこの関数だけを取り出して回せる。
+const NOT_CLASS={"データなし":"outside","読み込めず":"unread"};
+function breakdown(counts,total){
+  const rows=[]; let outside=0,unread=0;
+  for(const [name,n] of Object.entries(counts||{})){
+    const k=NOT_CLASS[name];
+    if(k==="outside") outside+=n;
+    else if(k==="unread") unread+=n;
+    else rows.push({name,n,water:!!KonjakuSwale.isWater(name)});
+  }
+  rows.sort((a,b)=>b.n-a.n);
+  const classified=rows.reduce((t,r)=>t+r.n,0);
+  return {rows,classified,outside,unread,total:total||0};
+}
+
+// ここは組み立てるだけ。⚠ **何と言うかは上で決まっている**（WORD と breakdown）。
+function paintBreakdown(el,b,bldState){
+  if(!el) return;
+  // ⚠ 分割の分母は「判定できた件数」。総数にすると、判定できなかった分だけ小さく見える
+  const rows=b.rows.map((r)=>
+    `<div class="stat"><span><i class="swatch" style="background:${r.water?"#8fb9dd":"#d8cfa8"}"></i>${r.name}</span>
+      <b>${r.n}<span style="color:var(--ink-dim);font-weight:400"> / ${b.classified}</span></b></div>`).join("");
+  // ⚠ 色見本を付けない。付けると分類に見える
+  const aside=[["unread",b.unread],["outside",b.outside]].filter(([,n])=>n>0).map(([k,n])=>
+    `<div class="hint">${WORD.notClassified(k,n,b.classified===0&&n===b.total)}</div>`).join("");
+  el.innerHTML = b.total
+    ? (rows+aside)
+    // ⚠ 取得中・正常に0件・未対応・取得失敗を書き分ける。
     //   以前は2状態しか無く、**正常に0件だった土地に「建物を取得中…」**が出続けていた
     //   （ステータスは「0 件を判定しました」と言っているのに、ここは待っている顔をしていた）。
-    : `<div class="hint">${WORD.noBuildings(area.bldState)}</div>`;
+    : `<div class="hint">${WORD.noBuildings(bldState)}</div>`;
 }
+
 
 // ============================================================
 // 場所を決めるのは、この画面ではない

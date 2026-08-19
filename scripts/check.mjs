@@ -33,8 +33,8 @@ const NEW_LINKS = (() => {
   return a === undefined ? null : (a.split("=")[1] ?? "");
 })();
 
-let failed = 0, warned = 0;
-const ok   = (m) => console.log(`  \x1b[32m✓\x1b[0m ${m}`);
+let failed = 0, warned = 0, passed = 0;
+const ok   = (m) => { passed++; console.log(`  \x1b[32m✓\x1b[0m ${m}`); };
 const bad  = (m) => { failed++; console.log(`  \x1b[31m✗\x1b[0m ${m}`); };
 const warn = (m) => { warned++; console.log(`  \x1b[33m!\x1b[0m ${m}`); };
 const head = (m) => console.log(`\n\x1b[1m${m}\x1b[0m`);
@@ -2488,6 +2488,81 @@ head("6. 外部リンク");
   }
 }
 
+// 内訳の分け方（peel3d.js の breakdown）。
+// ⚠ **分割と、分割でないものを混ぜない。**
+//   実測（2026-08-19, 375×667 札幌）: 内訳に 1 行だけ「データなし 1364 / 1364」が出て、
+//   `isWater("データなし")` が false なので**陸の色見本**が付いていた。
+//   ⚠ 「明治期は陸だった建物が 1364 件」と読める（データの話が、土地の話に化けている）。
+{
+  const m = /\nconst NOT_CLASS=[\s\S]*?\nfunction paintBreakdown[\s\S]*?\n\}\n/.exec(src["peel3d.js"] ?? "");
+  const mw = /\nconst WORD = \{[\s\S]*?\n\};/.exec(src["peel3d.js"] ?? "");
+  if (!m || !mw) bad("peel3d.js の breakdown を取り出せない（この検査が何も見ていない）");
+  else {
+    const [B, W, P] = new Function("KonjakuSwale", "KonjakuProv",
+      `${m[0]}${mw[0]}\nreturn [breakdown, WORD, paintBreakdown];`)(
+        globalThis.KonjakuSwale, globalThis.KonjakuProv);
+    // ⚠ 組み立てた結果そのものを見る。**戻り値だけ見ていると、画面に出る分母を見ていない**
+    //   （実測 2026-08-19: 分母を総数に戻す壊し方で、この検査が落ちなかった）
+    const paint = (counts, total) => { const el = { innerHTML: "" }; P(el, B(counts, total), "ok"); return el.innerHTML; };
+    const fails = [];
+    const yes = (c, what) => { if (!c) fails.push(what); };
+
+    // ---- ⚠ 札幌。全件が資料の範囲外。**行を 1 本も作らない** ----
+    const sap = B({ "データなし": 1364 }, 1364);
+    yes(sap.rows.length === 0,
+      `分類でないものを分類の行にしている: ${sap.rows.map((r) => r.name).join("・")}`);
+    yes(sap.outside === 1364 && sap.classified === 0, "資料の範囲外を、判定できた件数に数えている");
+
+    // ---- 読み込めなかった分も、分類ではない ----
+    const un = B({ "読み込めず": 20, "旧水部": 80 }, 100);
+    yes(un.rows.length === 1 && un.rows[0].name === "旧水部", "読み込めなかった分を分類の行にしている");
+    yes(un.unread === 20 && un.classified === 80, "読み込めなかった分を、判定できた件数に数えている");
+    // ⚠ 分割の分母は「判定できた件数」。総数にすると、判定できた分が小さく見える。
+    //   ⚠ **組み立てた HTML で見る。**戻り値だけでは、画面に出る分母を見たことにならない
+    yes(un.rows.reduce((t, r) => t + r.n, 0) === un.classified, "行を足しても、判定できた件数にならない");
+    const hUn = paint({ "読み込めず": 20, "旧水部": 80 }, 100);
+    yes(/80<span[^>]*> \/ 80<\/span>/.test(hUn),
+      `画面に出る分母が「判定できた件数」になっていない: ${(/ \/ \d+</.exec(hUn) ?? ["(無し)"])[0]}`);
+    yes(!/ \/ 100</.test(hUn), "画面に出る分母が総数になっている（判定できた分が小さく見える）");
+    // ⚠ 色見本が付くのは分類の行だけ。範囲外の行に付くと「明治期は陸だった」に読める
+    yes((hUn.match(/class="swatch"/g) ?? []).length === 1,
+      "分類でない行にも色見本が付いている");
+    yes(!/swatch[^>]*>\s*(データなし|読み込めず)/.test(paint({ "データなし": 5 }, 5)),
+      "資料の範囲外に色見本が付いている");
+    // ⚠ 読み込めなかったのと、範囲の外は、別の箱
+    yes(un.outside === 0, "読み込めなかった分を、資料の範囲外に混ぜている");
+
+    // ---- 水と陸の見分け ----
+    const wl = B({ "河川・湖沼・海面": 5, "茅": 3 }, 8);
+    yes(wl.rows.find((r) => r.name === "河川・湖沼・海面")?.water === true, "水域を水と見ていない");
+    yes(wl.rows.find((r) => r.name === "茅")?.water === false, "陸を水と見ている");
+    // 多い順
+    yes(wl.rows[0].n >= wl.rows[1].n, "多い順に並んでいない");
+
+    // ---- ⚠ 言い方。資料の話であって、土地の話ではない ----
+    for (const k of ["unread", "outside"]) {
+      const t = W.notClassified(k, 5, false);
+      yes(!/(だった|でした)$|陸|水の上/.test(t.replace("外でした", "")),
+        `土地がどうだったかを言っている（言ってよいのは資料の側だけ）: ${t}`);
+      yes(!/(建物|記録)(は|が)(無い|ありません)/.test(t), `無いと言い切っている: ${t}`);
+    }
+    yes(W.notClassified("unread", 5, false) !== W.notClassified("outside", 5, false),
+      "読み込めていないのと、範囲の外を、同じ言葉にしている");
+    yes(/読み込め/.test(W.notClassified("unread", 5, false)),
+      "読み込めていないことを言っていない");
+    yes(!/読み込め/.test(W.notClassified("outside", 5, false)),
+      "範囲の外なのに「読み込めない」と言っている（こちらの都合に読める）");
+    // 全件のときと、一部のときで言い方を変える
+    yes(W.notClassified("outside", 5, true) !== W.notClassified("outside", 5, false),
+      "全件のときと一部のときを書き分けていない");
+
+    fails.length
+      ? bad(`breakdown の単体テストが失敗（${fails.length} 件）: ${fails.slice(0, 5).join(" / ")}`)
+      : ok(`内訳の分け方を動かして確認（判定できなかった分を分類の行にしない・`
+          + `分母は判定できた件数・読み込めていないと範囲の外を分ける）`);
+  }
+}
+
 // 年代の名乗り（peel3d.js の eraReadout と groundState）。
 // ⚠ ここが画面でいちばん大きい文字で、**出ていないものを「表示中」と言っていた**。
 //   利用者役 3/3 が「これが主犯」と名指しした（2026-08-18）。
@@ -3335,6 +3410,32 @@ head("9. 画面の言葉");
       ? ok(`根拠カードの取得方法は棚卸しのとおり（${[...new Set(got)].join("・")}／${got.length} 件）`)
       : bad(`根拠カードの取得方法が棚卸しと違う: ${got.join("・")}（棚卸しは ${want.join("・")}）`);
   }
+}
+
+// ⚠ **SPEC の「静的 N件」が、本当に N 件か。**
+//   上の検査は「空・0・書き方」だけを見ていて、**中身のずれは見ていなかった**。
+//   実測（2026-08-19）: 検査を 1 件足したのに SPEC は 148 のままで、**緑のまま main へ出た**。
+//   ⚠ 文書は誰も実行しないので、ずれても誰も気づかない（掟: 実装 → 検査 → … → SPEC）。
+// ⚠ **この検査自身も 1 件に数える。**数えないと、足すたびに 1 ずれる。
+// ⚠ どれかが落ちていると ✓ が減るので、ここも一緒に落ちる。
+//   **落ちた側を直すのが先**で、SPEC の数字を合わせにいく話ではない。
+// ⚠ **外へ出る指定（--links / --links-new）のときは数えない。**
+//   その指定でしか走らない検査があるぶん、必ず多くなる。
+//   実測（2026-08-19）: 手元も CI の 1 回目も 151 件だったが、CI は同じジョブで
+//   `--links-new` をもう一度回しており、そちらが **153 件**で落ちた。
+//   ⚠ **黙って飛ばさない。**数えなかったことを、その場で名乗る。
+{
+  const spec = await readFile(join(ROOT, "docs", "SPEC.md"), "utf8").catch(() => "");
+  const m = /静的[^\n]*?\*\*(\d+)件\*\*/.exec(spec);
+  const mine = passed + 1;
+  const how = CHECK_LINKS ? "--links" : NEW_LINKS !== null ? "--links-new" : null;
+  if (how) ok(`docs/SPEC.md の件数とは突き合わせていない（${how} 付きは、その指定でしか`
+    + `走らない検査があるぶん多くなる。素の \`node scripts/check.mjs\` が見る）`);
+  else if (!m) bad("docs/SPEC.md に「静的 **N件**」が無い（この検査が何も見ていない）");
+  else if (Number(m[1]) !== mine)
+    bad(`docs/SPEC.md の静的検査が ${m[1]}件 と名乗っているが、実際は ${mine}件`
+      + `（検査を足したら SPEC も直す。⚠ 実描画の件数は render.mjs 側が見る）`);
+  else ok(`docs/SPEC.md の「静的 ${mine}件」は、実際に数えた ✓ の数と合っている`);
 }
 
 console.log(`\n${"─".repeat(52)}`);

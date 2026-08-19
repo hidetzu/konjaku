@@ -10,7 +10,7 @@
 
 import { chromium } from "playwright";
 import { spawn } from "node:child_process";
-import { mkdir } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 import { deflateSync } from "node:zlib";
 
 const PORT = 8099;
@@ -3716,6 +3716,40 @@ const CASES = [
     },
   },
   {
+    // ⚠ **資料の範囲外を、分類の 1 行として出さない。**
+    //   実測（2026-08-19, 375×667 札幌）: 内訳に「データなし 1364 / 1364」が 1 行だけ出て、
+    //   `isWater("データなし")` が false なので**陸の色見本（#d8cfa8）**が付いていた。
+    //   ⚠ 「明治期は陸だった建物が 1364 件」と読める。掟: データにない ≠ 現実にない。
+    //   ⚠ **静的検査では捕まらない。**色見本が付くかは DOM を見ないと分からない。
+    name: "資料の範囲外に、陸の色を塗らない", path: `/peel?${SAPPORO}`, group: "core",
+    async check(page) {
+      // 建物が出そろうまで待つ（件数が動いている途中を読まない）
+      await page.waitForFunction(() => {
+        const t = document.getElementById("breakdown")?.textContent ?? "";
+        return /件/.test(t) && !/取得中/.test(t);
+      }, null, { timeout: 90000 });
+      const r = await page.evaluate(() => ({
+        rows: [...document.querySelectorAll("#breakdown .stat")].map((e) => ({
+          t: e.innerText.replace(/\s+/g, " ").trim(),
+          bg: getComputedStyle(e.querySelector(".swatch")).backgroundColor })),
+        hint: [...document.querySelectorAll("#breakdown .hint")]
+          .map((e) => e.innerText.replace(/\s+/g, " ").trim()).join(" ／ "),
+      }));
+      // ⚠ 分類の行が 1 本もないこと。1 本でもあれば「明治期は○○だった」と読める
+      must(r.rows.length === 0,
+        `資料の範囲外を分類の行にしている: ${r.rows.map((x) => `${x.t}[${x.bg}]`).join(" / ")}`);
+      // ⚠ 件数は落とさない。落とすと「建物が無い」に読める
+      must(/1364|\d{3,}/.test(r.hint), `件数を落としている: ${r.hint}`);
+      must(/範囲の外|整備している範囲/.test(r.hint), `範囲の外であることを言っていない: ${r.hint}`);
+      // ⚠ こちらの都合（読み込めない）に読める言い方をしない
+      must(!/読み込め|取得中|取得できません/.test(r.hint),
+        `範囲の外なのに、こちらの都合に読める言い方をしている: ${r.hint}`);
+      // ⚠ 「無い」と言い切らない
+      must(!/(建物|記録)(は|が)?(無い|ありません)/.test(r.hint), `無いと言い切っている: ${r.hint}`);
+      return `内訳の分類行 0 本／「${r.hint.slice(0, 46)}」`;
+    },
+  },
+  {
     name: "Overpass が 0 件を返したら、取れなかったと言わない", path: `/peel?${URAYASU}`,
     setup: (page) => Promise.all([
       // 取り込み済みの経路を塞ぐ。⚠ 塞がないと静的で答えてしまい、Overpass の経路を通らない
@@ -5974,6 +6008,29 @@ console.log(`\n${"─".repeat(52)}`);
 // ⚠ **再試行を黙って飲み込まない。** 増えていくなら、外部が落ちているか検査が悪い
 if (retried) console.log(`\x1b[33m⟳ 外部（住所検索）待ちで ${retried} 回やり直した\x1b[0m`);
 if (failed) { console.log(`\x1b[31m${failed} / ${RUN.length} 件が失敗\x1b[0m`); process.exit(1); }
+// ⚠ **SPEC の件数が、本当にこの数か。**
+//   ⚠ 静的検査からは実描画のケース数を数えられないので、**自分で名乗る**。
+//   実測（2026-08-19）: 検査を足したのに SPEC が古いまま緑で出た。
+// ⚠ `--only` のときは見ない（回した数と全件が違うのは、そう指示したから）。
+if (!ONLY) {
+  const spec = await readFile(new URL("../docs/SPEC.md", import.meta.url), "utf8").catch(() => "");
+  const want = { "実描画": CASES.length,
+                 "--group=core": CASES.filter((c) => c.dep !== "search").length,
+                 "--group=search": CASES.filter((c) => c.dep === "search").length };
+  const gap = [];
+  for (const [lab, n] of Object.entries(want)) {
+    const after = (spec.split("\n").find((l) => l.includes(lab)) ?? "");
+    const m = /\*\*(\d+)件\*\*/.exec(after.slice(after.indexOf(lab) + lab.length));
+    if (!m) gap.push(`${lab}: SPEC に件数が無い`);
+    else if (Number(m[1]) !== n) gap.push(`${lab}: SPEC は ${m[1]}件・実際は ${n}件`);
+  }
+  if (gap.length) {
+    console.log(`\x1b[31m✗ docs/SPEC.md の件数が実際と違う: ${gap.join(" ／ ")}\x1b[0m`);
+    console.log(`\x1b[31m  （検査を足したら SPEC も直す。文書は誰も実行しないので気づけない）\x1b[0m`);
+    process.exit(1);
+  }
+  console.log(`\x1b[32m✓ docs/SPEC.md の件数と合っている（実描画 ${CASES.length} / core ${want["--group=core"]} / search ${want["--group=search"]}）\x1b[0m`);
+}
 // ⚠ 回していないケースを「描画できた」と言わない（--only のとき）
 console.log(ONLY
   ? `\x1b[33m${RUN.length} 件は描画できた（⚠ 全 ${CASES.length} 件のうち --only で選んだぶんだけ）\x1b[0m`
