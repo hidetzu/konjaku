@@ -39,6 +39,9 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="今昔">
 <link rel="apple-touch-icon" href="/icon-192.png">
+<!-- ⚠ 2 画面で共通の見た目の定義。**ここが唯一の出どころ**（ADR 0021）。
+     ⚠ 画面ごとに値が違うものは、下の <style> に残してある。 -->
+<link rel="stylesheet" href="./css/tokens.css">
 <style>
   /* ── 色は「見た目」ではなく「意味」で名付ける ────────────────────
      この製品の核心は「実測／推定／取れなかった」を区別することなので、
@@ -56,19 +59,12 @@
     /* 文字 */
     --ink:#eaeef3;           /* 本文 */
     --ink-dim:#8b96a3;       /* 副次・注記 */
-    --ink-faint:#6b7683;     /* さらに弱い（出典など） */
 
     /* 判定の格 ── ここがこの製品の掟そのもの */
-    --evidence:#7ee0a5;      /* 実測。読んだ画素・数えた件数 */
-    --estimate:#e6c47a;      /* 推定。こちらが決めた値 */
-    --missing:#e08a7a;       /* 取れなかった。「無い」ではない */
 
     /* 土地の姿 */
-    --water:#5ba3e0;         /* 明治期の水 */
 
     /* 操作 */
-    --action:#6fc3ff;        /* 押せるもの */
-    --tap:44px;              /* 指で押す最小の大きさ（Apple の指針） */
     /* 写真の右下は地図の帰属表示（国土地理院）が使う。実測 24px。
        ⚠ **写真の上に載せるものは、全部この値だけ底を上げる。** 別々に決めると必ずずれる。
          実際にずれた: 年代の札を外したら、下駄が無くなった「重ねる」が落ちてきて
@@ -96,29 +92,10 @@
          移るときは、下の --text-* の値だけを直せばよい（使う側は触らない）。 */
 
     /* 値の段 */
-    --text-2xs:11px;         /* 印・タグ。**文ではないもの**だけ */
-    --text-xs:12px;          /* いちばん小さい「文」 */
-    --text-sm:12.5px;
-    --text-md:13px;
-    --text-base:14px;        /* body の基準と同じ */
-    --text-lg:15px;
-    --text-xl:16px;
-    --text-2xl:17px;
-    --text-3xl:19px;
 
     /* 役割（使う側はこちらを書く） */
-    --fs-label:var(--text-2xs);      /* 印・タグ（「直読み」「根拠あり」「▸」） */
-    --fs-evidence:var(--text-xs);    /* 根拠。読んだ画素・取得方法・出所 */
-    --fs-note:var(--text-xs);        /* 但し書き・副題 */
-    --fs-badge:var(--text-sm);       /* バッジ（主張の要約） */
-    --fs-lead:var(--text-md);        /* 一覧の行の見出し */
-    --fs-body:var(--text-base);      /* 本文・判定文 */
-    --fs-claim:var(--text-lg);       /* 判定の値（旧水部・1.91 m） */
     /* ⚠ 入力欄は 16px 未満にしない。iOS Safari は 16px 未満の入力欄に触れると
        ページごと拡大し、戻らない。見た目の都合で下げないこと。 */
-    --fs-input:var(--text-xl);
-    --fs-era:var(--text-2xl);        /* 年 */
-    --fs-sign:var(--text-3xl);       /* 看板 */
   }
   /* ⚠ テーマを足すときは、ここに**同じ名前の集合**を別の値で書く。
      個々の規則は1行も触らない。例:

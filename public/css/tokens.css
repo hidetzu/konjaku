@@ -1,0 +1,52 @@
+/* 今昔 — 2 画面で共通の見た目の定義
+ *
+ * ⚠ **ここが唯一の出どころ。**トップと /peel の両方が読む。
+ *   ⚠ 実測（2026-08-20）: 同じ名前・同じ値が **26 個**、2 か所に書いてあった。
+ *     片方だけ直すと、2 画面で見た目がずれる（ADR 0021）。
+ *
+ * ⚠ **意味で名前を付ける。**色名（green-400 など）に置き換えない
+ *   （docs/DOMAIN.md）。--evidence / --estimate / --missing は
+ *   この製品固有の意味を持つ。
+ *
+ * ⚠ **画面ごとに値が違うものは、ここに置かない。**
+ *   --bg / --ink / --ink-dim / --line / --surface の 5 つは値が違う。
+ *   ⚠ どちらが正かは決めていないので、各ページに残す。
+ */
+:root {
+  /* 文字の段（⚠ px 固定。rem 化は別 Issue） */
+  --text-2xl: 17px;
+  --text-2xs: 11px;
+  --text-3xl: 19px;
+  --text-base: 14px;
+  --text-lg: 15px;
+  --text-md: 13px;
+  --text-sm: 12.5px;
+  --text-xl: 16px;
+  --text-xs: 12px;
+
+  /* 意味ごとの文字サイズ */
+  --fs-badge: var(--text-sm);
+  --fs-body: var(--text-base);
+  --fs-claim: var(--text-lg);
+  --fs-era: var(--text-2xl);
+  --fs-evidence: var(--text-xs);
+  --fs-input: var(--text-xl);
+  --fs-label: var(--text-2xs);
+  --fs-lead: var(--text-md);
+  --fs-note: var(--text-xs);
+  --fs-sign: var(--text-3xl);
+
+  /* 出どころの色（⚠ 意味を持つ。色名に置き換えない） */
+  --evidence: #7ee0a5;
+  --estimate: #e6c47a;
+  --missing: #e08a7a;
+
+  /* そのほかの色 */
+  --action: #6fc3ff;
+  --water: #5ba3e0;
+  --ink-faint: #6b7683;
+
+  /* 指の的 */
+  --tap: 44px;
+
+}
