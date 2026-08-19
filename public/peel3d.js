@@ -1975,6 +1975,12 @@ applyTimePanel();
 // ⚠ 段の数は地点によって変わる（豊洲 8 / 広島 6 / 長崎 出島 3 段の写真）。
 //   総時間を固定すると、段が少ない地点ほど1段が長くなって間延びする。
 let raf=null; const DUR_PER_STEP=11000/8;
+// ⚠ **「動きを減らす」を見るのは、ここ 1 か所。**
+//   ⚠ 毎フレーム matchMedia() を呼ばない（60fps × 11 秒 ＝ 660 回作ることになる）。
+//     1 つ作っておいて matches を読む。⚠ **設定を途中で変えても追いつく**（live に更新される）。
+//   ⚠ 名前を `lessMotionMQ` にしてある。トップの `lessMotion` は**関数**で、
+//     こちらは **MediaQueryList**。同じ名前だと、読む人が呼び方を取り違える。
+const lessMotionMQ=matchMedia("(prefers-reduced-motion: reduce)");
 // パネルの開閉を1つの状態で持つ。
 // 再生中は一時的に隠し、終わったら「利用者が望んだ状態」に戻す。
 // stop() が毎回 setChrome(false) を呼ぶので、状態を持たないと
@@ -2010,7 +2016,16 @@ playBtn.onclick=()=>{
     const e=p<.82?p/.82*.74:.74+(p-.82)/.18*.26;
     const v=from+(end-from)*e; slider.value=String(v);
     const u=v/end;
-    map.jumpTo({center:c,zoom:z0-u*.55,bearing:b0+u*46,pitch:Math.min(78,p0+u*10)});
+    // ⚠ **「動きを減らす」を入れている人には、カメラを振らない。**
+    //   ⚠ **消すのは動きであって、結果ではない。** 年代は最後まで送るし、所要時間も変えない。
+    //     ⚠ 止めると押しても何も起きない導線になる（ADR 0026）ので、送りは残す。
+    //   ⚠ **jumpTo ごと呼ばない。**同じ値で毎フレーム呼び直すと、
+    //     利用者が再生中に動かした地図を、こちらが押し戻すことになる。
+    //   実測（2026-08-19・豊洲 PC）: 振ると 11 秒で bearing +46°・zoom -0.55・pitch +10°。
+    //     ⚠ 利用者役 3/3 が「向きが変わった」を先に挙げ、建物が消えたことに触れたのは 1/3 だった。
+    //     振らない版では 3/3 が「建物が減った」「地面が古くなった」と答えた。
+    if(!lessMotionMQ.matches)
+      map.jumpTo({center:c,zoom:z0-u*.55,bearing:b0+u*46,pitch:Math.min(78,p0+u*10)});
     render();
     // ⚠ 再生は input を投げずに #t を直接動かすので、ドラムはここで追わせる。
     //   追わせないと、再生し終わったあとドラムだけ前の段に取り残される。
