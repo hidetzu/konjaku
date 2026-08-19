@@ -513,6 +513,108 @@ const CASES = [
     },
   },
   {
+    // ⚠ **下から伸びる箱が、答えの板を押しのけてはいけない。**
+    //   実測（2026-08-19・320×480・過去の段）: #hud が #land に **92px** 食い込み、
+    //   「99.6%」の 4 文字しか読めず、答えの下端を受け取るのは #over だった。
+    //   ⚠ **画面が低いほど、いちばん強い実測（533 / 533 件すべてを判定）が消える**作りだった。
+    // ⚠ CLAUDE.md §9「隣り合うものは同じ積み上げに入れる。固定値で避けない」を再び踏んだ。
+    //   #land は top:62px の固定、#hud は bottom:0 から上へ伸びる。別々に置くと必ずぶつかる。
+    // ⚠ **潰すのも駄目。**上限だけ掛けたら 129px の中身が 27px になった（隠れていたのが
+    //   潰れただけで、読めないのは同じ）。答えには下限を切り、下の箱が譲る。
+    name: "画面が低くても、答えの板が下の箱に食われない", path: `/peel?${TOYOSU}`,
+    viewport: { width: 320, height: 480 }, hasTouch: true,
+    async check(page) {
+      await page.waitForFunction(() => /件を判定しました/.test(document.body.innerText),
+        null, { timeout: 60000 });
+      await page.waitForTimeout(2000);
+      // ⚠ 過去の段がいちばん厳しい（#over が増える）
+      await page.evaluate(() => { const s = document.getElementById("t");
+        s.value = "500"; s.dispatchEvent(new Event("input", { bubbles: true })); });
+      await page.waitForTimeout(700);
+      const r = await page.evaluate(() => {
+        const land = document.getElementById("land"), lr = land.getBoundingClientRect();
+        const hud = document.getElementById("hud"), hr = hud.getBoundingClientRect();
+        const first = land.querySelector("*");
+        const fr = first ? first.getBoundingClientRect() : null;
+        const who = fr ? document.elementFromPoint(
+          Math.round(fr.x + fr.width / 2), Math.round(fr.y + 6)) : null;
+        return { landH: Math.round(lr.height), landScroll: land.scrollHeight,
+          hudTop: Math.round(hr.top), landBottom: Math.round(lr.bottom),
+          lap: Math.round(Math.max(0, lr.bottom - hr.top)),
+          hit: who ? (who.id || who.closest("[id]")?.id || String(who.className).split(" ")[0]) : "無い",
+          text: land.innerText.replace(/\s+/g, " ").trim() };
+      });
+      must(r.lap === 0, `下の箱が答えに ${r.lap}px 食い込んでいる（答えの下端 ${r.landBottom} / 箱の上端 ${r.hudTop}）`);
+      // ⚠ 「重ならない」だけでは足りない。**潰れていない**ことまで見る
+      must(r.landH >= 100, `答えの板が ${r.landH}px まで潰れている（読めない）`);
+      // ⚠ 答えの 1 行目を、答え自身が受け取っていること（何かが上に乗っていない）
+      must(r.hit === "land" || /land/.test(r.hit),
+        `答えの 1 行目を「${r.hit}」が受け取っている（上に何か乗っている）`);
+      // ⚠ 中身が入りきらないときは、消さずに中でスクロールさせる
+      must(/99\.6%|件の足元を判定/.test(r.text), `答えが消えている: ${r.text.slice(0, 40)}`);
+      return `320×480・過去の段で 重なり ${r.lap}px ／ 答え ${r.landH}px（中身 ${r.landScroll}px）`
+        + ` ／ 1 行目を受け取るのは ${r.hit}`;
+    },
+  },
+  {
+    // ⚠ **見えないものに焦点を当てない。**（掟: 押しても何も起きない導線を置かない）
+    //   実測（2026-08-19）: 幅ごとに使わない側の操作が DOM に残り、キーボードで到達できた。
+    //     320 幅 … #timeToggle / #play / #t とドラムのボタン 9 個
+    //     PC     … ドラムのボタン 9 個（⚠ これは main からあった漏れ）
+    //     根拠を全画面で読んでいるとき … #toggle / #eraToggle / ものさしの ‹ ›
+    //   ⚠ #timeToggle は aria-expanded="true" のまま残っていた（開いている折りたたみに聞こえる）。
+    name: "見えない操作に、キーボードで届かない", path: `/peel?${TOYOSU}`,
+    viewport: { width: 320, height: 640 }, hasTouch: true,
+    async check(page) {
+      await page.waitForFunction(() => /件を判定しました/.test(document.body.innerText),
+        null, { timeout: 60000 });
+      await page.waitForTimeout(2000);
+      const leaks = () => page.evaluate(() => {
+        const bad = [...document.querySelectorAll("button,input,a[href]")].filter((e) => {
+          const r = e.getBoundingClientRect();
+          return e.tabIndex >= 0 && r.width === 0 && !e.closest("[inert]") && !e.inert;
+        });
+        return bad.map((e) => e.id || e.textContent.trim().slice(0, 8) || e.tagName);
+      });
+      // ⚠ **`e.inert` は親から継いだ状態を返さない。**
+      //   実測（2026-08-19）: 親（#ruler）を inert にしても、子の ‹ › は e.inert=false のままで、
+      //   ⚠ 「閉じすぎる」を壊しても検査が緑になった。**closest で親まで見る。**
+      const used = (ids) => page.evaluate((ids) => ids.filter((id) => {
+        const e = document.getElementById(id);
+        return !e || e.inert || !!e.closest("[inert]");
+      }), ids);
+
+      // ---- 地図を見ているとき ----
+      const a = await leaks();
+      // ⚠ ✕ は根拠を開くと出るので、ここに居てよい（閉じているあいだは幅 0）
+      const aBad = a.filter((x) => x !== "closePanel");
+      must(!aBad.length, `見えないのに焦点が当たる: ${aBad.join("、")}`);
+      // ⚠ 使う側まで閉じていないこと（閉じすぎると操作できなくなる）
+      const aStuck = await used(["rlPrev", "rlNext", "toggle"]);
+      must(!aStuck.length, `使う操作が閉じている: ${aStuck.join("、")}`);
+      // ⚠ 隠れているのに「開いている折りたたみ」と名乗らない
+      const ae = await page.evaluate(() =>
+        document.getElementById("timeToggle")?.getAttribute("aria-expanded"));
+      must(!ae, `見えない #timeToggle が aria-expanded="${ae}" と名乗っている`);
+
+      // ---- 根拠を全画面で読んでいるとき ----
+      await page.click("#toggle");
+      await page.waitForTimeout(600);
+      const b = await leaks();
+      must(!b.length, `根拠を読んでいるのに、地図側の操作に焦点が当たる: ${b.join("、")}`);
+      // ⚠ 戻る手段は閉じない
+      const bStuck = await used(["closePanel", "back"]);
+      must(!bStuck.length, `戻る手段が閉じている: ${bStuck.join("、")}`);
+
+      // ---- 閉じたら元に戻る ----
+      await page.click("#closePanel");
+      await page.waitForTimeout(600);
+      const c = await used(["rlPrev", "rlNext", "toggle"]);
+      must(!c.length, `根拠を閉じたのに、操作が閉じたまま: ${c.join("、")}`);
+      return `地図のとき ${aBad.length} 件／根拠を読むとき ${b.length} 件／閉じたら戻る`;
+    },
+  },
+  {
     // ⚠ 年代の箱・年代を動かす帯の**頭**を細くする。狭い画面ほど地図が見えなくなるため。
     //   実測（2026-08-19・320幅・1936–42 の段）: 箱が画面の **82%** を占めていた。
     //     年代 76px（⚠ 2 行に割れて 38px 損）／但し書き 69px／いまのもの 42px／押すと 30px
@@ -545,7 +647,10 @@ const CASES = [
         const tr = rng.getBoundingClientRect();
         const box = document.getElementById("era").getBoundingClientRect();
         const kick = document.querySelector("#era .kick");
-        return { y: g("#era .y"), et: g("#eraToggle"), tt: g("#timeToggle"),
+        const vis = (sel) => { const e = document.querySelector(sel);
+          if (!e) return null; const r = e.getBoundingClientRect();
+          return r.height < 1 ? null : g(sel); };
+        return { y: g("#era .y"), et: g("#eraToggle"), tt: vis("#timeToggle"),
           textW: Math.round(tr.width), boxRight: Math.round(box.right), textRight: Math.round(tr.right),
           kickText: kick ? kick.textContent.trim() : null,
           eraH: Math.round(box.height) };
@@ -566,17 +671,23 @@ const CASES = [
 
       // ---- ② 開閉は細いが、押せる大きさは 44px を割らない ----
       const r = await read();
-      for (const [nm, x] of [["年代の開閉", r.et], ["帯の開閉", r.tt]]) {
+      // ⚠ **狭い幅に「帯の開閉」はもう無い。**（2026-08-19・ものさしに置き換えた）
+      //   帯は見出し行ごと畳めなくなり、代わりに ‹ › と軸で動かす。
+      //   ⚠ 守りたかったのは「開閉は細いが、押す大きさは削らない」ほうなので、
+      //     **残っている開閉（年代の箱）で見る**。消したのではなく、対象が減った。
+      //   ⚠ 帯の側は「ものさしで全体が見え、端まで届く」が別に見ている。
+      must(r.tt === null || r.tt.h === 0,
+        `狭い幅に帯の開閉が残っている（${r.tt?.w}×${r.tt?.h}）。ものさしに置き換えたはず`);
+      for (const [nm, x] of [["年代の開閉", r.et]]) {
         must(x, `${nm} が無い`);
         must(x.w >= 44 && x.h >= 44, `${nm} が指で押せない（${x.w}×${x.h}）`);
         must(x.w <= 52, `${nm} が細くなっていない（${x.w}px）。狭い画面で幅を食う`);
-        must(x.hit === (nm === "年代の開閉" ? "eraToggle" : "timeToggle"),
-          `${nm} を押しても、当たるのは「${x.hit}」`);
+        must(x.hit === "eraToggle", `${nm} を押しても、当たるのは「${x.hit}」`);
       }
       // ⚠ 記号だけにしたぶん、**読み上げには名乗りを残す**
+      // ⚠ 帯の開閉は狭い幅に無いので、年代の箱だけ見る
       const aria = await page.evaluate(() => [
-        document.getElementById("eraToggle").getAttribute("aria-label"),
-        document.getElementById("timeToggle").getAttribute("aria-label")]);
+        document.getElementById("eraToggle").getAttribute("aria-label")]);
       for (const a of aria) must(a && a.length > 3, `開閉ボタンの読み上げの名乗りが無い（${a}）`);
       // ⚠ 記号の向きは CSS が回す。**JS と二重に反転させない**（一度踏んだ）
       const before = await page.evaluate(() => {
@@ -598,7 +709,7 @@ const CASES = [
       must(/開く/.test(after.aria ?? ""), `閉じたのに読み上げが「${after.aria}」のまま`);
       return `320 幅・全 ${heights.length} 段とも年代は 1 行で箱に収まる`
         + `／#era ${Math.min(...heights)}〜${Math.max(...heights)}px`
-        + `／開閉 ${r.et.w}×${r.et.h}px（読み上げあり）`;
+        + `／年代の開閉 ${r.et.w}×${r.et.h}px（読み上げあり）／帯の開閉は無い（ものさし）`;
     },
   },
   {
@@ -1094,147 +1205,113 @@ const CASES = [
     },
   },
   {
-    // ⚠ **年代を選ぶのが「指の精度勝負」になっていた。**
-    //   実測（2026-08-18・横棒のころ）:
-    //     1 段あたり 34.5px（375）／30.6px（344）／**27.6px（320）** ＝ 指の 63%
-    //     ノブ 25×25px ／ ▶ 36×36px ＝ どちらも 44px 割れ
-    //     ▶ とノブの隙間 5px ／ 右端（明治期）のノブは画面の縁から 10px
-    //     年代の文字の当たり判定 24×19px 〜 53×19px
-    //   ⚠ この画面はズーム・ピン・読み上げを 44px にそろえてあるのに、
-    //     **年代の操作だけ規則から漏れていた。**
+    // ⚠ **狭い幅の年代は「ものさし」**（2026-08-19）。ドラムを置き換えた。
+    //   ⚠ ここは「横ドラムロール」を守っていた検査を**置き換えたもの**。
+    //     消したのではなく、**守る目的が変わった**ので書き直している。
     //
-    // ⚠ 9 段 × 44px = 396px は 375px に収まらない。**スクロールで解く**（横ドラムロール）。
-    //   ⚠ 横棒では狭くて 4 段の名前を消していたが、**段は最初から全部に名前を持っていた**。
-    //     横に流せば全段に名前が出る（利用者役 3/3 が「名前が無いと何年か分からない」）。
+    // 直したかったのは「どこまで遡れるか分からない」ほう。実測（2026-08-19・豊洲）:
+    //   ⚠ 9 段のうち画面に入っていたのは 375 幅で 2 個・**320 幅で 1 個**だけ。
+    //   ⚠ 「明治期」は x=877（375）／x=849（320）＝ **どちらも画面の外**。
+    //   利用者役「せいぜい昭和の終わりまでかな、と思いました」。
     //
-    // ⚠ **地図を隠さない形にする。**ここは値を確定する入力欄ではなく、
-    //   動かすと絵が変わるスクラバー。選んでいる間に地図が見えないと意味が薄れる。
+    // ⚠ ドラムのときに実測で否定された 5 つは、ものさしでも起こしてはいけない。
+    //   引き継いで見る（形は変わっても、失敗の中身は同じ）:
+    //   1. 印が中身と一緒に流れる → ⚠ ものさしのつまみは軸の中に固定
+    //   2. box-sizing が無く、的が太って印と食い違う → ⚠ 的の実寸を見る
+    //   3. transform で膨らむ → 同上
+    //   4. 押しどころが近すぎて誤爆（3/3 が「閉じてしまいそう」）→ ⚠ ‹ › の間隔を見る
+    //   5. 文字が隣の部品の真横で切れる（320 で 33px 切れ）→ ⚠ 年と端の名前の切れを見る
     //
-    // ⚠ 作っている途中で、実測に 5 回否定されている。全部ここで見る:
-    //   1. 真ん中の印を**スクロールする箱の中**に置いた → 中身と一緒に流れ、
-    //      「現在」のときだけ枠付きに見えた（ずれ 704px）
-    //   2. box-sizing が無く、段が 88 → 99px に太って印と食い違った
-    //   3. transform:scale(1.12) でも膨らんだ
-    //   4. ▶ を「閉じる」の隣に置いたら隙間 10px（3/3 が「閉じてしまいそう」）
-    //   5. ▶ と年代の枠の隙間が 0px で、文字が ▶ の真横で切れた（320 で 33px 切れ）
-    //
-    // ⚠ **狭い幅で読み込む。**PC 幅から縮めるとパネルが開いたままになり、年代帯ごと消える
-    //   （「読んでいるあいだ HUD を出さない」規則。実際に全部 0×0px になった）。
-    name: "狭い幅の年代は、指で回して選べて、いまどこかが分かる", path: `/peel?${TOYOSU}`,
-    viewport: { width: 375, height: 667 }, hasTouch: true,
+    // ⚠ **刻みは的にしない。**320 幅・9 段で 1 段 24px しかなく、44px を割る（掟）。
+    //   動かすのは ‹ ›（44×44）と、軸そのもののドラッグ。
+    name: "狭い幅の年代は、ものさしで全体が見え、端まで届く", path: `/peel?${TOYOSU}`,
+    viewport: { width: 320, height: 640 }, hasTouch: true,
     async check(page) {
-      await page.waitForFunction(() => document.querySelectorAll("#drum .d-it").length > 0,
+      await page.waitForFunction(() => typeof steps !== "undefined" && timelineReady,
         null, { timeout: 60000 });
-      await page.evaluate(() => { const p = document.getElementById("panel");
-        if (p && !p.classList.contains("hide")) document.getElementById("closePanel").click(); });
-      await page.waitForTimeout(600);
+      await page.waitForTimeout(1500);
       const look = () => page.evaluate(() => {
-        const drum = document.getElementById("drum");
-        const it = [...drum.querySelectorAll(".d-it")];
-        const box = (e) => { const r = e.getBoundingClientRect();
-          return { w: Math.round(r.width), h: Math.round(r.height),
-                   l: Math.round(r.left), r: Math.round(r.right) }; };
-        const on = drum.querySelector(".d-it.on"), mk = document.getElementById("drumMark");
-        const dr = drum.getBoundingClientRect(), pl = document.getElementById("play").getBoundingClientRect();
-        const tg = document.getElementById("timeToggle").getBoundingClientRect();
-        const dots = [...(document.getElementById("drumPos")?.querySelectorAll("i") ?? [])];
-        return {
-          n: it.length, named: it.filter((e) => (e.textContent || "").trim()).length,
-          item: it.length ? box(it[0]) : null,
-          on: on ? { t: on.textContent.trim(), ...box(on) } : null,
-          mark: mk ? box(mk) : null,
-          gapPlay: Math.round(dr.left - pl.right),
-          gapClose: Math.round(tg.left - pl.right),
-          play: { w: Math.round(pl.width), h: Math.round(pl.height) },
-          dots: dots.length, dotsOn: dots.filter((d) => d.classList.contains("on")).length,
-          drumShown: getComputedStyle(drum).display !== "none",
-          trackShown: getComputedStyle(document.getElementById("track")).display !== "none",
-          t: Number(document.getElementById("t").value),
-        };
+        const g = (sel) => { const e = document.querySelector(sel); if (!e) return null;
+          const r = e.getBoundingClientRect();
+          const cx = Math.round(r.x + r.width / 2), cy = Math.round(r.y + r.height / 2);
+          const who = document.elementFromPoint(cx, cy);
+          return { t: e.textContent.trim(), x: Math.round(r.x), right: Math.round(r.right),
+            w: Math.round(r.width), h: Math.round(r.height),
+            cut: e.scrollWidth > Math.ceil(r.width) + 1,
+            hit: who ? (who.id || who.closest("[id]")?.id || String(who.className).split(" ")[0]) : "無い" }; };
+        const line = document.querySelector("#ruler .rl-line").getBoundingClientRect();
+        const ticks = [...document.querySelectorAll("#rlTicks i:not(.rl-cut)")];
+        const knob = document.getElementById("rlKnob").getBoundingClientRect();
+        return { year: g("#rlYear"), left: g("#rlLeft"), right: g("#rlRight"),
+          prev: g("#rlPrev"), next: g("#rlNext"), note: g("#rlNote"),
+          nTicks: ticks.length, nSteps: steps.length,
+          lastLabel: steps[steps.length - 1].label,
+          axis: Math.round(line.width), knobX: Math.round(knob.x + knob.width / 2),
+          lineL: Math.round(line.left), lineR: Math.round(line.right),
+          meiji: !!document.querySelector("#rlTicks i.rl-meiji"),
+          cut: !!document.querySelector("#rlTicks i.rl-cut"),
+          W: innerWidth };
       });
-      const g = await look();
-      must(g.drumShown && !g.trackShown, `狭い幅でドラムが出ていない（ドラム=${g.drumShown} / 横棒=${g.trackShown}）`);
-      // ⚠ 全段に名前が出る（横棒のころは 9 段中 5 段だけだった）
-      must(g.named === g.n, `名前の無い段がある: ${g.named} / ${g.n} 段`);
-      must(g.item.h >= 44 && g.item.w >= 44, `段が指で押せる大きさでない: ${g.item.w}×${g.item.h}px`);
-      must(g.play.h >= 44 && g.play.w >= 44, `再生 ▶ が 44px 未満: ${g.play.w}×${g.play.h}px`);
-      // ⚠ ▶ と年代がくっつくと、文字が ▶ の真横で切れる
-      must(g.gapPlay >= 10, `▶ と年代の枠がくっついている（隙間 ${g.gapPlay}px。文字が真横で切れる）`);
-      // ⚠ ▶ と「閉じる」が近いと、片手で閉じてしまう
-      must(g.gapClose >= 40, `▶ と「閉じる」が近い（隙間 ${g.gapClose}px。押し間違える）`);
-      // ⚠ 全体のどこにいるかが分かる（3/3 が「何段あるか分からない」と答えた）
-      must(g.dots === g.n, `全体の位置を示す点が段の数と合わない: 点 ${g.dots} / 段 ${g.n}`);
-      must(g.dotsOn === 1, `いまどこかを示す点が 1 つでない: ${g.dotsOn} 個`);
-      // ⚠ 選ばれた段が、真ん中の印に収まる（印がスクロールすると崩れる）
-      const fits = (x) => x.on && x.mark && x.on.l >= x.mark.l - 2 && x.on.r <= x.mark.r + 2;
-      must(fits(g), `選んだ段が真ん中の印に収まっていない: 段 ${JSON.stringify(g.on)} / 印 ${JSON.stringify(g.mark)}`);
-      // ⚠ 端まで動かしても崩れない（印がスクロールしていた不具合は、端で出た）
-      const seen = [];
-      for (const want of ["明治期", "現在"]) {
-        const i = await page.evaluate((want) => {
-          const e = [...document.querySelectorAll("#drum .d-it")].find((x) => x.textContent.trim() === want);
-          return e ? Number(e.dataset.i) : null;
-        }, want);
-        must(i !== null, `「${want}」の段が無い`);
-        const pt = { i };
-        // ⚠ 画面の外にある段を座標で押さない。**利用者は回してから押す**ので、
-        //   locator（見えるところまで送ってから押す）で、その道筋ごと確かめる
-        await page.locator("#drum .d-it").filter({ hasText: new RegExp(`^${want}$`) }).click();
-        await page.waitForTimeout(800);
-        const after = await look();
-        must(after.t === pt.i * 100, `「${want}」を押しても、その段へ飛ばない（${after.t} / 期待 ${pt.i * 100}）`);
-        must(fits(after), `「${want}」で、選んだ段が真ん中の印からずれる（印がスクロールしている）`);
-        seen.push(`${want}→${after.t}`);
-      }
-      // ⚠ 指で回しても選べる（押すだけでなく、回す道も残っていること）
-      await page.evaluate(() => { document.getElementById("drum").scrollLeft = 0;
-        document.getElementById("drum").dispatchEvent(new Event("scroll")); });
-      await page.waitForTimeout(700);
-      const rolled = await look();
-      must(rolled.t === 0, `回しても段が選ばれない（t=${rolled.t}）`);
-      // ⚠ **畳めること**も見る。狭い幅の年代帯は画面の 49% を占めるので、
-      //   畳めないと地図が出てこない。⚠ 畳んだあとも「開き直せる」ことまで。
-      //   （PC 側の同じ主張は「年代を動かす操作パネルが、見えて畳める（PC の横棒）」）
-      await page.click("#timeToggle");
-      await page.waitForTimeout(500);
-      const shut = await page.evaluate(() => ({
-        drum: document.getElementById("drum").getBoundingClientRect().height,
-        toggle: document.getElementById("timeToggle").getBoundingClientRect().height,
-      }));
-      must(shut.drum < 4, `畳んでも年代が出たまま: ${Math.round(shut.drum)}px`);
-      must(shut.toggle >= 44, `畳んだら開き直す入口が指で押せない: ${Math.round(shut.toggle)}px`);
-      await page.click("#timeToggle");
-      await page.waitForTimeout(500);
-      must(await page.evaluate(() => document.getElementById("drum").getBoundingClientRect().height) >= 44,
-        "畳んだあと、開き直せない");
+      const a = await look();
+      // ---- ① 全段が 1 本の軸にあり、端が画面内 ----
+      must(a.nTicks === a.nSteps, `刻みが段の数と合わない（刻み ${a.nTicks} / 段 ${a.nSteps}）`);
+      must(a.right.right <= a.W, `右端「${a.right.t}」が画面の外（右 ${a.right.right} / 幅 ${a.W}）`);
+      must(a.left.x >= 0, `左端「${a.left.t}」が画面の外`);
+      // ⚠ **右端はその地点の最終段。**「明治期」固定にしない（明治期データは 24 地点で 7/24）
+      must(a.right.t === a.lastLabel,
+        `右端が最終段と違う（右端「${a.right.t}」／最終段「${a.lastLabel}」）`);
+      // ⚠ 5 の再発（文字が切れる）
+      for (const [nm, x] of [["年", a.year], ["左端", a.left], ["右端", a.right]])
+        must(!x.cut, `${nm}「${x.t}」が切れている`);
 
-      // ⚠ **PC 側も同じケースで見る。**形を 2 つに分けた意味は「片方を触っても、
-      //   もう片方が壊れないこと」なので、**壊れていないほうも一緒に確かめる**。
-      //   実際に壊した（2026-08-18）: スマホ向けに gap を外したら、PC で
-      //   **▶ とノブが 16px かぶった**（1280 / 1024 / 900 すべてで再現）。
-      const pc = [];
-      for (const [w, h] of [[1280, 800], [900, 700]]) {
-        await page.setViewportSize({ width: w, height: h });
-        await page.waitForTimeout(700);
-        // ⚠ いちばん左（現在）でしか出ない。ノブが横棒の外へはみ出す側だから
-        await page.evaluate(() => { const t = document.getElementById("t");
-          t.value = "0"; t.dispatchEvent(new Event("input", { bubbles: true })); });
-        await page.waitForTimeout(400);
-        const r = await page.evaluate(() => {
-          const R = (s2) => document.querySelector(s2).getBoundingClientRect();
-          const pl = R("#play"), kn = R("#track .knob"), dr = document.getElementById("drum");
-          return { lap: Math.round(pl.right - kn.left),
-                   trackShown: getComputedStyle(document.getElementById("track")).display !== "none",
-                   drumShown: getComputedStyle(dr).display !== "none" };
-        });
-        must(r.trackShown && !r.drumShown,
-          `${w}: PC で横棒が出ていない（横棒=${r.trackShown} / ドラム=${r.drumShown}）`);
-        must(r.lap <= 0, `${w}: PC で ▶ とノブが ${r.lap}px かぶっている`);
-        pc.push(`${w}: 重なり無し`);
+      // ---- ② 押せるものは 44px。刻みは的にしない ----
+      for (const [nm, x] of [["‹", a.prev], ["›", a.next]]) {
+        must(x.w >= 44 && x.h >= 44, `${nm} が指で押せない（${x.w}×${x.h}）`);
+        must(x.hit === (nm === "‹" ? "rlPrev" : "rlNext"), `${nm} を押しても当たるのは「${x.hit}」`);
       }
-      return `${g.n} 段すべて名前あり・${g.item.w}×${g.item.h}px ／ 点 ${g.dots} 個で現在地 1 つ ／`
-        + ` ▶ ${g.play.w}px（年代と ${g.gapPlay}px・閉じると ${g.gapClose}px） ／ ${seen.join(" ")} ／ 回して t=0`
-        + ` ／ ${pc.join(" ")}`;
+      // ⚠ 4 の再発（近すぎて誤爆）
+      must(a.next.x - a.prev.right >= 80,
+        `‹ と › が近すぎる（間隔 ${a.next.x - a.prev.right}px）。押し間違える`);
+
+      // ---- ③ 明治期は写真ではない。形と仕切りで示す ----
+      must(a.meiji, `明治期の印が無い（写真と同じ形に見える）`);
+      must(a.cut, `写真と明治期の仕切りが無い`);
+      must(/空中写真\s*\d+\s*段/.test(a.note.t), `注記に空中写真の段数が無い: ${a.note.t}`);
+
+      // ---- ④ ‹ › で端まで届く。⚠ 1 の再発（つまみが流れる）も見る ----
+      const knob0 = a.knobX;
+      // ⚠ **無効になったボタンを押しに行かない。** page.click は「押せるようになるまで」
+      //   待つので、無効なボタンに 30 秒 × 回数ぶん待ってしまう（実測 2026-08-19: 10 分で打ち切り）。
+      //   ⚠ 押せるあいだだけ押す。押せなくなったら、そこが端。
+      const tapWhile = async (id, max) => {
+        let n = 0;
+        for (; n < max; n++) {
+          const ok = await page.evaluate((id) => {
+            const e = document.getElementById(id);
+            if (!e || e.disabled) return false;
+            e.click(); return true;
+          }, id);
+          if (!ok) break;
+        }
+        await page.waitForTimeout(400);
+        return n;
+      };
+      const tapped = await tapWhile("rlNext", 20);
+      must(tapped >= a.nSteps - 1, `› を ${tapped} 回しか押せなかった（段は ${a.nSteps}）`);
+      const b = await look();
+      must(b.year.t === a.lastLabel, `› を押し続けても最終段に着かない（いま「${b.year.t}」）`);
+      must(b.knobX > knob0, `つまみが動いていない（${knob0} → ${b.knobX}）`);
+      must(b.knobX <= b.lineR + 2 && b.knobX >= b.lineL - 2,
+        `つまみが軸から外れた（${b.knobX} / 軸 ${b.lineL}..${b.lineR}）`);
+      // ⚠ 端では、それ以上押せないと分かること
+      const disabled = await page.evaluate(() => document.getElementById("rlNext").disabled);
+      must(disabled, `最終段なのに › がまだ押せる顔をしている`);
+      await tapWhile("rlPrev", 20);
+      const c = await look();
+      must(c.year.t === "現在", `‹ を押し続けても先頭に戻らない（いま「${c.year.t}」）`);
+      return `320 幅・${a.nSteps} 段  軸 ${a.axis}px（1 段 ${Math.round(a.axis / (a.nSteps - 1))}px）`
+        + ` ／ 端「${a.left.t}」「${a.right.t}」とも画面内 ／ ‹ › ${a.prev.w}×${a.prev.h}（間隔 ${a.next.x - a.prev.right}px）`
+        + ` ／ ${a.note.t}`;
     },
   },
   {
@@ -4896,16 +4973,34 @@ const CASES = [
       //   年の見出しが 60px なのに但し書きが 10.5px で 5.7倍（UI/UX の実測）。
       const look = await page.evaluate(() => {
         const e = document.getElementById("est"), c = getComputedStyle(e);
-        const panel = getComputedStyle(document.getElementById("era"));
         const y = document.querySelector("#era .y");
         const a = (s) => (s.match(/[\d.]+/g) ?? []).map(Number);
+        // ⚠ **敷きは、祖先を辿って探す。** 以前ここは `#era` の背景を決め打ちで見ていた。
+        //   いまは #est が #era の中にあるので偶然一致していたが、
+        //   ⚠ **#est を外へ出した瞬間、航空写真の上に敷き無しで浮いていても緑になる**
+        //   （検査が測っていないことを「確認済み」と表示する。掟が名指ししている失敗）。
+        //
+        // ⚠ **body を敷きに数えない。**（2026-08-19 に踏んだ）
+        //   body は不透明（rgb(8,11,15)）だが、**その上に地図が乗っている**。
+        //   文字の背後にあるのは地図（航空写真）で、body ではない。
+        //   数えてしまうと、敷きの無い場所へ出しても緑のままだった。
+        //   ⚠ **地図（#map）より内側の祖先だけ**を見る。
+        const mapEl = document.getElementById("map");
+        let bgA = 0, at = null;
+        for (let n = e; n && n !== document.body; n = n.parentElement) {
+          if (n === mapEl) break;              // ⚠ 地図そのものは敷きではない
+          const bg = getComputedStyle(n).backgroundColor;
+          if (bg === "rgba(0, 0, 0, 0)" || bg === "transparent") continue;
+          const v = bg.startsWith("rgba") ? (a(bg)[3] ?? 0) : 1;
+          if (v > bgA) { bgA = v; at = n.id || n.className || n.tagName; }
+          if (bgA >= 1) break;
+        }
         return { fs: parseFloat(c.fontSize),
-          yearFs: parseFloat(getComputedStyle(y).fontSize),
-          bgA: (a(panel.backgroundColor)[3] ?? 0) };
+          yearFs: parseFloat(getComputedStyle(y).fontSize), bgA, bgAt: at };
       });
       must(look.fs >= 12, `但し書きが小さすぎる: ${look.fs}px（12px 以上）`);
       must(look.bgA >= 0.5,
-        `但し書きに敷きが無い（写真の上で沈む）: 背景の不透明度 ${look.bgA}`);
+        `但し書きに敷きが無い（写真の上で沈む）: 背景の不透明度 ${look.bgA}（敷いているのは ${look.bgAt ?? "無し"}）`);
       must(look.yearFs / look.fs <= 5.2,
         `年の見出しと但し書きの差が開きすぎ: ${look.yearFs}px 対 ${look.fs}px`);
       // ⚠ 「推定」の語だけでは足りない。**主張範囲の分母つき**で言うこと
