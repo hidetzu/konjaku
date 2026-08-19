@@ -157,9 +157,19 @@ PR のレビュー・merge               人
 ⚠ **すでに 6 か所ある。**⚠ **足りなかったのは数ではなく、`ready-for-ai` の意味の定義**で、
 それは `CLAUDE.md` §7-2 に書いた。
 
-⚠ **Loop Controller v1 を入れたあとも、人が入るのは 2 か所**（開始時の承認と、PR のレビュー）。
-⚠ **`git push` の許可だけが、Controller 経由の 1 件に限って包括になる**（`CLAUDE.md` §8 に明記）。
-⚠ **`issue-work` を単体で使うときは、いままでどおり毎回取る。**
+⚠ **2026-08-19 に Owner が Controller の merge を許可した。**
+⚠ **これで、Controller 経由のときに人が入るのは 1 か所（開始時の承認）だけになった。**
+
+⚠ **残っている歯止め**
+
+```
+自動 merge（--auto / merge queue）は禁止
+保護を飛び越える merge（--admin）は禁止
+CI が赤・途中のままの merge は禁止
+ready-for-ai の付与・削除は禁止
+```
+
+⚠ **`issue-work` を単体で使うときは、push も merge もいままでどおり毎回取る**（`CLAUDE.md` §8）。
 
 ---
 

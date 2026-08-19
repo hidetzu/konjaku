@@ -8,7 +8,7 @@ description: konjaku の ready-for-ai な Issue を 1 件だけ、判定 → 計
 ⚠ **Controller は判断基準を持たない。**呼んで、返った判定で遷移するだけ。
 
 ```
-PRECHECK → READY_CHECK → PLAN → APPROVAL → WORK → PR → STOP
+PRECHECK → READY_CHECK → PLAN → APPROVAL → WORK → PR → CI → MERGE → STOP
                   ↑                          │
                   └──── 判定が NG なら戻る ───┘
 ```
@@ -18,12 +18,13 @@ PRECHECK → READY_CHECK → PLAN → APPROVAL → WORK → PR → STOP
 ## ⚠ 絶対にやらないこと
 
 ```
-merge（CI が緑でも）        ready-for-ai の付与・削除
-Issue を勝手に選ぶ          Issue の Close / Rewrite / Split
-別 Issue へ着手             新しい Issue を作る
-Scope を広げる              仕様・UX・データの意味を決める
-検査を飛ばす                レビューを飛ばす
-main へ直接 push            無限に retry する
+自動 merge（--auto / merge queue）   ready-for-ai の付与・削除
+保護を飛び越える merge（--admin）    Issue の Rewrite / Split
+Issue を勝手に選ぶ                   新しい Issue を作る
+別 Issue へ着手                      仕様・UX・データの意味を決める
+Scope を広げる                       検査・レビューを飛ばす
+main へ直接 push                     無限に retry する
+CI が赤／途中のまま merge            ゲートを 1 つでも飛ばして merge
 ```
 
 ⚠ **判断基準をここへ写さない。**検査の一覧も、UI の原則も、Issue の判定条件も、
@@ -130,14 +131,20 @@ Owner が承認したら、⚠ **その Issue 1 件に限り**次を許可した
 ```
 実装 ／ 修正 ／ Inner Verify ／ Final Verify ／ Review
 commit ／ ⚠ そのブランチへの push ／ PR 作成
+⚠ CI が全部緑になったあとの merge（2026-08-19 の Owner 判断で足した）
 ```
 
 ⚠ **許可に含まれないもの**
 
 ```
-merge ／ 別 Issue ／ Scope 拡大 ／ 仕様・UX の決定
-ready-for-ai の付与・削除 ／ Issue Close ／ 大規模リファクタ
+別 Issue ／ Scope 拡大 ／ 仕様・UX の決定
+ready-for-ai の付与・削除 ／ 大規模リファクタ
+⚠ 自動 merge（--auto / merge queue） ／ ⚠ 保護を飛び越える merge（--admin）
+⚠ CI が赤・途中のままの merge
 ```
+
+⚠ **merge を入れたことで、人が入るのは 1 か所（開始時の承認）だけになった。**
+⚠ **CI が緑でも「仕様が正しい」ではない。**⚠ **PR は残るので、あとから読める形にしておく。**
 
 ⚠ **これは `CLAUDE.md` §8「`git push` はそのつど許可を取る」の例外を、
 Controller 経由に限って明示したもの。**
@@ -207,15 +214,40 @@ Loop Controller: Quality PASS ／ Verify PASS ／ Review PASS ／ 周回 2 / 3 �
 
 ---
 
-## 7. STOP（⚠ Human Gate 2）
+## 7. CI → MERGE → STOP
 
-⚠ **PR を作ったら終わり。**
+⚠ **PR を作ったら、CI を待つ。**
 
 ```
-禁止: gh pr merge ／ auto merge ／ merge queue ／ main へ直接 push
+禁止: --auto ／ merge queue ／ --admin ／ main へ直接 push
 ```
 
-⚠ **CI が緑でも merge しない。**⚠ **CI が緑でも「仕様が正しい」ではない。**
+### ⚠ merge してよい条件（すべて満たすときだけ）
+
+```
+[ ] §6 の 6 つが全部そろっている
+[ ] CI が **全部** 緑（pending が 1 つも無い）
+```
+
+⚠ **落ちたら、まず切り分ける**（`verify` の「落ちたときに、まず切り分ける」）。
+
+| 落ちた原因 | どうする |
+|---|---|
+| こちらの不具合 | ⚠ **WORK へ戻る。1 周と数える** |
+| 外部（住所検索の取得失敗・`apt` のハング など） | ⚠ **同じ条件で 1 回だけ**やり直す。それでも駄目なら止まる |
+
+⚠ **コードをいじって CI を黙らせない。**
+⚠ **緑にならないまま merge しない。**
+
+### merge
+
+```bash
+gh pr merge <PR> --squash --delete-branch
+```
+
+⚠ そのあと `main` を取り直して、⚠ **Issue が閉じたことを確かめる**（`Closes` が効いたか）。
+
+⚠ **merge したら終わり。次の Issue へ行かない。**
 
 ### 報告の形（⚠ 止まったときも同じ形で出す）
 
@@ -229,8 +261,9 @@ Owner 承認:   YES
 周回:         2 / 3
 Verify:       Inner PASS ／ Final PASS
 Review:       change-review PASS ／ ui-ux-review PASS or N/A
-PR:           #XXX
-止まった理由: OWNER REVIEW REQUIRED
+PR:           #XXX（merge 済み / 未 merge）
+CI:           全部緑 / <落ちたもの>
+止まった理由: 完了 / <止まる条件>
 未解決:       なし / <一覧>
 ```
 
