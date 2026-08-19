@@ -4380,21 +4380,49 @@ const CASES = [
     //   （2026-08-16 実測で 404 を 491 件送っていた）。
     name: "トップと /peel が、同じ地点で同じ年代を出す（長崎 出島）",
     path: `/peel?ll=32.74400,129.87300&q=%E9%95%B7%E5%B4%8E%20%E5%87%BA%E5%B3%B6`,
+    // ⚠ **判定に使ったタイルが、実際に何を答えたか**を控える。
+    //   ⚠ 掟: 不在と読むのは 404 だけ。timeout / 通信断 / 5xx は「読めなかった」で、
+    //     その年代は**段に残す**のが正しい。
+    //   ⚠ 控えないと、相手先が 1 回でも 404 以外を返した回に、
+    //     **正しい振る舞いのほうを落としてしまう**
+    //     （実測 2026-08-19: 実描画の失敗 4 件のうち 2 件がこれだった。
+    //      同じ回の数秒前に、広島では同じレイヤを 404 と読めていた＝単発の揺れ）。
+    setup: (page) => {
+      page.__gsi = new Map();
+      const id = (u) => (/\/xyz\/([a-z0-9_]+)\//.exec(u) ?? [])[1];
+      page.on("response", (r) => { const i = id(r.url()); if (i) page.__gsi.set(i, r.status()); });
+      page.on("requestfailed", (r) => { const i = id(r.url()); if (i) page.__gsi.set(i, 0); });
+      return Promise.resolve();
+    },
     async check(page) {
       await peelReady(page);
       const past = (l) => l.filter((x) => x !== "現在" && x !== "明治期").sort();
       const peel = past(await stepLabels(page));
-      must(JSON.stringify(peel) === JSON.stringify(["1961–69", "1974–78"]),
-        `出島の過去年代が 1961–69 と 1974–78 だけになっていない: ${peel.join("/")}`);
+      // ⚠ **必ず出るはずのものは、強いまま。**ここは相手先の揺れと関係ない
+      for (const keep of ["1961–69", "1974–78"])
+        must(peel.includes(keep), `出島に残っている ${keep} が段から消えている: ${peel.join("/")}`);
+      // ⚠ **余分な年代は、404 と答えられた年代でないこと。**
+      //   404 なのに残っていたら、それは「無い」を出せていない＝こちらの不具合。
+      //   404 以外（読めなかった）で残っているなら、それは**掟どおり**。
+      const ID = { "1936–42": "ort_riku10", "1945–50": "ort_USA10", "1961–69": "gazo1",
+                   "1974–78": "gazo1", "1979–83": "gazo2", "1984–86": "gazo3", "1987–90": "gazo4" };
+      const extra = peel.filter((x) => x !== "1961–69" && x !== "1974–78");
+      const wrong = extra.filter((x) => page.__gsi.get(ID[x]) === 404);
+      must(wrong.length === 0,
+        `404 と答えられた年代を段に残している: ${wrong.map((x) => `${x}(${ID[x]}=404)`).join("・")}`);
+      const shaky = extra.map((x) => `${x}(${ID[x]}=${page.__gsi.get(ID[x]) ?? "問い合わせ無し"})`);
       // 同じ入れ物のままトップへ移る（同じ地点・同じ相手・同じキャッシュで比べる）
       await page.goto(`${BASE}/?ll=32.74400,129.87300&q=%E9%95%B7%E5%B4%8E%20%E5%87%BA%E5%B3%B6`,
         { waitUntil: "domcontentloaded", timeout: 45000 });
       await waitVerdict(page);
       const top = past(await page.$$eval("#strip .f .yr", (els) =>
         els.map((e) => e.textContent.trim())));
+      // ⚠ **ここが本題。**同じ問いに 2 つの実装が別の答えを出していないこと。
+      //   ⚠ 相手先が揺れていても、**トップと /peel は同じ揺れ方をするはず**（同じ実装を使う）。
       must(JSON.stringify(top) === JSON.stringify(peel),
         `トップと /peel の年代が食い違う: トップ ${top.join("/")} ／ /peel ${peel.join("/")}`);
-      return `両方とも ${peel.join("/")}（${peel.length} 年代）`;
+      return `両方とも ${peel.join("/")}（${peel.length} 年代）`
+        + (shaky.length ? `／⚠ 相手先が 404 を返さなかったぶんが残っている: ${shaky.join("・")}` : "");
     },
   },
   {
