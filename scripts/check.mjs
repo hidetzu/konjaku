@@ -33,8 +33,8 @@ const NEW_LINKS = (() => {
   return a === undefined ? null : (a.split("=")[1] ?? "");
 })();
 
-let failed = 0, warned = 0;
-const ok   = (m) => console.log(`  \x1b[32m✓\x1b[0m ${m}`);
+let failed = 0, warned = 0, passed = 0;
+const ok   = (m) => { passed++; console.log(`  \x1b[32m✓\x1b[0m ${m}`); };
 const bad  = (m) => { failed++; console.log(`  \x1b[31m✗\x1b[0m ${m}`); };
 const warn = (m) => { warned++; console.log(`  \x1b[33m!\x1b[0m ${m}`); };
 const head = (m) => console.log(`\n\x1b[1m${m}\x1b[0m`);
@@ -3410,6 +3410,24 @@ head("9. 画面の言葉");
       ? ok(`根拠カードの取得方法は棚卸しのとおり（${[...new Set(got)].join("・")}／${got.length} 件）`)
       : bad(`根拠カードの取得方法が棚卸しと違う: ${got.join("・")}（棚卸しは ${want.join("・")}）`);
   }
+}
+
+// ⚠ **SPEC の「静的 N件」が、本当に N 件か。**
+//   上の検査は「空・0・書き方」だけを見ていて、**中身のずれは見ていなかった**。
+//   実測（2026-08-19）: 検査を 1 件足したのに SPEC は 148 のままで、**緑のまま main へ出た**。
+//   ⚠ 文書は誰も実行しないので、ずれても誰も気づかない（掟: 実装 → 検査 → … → SPEC）。
+// ⚠ **この検査自身も 1 件に数える。**数えないと、足すたびに 1 ずれる。
+// ⚠ どれかが落ちていると ✓ が減るので、ここも一緒に落ちる。
+//   **落ちた側を直すのが先**で、SPEC の数字を合わせにいく話ではない。
+{
+  const spec = await readFile(join(ROOT, "docs", "SPEC.md"), "utf8").catch(() => "");
+  const m = /静的[^\n]*?\*\*(\d+)件\*\*/.exec(spec);
+  const mine = passed + 1;
+  if (!m) bad("docs/SPEC.md に「静的 **N件**」が無い（この検査が何も見ていない）");
+  else if (Number(m[1]) !== mine)
+    bad(`docs/SPEC.md の静的検査が ${m[1]}件 と名乗っているが、実際は ${mine}件`
+      + `（検査を足したら SPEC も直す。⚠ 実描画の件数は render.mjs 側が見る）`);
+  else ok(`docs/SPEC.md の「静的 ${mine}件」は、実際に数えた ✓ の数と合っている`);
 }
 
 console.log(`\n${"─".repeat(52)}`);

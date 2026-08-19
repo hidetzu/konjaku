@@ -10,7 +10,7 @@
 
 import { chromium } from "playwright";
 import { spawn } from "node:child_process";
-import { mkdir } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 import { deflateSync } from "node:zlib";
 
 const PORT = 8099;
@@ -6008,6 +6008,29 @@ console.log(`\n${"─".repeat(52)}`);
 // ⚠ **再試行を黙って飲み込まない。** 増えていくなら、外部が落ちているか検査が悪い
 if (retried) console.log(`\x1b[33m⟳ 外部（住所検索）待ちで ${retried} 回やり直した\x1b[0m`);
 if (failed) { console.log(`\x1b[31m${failed} / ${RUN.length} 件が失敗\x1b[0m`); process.exit(1); }
+// ⚠ **SPEC の件数が、本当にこの数か。**
+//   ⚠ 静的検査からは実描画のケース数を数えられないので、**自分で名乗る**。
+//   実測（2026-08-19）: 検査を足したのに SPEC が古いまま緑で出た。
+// ⚠ `--only` のときは見ない（回した数と全件が違うのは、そう指示したから）。
+if (!ONLY) {
+  const spec = await readFile(new URL("../docs/SPEC.md", import.meta.url), "utf8").catch(() => "");
+  const want = { "実描画": CASES.length,
+                 "--group=core": CASES.filter((c) => c.dep !== "search").length,
+                 "--group=search": CASES.filter((c) => c.dep === "search").length };
+  const gap = [];
+  for (const [lab, n] of Object.entries(want)) {
+    const after = (spec.split("\n").find((l) => l.includes(lab)) ?? "");
+    const m = /\*\*(\d+)件\*\*/.exec(after.slice(after.indexOf(lab) + lab.length));
+    if (!m) gap.push(`${lab}: SPEC に件数が無い`);
+    else if (Number(m[1]) !== n) gap.push(`${lab}: SPEC は ${m[1]}件・実際は ${n}件`);
+  }
+  if (gap.length) {
+    console.log(`\x1b[31m✗ docs/SPEC.md の件数が実際と違う: ${gap.join(" ／ ")}\x1b[0m`);
+    console.log(`\x1b[31m  （検査を足したら SPEC も直す。文書は誰も実行しないので気づけない）\x1b[0m`);
+    process.exit(1);
+  }
+  console.log(`\x1b[32m✓ docs/SPEC.md の件数と合っている（実描画 ${CASES.length} / core ${want["--group=core"]} / search ${want["--group=search"]}）\x1b[0m`);
+}
 // ⚠ 回していないケースを「描画できた」と言わない（--only のとき）
 console.log(ONLY
   ? `\x1b[33m${RUN.length} 件は描画できた（⚠ 全 ${CASES.length} 件のうち --only で選んだぶんだけ）\x1b[0m`
