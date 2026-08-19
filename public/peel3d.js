@@ -1009,46 +1009,8 @@ function landformLine(){
   return `この土地は <b>${l.value}</b>${art}${WORD.precision(l.fine)}`;
 }
 
-// ============================================================
-// 土地の答え（この画面の中心）
-//   ⚠ **割合と分母を作るのは、ここ1か所だけ。** 情報パネル（#heroNum / #heroCap）と、
-//     常時見える HUD（#land）は、同じ結果を別の見せ方で描く。
-//     2 か所で計算すると、片方だけ直したときに**同じ画面の中で数字が食い違う**
-//     （掟: 同じ問いに答える実装を2つ持たない）。
-//   ⚠ スマホはパネルが閉じて始まる。以前は答えも分母もパネルの中にしかなく、
-//     実測（2026-08-16 / 375×667・タッチ）で豊洲 99.6%・広島 1.4%・出島 3.4% の
-//     **実効 opacity が 0**（祖先の #panel.hide が opacity:0）だった。
-//     初期画面から読めるのは「建物が消える年代は演出です」という但し書きだけで、
-//     **答えより先に注意書きが読める**状態になっていた。
-//   ⚠ ここで割合の作り方を変えない。分母は「足元を判定できた件数」で、
-//     判定できていない建物を分母に入れない（札幌の 0.0% がそれだった）。
-// ============================================================
-function landVerdict(){
-  if(!area) return null;
-  const lf=landformLine();
-  // 建物がある場合は、足元のラスタ判定が成立したときだけ範囲集計も見せる。
-  // 通信断で建物の判定が0件なのに、事前生成GeoJSONの割合だけ出すと、
-  // 「読めていないのに割合が出た」状態になる。
-  const land=(area.classified>0||area.total===0)
-    ? (area.total>0 ? area.buildingLand : area.landSummary) : null;
-  // 足元を1件でも判定できた。割合は**判定できた件数**からしか作らない
-  if(area.classified>0)
-    return { kind:"ratio", pct:(area.wet/area.classified*100).toFixed(1),
-      classified:area.classified, total:area.total, all:area.classified===area.total,
-      unread:area.unread, land, lf };
-  // 建物は出ているが、足元は1件も判定できない
-  if(area.total>0) return { kind:"none", scope:"building", total:area.total, unread:area.unread, land, lf };
-  // 建物が0件・取れない・まだ待っている。面積比なら出せる
-  // ⚠ **なぜ面積比なのか**は3つある（待っている／0件だった／取れなかった）。
-  //   以前は真偽値1つ（pending）だったので、正常に0件だった土地に
-  //   「建物が取れなかったため」と書いていた（掟: 取れなかったを「無い」と言わない の裏返し）。
-  if(area.waterRead&&area.waterRatio>0)
-    return { kind:"area", pct:(area.waterRatio*100).toFixed(1), bldState:area.bldState, land, lf };
-  if(area.waterRead) return { kind:"dry", land, lf };
-  return { kind:"none", scope:"land", unread:area.waterUnread, land, lf };
-}
 
-// 常時見える HUD 側の描画。⚠ 数字は landVerdict() が作ったものだけを使う。
+// 常時見える HUD 側の描画。⚠ 数字は layersOf() が作ったものだけを使う。
 // ⚠ 「データなし（整備対象外）」と「読み込めず」を混ぜない。
 //   混ぜると、通信が落ちただけの土地に「整備対象外」と書くことになる
 //   （掟: 取れなかったを「無い」と言わない）。
@@ -1144,13 +1106,17 @@ function hudLayers(m){
 //   ⚠ CSS だけでは、別の要素の高さを読めない。だから JS が測って渡す。
 //   ⚠ **決め打ちにしない。**実測（2026-08-19）: 112px の決め打ちで、
 //     層を出して 152px になった瞬間に 320×480 で 20px 食い込んだ。
-function syncLandH(el){
+// ⚠ **測るのは HUD（#land）だけ。**パネル（#landAll）は下の箱と重ならない場所にある。
+//   ⚠ 実測（2026-08-19）: 両方から呼んでいて、**パネルの高さ（276px）で上書き**していた。
+//     #land は 152px なのに 276px を空けさせ、320×640 で下の板が帰属表示に 24px 食い込んだ。
+function syncLandH(){
+  const el=document.getElementById("land");
   const h=el && el.innerHTML ? Math.ceil(el.getBoundingClientRect().height) : 0;
   document.documentElement.style.setProperty("--land-h", `${h}px`);
 }
 function paintLand(el, m, only){
   if(!el) return;
-  if(!m){ el.innerHTML=""; syncLandH(el); return; }   // 場所を切り替えた直後。前の答えを残さない
+  if(!m){ el.innerHTML=""; syncLandH(); return; }   // 場所を切り替えた直後。前の答えを残さない
   const by=new Map(m.missing.map((mi)=>[mi.n,mi]));
   const keep=only ? (()=>{ const h=hudLayers(m); return new Set([h.first?.n, h.rest?.n].filter(Boolean)); })() : null;
   const out=[];
@@ -1163,12 +1129,15 @@ function paintLand(el, m, only){
       + (M.note?`<div class="land-sub">${M.note}</div>`:"")+`</div>`);
   }
   el.innerHTML=out.join("");
-  syncLandH(el);
+  syncLandH();
 }
 function paintLayer(L){
   // ⚠ 数字を出すなら、分母を同じ板に出す（掟: 数字は主張範囲の分母で書く）
+  // ⚠ 第1層は**主語つき**（docs/DOMAIN.md §2-1「この土地は」に統一）。
+  //   ⚠ 実測（2026-08-19）: 主語を落としていて、WORD.ground1 が死にコードになっていた。
   const head=L.head.kind==="pct"
     ? `<b class="land-num">${L.head.v}<small>%</small></b>`
+    : L.n===1 ? `<span class="land-g1">${WORD.ground1(esc(L.head.v))}</span>`
     : `<b class="land-alt">${esc(L.head.v)}</b>`;
   const what=L.what?`<span class="land-what">${L.what}</span>`:"";
   const den=L.den?`<div class="land-den">${L.den}</div>`:"";
@@ -1193,62 +1162,14 @@ function showResult(){
   document.getElementById("placeName").textContent =
     area.areaTitle && area.areaTitle!==area.title
       ? `${area.title}（集計範囲: ${area.areaTitle}）` : area.title;
-  const heroEl=document.getElementById("heroNum"), capEl=document.getElementById("heroCap");
-
-  // ⚠ パネルと HUD は**同じ結果**（landVerdict）を描く。ここで割合を作り直さない。
-  //   ヒーローの数字は「実際に判定できたもの」からしか作らない。
-  //   1408件すべてが「データなし」なのに 0.0% と出し、それを
-  //   「1件ずつ判定した実測値」と書いていたのが札幌だった（掟: 取れなかったを「無い」と言わない）。
-  // ⚠ **層は 1 か所で決める**（layersOf）。HUD もパネルも、ここが作った同じ値を描く。
-  //   ⚠ 2 か所で作ると、同じ画面で言うことが食い違う（掟: 同じ問いに答える実装を2つ持たない）。
-  //   ⚠ 実測（2026-08-19）: HUD だけ層にしたとき、**PC のパネルは古い形のまま**だった。
-  //     #land は PC では 0×0（狭い幅の道具）なので、PC では何も変わっていなかった。
-  //   ⚠ **いまは HUD だけ。**PC のパネル（heroNum / heroCap）はまだ古い形で、
-  //     ⚠ **同じ問いに 2 つの答えが残っている**（掟に反する状態）。
-  //     ⚠ パネルを層にすると heroNum と重複するので、**検査 8 件の置き換えとセット**になる。
-  //     1 PR = 1 つの理由 を守って、そちらは別に出す。
-  paintLand(landEl, layersOf(area, landform), true);   // HUD は第1層＋1 つ
-  const v=landVerdict();
-  if(v.kind==="ratio"){
-    const landIsWater=v.land&&KonjakuSwale.isWater(v.land.name);
-    if(v.land&&!landIsWater){
-      heroEl.innerHTML=`<span class="hero-alt">${esc(v.land.name)}</span>`;
-      capEl.innerHTML=`建物の足元は、明治期には<b>${esc(v.land.name)}</b>が最多でした<br>
-        <span style="opacity:.7">区分を特定できた ${v.land.count} / ${v.land.classified} 件（${v.land.pct}%）</span><br>
-        <span style="opacity:.7">水域だった建物：${v.pct}%（足元を判定できた ${v.classified} / ${v.total} 件）</span>`;
-    } else {
-      heroEl.innerHTML=`${v.pct}<small>%</small>`;
-      capEl.innerHTML = v.all
-        ? `の建物が、明治期には<b>水の上</b>だった<br>
-           <span style="opacity:.7">${v.total}件すべての足元を1件ずつ判定した実測値</span>`
-        : `の建物が、明治期には<b>水の上</b>だった<br>
-           <span style="opacity:.7">足元を判定できた ${v.classified} / ${v.total} 件のうちの実測値
-           （残りは明治期のデータが${WORD.meijiGap(v.unread)}）</span>`;
-    }
-  } else if(v.kind==="none"&&v.scope==="building"){
-    // 建物ごとの割合は出せない。だが土地そのものには地形分類が答えられる。
-    // 出せないものと、出せるものを、混ぜずに並べる
-    heroEl.innerHTML=`<span class="hero-alt">${WORD.cantSay(!!v.lf)}</span>`;
-    capEl.innerHTML = (v.lf?`${v.lf}<br>`:"") + (v.unread
-      ? `明治期の低湿地データを<b>読み込めませんでした</b><br>
-         <span style="opacity:.7">建物 ${v.total} 件は出ていますが、足元は1件も判定できていません</span>`
-      : `この範囲は明治期の低湿地データの<b>整備対象外</b>です<br>
-         <span style="opacity:.7">建物 ${v.total} 件は出ていますが、建物ごとに明治期の何だったかは分かりません</span>`);
-  } else if(v.kind==="area"){
-    heroEl.innerHTML=`${v.pct}<small>%</small>`;
-    // 「取れなかった」と「まだ取っていない」を書き分ける
-    capEl.innerHTML=`この範囲の<b>面積</b>が、明治期には水だった<br>
-       <span style="opacity:.7">${bldWhyArea(v.bldState)}</span>`;
-  } else if(v.kind==="dry"){
-    heroEl.innerHTML=`<span class="hero-alt">水域なし</span>`;
-    capEl.innerHTML=`この範囲は、明治期の低湿地データで<b>水域に該当しません</b>`;
-  } else {
-    heroEl.innerHTML=`<span class="hero-alt">${WORD.cantSay(!!v.lf)}</span>`;
-    capEl.innerHTML = (v.lf?`${v.lf}<br>`:"") + (v.unread
-      ? `明治期の低湿地データを<b>読み込めませんでした</b><br>
-         <span style="opacity:.7">通信を確認して、もう一度お試しください</span>`
-      : `この範囲は明治期の低湿地データの<b>整備対象外</b>です`);
-  }
+  // ⚠ **パネルも層で描く。**HUD と同じ値（layersOf）を使う。
+  //   ⚠ 2 か所で作ると、同じ画面で言うことが食い違う（ADR 0021）。
+  //     実測（2026-08-19）: HUD だけ層にしたとき、⚠ **豊洲で 99.6% が 2 回**出ていた
+  //     （heroNum と第3層）。⚠ 利用者役 3/4 が指摘した。
+  //   ⚠ HUD は第1層＋1 つに絞るが、**パネルは 3 層とも**。
+  const model=layersOf(area, landform);
+  paintLand(landEl, model, true);                                 // HUD
+  paintLand(document.getElementById("landAll"), model, false);    // ⚠ パネルは全部
 
   paintBreakdown(document.getElementById("breakdown"), breakdown(area.counts, area.total), area.bldState);
 }

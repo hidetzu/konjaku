@@ -150,6 +150,9 @@
   .land-sub{margin-top:2px;font-size:var(--fs-note);line-height:1.5;color:var(--ink-faint)}
   /* 層。⚠ **確実性の高い順に積む**（ADR 0030）。⚠ 層の名前は「その層の問い」 */
   .land-layer+.land-layer,.land-layer+.land-miss,.land-miss+.land-layer{margin-top:7px}
+  /* ⚠ 第1層は主語つき。値だけ強く（docs/DOMAIN.md §2-1） */
+  .land-g1{font-size:var(--fs-note);color:var(--ink-dim)}
+  .land-g1 b{font-size:var(--fs-lead);color:var(--ink);font-weight:600}
   .land-q{font-size:var(--fs-label);color:var(--ink-dim);letter-spacing:.04em;margin-bottom:1px}
   /* ⚠ 出ない層も、その層の位置に置く。⚠ 薄くするが、消さない */
   .land-miss{opacity:.8}
@@ -761,8 +764,11 @@
   <div id="result" style="display:none">
     <div class="sec">
       <div class="place" id="placeName"></div>
-      <div class="hero" id="heroNum">–<small>%</small></div>
-      <div class="hero-cap" id="heroCap"></div>
+      <!-- ⚠ パネルも**層**で答える（ADR 0030）。スマホの HUD（#land）と同じ値を描く。
+           ⚠ **同じ問いに 2 つの答えを持たない。**HUD だけ層にしたとき、
+             PC はここが古い形のままで、豊洲で 99.6% が 2 回出ていた。
+           ⚠ HUD は第1層＋1 つに絞るが、**パネルは 3 層とも出す**。 -->
+      <div id="landAll"></div>
     </div>
     <div class="sec s-prov"><div class="label">いま画面に出ているもの</div><div id="prov"></div></div>
     <div class="sec"><div class="label">内訳</div><div id="breakdown"></div></div>
