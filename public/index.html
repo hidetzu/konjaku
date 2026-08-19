@@ -1038,6 +1038,44 @@ const GSI=Konjaku.GSI, Z=16;
 // ⚠ 読み上げの文には通さない。あれは HTML ではない。
 const {esc,escUrl}=KonjakuEsc;
 
+// ============================================================
+// 言葉を決めるところ。⚠ **HTML の中で言葉を分岐させない。**
+//
+// 実測（2026-08-19）: HTML を組み立てるテンプレートの中に「言葉の判断」が
+//   このファイルに 7 個 埋まっていた（peel3d.js の 9 個は先に外へ出した）。
+//   ⚠ 文言を直すとき markup を触ることになり、検査も字面でしか追えない。
+// ⚠ **地図も DOM も見ない。**検査がこの塊だけを取り出して回せる。
+//   ⚠ peel3d.js の WORD と同じ考え方。持ち主が違うので分けている
+//     （あちらは /peel の答えと出どころ、こちらはトップの根拠カードと導線）。
+// ============================================================
+const TOPWORD = {
+  // 数えた枠が、地図の端で切れたか。⚠ 切れたら必ず言う（割合の分母が変わる）
+  clipped: (isClipped) => isClipped ? "／端なので枠が切れています" : "",
+  // その事物が、いまはもう無いか
+  gone: (isGone) => isGone ? "（無くなった）" : "",
+  // ⚠ **取得方法の呼び名。**掟の語彙なので、ここ 1 か所で決める。
+  //   未取得＝読めなかった／境目＝近傍で答えが割れた／それ以外は実際の取得方法。
+  method: (state, mixed, method) =>
+    state === "unreachable" ? "未取得" : mixed ? "境目" : method,
+  // ⚠ **掟の核心。**正常に記録が無いのと、判定できないのは別。
+  //   ⚠ 「記録なし」は**読めたうえで 0 件**。「判定できません」は**答えを出せない**。
+  meiji: (value, none) => value ?? (none ? "記録なし" : "判定できません"),
+  // 標高。⚠ 負のときだけ言う（0 以上のときに「高い」とは言わない）
+  belowSea: (m) => m < 0 ? "　<span style=\"font-size:var(--fs-note)\">海面より低い</span>" : "",
+  // ⚠ 深掘りの案内。**下地が無い場所でも押せる**（2026-08-18 の方針）ので、
+  //   何ができるかを先に書く。⚠ 「用意できていません」から始めない（CLAUDE.md §4-1）。
+  peelLead: (hasGround) => hasGround === false
+    ? "空中写真を年代で切りかえて、明治期の地面と見くらべる（建物ごとの判定は、対応した場所から順に増やしています）"
+    : "いまの街が、明治期の地面のどこに立っているか",
+};
+// ⚠ 位置情報の許し直し方。**言葉ではなく手順**なので、上とは分けている。
+//   ⚠ 端末で本当に違う操作なので、1 つにまとめない。
+const RELOCATE_HOW = (isIOS) => isIOS
+  ? "Safari：アドレスバー左の <b>ぁあ</b> → <b>Webサイトの設定</b> → 位置情報 を「許可」に。<br>"
+    + "アプリごと切れている場合は、<b>設定 → プライバシーとセキュリティ → 位置情報サービス → Safari</b>。"
+  : "アドレスバーの鍵アイコン（または ⓘ）→ サイトの設定 → 位置情報 を「許可」に。";
+
+
 // 検証ロジックは verify.js に集約している（index / peel で重複していたため）。
 // 事実の抽出・根拠の保持・文章化は、すべてそちらの責任。
 
@@ -1480,7 +1518,7 @@ function areaHTML(){
          「％を地図全体の話だと思って読んだ」と答えた（375px では末尾が「1画…」で
          切れて読めてもいなかった）。⚠ 短く書く。長くすると本命の行を押し下げる -->
     <div class="area-where">白い枠の中（${m.w}×${m.h}m）で数えた割合${
-      a.clipped?"／端なので枠が切れています":""}</div>
+      TOPWORD.clipped(a.clipped)}</div>
     <ul class="area-list">${rows.map((c)=>
       `<li><button type="button" class="area-item" data-cls="${esc(c.name)}"
           aria-expanded="false" title="${esc(c.name)}とは？">${swatch(c.name)}<span class="nm">${esc(c.name)}</span><b>${pct(c.share)}</b></button></li>`).join("")}${
@@ -2326,7 +2364,7 @@ function markFocus(x,i){
   // ⚠ ここは 2026-08-15 に足したときエスケープを忘れていて、一覧に続けてもう 2 回発火していた
   const gone=x.kind==="無くなった";
   if(fx) fx.innerHTML=`<span class="fy">${esc(yearLabel(x))}</span>${esc(x.label)}${
-    gone?"（無くなった）":""}`;
+    TOPWORD.gone(gone)}`;
 }
 
 // 押した結果が「画面に入っている」と言える割合。
@@ -3141,7 +3179,7 @@ async function openPlace(lon,lat,title,opt){
     <div class="card" data-k="${fa.key}">
       <div class="t">${fa.label}<span class="method${
         fa.state === "unreachable" || fa.mixed ? " weak" : ""}">${
-        fa.state === "unreachable" ? "未取得" : fa.mixed ? "境目" : fa.method}</span></div>
+        TOPWORD.method(fa.state, fa.mixed, fa.method)}</span></div>
       ${body}
       ${fa.note ? `<div class="d" style="margin-top:3px">${fa.note}</div>` : ""}
       <div class="ev">${evidenceOf(fa)}${fa.caveat ? `<br>※ ${fa.caveat}` : ""}</div>
@@ -3163,10 +3201,10 @@ async function openPlace(lon,lat,title,opt){
     factCard(lf, lfBody) +
     factCard(m, m.state === "unreachable" ? unread
       : `<div class="v ${m.water ? "w" : m.ok ? "" : "warn"}">${
-        m.value ?? (m.none ? "記録なし" : "判定できません")}</div>`) +
+        TOPWORD.meiji(m.value, m.none)}</div>`) +
     (el.ok
       ? factCard(el, `<div class="v ${el.value < 0 ? "w" : ""}">${el.value.toFixed(2)} m${
-          el.value < 0 ? "　<span style=\"font-size:var(--fs-note)\">海面より低い</span>" : ""}</div>`)
+          TOPWORD.belowSea(el.value)}</div>`)
       : factCard(el, el.state === "unreachable" ? unread : `<div class="v warn">—</div>`)) +
     // ⚠ 「残っている空中写真」の根拠カードは出さない。
     //   根拠パネルは「その主張が、どのデータのどの画素から出たか」を見せる場所で、
@@ -3178,9 +3216,7 @@ async function openPlace(lon,lat,title,opt){
     //   片方だけ断ると、一覧と根拠カードで言うことが変わる。
     `<a class="card" href="./peel?q=${enc}&ll=${ll}${eraParam()}"><span class="arrow">→</span>
       <div class="t">この場所を深掘り</div>
-      <div class="d">${KonjakuGround.hasSync(current?.lon,current?.lat)===false
-        ? "空中写真を年代で切りかえて、明治期の地面と見くらべる（建物ごとの判定は、対応した場所から順に増やしています）"
-        : "いまの街が、明治期の地面のどこに立っているか"}</div></a>`;
+      <div class="d">${TOPWORD.peelLead(KonjakuGround.hasSync(current?.lon,current?.lat))}</div></a>`;
   // 再試行はカード側にも置く。根拠を開いた人がそこで詰まらないように。
   own.querySelectorAll(".retry").forEach((b)=>{
     b.onclick=()=>{ const c=current; if(c) openPlace(c.lon,c.lat,c.title); };
@@ -3275,10 +3311,7 @@ function hereDenied(){
   hereMsg.innerHTML=`
     <b>位置情報が拒否されています。</b>ブラウザは一度断られると再度尋ねないため、
     設定から許可し直す必要があります。<br>
-    ${ios
-      ? "Safari：アドレスバー左の <b>ぁあ</b> → <b>Webサイトの設定</b> → 位置情報 を「許可」に。<br>"
-        + "アプリごと切れている場合は、<b>設定 → プライバシーとセキュリティ → 位置情報サービス → Safari</b>。"
-      : "アドレスバーの鍵アイコン（または ⓘ）→ サイトの設定 → 位置情報 を「許可」に。"}
+    ${RELOCATE_HOW(ios)}
     <br><span class="dim">許可しなくても、<b>地名を入力すれば同じことが調べられます。</b></span>`;
   hereMsg.style.display="";
 }
