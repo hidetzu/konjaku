@@ -11,7 +11,10 @@ import { writeFile } from "node:fs/promises";
 // 豊洲。PLATEAU の LOD2 整備地区でもある（§3.10）
 //
 // ★ 別の地点を足すとき: NAME と BBOX を書き換えて実行し、
-//    出来た GeoJSON を public/data/areas.json に1件足す（peel.html が索引で引く）。
+//    ⚠ **出来た GeoJSON を足す先だった範囲索引は、2026-08-20 に廃止した。**
+//    ⚠ 豊洲 1 件だけの例外で、⚠ **その 1 つの土地だけが他と違う経路**を通っていた。
+//    ⚠ **いまこの道具の出力を読む画面は無い。**土地を足すのは
+//      `seeds/areas.jsonl` → `npm run ingest:bld` → `npm run export:bld` の道。
 const NAME = "toyosu";
 const BBOX = { s: 35.6480, w: 139.7880, n: 35.6620, e: 139.8060 };
 // 配信するのは public/ だけなので、そこへ直接書く（スクリプトからの相対＝cwd に依存しない）

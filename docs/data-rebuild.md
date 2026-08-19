@@ -46,7 +46,9 @@ node build-water.js
 ```
 
 現在のスクリプトは`toyosu`のBBOXを対象にしています。別の範囲を追加する場合は、
-スクリプトの`NAME`と`BBOX`を変更して実行し、`public/data/areas.json`へ索引を追加します。
+スクリプトの`NAME`と`BBOX`を変更して実行します。
+⚠ **範囲索引（`public/data/areas.json`）は 2026-08-20 に廃止しました。**
+⚠ 土地を足すのは `seeds/areas.jsonl` と `npm run ingest:bld` → `npm run export:bld` の道です。
 この部分は、将来、範囲定義から一括生成できる形へ整理する余地があります。
 
 ### 4. Wikidataの事物を取り込んで配信用タイルを生成する
