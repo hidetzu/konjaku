@@ -64,6 +64,8 @@
     --text-4xl:22px;         /* 数字を出せないときの、ヒーローの代わりの文 */
     --text-hero:38px;
     --text-hero-fit-max:11.5vw;
+    --text-ruler-year:30px;
+    --text-ruler-arrow:20px;
     --text-chevron:17px;
     --text-hero-lg:60px;     /* 画面が狭いときは --text-hero に落とす（下のメディアクエリ） */
 
@@ -87,6 +89,8 @@
          そのぶん地図が減る（実測 2026-08-19・320幅で画面の 82% が箱になっていた）。
        ⚠ 生の値をここ以外に書かない（--text-* と --fs-* の決まり）。 */
     --fs-hero-fit:min(var(--text-hero), var(--text-hero-fit-max));
+    --fs-ruler-year:min(var(--text-ruler-year), 9vw);
+    --fs-ruler-arrow:var(--text-ruler-arrow);
   }
   *{box-sizing:border-box}
   html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);overflow:hidden;
@@ -101,8 +105,13 @@
   /* ⚠ 下の余白は、地図の帰属表示（国土地理院・OpenStreetMap）の場所。実測 24px ＋ 2px。
      ⚠ **負の margin で板を下げて相殺しない。** 一度そうして、板が帰属表示に 12px 食い込んだ
        （2026-08-17）。空けた場所に何かを戻せば、空けた意味が無くなる。 */
+  /* ⚠ **下から伸びる箱は、答えの板を押しのけない。**
+       実測（2026-08-19・320×480）: #hud が #land に 92px 食い込み、「99.6%」の 4 文字しか
+       読めなかった。⚠ 画面が低いほど、いちばん強い実測が消える作りだった。
+     ⚠ 上限を掛けて、超える分は中でスクロールさせる。⚠ **消さない・畳まない。** */
   #hud{position:absolute;left:0;right:0;bottom:0;z-index:12;pointer-events:none;
-    padding:0 26px 26px;display:flex;flex-direction:column;align-items:center;gap:13px}
+    padding:0 26px 26px;display:flex;flex-direction:column;align-items:center;gap:13px;
+    max-height:calc(100dvh - 62px - 112px - 20px);overflow-y:auto;overscroll-behavior:contain}
   /* ============ 土地の答え（常時見える） ============ */
   /* ⚠ 年代（60px）より小さく、但し書き（12px）より大きい。この画面の中心の主張。
      ⚠ **画面の上に置く。** 下の HUD に足すと、板のぶんだけ HUD が上へ伸び、
@@ -111,6 +120,11 @@
        抑えるしかなく、3 行の板では不可能。だから上へ置く。
      ⚠ 右上のズーム操作と重ねない。幅を空けてある（下の right の値）。
      ⚠ 数字だけを置かない。**何の割合か**と**分母**を同じ板に出す（掟: 数字は主張範囲の分母で書く）。 */
+  /* ⚠ 答えの板。**位置は動かさない**（top:62px の固定のまま）。
+       ⚠ 画面が低いときに #hud が食い込む問題は、**下の箱の側で上限を掛けて**直した。
+         ここに上限を足す案も試したが、⚠ **1px も効かなかった**ので入れていない
+         （実測 2026-08-19: #land 側だけでは 75px 食い込む。#hud 側だけで 0px）。
+       ⚠ 効かないコードを残さない。 */
   #land{position:absolute;z-index:11;left:14px;right:76px;top:62px;max-width:520px;
     pointer-events:auto;padding:8px 12px 9px;border-radius:13px;
     border:1px solid rgba(255,255,255,.18);background:rgba(8,12,18,.86);
@@ -152,6 +166,37 @@
        ⚠ それでも入らない幅では字を詰める（読めなくなるより、詰まったほうがまし）。 */
   #era .y{font-size:var(--fs-hero-lg);letter-spacing:.02em;font-weight:200;font-variant-numeric:tabular-nums;
     white-space:nowrap}
+  /* ⚠ ものさし（狭い幅のときだけ出す。既定は隠す） */
+  #ruler{display:none}
+  #ruler .rl-head{display:flex;align-items:center;gap:8px}
+  #ruler .rl-now{flex:1;text-align:center;line-height:1.1}
+  #ruler #rlYear{display:block;font-size:var(--fs-ruler-year);font-weight:200;
+    letter-spacing:.02em;font-variant-numeric:tabular-nums;white-space:nowrap}
+  #ruler #rlSub{display:block;font-size:var(--fs-note);color:#cbd3dc;letter-spacing:.14em}
+  #ruler #rlSub:empty{display:none}
+  /* ⚠ 44×44 を割らない（掟）。記号は小さくても、的は削らない */
+  #rlPrev,#rlNext{flex:none;width:var(--tap);height:var(--tap);border-radius:11px;
+    border:1px solid var(--line);background:rgba(255,255,255,.06);color:var(--ink);
+    font:inherit;font-size:var(--fs-ruler-arrow);line-height:1;cursor:pointer}
+  #rlPrev:disabled,#rlNext:disabled{opacity:.32;cursor:default}
+  #rlPrev:not(:disabled):hover,#rlNext:not(:disabled):hover{background:rgba(255,255,255,.14)}
+  /* 軸。⚠ 行そのものが指の面（44px）。刻みは押せる顔にしない */
+  #rlAxis{display:flex;align-items:center;gap:8px;height:var(--tap);touch-action:none}
+  #ruler .rl-end{flex:none;font-size:var(--fs-note);color:#9aa7b4;white-space:nowrap}
+  #ruler .rl-line{position:relative;flex:1;height:var(--tap);display:flex;align-items:center}
+  #ruler .rl-line::before{content:"";position:absolute;left:0;right:0;height:2px;
+    background:rgba(255,255,255,.22);border-radius:2px}
+  #rlTicks{position:absolute;left:0;right:0;height:14px;pointer-events:none}
+  #rlTicks i{position:absolute;top:0;width:2px;height:9px;margin-left:-1px;
+    background:rgba(255,255,255,.34);border-radius:1px}
+  /* ⚠ 明治期は写真ではない。刻みの形を変えて、仕切りを入れる */
+  #rlTicks i.rl-meiji{width:9px;height:9px;margin-left:-4px;border-radius:2px;
+    transform:rotate(45deg);background:#8fc6f5}
+  #rlTicks i.rl-cut{width:1px;height:16px;top:-3px;background:rgba(255,255,255,.5)}
+  #rlKnob{position:absolute;width:16px;height:16px;margin-left:-8px;border-radius:50%;
+    background:#eef3f8;box-shadow:0 2px 8px rgba(0,0,0,.5);pointer-events:none}
+  #rlNote{margin-top:5px;font-size:var(--fs-note);color:#9aa7b4;text-align:center;line-height:1.4}
+  #rlNote:empty{display:none}
   #era .s{display:block;margin-top:7px;font-size:var(--fs-note);letter-spacing:.16em;color:#cbd3dc}
   /* ⚠ 接続の話は、写真の話と**別の行**に置く。混ぜるとどちらが事実か読めなくなる。
      ⚠ 既存の .hint とは別物（あちらは根拠パネルの注記）。名前を分けている。 */
@@ -509,7 +554,31 @@
        ⚠ 字の大きさを幅に合わせて縮める。**箱の幅に収まる範囲でいちばん大きく**する。 */
     #era .y{font-size:var(--fs-hero-fit)}#hud{padding:0 12px 26px;gap:9px}
     #era{padding:7px 10px 9px}
-    .era-panel-head{min-height:60px}
+    /* ⚠ **狭い幅は「ものさし」に差し替える。**ドラムと横棒・▶・見出し行は出さない。
+         実測（2026-08-19）: ドラムでは 9 段のうち画面に入るのが 320 幅で **1 個**だけで、
+         「明治期」は x=849 と画面の外。⚠ どこまで遡れるかが**構造として**見えていなかった。
+       ⚠ 捨てたもの: 年号の直タップ・▶ の常設・見出し行（44px）。
+         代わりに ＜＞（44×44）と、軸そのもののドラッグで動かす。
+       ⚠ PC は今のまま（横棒）。**置き方を PC / スマホで分ける**という既存の判断を守る。 */
+    #ruler{display:block}
+    /* ⚠ **display:none で消す。**visibility や幅 0 では、**キーボードで到達できてしまう**。
+         実測（2026-08-19・320幅）: 隠したはずの #timeToggle / #play / #t とドラムの
+         ボタン 9 個に、⚠ **見えないまま焦点が当たった**（掟: 押しても何も起きない導線を置かない）。
+       ⚠ しかも #timeToggle は aria-expanded="true" のまま残っていた。
+         読み上げには「開いている折りたたみ」があるように聞こえる。
+       ⚠ display:none なら、焦点も読み上げも同時に外れる。 */
+    #timePanel .time-panel-head,#bar{display:none}
+    #timePanelBody{padding-top:0}
+    /* ⚠ **年を 2 か所に出さない。**（掟: 同じ問いに答える実装を 2 つ持たない）
+         ものさしが年を答えるので、年代の箱の大字は狭い幅では出さない。
+         ⚠ 年代の箱に残すのは「いま何の写真か（陸軍撮影）」と、届いていないときの名乗り。
+       ⚠ 実測（2026-08-19・320幅）: これで #era は 191 → 78px になる。 */
+    #era .y{display:none}
+    #era .era-readout{min-width:0;padding:0 52px}
+
+    /* ⚠ 60px は、年の大字（38px）＋説明（12px）を縦に積んでいたころの下限。
+         狭い幅では年をものさしへ移したので、⚠ **下限は押せる大きさ（44px）でよい**。 */
+    .era-panel-head{min-height:var(--tap)}
     #era .era-readout{min-width:128px;padding:0 68px}
     #era.collapsed{padding:0 5px 0 10px}
     #era.collapsed .era-readout{min-width:0;padding:0}
@@ -780,6 +849,31 @@
            ⚠ この節は畳める（#timePanel.collapsed）。畳んだ人には見えなくなるが、
              初期状態は開いている（peel3d.js の timePanelOpen=true）。実描画で見ている。 -->
       <div id="stateMiss" hidden></div>
+      <!-- ⚠ **狭い幅の年代は「ものさし」**（2026-08-19）。ドラムをやめ、
+           その地点の全段を 1 本の軸に**常時**描く。
+           ⚠ 直したかったのは「どこまで遡れるか分からない」ほう。実測（2026-08-19）:
+             9 段のうち画面に入っていたのは 375 幅で 2 個・320 幅で **1 個**だけで、
+             「明治期」は x=877／x=849 と**画面の外**にあった。
+             利用者役「せいぜい昭和の終わりまでかな、と思いました」。
+           ⚠ **軸の右端はその地点の最終段**であって「明治期」固定ではない
+             （明治期のデータが無い土地がある。24 地点で 7/24）。
+           ⚠ **刻みは的にしない。**320 幅・9 段で 1 段 26.5px しかなく、44px を割る。
+             動かすのは ＜＞（44×44）と、軸そのもののドラッグ。
+           ⚠ **明治期は写真ではない**（低湿地データ）。仕切りで種類の違いを見せる。
+             ⚠ 「写真はありません」から書かない（できることから書く。CLAUDE.md §4-1）。 -->
+      <div id="ruler" hidden>
+        <div class="rl-head">
+          <button id="rlPrev" type="button" aria-label="1 つ新しい年代へ">‹</button>
+          <div class="rl-now"><strong id="rlYear">現在</strong><span id="rlSub"></span></div>
+          <button id="rlNext" type="button" aria-label="1 つ古い年代へ">›</button>
+        </div>
+        <div id="rlAxis" role="group" aria-label="年代のものさし">
+          <span class="rl-end rl-l" id="rlLeft">現在</span>
+          <div class="rl-line"><div id="rlTicks"></div><div id="rlKnob"></div></div>
+          <span class="rl-end rl-r" id="rlRight">明治期</span>
+        </div>
+        <div id="rlNote"></div>
+      </div>
       <div id="bar">
         <!-- ⚠ **狭い幅は横ドラムロール**（2026-08-18）。段を横に並べ、指で回して真ん中で選ぶ。
              ⚠ 横棒は「1 段 27.6px（320）＝ 指の 63%」で、指の精度勝負になっていた。
