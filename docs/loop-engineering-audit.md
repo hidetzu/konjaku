@@ -72,16 +72,23 @@ AI へ渡す様式をここへ混ぜると、**外から報告する人の負担
 | `npm run check-search`（`scripts/search-check.mjs`） | 42 語を 1.5 秒あけて叩く。⚠ 待機だけで約 63 秒 | **KEEP** |
 | `.github/workflows/check.yml` | 2 ジョブ。⚠ 端数の切り上げを避けて束ねてある | **KEEP** |
 | ⚠ **件数が SPEC とずれても気づけない** | ⚠ **直した**（2026-08-19） | **IMPROVE 済** |
-| ⚠ **Inner Loop（速く回す部分集合）** | ⚠ **すでにある**（`--only=` と `--group=`） | **KEEP** |
+| ⚠ **Inner Loop（速く回す部分集合）** | ⚠ **すでにある**（`--only=` ／ `--group=` ／ `--offline`） | **KEEP** |
+| ⚠ **どれをどの順で回すかの決め方** | ⚠ **足した**（`.claude/skills/verify`） | **IMPROVE 済** |
 
 ⚠ **Verify は、すでに Loop から呼べる形になっている。**新しい入口を作る必要はない。
+⚠ **`.claude/skills/verify` は入口を作っていない。**どれをどの順で回し、
+落ちたときにこちらの不具合か外部かをどう切り分けるかを決めるだけ
+（⚠ 実測 2026-08-19: `scripts/` の差分 **0 件**で足した）。
 
 ```
-速い     node scripts/check.mjs                     8 秒・外へ出ない
-少し遅い node scripts/render.mjs --only=<部分一致>   変えたところだけ
-遅い     node scripts/render.mjs --group=core        117 件・外へ検索に出ない
-最後     npm run check / render / check-search       全部
+速い     npm run check                              実測 3 秒・外へ出ない
+少し遅い npm run render -- --only=<部分一致>         実測 9 秒（3 件のとき）
+遅い     npm run render -- --group=core             120 件・外へ検索に出ない
+最後     npm run check / render / check-search      全部
 ```
+
+⚠ **`node scripts/search-check.mjs --offline` もある**（`.artifacts/search-cache`・42 語ぶん）。
+⚠ **キャッシュは撮った日の応答**なので、これで「検索の並びを確認済み」と言わない。
 
 ⚠ **`npm run render --group=core` と書くと npm が引数を飲み、黙って全群が走る。**
 `--` を挟む（`CLAUDE.md` §9 に記載）。
