@@ -194,7 +194,6 @@
   #list.w .it.own{border-color:rgba(91,163,224,.32);background:rgba(91,163,224,.06)}
   .tag.own{background:rgba(126,224,165,.14);color:var(--evidence)}
   .tag.ext{background:rgba(255,255,255,.07);color:var(--ink-dim)}
-  .tag.priv{background:rgba(111,195,255,.14);color:var(--action)}
   /* 判定バッジから導かれた行であることを色で繋ぐ（陸=.badge.land / 水域=.badge.water と同じ） */
   .tag.why{background:var(--why-bg);color:var(--why)}
   /* 判定カードと、そこから出た行を1枚に溶接する。
@@ -1026,6 +1025,7 @@
 <!-- 外部から来た文字列（Wikidata のラベル・地理院の地名・OSM のタグ）を
      HTML として実行させないための1か所。⚠ ほかより先に読む（下のインラインが使う） -->
 <script src="./esc.js"></script>
+  <script src="./words.js"></script>
 <!-- ⚠ verify.js / peel3d.js より**先に**読む。明治期の 14 区分と 1 画素の分類は
      ここが唯一の定義で、あとの2つはこれを借りている（掟6: 同じ問いに答える実装を2つ持たない）。 -->
 <script src="./swale.js"></script>
@@ -1065,8 +1065,9 @@ const TOPWORD = {
   method: (state, mixed, method) =>
     state === "unreachable" ? "未取得" : mixed ? "境目" : method,
   // ⚠ **掟の核心。**正常に記録が無いのと、判定できないのは別。
-  //   ⚠ 「記録なし」は**読めたうえで 0 件**。「判定できません」は**答えを出せない**。
-  meiji: (value, none) => value ?? (none ? "記録なし" : "判定できません"),
+  //   ⚠ **字は words.js が持つ**（2026-08-20）。以前はここと verify.js と share.js が
+  //     同じ字を別々に書いていて、片方だけ直せば**同じ状態に 2 通りの言い方**ができた。
+  meiji: (value, none) => KonjakuWords.meiji(value, none),
   // 標高。⚠ 負のときだけ言う（0 以上のときに「高い」とは言わない）
   belowSea: (m) => m < 0 ? "　<span style=\"font-size:var(--fs-note)\">海面より低い</span>" : "",
   // ⚠ 深掘りの案内。**下地が無い場所でも押せる**（2026-08-18 の方針）ので、
@@ -2269,7 +2270,9 @@ function renderEvents(){
   const span=base ? `${nowSel?"いま":`${year}年`}まで`
     : `${frames[eraIdx-1].label} → ${nowSel?"いま":frames[eraIdx].label}`;
   if(!hit.length){
-    el.innerHTML=`<div class="ev-note">${span}のあいだに、記録のある変化はありません${
+    // ⚠ **「変化が無かった」と読ませない**（2026-08-20）。⚠ こちらが持っている
+    //   記録の話であって、⚠ **現実に何も起きなかったという意味ではない**（掟の一行目）。
+    el.innerHTML=`<div class="ev-note">${span}のあいだに、この期間に表示できる変化の記録は見つかっていません${
       all.length?`（この範囲の記録は ${all.length} 件）`:""}。</div>`;
     evShown=[]; renderPins([]); placeMarkers(); return; }
   el.innerHTML=`<div class="ev-h">${base
@@ -2889,7 +2892,9 @@ const scopeEl=document.getElementById("scope"), chipName=document.getElementById
 let mode="place", items=[], sel=-1, timer=null;
 
 // タグの文言。行き先ではなく「なぜここに出ているのか」を書く
-const TAG_LABEL={own:"根拠あり",priv:"自分",why:"この土地から",ext:"外部↗"};
+// ⚠ **一覧行のタグの字は words.js が持つ**（2026-08-20）。ここには写さない。
+//   ⚠ `priv`（「自分」）は同じときに消した。⚠ **`tag:"priv"` を付ける場所が
+//     どこにも無く、画面に出ようがない語**だった。
 
 function renderList(){
   // 判定カードと、そこから出た行を1枚に見せる（利用者の指摘: 深掘りが別ゾーンだと迷う）。
@@ -2914,7 +2919,7 @@ function renderList(){
     const tag=it.tag, sub=it.sub, ext=it.href&&it.href.startsWith("http");
     const inner=`<span class="ic">${esc(it.ic??"📍")}</span>
       <span class="tx"><b>${esc(it.label)}</b>${sub?`<small>${esc(sub)}</small>`:""}</span>
-      ${tag?`<span class="tag ${esc(tag)}">${TAG_LABEL[tag]??"外部↗"}</span>`:""}`;
+      ${tag?`<span class="tag ${esc(tag)}">${KonjakuWords.tag(tag)}</span>`:""}`;
     const cls=`it${i===sel?" sel":""}${tag==="why"?" why":""}${tag==="own"?" own":""}`
       +(i<weld?` fh${i===weld-1?" fh-last":""}`:"");
     return it.href
@@ -3233,7 +3238,7 @@ async function openPlace(lon,lat,title,opt){
           lf.value}${lf.artificial ? `　<span style="font-size:var(--fs-note)">＋ ${lf.artificial}</span>` : ""}</div>`
         + (lf.why ? `<div class="d" style="margin-top:3px">${lf.why}</div>` : "")
         + (lf.risk ? `<div class="d" style="margin-top:3px">災害リスク: ${lf.risk}</div>` : "")
-      : `<div class="v warn">判定できません</div>`;
+      : `<div class="v warn">${KonjakuWords.S.cantTell}</div>`;
   own.innerHTML =
     factCard(lf, lfBody) +
     factCard(m, m.state === "unreachable" ? unread
