@@ -237,8 +237,8 @@ Acceptance Criteria が「適切に」「見やすく」で書かれている
 Out of Scope が無い
 ```
 
-⚠ **`ready-for-ai` が付いていても、merge の許可は別に取る。**
-⚠ `git push` は §8 のとおり毎回取る（⚠ **Loop Controller 経由の 1 件だけが例外**）。
+⚠ **`ready-for-ai` が付いていても、`git push` と merge の許可は §8 のとおり毎回取る。**
+⚠ **Loop Controller 経由で、開始時に承認を得た 1 件だけが例外**（§8）。
 ⚠ **CI が緑でも「仕様が正しい」ではない。**とくに fork からの PR は
 実描画・検索・外部リンクが走っていない（§2）。
 
@@ -249,9 +249,11 @@ Out of Scope が無い
 - コミットは Conventional Commits（`<type>(<scope>): <subject>`）
 - **`git push` は、そのつど許可を取る。** 前に許可をもらっていても、次は取り直す
   - ⚠ **例外は 1 つだけ。**Loop Controller 経由で、**開始時に Owner の承認を得た Issue 1 件**に限り、
-    その Issue のブランチへの push と PR 作成までを承認済みとして扱う
-    （`.claude/skills/loop-controller/SKILL.md`）。
-    ⚠ **merge は含まない。**⚠ **Skill を単体で使うときは、いままでどおり毎回取る**
+    その Issue のブランチへの push・PR 作成・**CI が全部緑になったあとの merge**までを
+    承認済みとして扱う（`.claude/skills/loop-controller/SKILL.md`）。
+    ⚠ **自動 merge（`--auto`）と、保護を飛び越える merge（`--admin`）は含まない。**
+    ⚠ **CI が赤・途中のまま merge しない。**
+    ⚠ **Skill を単体で使うときは、いままでどおり毎回取る**
 - `git add -A` で他の作業を巻き込まない。**変更を出した理由ごとにコミットを分ける**
   （過去に、別セッションの文書をバグ修正のコミットに巻き込んでいる）
 - `main` に直接コミットしない。ブランチを切る
