@@ -513,11 +513,8 @@ function pickCard(p){
   const name=p.name?`<div class="name">${esc(p.name)}</div>`:"";
   return `<div class="card">${name}
     <div class="v ${cls}">${land}</div>
-    <div class="meta"><div>高さ <b>${esc(p.height)}m</b> ─ ${
-      src==="default"?`種別「${esc(p.kind)}」の既定値（OSM に高さの記載なし）`
-      :src==="levels"?"OSM の階数から換算（1階を3.2mとして計算）"
-      :"OSM の height タグ"}</div>
-    <div>${made?`建設年 <b>${esc(made)}</b>`:"建設年 <b>不明</b>（OSM に記載なし）"}</div></div></div>`;
+    <div class="meta"><div>高さ <b>${esc(p.height)}m</b> ─ ${WORD.heightSrc(src, esc(p.kind))}</div>
+    <div>${WORD.builtYear(made ? esc(made) : "")}</div></div></div>`;
 }
 // 読み上げ。⚠ 画面に出ている文だけを読む。作文を混ぜない（トップの 🔊 と同じ掟）
 function pickSpeech(p){
@@ -725,7 +722,7 @@ async function loadArea(lon,lat,title,opt){
       <span style="color:var(--ink-dim)">空中写真の年代送りは使えます。</span>`;
   } else {
     statusEl.innerHTML=`<span style="color:var(--ink-dim)">水域 ${w.rects} 面${
-      w.pre?"（事前計算データ）":""}を判定しました。</span>`;
+      WORD.waterPre(w.pre)}を判定しました。</span>`;
   }
   // 建物を待たずに、いま言えることだけで一度出す。
   // 判定できない土地では「判定できません」がここで出る。以前はここで初期値の
@@ -894,9 +891,9 @@ async function loadArea(lon,lat,title,opt){
   //   言えるのは **OSM に登録された建物が 0 件**であることまで（掟: データにない ≠ 現実にない）。
   statusEl.innerHTML=`<span style="color:var(--ink-dim)">${waterRead?`水域 ${w.rects} 面 ／ `:""}${
     area.total===0
-      ? `この範囲に、<b>OSM に登録された建物は 0 件</b>です${viaPre?"（事前に取り込んだデータ）":""}。`
+      ? `この範囲に、<b>OSM に登録された建物は 0 件</b>です${WORD.bldPre(viaPre)}。`
         + `水域と空中写真で表示しています。`
-      : `建物 ${area.total} 件を判定しました${viaPre?"（事前に取り込んだデータ）":""}。`}</span>${
+      : `建物 ${area.total} 件を判定しました${WORD.bldPre(viaPre)}。`}</span>${
       blAt?`<span style="color:var(--ink-dim)"> 建物を取り込んだのは ${blAt}。</span>`:""}${
       blTrunc?`<span class="err"> この範囲は建物が多く、取りきれていない可能性があります。</span>`:""}`;
   if(!waterRead) statusEl.innerHTML = (waterUnread
@@ -921,6 +918,51 @@ async function loadLandform(lon,lat,seq){
   if(seq!==areaSeq) return;
   showResult();
 }
+// ============================================================
+// 言葉を決めるところ。⚠ **HTML の中で言葉を分岐させない。**
+//
+// 実測（2026-08-19）: HTML を組み立てるテンプレートの中に「言葉の判断」が
+//   index.html に 7 個・peel3d.js に 9 個 埋まっていた。
+//   ⚠ うち 2 つは**同じ判断を 2 か所・3 か所**に書いていた
+//     （「（事前に取り込んだデータ）」×2、「建物ごとには出せません／判定できません」×3）。
+//   ⚠ 文言を直すとき markup を触ることになり、検査も字面でしか追えない。
+//
+// ⚠ ここは prov.js（台帳の語彙）と同じ考え方だが、**持ち主が違う**ので分けている。
+//   あちらは「いま画面に出ているものの出所」、こちらは「答えと出どころの呼び名」。
+// ⚠ **地図も DOM も見ない。**検査がこの塊だけを取り出して回せる。
+// ============================================================
+const WORD = {
+  // 建物の高さを、どこから得たか。⚠ 3 通りを 1 か所で決める
+  heightSrc: (src, kind) =>
+    src === "default" ? `種別「${kind}」の既定値（OSM に高さの記載なし）`
+    : src === "levels" ? "OSM の階数から換算（1階を3.2mとして計算）"
+    : "OSM の height タグ",
+  // 建設年。⚠ 「不明」と「記載なし」を混ぜない（無いのは OSM の記載であって、建物の年ではない）
+  builtYear: (made) => made ? `建設年 <b>${made}</b>` : "建設年 <b>不明</b>（OSM に記載なし）",
+  // 水域を、その場で起こしたか・事前に計算してあったか
+  waterPre: (isPre) => isPre ? "（事前計算データ）" : "",
+  // ⚠ 建物を、実行時に問い合わせたか・事前に取り込んであったか（2 か所で使う）
+  bldPre: (viaPre) => viaPre ? "（事前に取り込んだデータ）" : "",
+  // 地形分類の精度。⚠ 粗いときは**必ず**そう書く（詳細版が無い土地がある）
+  precision: (fine) => fine ? "" : "（広い区分）",
+  // ⚠ **掟の核心。**読めなかったのか、本当に無いのか（取れなかった ≠ 無い）
+  meijiGap: (unread) => unread ? "読み込めていない" : "無い",
+  // 建物が 1 件も出ないとき、その理由を書き分ける。
+  // ⚠ **4 つを混ぜない。**以前は 2 状態しか無く、正常に 0 件だった土地に
+  //   「建物を取得中…」が出続けていた（ステータスは「0 件を判定しました」と言っているのに、
+  //   ここは待っている顔をしていた）。
+  // ⚠ 文言は prov.js の NOTYET を借りる（同じ事実に 2 通りの言い方を作らない）。
+  noBuildings: (bldState) =>
+    bldState === "loading" ? "建物を取得中…"
+    : bldState === "ok"    ? "OSM に登録された建物は 0 件です"
+    : bldState === "notyet" ? `${KonjakuProv.NOTYET}（通信の問題ではありません）`
+                            : "建物データを取得できませんでした（上の再試行から取り直せます）",
+  // ⚠ 答えを出せないときの見出し（3 か所で使う）。
+  //   地形分類が受け皿として答えられるなら「建物ごとには」と範囲を限る。
+  //   受け皿も無いなら「判定できません」。⚠ **どちらも数値を作らない**（0% を出さない）。
+  cantSay: (hasLandform) => hasLandform ? "建物ごとには出せません" : "判定できません",
+};
+
 // 見出しに使う1行。粗い区分しか無いときは、そう書く
 function landformLine(){
   const l=landform;
@@ -928,7 +970,7 @@ function landformLine(){
   if(l.state==="unreachable") return `<span style="opacity:.7">地形分類も、いま読み込めませんでした</span>`;
   if(!l.ok) return "";
   const art=l.artificial?`／いまは <b>${l.artificial}</b>`:"";
-  return `この土地は <b>${l.value}</b>${art}${l.fine?"":"（広い区分）"}`;
+  return `この土地は <b>${l.value}</b>${art}${WORD.precision(l.fine)}`;
 }
 
 // ============================================================
@@ -1019,7 +1061,7 @@ function renderLand(v){
     return;
   }
   // 判定できない。⚠ 数値を作らない（0% は出さない）。何が分からないのかを書く
-  const head=v.lf?"建物ごとには出せません":"判定できません";
+  const head=WORD.cantSay(!!v.lf);
   const why=v.unread
     ? `明治期の低湿地データを<b>読み込めませんでした</b>`
     : `明治期の低湿地データは<b>整備対象外</b>です`;
@@ -1058,12 +1100,12 @@ function showResult(){
            <span style="opacity:.7">${v.total}件すべての足元を1件ずつ判定した実測値</span>`
         : `の建物が、明治期には<b>水の上</b>だった<br>
            <span style="opacity:.7">足元を判定できた ${v.classified} / ${v.total} 件のうちの実測値
-           （残りは明治期のデータが${v.unread?"読み込めていない":"無い"}）</span>`;
+           （残りは明治期のデータが${WORD.meijiGap(v.unread)}）</span>`;
     }
   } else if(v.kind==="none"&&v.scope==="building"){
     // 建物ごとの割合は出せない。だが土地そのものには地形分類が答えられる。
     // 出せないものと、出せるものを、混ぜずに並べる
-    heroEl.innerHTML=`<span class="hero-alt">${v.lf?"建物ごとには出せません":"判定できません"}</span>`;
+    heroEl.innerHTML=`<span class="hero-alt">${WORD.cantSay(!!v.lf)}</span>`;
     capEl.innerHTML = (v.lf?`${v.lf}<br>`:"") + (v.unread
       ? `明治期の低湿地データを<b>読み込めませんでした</b><br>
          <span style="opacity:.7">建物 ${v.total} 件は出ていますが、足元は1件も判定できていません</span>`
@@ -1078,7 +1120,7 @@ function showResult(){
     heroEl.innerHTML=`<span class="hero-alt">水域なし</span>`;
     capEl.innerHTML=`この範囲は、明治期の低湿地データで<b>水域に該当しません</b>`;
   } else {
-    heroEl.innerHTML=`<span class="hero-alt">${v.lf?"建物ごとには出せません":"判定できません"}</span>`;
+    heroEl.innerHTML=`<span class="hero-alt">${WORD.cantSay(!!v.lf)}</span>`;
     capEl.innerHTML = (v.lf?`${v.lf}<br>`:"") + (v.unread
       ? `明治期の低湿地データを<b>読み込めませんでした</b><br>
          <span style="opacity:.7">通信を確認して、もう一度お試しください</span>`
@@ -1098,11 +1140,7 @@ function showResult(){
     // ⚠ 取得中・正常に0件・取得失敗を書き分ける。
     //   以前は2状態しか無く、**正常に0件だった土地に「建物を取得中…」**が出続けていた
     //   （ステータスは「0 件を判定しました」と言っているのに、ここは待っている顔をしていた）。
-    : `<div class="hint">${
-        area.bldState==="loading" ? "建物を取得中…"
-        : area.bldState==="ok"    ? "OSM に登録された建物は 0 件です"
-        : area.bldState==="notyet"? `${KonjakuProv.NOTYET}（通信の問題ではありません）`
-                                  : "建物データを取得できませんでした（上の再試行から取り直せます）"}</div>`;
+    : `<div class="hint">${WORD.noBuildings(area.bldState)}</div>`;
 }
 
 // ============================================================
