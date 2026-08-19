@@ -622,7 +622,7 @@ async function setTimeline(lon,lat,seq){
   //   「確かめられなかった」を「無い」に変えてはいけない
   steps=failed?allSteps():stepsFrom(ph);
   timelineReady=true;
-  buildTicks();
+  buildTicks(); buildRuler();
   // ⚠ 段が確定してから当てる。ここで初めて「この土地にその年代は無い」と言える
   resolveWantEra(true);
   syncUrl();
@@ -674,7 +674,7 @@ async function loadArea(lon,lat,title,opt){
   // ⚠ 段が決まるまでは「現在」だけを出す（timelineReady=false）。
   //   前の場所の段のまま描くと、この地点に存在しない年代のタイルを取りに行く。
   timelineReady=false;
-  steps=allSteps(); buildTicks();
+  steps=allSteps(); buildTicks(); buildRuler();
   slider.value="0";
   // ⚠ 段が確定する前に、いったん仮で当てる。判定（最悪 8 秒）を待つあいだ
   //   「現在」を見せてから飛ぶと、共有先では**一度戻されたように見える**。
@@ -734,7 +734,7 @@ async function loadArea(lon,lat,title,opt){
     total:0, wet:0, classified:0, unread:0, counts:{}, dated:0,
     waterRatio:w.ratio, waterRead, waterUnread,
     landSummary:summarizeLand(w.classCounts,w.classifiedPixels), buildingLand:null };
-  showResult(); render();
+  showResult(); render(); buildRuler();
 
   // --- 2. 建物 ---
   // 事前計算データがある範囲では Overpass を叩かない。
@@ -905,7 +905,7 @@ async function loadArea(lon,lat,title,opt){
   if(area.unread) statusEl.innerHTML+=`<div class="err" style="margin-top:5px">
     ${area.unread} 件は明治期のデータを読み込めませんでした。 ${retryBtn(lon,lat,title)}</div>`;
   wireRetry(lon,lat,title);
-  showResult(); render();
+  showResult(); render(); buildRuler();
 }
 
 // ---- この土地の成り立ち（掟: 主題は「成り立ち」。明治期は手法のひとつ）----
@@ -1132,6 +1132,10 @@ const toggle=document.getElementById("toggle");
 //   ⚠ PC / スマホで見せ方を分けるときは、まずこの 1 か所から分岐する。
 const NARROW_Q="(max-width:680px)";
 const narrow=()=>matchMedia(NARROW_Q).matches;
+// ⚠ 幅が変わったら、閉じている側を入れ替える（画面回転・折りたたみ端末で起きる）
+matchMedia(NARROW_Q).addEventListener("change",()=>{
+  if(typeof buildRuler==="function") buildRuler();
+});
 
 // ============ 共有された状態を、URL に載せる／URL から戻す ============
 // ⚠ 年代はコマ番号ではなく**安定したレイヤID**で書く。段は地点ごとに間引かれるので
@@ -1216,6 +1220,136 @@ function resolveWantEra(final){
 // ⚠ 目盛りは**地点ごとに引き直す**。段の数が場所によって変わるため
 //   （豊洲 9 段 / 広島 7 段 / 長崎 出島 4 段）。スライダーの上限も一緒に動かす。
 //   ⚠ .rail / .fill / .knob / <input> は消さない。消すと操作できなくなる。
+// ============================================================
+// 狭い幅の「ものさし」。⚠ **その地点の全段を 1 本の軸に常時描く。**
+//   直したかったのは「どこまで遡れるか分からない」ほう。実測（2026-08-19）:
+//   9 段のうち画面に入っていたのは 375 幅で 2 個・320 幅で 1 個だけだった。
+// ⚠ **右端はその地点の最終段。**「明治期」固定ではない（明治期データは 24 地点で 7/24）。
+// ⚠ **明治期は写真ではない**（低湿地データ）。刻みの形を変え、手前に仕切りを置く。
+// ⚠ **刻みは的にしない。**320 幅・9 段で 1 段 26.5px しかなく、44px を割る（掟）。
+// ============================================================
+const rulerEl=document.getElementById("ruler");
+const rlYear=document.getElementById("rlYear"), rlSub=document.getElementById("rlSub");
+const rlLeft=document.getElementById("rlLeft"), rlRight=document.getElementById("rlRight");
+const rlTicks=document.getElementById("rlTicks"), rlKnob=document.getElementById("rlKnob");
+const rlLine=document.querySelector("#ruler .rl-line");
+const rlPrev=document.getElementById("rlPrev"), rlNext=document.getElementById("rlNext");
+const rlNote=document.getElementById("rlNote");
+
+// 段 k が軸のどこか（0..1）。⚠ 段の数が地点で変わるので、必ず steps から出す
+const rlAt=(k)=>steps.length<2?0:k/(steps.length-1);
+
+// ⚠ 狭い幅では、ものさし以外の操作部品を**到達できない**ようにする。
+//   display:none の親に入っていても、実装が変われば漏れる。⚠ **要素側でも閉じる。**
+//   実測（2026-08-19・320幅）: #timeToggle / #play / #t とドラムのボタン 9 個に
+//   ⚠ 見えないまま焦点が当たっていた（掟: 押しても何も起きない導線を置かない）。
+function sealOldControls(){
+  const narrowNow=narrow();
+  // ⚠ **幅ごとに、使わない側を閉じる。**片方だけ閉じると、もう片方で漏れる。
+  //   ⚠ ドラムは**狭い幅の道具**なので、広い幅で閉じる。横棒・▶ はその逆。
+  //   ⚠ **これは main からある漏れでもある**（実測 2026-08-19・PC でドラムのボタン 9 個に
+  //     見えないまま焦点が当たっていた）。ものさしを入れるついでに、両側とも閉じる。
+  const seal=(el,off)=>{ if(!el) return;
+    // ⚠ inert は中の子まで一括で閉じる（ドラムのボタン 9 個もこれで閉じる）
+    el.inert=off;
+    if(off) el.setAttribute("aria-hidden","true"); else el.removeAttribute("aria-hidden"); };
+  // ⚠ **狭い幅では #bar の中を全部使わない。**ものさしに差し替えたので、ドラムも使わない。
+  //   （ドラムは 2026-08-18 に入れたが、2026-08-19 にものさしへ置き換えた）
+  for(const id of ["timeToggle","play","t","track","drum"]) seal(document.getElementById(id),narrowNow);
+  // ⚠ 広い幅ではドラムを使わない。**これは main からある漏れ**（実測 2026-08-19:
+  //   PC でドラムのボタン 9 個に、見えないまま焦点が当たっていた）。ここで一緒に閉じる。
+  if(!narrowNow) seal(document.getElementById("drum"),true);
+  // ⚠ 隠したまま「開いている」と名乗らせない
+  // ⚠ **timePanelOpen をここで読まない。**この関数は宣言より前に呼ばれる（buildRuler の中）。
+  //   実測 2026-08-19: TDZ で例外になり、**そこから下の初期化が丸ごと止まった**
+  //   （CLAUDE.md の落とし穴。describe() で一度踏んでいる）。
+  //   ⚠ 広い幅の aria-expanded は applyTimePanel が毎回書くので、ここでは触らない。
+  const tt=document.getElementById("timeToggle");
+  if(tt&&narrowNow) tt.removeAttribute("aria-expanded");
+  // ⚠ **逆も閉じる。** PC ではものさしを出していないので、こちらを到達不能にする。
+  //   片側だけ閉じると、広い幅で ‹ › とドラムのボタンに焦点が当たった（実測 2026-08-19）。
+  if(rulerEl){ rulerEl.inert=!narrowNow;
+    if(narrowNow) rulerEl.removeAttribute("aria-hidden"); else rulerEl.setAttribute("aria-hidden","true"); }
+  // ⚠ **根拠を全画面で読んでいるあいだ、地図側の操作は閉じる。**
+  //   実測（2026-08-19・320幅）: パネルが覆っているのに toggle / eraToggle / ‹ › に
+  //   焦点が当たっていた。⚠ 見えないものを押させない（掟）。
+  //   ⚠ 「← 今昔へ」「✕ 地図へ」は帯に出ているので閉じない（戻る手段は常に残す）。
+  // ⚠ **panelOpen を直に読まない。**この関数は宣言より前に呼ばれる（buildRuler の中）。
+  //   ⚠ 2026-08-19 に TDZ で 2 回踏んだ。**クラスから読む**（DOM は初期化順に依らない）。
+  const full=narrowNow&&!panel.classList.contains("hide");
+  for(const id of ["toggle","era","timePanel","land"]){
+    const el=document.getElementById(id);
+    if(el) seal(el,full);
+  }
+}
+
+function buildRuler(){
+  sealOldControls();
+  if(!rulerEl||!rlTicks) return;
+  rlTicks.innerHTML="";
+  steps.forEach((s,k)=>{
+    const i=document.createElement("i");
+    i.style.left=`${rlAt(k)*100}%`;
+    // ⚠ 明治期は写真ではない。形を変える
+    if(s.meiji) i.className="rl-meiji";
+    rlTicks.appendChild(i);
+    // ⚠ 写真の終わりに仕切り。**その手前**に置く（明治期の刻みと重ねない）
+    if(s.meiji&&k>0){
+      const cut=document.createElement("i");
+      cut.className="rl-cut";
+      cut.style.left=`${(rlAt(k)+rlAt(k-1))/2*100}%`;
+      rlTicks.appendChild(cut);
+    }
+  });
+  rlLeft.textContent=steps[0]?.label??"";
+  rlRight.textContent=steps[steps.length-1]?.label??"";
+  // ⚠ **できることから書く。**「写真はありません」で始めない（CLAUDE.md §4-1）
+  const photo=steps.filter((s)=>!s.meiji);
+  const hasMeiji=steps.some((s)=>s.meiji);
+  // ⚠ 1 行に収める。2 行になると 34px 使い、地図が減る（実測 2026-08-19・320幅）。
+  //   ⚠ 端のラベル（現在／明治期）が軸に出ているので、ここで年代を繰り返さない。
+  //   ⚠ **できることから書く。**「写真はありません」で始めない（CLAUDE.md §4-1）。
+  // ⚠ **「明治期は地図」と書けるのは、その土地に低湿地データがあるときだけ。**
+  //   段は整備の有無に関わらず出る（main からの挙動）。⚠ **段があること＝データがある、ではない。**
+  //   実測（2026-08-19・釧路）: 段は出るが、選ぶと「整備対象外です」と言う。
+  //   ⚠ 注記だけが「明治期は地図」と約束してしまうと、軸が嘘をつく。
+  const meijiHas = !area || area.waterRead !== false;
+  rlNote.textContent=photo.length
+    ? `空中写真 ${photo.length} 段`
+      +(hasMeiji ? (meijiHas ? " ／ 明治期は地図" : " ／ 明治期はこの土地では未整備") : "")
+    : "";
+}
+
+function syncRuler(){
+  if(!rulerEl||!rlKnob) return;
+  const pos=Number(slider.value)/100;
+  rlKnob.style.left=`${Math.max(0,Math.min(1,steps.length<2?0:pos/(steps.length-1)))*100}%`;
+  const k=Math.round(pos);
+  const s=steps[Math.max(0,Math.min(steps.length-1,k))];
+  if(s){ rlYear.textContent=s.label; rlSub.textContent=s.meiji?"":(s.sub??""); }
+  rlPrev.disabled=pos<=0.001;
+  rlNext.disabled=pos>=steps.length-1-0.001;
+}
+
+// ⚠ ＜＞ は 1 段ずつ。⚠ 軸のドラッグは連続（じわじわ変わる体験を残す）
+const rlStep=(d)=>{
+  const k=Math.max(0,Math.min(steps.length-1,Math.round(Number(slider.value)/100)+d));
+  setStep(k);
+};
+rlPrev?.addEventListener("click",()=>rlStep(-1));
+rlNext?.addEventListener("click",()=>rlStep(1));
+// ⚠ 軸そのものが指の面。刻みは的にしない（26.5px は 44px を割る）
+let rlDrag=false;
+const rlFromX=(x)=>{
+  const r=rlLine.getBoundingClientRect();
+  const t=Math.max(0,Math.min(1,(x-r.left)/Math.max(1,r.width)));
+  slider.value=String(t*(steps.length-1)*100);
+  slider.dispatchEvent(new Event("input",{bubbles:true}));
+};
+rlLine?.addEventListener("pointerdown",(e)=>{ rlDrag=true; rlLine.setPointerCapture(e.pointerId); rlFromX(e.clientX); });
+rlLine?.addEventListener("pointermove",(e)=>{ if(rlDrag) rlFromX(e.clientX); });
+for(const ev of ["pointerup","pointercancel"]) rlLine?.addEventListener(ev,()=>{ rlDrag=false; });
+
 function buildTicks(){
   trackEl.querySelectorAll(".tick,.lab").forEach((el)=>el.remove());
   const n=steps.length-1;
@@ -1305,7 +1439,7 @@ drumEl?.addEventListener("scroll",()=>{
     setStep(best);
   },90);
 });
-buildTicks();
+buildTicks(); buildRuler();
 
 // ============================================================
 // 地表のラスタが本当に届いたか（掟: 取れなかったを「無い」と言わない の根）
@@ -1479,6 +1613,8 @@ function paint(v){
   });
   trackEl.querySelectorAll(".lab").forEach((el)=>
     el.classList.toggle("selected",Number(el.dataset.i)===selected));
+  // ⚠ ものさしも同じ周期で追う。触るのは 2 つの要素だけ（つまみの位置と年）
+  syncRuler();
 }
 
 // ⚠ 静的 HTML にあるものを、毎フレーム引き直さない。**1 度だけ引いて持つ。**
@@ -1765,7 +1901,9 @@ let raf=null; const DUR_PER_STEP=11000/8;
 // スマホの初期折りたたみが打ち消されてしまう。
 const isNarrow = narrow();   // ⚠ 初期状態は読み込み時の幅で決める（あとで変えない）
 let panelOpen = !isNarrow;              // スマホでは主役（3Dの絵）を隠さない
-const applyPanel = () => panel.classList.toggle("hide", !panelOpen);
+const applyPanel = () => { panel.classList.toggle("hide", !panelOpen);
+  // ⚠ 全画面で読むあいだ、地図側の操作を閉じる／戻す
+  if(typeof sealOldControls==="function") sealOldControls(); };
 function setChrome(playing){ panel.classList.toggle("hide", playing || !panelOpen); }
 const openPanel  = () => { panelOpen = true;  applyPanel(); };
 const closePanel = () => { panelOpen = false; applyPanel(); };
