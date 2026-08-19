@@ -2361,6 +2361,71 @@ head("6. 外部リンク");
   }
 }
 
+// 言葉を決めるところ（peel3d.js の WORD）。
+// ⚠ HTML から外へ出したのは、**検査が字面ではなく判断そのものを見られるようにする**ため。
+//   ⚠ 取り出せなくなったら落とす（黙って素通りさせない）。
+{
+  const m = /\nconst WORD = \{[\s\S]*?\n\};/.exec(src["peel3d.js"] ?? "");
+  if (!m) bad("peel3d.js の WORD を取り出せない（この検査が何も見ていない）");
+  else {
+    // ⚠ prov.js を借りている行がある。Node でも同じものを渡す
+    const W = new Function("KonjakuProv", `${m[0]}\nreturn WORD;`)(globalThis.KonjakuProv);
+    const fails = [];
+    const yes = (c, what) => { if (!c) fails.push(what); };
+
+    // ---- 高さの出どころ。3 通りを取り違えない ----
+    yes(/既定値/.test(W.heightSrc("default", "住宅")), "既定値のときに、そう書いていない");
+    yes(/住宅/.test(W.heightSrc("default", "住宅")), "既定値の根拠（種別）を書いていない");
+    yes(/階数/.test(W.heightSrc("levels")), "階数から換算したときに、そう書いていない");
+    yes(/height/.test(W.heightSrc("measured")), "実測のときに出どころ（height タグ）を書いていない");
+    // ⚠ 3 つは別の文。同じにすると、どれが実測か分からなくなる
+    yes(new Set(["default", "levels", "measured"].map((s) => W.heightSrc(s, "x"))).size === 3,
+      "高さの出どころ 3 通りが書き分けられていない");
+
+    // ---- ⚠ 掟の核心。読めなかったのか、本当に無いのか ----
+    yes(W.meijiGap(true) !== W.meijiGap(false), "「読み込めていない」と「無い」を書き分けていない");
+    yes(!/無い/.test(W.meijiGap(true)),
+      `読み込めていないのに「無い」と言っている: ${W.meijiGap(true)}`);
+
+    // ---- 出せないときの見出し。⚠ 数値を作らない ----
+    for (const has of [true, false]) {
+      const t = W.cantSay(has);
+      yes(!/\d/.test(t), `出せないのに数字が入っている: ${t}`);
+      yes(/出せません|判定できません/.test(t), `出せないことを言っていない: ${t}`);
+    }
+    // ⚠ 地形分類が答えられるときは、範囲を限る（全部が出せないわけではない）
+    yes(/建物ごと/.test(W.cantSay(true)),
+      `受け皿があるのに「建物ごと」と範囲を限っていない: ${W.cantSay(true)}`);
+    yes(W.cantSay(true) !== W.cantSay(false), "受け皿の有無で書き分けていない");
+
+    // ---- 建物が 0 件のとき。⚠ 4 つを混ぜない ----
+    const st = ["loading", "ok", "notyet", "fail"].map((s) => W.noBuildings(s));
+    yes(new Set(st).size === 4, `建物 0 件の理由 4 通りが書き分けられていない（${new Set(st).size} 種類）`);
+    // ⚠ 正常に 0 件だったときに「取得中」と言わない（以前これで出続けていた）
+    yes(!/取得中/.test(W.noBuildings("ok")), `正常に 0 件なのに「取得中」と言っている: ${W.noBuildings("ok")}`);
+    // ⚠ 未対応を通信のせいにしない
+    yes(/通信の問題ではありません/.test(W.noBuildings("notyet")),
+      `未対応なのに「通信の問題ではありません」が無い: ${W.noBuildings("notyet")}`);
+    yes(!/取得中|届いていない/.test(W.noBuildings("notyet")),
+      `未対応を、通信のせいに読める言い方をしている: ${W.noBuildings("notyet")}`);
+    // ⚠ どれも「現地に建物が無い」と言い切らない
+    for (const t of st)
+      yes(!/(建物|家)(は|が)(無い|ありません)/.test(t), `建物が無いと言い切っている: ${t}`);
+
+    // ---- 出どころの但し書き。⚠ 事前計算と実行時を混ぜない ----
+    yes(W.waterPre(true) !== W.waterPre(false), "水域が事前計算かを書き分けていない");
+    yes(W.bldPre(true) !== W.bldPre(false), "建物が事前取り込みかを書き分けていない");
+    yes(W.precision(false) !== "" && W.precision(true) === "",
+      "粗い区分のときに、そう書いていない");
+    yes(/広い区分/.test(W.precision(false)), `粗さの書き方が変わった: ${W.precision(false)}`);
+
+    fails.length
+      ? bad(`WORD の単体テストが失敗（${fails.length} 件）: ${fails.slice(0, 5).join(" / ")}`)
+      : ok(`WORD を動かして確認（高さの出どころ 3 通り・建物 0 件の理由 4 通り・`
+          + `読めなかったを「無い」と言わない・出せないときに数値を作らない）`);
+  }
+}
+
 // 年代の名乗り（peel3d.js の eraReadout と groundState）。
 // ⚠ ここが画面でいちばん大きい文字で、**出ていないものを「表示中」と言っていた**。
 //   利用者役 3/3 が「これが主犯」と名指しした（2026-08-18）。
@@ -2811,8 +2876,11 @@ head("9. 画面の言葉");
       files: ["index.html"], seat: "正常0件。Wikidata は読めている" },
     { word: "記録なし", kind: "状態", live: 3, next: "#9c",
       files: ["index.html", "verify.js", "share.js"], seat: "正常0件（明治期タイルは読めた）。共有カードにも出る" },
-    { word: "判定できません", kind: "状態", live: 7, next: "#9c",
-      files: ["index.html", "verify.js", "peel3d.js"], seat: "判定できない。「判定できませんでした」も含む" },
+    { word: "判定できません", kind: "状態", live: 5, next: "#9c",
+      files: ["index.html", "verify.js", "peel3d.js"],
+      seat: "判定できない。「判定できませんでした」も含む。"
+          + "⚠ 2026-08-19 に 7 → 5 件。peel3d.js が 3 か所に書き写していたのを "
+          + "WORD.cantSay の 1 か所へ寄せた（言葉が減ったのではなく、重複が消えた）" },
     { word: "未取得", kind: "状態", live: 7, next: "#9e",
       files: ["index.html", "peel3d.js", "prov.js"],
       seat: "取得方法バッジと、/peel の台帳。⚠ 2画面にある。"
@@ -3049,6 +3117,70 @@ head("9. 画面の言葉");
       ? bad(`「まだ提供していない」の文が 1 か所になっていない: ${bad2.join(" / ")}`
           + `（prov.js の NOTYET / NOTYET_WHY を借りること）`)
       : ok(`「まだ提供していない」の文は prov.js の 1 つで、peel3d.js は ${borrowed} 箇所で借りている`);
+  }
+
+  // ⚠ **HTML を組み立てながら、その場で「何と言うか」を決めない。**
+  //   判断はデータや名前つきの関数にして、HTML 化は 1 か所に寄せる
+  //   （public/prov.js と peel3d.js の WORD がその形）。
+  //
+  // 実測（2026-08-19）。HTML を含むテンプレートの中の分岐を、2 つに分けて数えた:
+  //   見た目（class / style だけ）… ⚠ **これは問題ない**（数えない）
+  //   意味（引用符つきの日本語が分岐している）… index.html 7・peel3d.js 9 → **これを外へ出す**
+  //   ⚠ うち 2 つは**同じ判断を 2 か所・3 か所**に書いていた
+  //     （「（事前に取り込んだデータ）」×2、「建物ごとには出せません／判定できません」×3）。
+  //
+  // ⚠ **一度に全部は割らない。**利用者に見える変化がゼロなのに、実描画が全部かかる。
+  //   いまの数を上限として置き、**増えたら落ちる**。減らすときは上限も一緒に下げる。
+  {
+    // その日の実測。⚠ 減らしたら、この数も下げること（下げないと歯止めが緩む）
+    const CAP = { "index.html": 7, "peel3d.js": 0 };
+    // ⚠ **引用符で囲まれた日本語**が分岐にあることまで求める。
+    //   `?` だけで数えると、markup の中の `?`（`<i class="q">?</i>` など）を
+    //   三項演算子と読む（実測 2026-08-18: それで 7 個が 8 個になった）。
+    const JP = /(["'])(?:[^"'\\]|\\.)*?[ぁ-んァ-ヶ一-龠](?:[^"'\\]|\\.)*?\1/;
+
+    // テンプレートリテラルを、入れ子の ${} も追って拾う
+    const literals = (src) => {
+      const out = [];
+      for (let i = 0; i < src.length; i++) {
+        if (src[i] !== "`") continue;
+        let d = 0, j = i + 1;
+        for (; j < src.length; j++) {
+          if (src[j] === "\\") { j++; continue; }
+          if (src[j] === "$" && src[j + 1] === "{") { d++; j++; continue; }
+          if (src[j] === "}" && d > 0) { d--; continue; }
+          if (src[j] === "`" && d === 0) break;
+        }
+        const body = src.slice(i, j + 1);
+        if (/<\/?[a-z]+[\s>]/.test(body)) out.push(body);
+        i = j;
+      }
+      return out;
+    };
+
+    const over = [], counted = {};
+    for (const f of Object.keys(CAP)) {
+      let s = seen[f] ?? "";
+      if (!s) { over.push(`${f} を読めない`); continue; }
+      // ⚠ HTML は **<script> の中だけ**を見る。外の markup まで数えると、
+      //   ここでは直しようのないものが混ざる（実測: 7 個のはずが 8 個になった）
+      if (f.endsWith(".html"))
+        s = [...s.matchAll(/<script(?![^>]*src)[^>]*>([\s\S]*?)<\/script>/g)].map((m) => m[1]).join("\n");
+      let word = 0;
+      for (const l of literals(s))
+        for (const m of l.matchAll(/\?([^:`]{0,160}):([^`}]{0,160})/g))
+          if (JP.test(m[1]) || JP.test(m[2])) word++;
+      counted[f] = word;
+      if (word > CAP[f]) over.push(`${f}: ${word} 個（上限 ${CAP[f]}）`);
+      // ⚠ 減ったのに上限を下げ忘れると、また増やせてしまう
+      if (word < CAP[f]) over.push(`${f}: ${word} 個まで減った。上限 ${CAP[f]} も下げること`);
+    }
+    over.length
+      ? bad(`HTML の中に、言葉を分ける判断が増えた／上限が古い: ${over.join(" / ")}`
+          + `（判断はデータか名前つきの関数にして、HTML 化は 1 か所に寄せる）`)
+      : ok(`HTML の中に埋まった「言葉の判断」は上限どおり`
+          + `（${Object.entries(counted).map(([f, n]) => `${f} ${n}`).join(" / ")}。`
+          + `見た目だけの分岐は数えない）`);
   }
 
   // ⚠ 短い語（「自分」）は本文の検索で数えられない。宣言そのものを読む。
