@@ -778,7 +778,7 @@ const CASES = [
       const under = await page.evaluate(() => {
         const bar = document.getElementById("chrome").getBoundingClientRect();
         const hit = [];
-        for (const el of document.querySelectorAll("#panel #placeName, #panel #heroNum, #panel #result")) {
+        for (const el of document.querySelectorAll("#panel #placeName, #panel #landAll, #panel #result")) {
           const r = el.getBoundingClientRect();
           if (r.width < 1 || r.height < 1) continue;
           if (r.top < bar.bottom && r.bottom > bar.top && r.left < bar.right && r.right > bar.left)
@@ -1066,6 +1066,12 @@ const CASES = [
       must(peek, "台帳に「光らせる」ボタンが無い");
       const colorBefore = await page.evaluate(() =>
         JSON.stringify(map.getPaintProperty("bld", "fill-extrusion-color")));
+        // ⚠ **先に見える位置へ送る。**パネルが層で高くなり、このボタンが
+        //   スクロールの外（実測 2026-08-19: y=702 / パネル高 590）へ出た。
+        //   ⚠ 座標で押すと**地図に当たる**（elementFromPoint が canvas を返した）。
+        //   ⚠ 見ている主張は変えていない: **組み直したあともボタンが生きていること**。
+        await peek.scrollIntoViewIfNeeded();
+        await page.waitForTimeout(250);
       const box = await peek.boundingBox();
       await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
       await page.mouse.down();
@@ -1187,6 +1193,12 @@ const CASES = [
       //   全画面のままだと、押しても何も起きないボタンになる（3/3 が「二度と押さない」）。
       const peek = page.locator("#peekH");
       if (await peek.count()) {
+        // ⚠ **先に見える位置へ送る。**パネルが層で高くなり、このボタンが
+        //   スクロールの外（実測 2026-08-19: y=702 / パネル高 590）へ出た。
+        //   ⚠ 座標で押すと**地図に当たる**（elementFromPoint が canvas を返した）。
+        //   ⚠ 見ている主張は変えていない: **組み直したあともボタンが生きていること**。
+        await peek.scrollIntoViewIfNeeded();
+        await page.waitForTimeout(200);
         const box = await peek.boundingBox();
         await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
         await page.mouse.down();
@@ -1611,8 +1623,9 @@ const CASES = [
       must(bld > 0, `建物が出ていない（${status.slice(0, 80)}）`);
       must(/事前に取り込んだデータ|事前計算データ/.test(status),
         `事前に取り込んだデータを使っていない（${status.slice(0, 80)}）`);
-      const hero = await page.locator("#heroNum").textContent({ timeout: 45000 });
-      const cap = await page.locator("#heroCap").textContent();
+      // ⚠ パネルの答えは #landAll（層）へ移った。⚠ 見ている主張は変えていない
+      const hero = await page.locator("#landAll").textContent({ timeout: 45000 });
+      const cap = hero;
       assertToyosu3dAnswer(hero, cap, "3D");
       // ⚠ ここは長いあいだ、読んで報告に印字するだけで assert が無かった。
       //   08ce46f で潰した「測っていないことを報告する」と同じ形が、
@@ -1642,18 +1655,28 @@ const CASES = [
       await page.waitForFunction(() => document.querySelector("#map canvas"), null, { timeout: 45000 });
       // 集計が出るところまで待つ（建物は Overpass 頼みで遅いので、そこは待たない）
       await page.waitForFunction(
-        () => (document.getElementById("heroCap")?.textContent ?? "").trim().length > 0,
+        () => (document.getElementById("landAll")?.textContent ?? "").trim().length > 0,
         null, { timeout: 60000 });
       // 地形分類は建物の集計とは別に取りに行くので、後から届く。待つ。
       await page.waitForFunction(
-        () => /この土地は/.test(document.getElementById("heroCap")?.textContent ?? ""),
+        () => /この土地は/.test(document.getElementById("landAll")?.textContent ?? ""),
         null, { timeout: 60000 });
-      const hero = (await page.locator("#heroNum").textContent()).trim();
-      must(!/\d/.test(hero), `判定できない土地で数字を出している: ${hero}`);
+        // ⚠ **建物の層まで待つ。**層は別々に返るので、途中で読むと
+        //   「建物ごとには出せない」の行がまだ無い（実測 2026-08-19 に踏んだ）。
+        await page.waitForFunction(
+          () => /建物/.test(document.getElementById("landAll")?.textContent ?? ""),
+          null, { timeout: 60000 });
+      const hero = (await page.locator("#landAll").textContent()).trim();
+      // ⚠ 見ているのは「**割合を作らない**」（0% を出さない）。
+      //   ⚠ 建物の件数のような**実際に数えた数**は出してよい（同種の札幌の検査と同じ書き方）。
+      must(!/\d+\.\d+\s*%/.test(hero), `判定できない土地で割合を出している: ${hero.slice(0, 80)}`);
       // 建物ごとの割合は出せない。それを「何も分からない」と混ぜないこと（掟: 主題は「成り立ち」。明治期は手法のひとつ）
-      must(hero.includes("建物ごとには出せません"),
+        // ⚠ 出せないのが**建物ごと**であること（何もかも駄目ではない）。
+        //   ⚠ 層になって言い方が変わった（第3層の欠落として、その位置に出る）。
+        //   ⚠ 見ている主張は変えていない: **範囲を限っていること**。
+        must(/建物ごとには出せません|1 件ずつの足元は判定できていません|建物ごとの判定は/.test(hero),
         `出せないのが「建物ごと」であることが書かれていない: ${hero}`);
-      const cap = (await page.locator("#heroCap").textContent()).trim();
+      const cap = hero;   // ⚠ 層になり、見出しと補足が同じ入れ物に入る
       must(!cap.includes("実測値"), `判定していないのに「実測値」と書いている: ${cap.slice(0, 50)}`);
       // 土地そのものには答えられる。ここで黙ると、建物が出ているのに終わってしまう
       must(/この土地は .+/.test(cap), `地形分類が出ていない: ${cap.slice(0, 80)}`);
@@ -1673,9 +1696,9 @@ const CASES = [
         () => /件|ありません|読み込めませんでした/.test(
           document.getElementById("status")?.textContent ?? ""),
         null, { timeout: 60000 });
-      const hero = (await page.locator("#heroNum").textContent()).trim();
+      const hero = (await page.locator("#landAll").textContent()).trim();
       must(hero.length > 0, `事前計算の建物区分が表示されていない: ${hero}`);
-      const cap = (await page.locator("#heroCap").textContent()).trim();
+      const cap = hero;   // ⚠ 層になり、見出しと補足が同じ入れ物に入る
       assertToyosu3dAnswer(hero, cap, "通信断でも3D");
       const status = (await page.locator("#status").textContent()).trim();
       must(!status.includes("データがありません"),
@@ -1840,9 +1863,9 @@ const CASES = [
         () => /件|ありません|読み込めませんでした/.test(
           document.getElementById("status")?.textContent ?? ""),
         null, { timeout: 60000 });
-      const hero = (await page.locator("#heroNum").textContent()).trim();
+      const hero = (await page.locator("#landAll").textContent()).trim();
       must(hero.length > 0, `事前計算の建物区分が表示されていない: ${hero}`);
-      const cap = (await page.locator("#heroCap").textContent()).trim();
+      const cap = hero;   // ⚠ 層になり、見出しと補足が同じ入れ物に入る
       assertToyosu3dAnswer(hero, cap, "403でも3D");
       const status = (await page.locator("#status").textContent()).trim();
       must(!status.includes("データがありません"),
@@ -1875,8 +1898,8 @@ const CASES = [
       // 落としたのは写真タイルだけ。水面・建物は従来どおり出ること
       // （地表のガードが他の行まで巻き添えにしていないかを、ここで見る）
       must(prov.includes("実際の水域"), `水面の行まで落ちている: ${prov.replace(/\s+/g, " ").slice(0, 60)}`);
-      const hero = (await page.locator("#heroNum").textContent()).trim();
-      const cap = (await page.locator("#heroCap").textContent()).trim();
+      const hero = (await page.locator("#landAll").textContent()).trim();
+      const cap = hero;   // ⚠ 層になり、見出しと補足が同じ入れ物に入る
       assertToyosu3dAnswer(hero, cap, "地表タイル断でも3D");
       return `${txt.slice(0, 34)}／土地区分と水域補足（${hero}）は従来どおり`;
     },
@@ -3796,6 +3819,57 @@ const CASES = [
     },
   },
   {
+    // ⚠ **PC のパネルも層で答えること**（ADR 0030）。
+    //   実測（2026-08-19）: HUD だけ層にしたとき、PC は古い形（heroNum / heroCap）のままで、
+    //   ⚠ **豊洲で 99.6% が 2 回**出ていた。⚠ 利用者役 3/4 が指摘した。
+    //   ⚠ **同じ問いに 2 つの答えを持たない**（ADR 0021）。
+    // ⚠ **実効 opacity で見る。**`#panel.hide` は opacity:0 で display は残るので、
+    //   checkVisibility() だけでは「見えている」と誤って読む（実測 2026-08-19 に踏んだ）。
+    name: "パネルも層で答え、同じ数字を 2 回出さない", path: `/peel?${TOYOSU}`, group: "core",
+    async check(page) {
+      await peelReady(page);
+      await page.waitForFunction(() => document.querySelectorAll("#landAll .land-q").length > 0
+        && typeof landform !== "undefined" && landform !== null, null, { timeout: 60000 });
+      await page.waitForTimeout(1200);
+      const look = () => page.evaluate(() => {
+        const eff = (el) => { if (!el || !el.checkVisibility()) return 0;
+          let o = 1; for (let n = el; n && n !== document.documentElement; n = n.parentElement) {
+            const s = getComputedStyle(n);
+            if (s.display === "none" || s.visibility === "hidden") return 0;
+            o *= Number(s.opacity); }
+          return +o.toFixed(3); };
+        const t = (id) => { const e = document.getElementById(id);
+          return eff(e) > 0 ? (e.innerText ?? "") : ""; };
+        return { seen: t("landAll") + "\n" + t("land"),
+          qs: [...document.querySelectorAll("#landAll .land-q,#land .land-q")]
+                .filter((e) => eff(e) > 0).map((e) => e.textContent.trim()),
+          hero: document.querySelectorAll("#heroNum,#heroCap").length };
+      });
+      // ⚠ 古い入れ物が残っていないこと（残っていると、また 2 つの答えになる）
+      const pc = await look();
+      must(pc.hero === 0, `heroNum / heroCap が残っている: ${pc.hero} 個`);
+      must(/どういう土地/.test(pc.qs[0] ?? ""), `PC で先頭が第1層でない: ${pc.qs.join(" / ")}`);
+      must(pc.qs.length === 3, `PC のパネルに 3 層そろっていない: ${pc.qs.join(" / ")}`);
+      must((pc.seen.match(/99\.6/g) || []).length === 1,
+        `PC で 99.6% が ${(pc.seen.match(/99\.6/g) || []).length} 回出ている`);
+      // ⚠ **狭い幅も対にして見る。**PC だけ直して、スマホを壊しても緑にならないように。
+      //   ⚠ **読み込み直す。**パネルの開閉は**読み込み時の幅**で決まり、
+      //     リサイズでは切り替わらない（peel3d.js の isNarrow は「あとで変えない」）。
+      await page.setViewportSize({ width: 375, height: 667 });
+      await page.reload({ waitUntil: "domcontentloaded" });
+      await peelReady(page);
+      await page.waitForFunction(() => document.querySelectorAll("#land .land-q").length > 0
+        && typeof landform !== "undefined" && landform !== null, null, { timeout: 60000 });
+      await page.waitForTimeout(1200);
+      const sp = await look();
+      must(sp.qs.length === 2, `スマホの HUD が第1層＋1 つでない: ${sp.qs.join(" / ")}`);
+      must((sp.seen.match(/99\.6/g) || []).length === 1,
+        `スマホで 99.6% が ${(sp.seen.match(/99\.6/g) || []).length} 回出ている`);
+      return `PC ${pc.qs.length} 層（${pc.qs.map((x) => x.slice(0, 6)).join("→")}）／`
+        + `スマホ ${sp.qs.length} 層／99.6% はどちらも 1 回`;
+    },
+  },
+  {
     // ⚠ **常時見える HUD が、確実性の高い順に層を出すこと**（ADR 0030）。
     //   実測（2026-08-19・main = d7dce05）: 層という値が無かったので、4 地点とも順番が違った。
     //     豊洲 第3層→第2層（⚠ 第1層が無い） ／ 札幌・那覇 ⚠ 出せない断りから始まった。
@@ -4816,7 +4890,7 @@ const CASES = [
           null, { timeout: 60000 });
         // ⚠ パネルは閉じたまま（掟の外へ出ない: スマホで既定表示にはしない）
         must(await page.locator("#panel.hide").count() === 1, `${name}: パネルが閉じて始まっていない`);
-        const o = await effOpacity(page, "#land .land-alt, #land .land-num");
+        const o = await effOpacity(page, "#land .land-g1, #land .land-alt, #land .land-num");
         const od = await effOpacity(page, "#land .land-den");
         must(o > 0, `${name}: 答えの実効 opacity が ${o}（読めない）`);
         must(od > 0, `${name}: 分母の実効 opacity が ${od}（読めない）`);
@@ -4824,8 +4898,12 @@ const CASES = [
           num: document.querySelector("#land .land-num")?.textContent.trim() ?? "",
           what: document.querySelector("#land .land-what")?.textContent.trim() ?? "",
           den: document.querySelector("#land .land-den")?.textContent.trim() ?? "",
-          hero: document.getElementById("heroNum")?.textContent.trim() ?? "",
-          heroCap: (document.getElementById("heroCap")?.textContent ?? "").replace(/\s+/g, " ").trim(),
+          // ⚠ 答えの主役は**いちばん確実な層**（層は確実性の高い順に並ぶので、最後）。
+          //   ⚠ 最初を取ると第1層（地形分類）を拾い、分岐を間違える（実測 2026-08-19）。
+          hero: (() => { const ls = [...document.querySelectorAll("#landAll .land-layer")];
+            const L = ls[ls.length - 1];
+            return L?.querySelector(".land-num,.land-alt,.land-g1 b")?.textContent.trim() ?? ""; })(),
+          heroCap: (document.getElementById("landAll")?.textContent ?? "").replace(/\s+/g, " ").trim(),
           landAll: (document.getElementById("land")?.textContent ?? "").replace(/\s+/g, " ").trim(),
         }));
         const hasCategory = !!r.hero && !/[\d.]+/.test(r.hero);
@@ -4863,7 +4941,10 @@ const CASES = [
         // ⚠ **同じ画面の中で結果が食い違わないこと。** 計算元は landVerdict の1か所
         if(!hasCategory) must(r.hero === r.num, `${name}: HUD とパネルで割合が違う: HUD「${r.num}」/ パネル「${r.hero}」`);
         const [a, b] = r.den.match(/(\d+) \/ (\d+)/).slice(1);
-        must(r.heroCap.includes(`${a} / ${b} 件`) || r.heroCap.includes(`${b}件すべて`),
+          // ⚠ 層になって、HUD もパネルも**同じ書き方**になった（「533 / 533件の足元を判定」）。
+          //   ⚠ 見ている主張は変えていない: **同じ画面の中で分母が食い違わないこと**。
+          must(r.heroCap.includes(`${a} / ${b} 件`) || r.heroCap.includes(`${b}件すべて`)
+            || r.heroCap.includes(`${a} / ${b}件の足元を判定`),
           `${name}: HUD とパネルで分母が違う: HUD「${r.den}」/ パネル「${r.heroCap.slice(0, 60)}」`);
         out.push(`${name} ${hasCategory ? r.hero : r.num}（${r.den}）`);
       }
@@ -4910,13 +4991,13 @@ const CASES = [
       // ⚠ **答えの板が描かれてから読む。**#status が先に埋まるので、
       //   ⚠ これだけだと板が空のまま opacity を測って null になる（実測 2026-08-19）。
       await page.waitForFunction(() => /件を判定しました/.test(document.body.innerText)
-        && document.querySelector("#land .land-alt") !== null,
+        && document.querySelector("#land .land-g1, #land .land-alt") !== null,
         null, { timeout: 60000 });
       const t = (await page.locator("#land").textContent()).replace(/\s+/g, " ").trim();
       must(!/\d+\.\d+\s*%/.test(t), `判定できないのに割合を出している: ${t.slice(0, 60)}`);
       must(t.includes("整備対象外"), `理由（整備対象外）が書かれていない: ${t.slice(0, 60)}`);
       must(/建物 \d+ 件/.test(t), `建物の件数が書かれていない: ${t.slice(0, 60)}`);
-      const o = await effOpacity(page, "#land .land-alt");
+      const o = await effOpacity(page, "#land .land-g1, #land .land-alt");
       must(o > 0, `答えの実効 opacity が ${o}（読めない）`);
       // ⚠ 地形分類は**別経路で遅れて届く**。届く前は「判定できません」、届いたら
       //   「建物ごとには出せません」＋その土地の区分に変わる。
@@ -4976,7 +5057,7 @@ const CASES = [
       await page.waitForFunction(() => (document.getElementById("land")?.textContent ?? "").includes("%"),
         null, { timeout: 60000 });
       must(await page.locator("#panel.hide").count() === 0, "PC でパネルが閉じて始まっている");
-      const heroOpen = await effOpacity(page, "#heroNum");
+      const heroOpen = await effOpacity(page, "#landAll");
       must(heroOpen > 0, `パネルの答えが読めない: 実効 opacity ${heroOpen}`);
       must(await effOpacity(page, "#land") === 0, "パネルを開いているのに HUD にも同じ答えが出ている");
       // 閉じたら HUD が引き継ぐ
@@ -6221,14 +6302,18 @@ const CASES = [
 ];
 
 function must(cond, msg) { if (!cond) throw new Error(msg); }
-function assertToyosu3dAnswer(hero, cap, label) {
-  const h = hero.trim(), c = cap.replace(/\s+/g, " ").trim();
-  must(/^99\.\d%$/.test(h), `${label}: 建物単位の水域割合が表示されていない: ${h}`);
-  must((c.includes("建物の足元") && c.includes("水域だった建物")) || c.includes("水の上"),
-    `${label}: 水域割合の主語と補足が不足: ${c.slice(0, 100)}`);
-  must(/533件すべての足元を1件ずつ判定した実測値|足元を判定できた 533 \/ 533 件/.test(c),
-    `${label}: 分母が建物の判定件数になっていない: ${c.slice(0, 100)}`);
-}
+  // ⚠ 豊洲の答えが、**建物単位の水域割合で、分母つき**で出ていること。
+  //   ⚠ 層になって、見出しと補足が同じ入れ物（#landAll）に入るようになった。
+  //     ⚠ **見ている主張は変えていない。**読む先だけ変えた。
+  function assertToyosu3dAnswer(hero, cap, label) {
+    const c = (hero + " " + cap).replace(/\s+/g, " ").trim();
+    must(/99\.\d\s*%/.test(c), `${label}: 建物単位の水域割合が表示されていない: ${c.slice(0, 100)}`);
+    must((c.includes("建物の足元") && c.includes("水域だった建物")) || c.includes("水の上"),
+      `${label}: 水域割合の主語と補足が不足: ${c.slice(0, 100)}`);
+    // ⚠ 分母は「判定できた件数」。⚠ 層になって書き方が 1 つになった
+    must(/533件すべての足元を1件ずつ判定した実測値|533 \/ 533\s*件の足元を判定|足元を判定できた 533 \/ 533 件/.test(c),
+      `${label}: 分母が建物の判定件数になっていない: ${c.slice(0, 100)}`);
+  }
 
 // ---- ローカルサーバ ----
 const server = spawn(process.execPath, ["serve.js"], {

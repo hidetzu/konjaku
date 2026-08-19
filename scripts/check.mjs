@@ -1568,7 +1568,7 @@ head("6. 外部リンク");
 {
   const { readFileSync: rf } = await import("node:fs");
   // 判定の結果を出す先。畳んだ中に入ってはいけない
-  const RESULT_IDS = ["status", "result", "prov", "breakdown", "pick", "heroNum", "heroCap", "placeName"];
+  const RESULT_IDS = ["status", "result", "prov", "breakdown", "pick", "landAll", "placeName"];
   for (const f of ["public/peel.html", "public/index.html"]) {
     // ⚠ コメントを先に落とす。落とさないと、この検査を説明するコメントに書いた
     //   `<details>` の字面を検査自身が拾って落ちる（実際に踏んだ）。
