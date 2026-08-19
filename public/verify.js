@@ -552,7 +552,8 @@
     } else if (!m.ok && m.value === "データなし") {
       out.push({ icon: "—", text: "明治期のデータなし", key: "meiji", tone: "dim" });
     } else if (m.none) {
-      out.push({ icon: "—", text: "明治期: 記録なし", key: "meiji", tone: "dim" });
+      // ⚠ 字は words.js。共有カード（share.js）が同じ行を描くので、写すと割れる
+      out.push({ icon: "—", text: KonjakuWords.meijiBadge(true), key: "meiji", tone: "dim" });
     } else if (m.value) {
       out.push({ icon: m.water ? "🌊" : "🌾", key: "meiji", tone: m.water ? "water" : "land",
         text: `明治期: ${m.value}${m.mixed ? "（境目）" : ""}` });
