@@ -110,6 +110,7 @@ AI へ渡す様式をここへ混ぜると、**外から報告する人の負担
 |---|---|---|
 | `issue-work` §7 自己レビュー | `git diff` を読み直す。Acceptance Criteria・Non-goals・分母・「取れなかった≠無い」・死にコード | **KEEP**（`issue-work` に置いたままでよい） |
 | `.claude/skills/ui-ux-review/SKILL.md` | ⚠ **強化した**（44 → 130 行）。判定・実測幅 4 つ・今昔の掟・触って確かめる | **IMPROVE 済** |
+| ⚠ **Change / Scope Review** | ⚠ **新設**（`.claude/skills/change-review`）。`issue-work` §7 から切り出し、判定を返す形にした（2026-08-19） | **SPLIT 済** |
 
 ⚠ **`ui-ux-review` は「設計するときの心得」で、品質ゲートの形をしていない。**
 
@@ -155,6 +156,10 @@ PR のレビュー・merge               人
 
 ⚠ **すでに 6 か所ある。**⚠ **足りなかったのは数ではなく、`ready-for-ai` の意味の定義**で、
 それは `CLAUDE.md` §7-2 に書いた。
+
+⚠ **Loop Controller v1 を入れたあとも、人が入るのは 2 か所**（開始時の承認と、PR のレビュー）。
+⚠ **`git push` の許可だけが、Controller 経由の 1 件に限って包括になる**（`CLAUDE.md` §8 に明記）。
+⚠ **`issue-work` を単体で使うときは、いままでどおり毎回取る。**
 
 ---
 
@@ -242,7 +247,7 @@ PR のレビュー・merge               人
 | D-3 | `ready-for-ai` の説明文 | ⚠ **Owner が設定済み**（`Ready for AI implementation with clear scope, acceptance criteria, and verification.`） |
 | D-4 | `needs-decision` を作るか | ⚠ **いまは不要。**ラベルを増やさない |
 | D-5 | 各 Open Issue の Close / Rewrite / Split | ⚠ **いまは不要。**⚠ 本文には**触らない**。実測のずれは**コメント**で足す |
-| D-6 | Loop Controller の導入 | ⚠ **いまは不要。**⚠ **入れない。**先に手動ループを 1〜3 件試す |
+| D-6 | Loop Controller の導入 | ⚠ **2026-08-19 に方針が変わった。**手動ループを 1 件（`hidetzu/konjaku#74`）通したあと、**v1 を作ることになった**（`tmp/KONJAKU_LOOP_CONTROLLER_V1_IMPLEMENTATION.md`）。⚠ **自動巡回・定期実行・自動 merge は入れない** |
 
 ⚠ **D-5 の運用が決まったので、Issue に手を入れる前の既定はこうなる。**
 
