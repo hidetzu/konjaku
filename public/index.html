@@ -472,7 +472,17 @@
   /* 出せなかった1枚。img からは「写真が無い」のか「読めなかった」のか区別できないので、
      枠を残して読めなかったとだけ言う。黙って詰めると年代が飛んだように見える */
   .strip .im.err{display:grid;place-items:center}
-  .strip .im.err::after{content:"読み込めず";font-size:var(--fs-label);line-height:1.2;
+  /* ⚠ 読めていないコマ。押せないので、押せる見た目にしない（ADR 0026） */
+  .strip .f.unread{cursor:default;opacity:.85}
+  /* ⚠ **「読み込めず」をやめた。**実測（2026-08-19・利用者役 3 名。⚠ 実在の利用者ではない）:
+     ⚠ **2/3 が「自分の通信のせい」と読んだ**（CLAUDE.md §4-1 が禁じている読まれ方）。
+     ⚠ こちらにも相手にも原因を決めつけず、**この画面でいまどうなのか**だけを言う。
+     ⚠ 進行形（「読み込み中」）にしない。いま自分の端末で起きていることに読める。 */
+  /* ⚠ **改行は自分で入れる。**任せると 375px で「いま出せませ／ん」と語の途中で割れた
+     （実測 2026-08-19・出島）。⚠ この画面は同じ踏み方を一度している
+     （「空中写真ではありま／せん」）。 */
+  .strip .im.err::after{content:"いま\A出せません";white-space:pre-line;
+    font-size:var(--fs-label);line-height:1.2;
     color:var(--estimate);text-align:center;padding:0 2px}
   .strip .im.err img,.strip .im.err .mk{display:none}
 
@@ -1321,7 +1331,19 @@ function buildFrames(f){
       subBig:"低湿地データ<br>（空中写真ではありません）", ext:"png", min:6, max:16,
       // 低湿地は区分の塗りだけなので、下に淡色地図を敷かないと何も見えない
       under:"pale", px:t.px, py:t.py, meiji:true });
-  out.push(...p.value);
+  // ⚠ **読めなかった年代も並べる。**落とすと「その年代は存在しない」に読まれる。
+  //   実測（2026-08-19・出島・利用者役 3 名。⚠ 実在の利用者ではない）:
+  //     落とした版を見せると **3/3 が「1984–86 の写真は存在しない」と答えた**。
+  //     残した版では 0/3。掟: 取れなかった ≠ 無い。
+  //   ⚠ **`/peel` は最初から残していた**（peel3d.js の stepsFrom）。
+  //     同じ問いに 2 つの答えがあり、実描画が 2 回それで落ちていた。
+  //   ⚠ 404（この年代の写真は無い）と、白紙（撮影範囲の外）は、いままでどおり出さない。
+  //   ⚠ 画像の失敗を待って `.err` を付ける経路もあるが、**それ任せにしない**。
+  //     読めていないと分かっているコマは、最初からそう名乗る（検査も見られる）。
+  for(const e of (p.eras??[])){
+    if(e.state==="unreachable"){ out.push({...e, unread:true}); continue; }
+    if(p.value?.some((v)=>v.id===e.id)) out.push(p.value.find((v)=>v.id===e.id));
+  }
   // 右端の「現在」だけは判定の材料ではないので、facts ではなくここで組み立てる
   out.push({...L,tile:`${GSI}/${L.id}/16/${t.x}/${t.y}.${L.ext}`,px:t.px,py:t.py,now:true});
   return out;
@@ -1355,6 +1377,14 @@ function frameHTML(fr,i){
     fr={...fr,tile:`${GSI}/${fr.id}/16/${t.x}/${t.y}.${fr.ext}`}; }
   const name=`${fr.label}${fr.sub?`（${fr.sub}）`:""}`;
   const under=fr.under?`<img src="${GSI}/${fr.under}/16/${Konjaku.tileOf(current.lon,current.lat,16).x}/${Konjaku.tileOf(current.lon,current.lat,16).y}.png" alt="">`:"";
+  // ⚠ **読めていないコマは押せなくする。**押しても大きい絵も出ないので、
+  //   押せる見た目のままにすると「押しても何も起きない導線」になる（ADR 0026）。
+  //   ⚠ 消すのではなく、押せなくして**枠は残す**。枠ごと消すと年代が飛んで見える。
+  if(fr.unread)
+    return `<span class="f unread" aria-disabled="true"
+        title="${name}は、いま出せません">
+      <span class="im err" aria-hidden="true"></span>
+      <span class="yr">${fr.label}</span></span>`;
   return `<button class="f${fr.now?" now":""}${fr.meiji?" meiji":""}${i===eraIdx?" on":""}" data-i="${i}"
       aria-pressed="${i===eraIdx}" title="${fr.meiji?`${name}（この判定の根拠になっているデータ）`:`${name}の空中写真を大きく見る`}">
     <!-- ⚠ loading="lazy" は付けない。右端（現在）が画面外から始まる端末で、
