@@ -977,7 +977,11 @@ const CASES = [
       // ② 待っている最中に、別の場所へ移る（＝再試行を押したのと同じ形）
       await page.evaluate(() => { loadArea(139.7975, 35.6548, "東京都江東区豊洲"); });
       await page.waitForFunction(
-        () => /件の足元を判定/.test(document.getElementById("land")?.textContent ?? ""),
+        // ⚠ **出そろってから比べる。**層は別々に返るので、途中で読むと
+        //   「あとから第1層が増えた」のを上書きと取り違える（実測 2026-08-19）。
+        //   ⚠ 見ている主張は変えていない: **古い呼び出しが今の答えを消さないこと**。
+        () => /件の足元を判定/.test(document.getElementById("land")?.textContent ?? "")
+          && typeof landform !== "undefined" && landform !== null,
         null, { timeout: 60000 });
       const mid = await page.locator("#land").textContent();
       // ③ 札幌の返事が返ってくるのを、追い越して待つ
@@ -3792,6 +3796,78 @@ const CASES = [
     },
   },
   {
+    // ⚠ **常時見える HUD が、確実性の高い順に層を出すこと**（ADR 0030）。
+    //   実測（2026-08-19・main = d7dce05）: 層という値が無かったので、4 地点とも順番が違った。
+    //     豊洲 第3層→第2層（⚠ 第1層が無い） ／ 札幌・那覇 ⚠ 出せない断りから始まった。
+    //   ⚠ **HUD は第1層＋1 つに絞る。**3 層とも出すと 375×667 で 320px になり、
+    //     下端 y=382 が**調べている地点（画面中央 y=333）を覆った**。
+    name: "土地の答えが、確実性の高い順に出る", path: `/peel?${TOYOSU}`, group: "core",
+    // ⚠ **#land は狭い幅の道具。**既定の 1200×780 では display:none で、
+    //   getBoundingClientRect() が 0 を返す。⚠ **隠れたものを測って「覆わない」と言わない**
+    //   （実測 2026-08-19: 下端 0 < 中央 390 で、何も見ずに通っていた）。
+    viewport: { width: 375, height: 667 }, hasTouch: true,
+    async check(page) {
+      await peelReady(page);
+      // ⚠ **答えが出そろってから読む。**建物と地形分類は別々に返るので、
+      //   途中を読むと層が 1 つだけの瞬間を捕まえる（実測 2026-08-19: 2 回に 1 回落ちた）。
+      await page.waitForFunction(() => (document.querySelectorAll("#land .land-q").length > 0)
+        && typeof landform !== "undefined" && landform !== null, null, { timeout: 60000 });
+      await page.waitForTimeout(1200);
+      const r = await page.evaluate(() => {
+        const el = document.getElementById("land");
+        const q = el.getBoundingClientRect();
+        return { qs: [...el.querySelectorAll(".land-q")].map((x) => x.textContent.trim()),
+          bottom: Math.round(q.bottom), mid: Math.round(window.innerHeight / 2),
+          // ⚠ 隠れていたら、覆うかどうかは測れない。**測れないと言う**
+          seen: el.checkVisibility(),
+          nums: [...el.querySelectorAll(".land-num")].length,
+          dens: [...el.querySelectorAll(".land-den")].length,
+          txt: (el.innerText ?? "").replace(/\s+/g, " ").trim() };
+      });
+      // ⚠ 第1層が先頭。ここが崩れると「できないことから書き始める」に戻る
+      must(/どういう土地/.test(r.qs[0] ?? ""), `先頭が第1層でない: ${r.qs.join(" / ")}`);
+      // ⚠ 内部の呼び名を出さない
+      must(!/第[123]層/.test(r.txt), `内部の呼び名が画面に出ている: ${r.txt.slice(0, 60)}`);
+      // ⚠ 数字を出すなら分母も出る（掟: 数字は主張範囲の分母で書く）
+      must(r.nums === 0 || r.dens >= r.nums, `数字 ${r.nums} 個に対して分母が ${r.dens} 個`);
+      // ⚠ **調べている地点を覆わない。**⚠ 見えていなければ、この主張は測れていない
+      must(r.seen, "HUD が見えていない（覆うかどうかを測れていない）");
+      must(r.bottom < r.mid, `HUD が調べている地点を覆っている: 下端 ${r.bottom} / 中央 ${r.mid}`);
+      return `${r.qs.length} 層（${r.qs.join(" → ")}）／下端 ${r.bottom} < 中央 ${r.mid}`;
+    },
+  },
+  {
+    // ⚠ **出ない層を、黙って消さない**（ADR 0001）。
+    //   ⚠ 札幌は明治期が範囲外・建物の足元が判定できない。**両方とも理由を出す**。
+    //   ⚠ 実測（2026-08-19）: 最初は第2層と第3層が同じ文を返し、同じ行が 2 回並んだ。
+    name: "出ない層も、その層の位置に理由を出す", path: `/peel?${SAPPORO}`, group: "core",
+    viewport: { width: 375, height: 667 }, hasTouch: true,
+    async check(page) {
+      await peelReady(page);
+      await page.waitForFunction(() => (document.querySelectorAll("#land .land-q").length > 0)
+        && typeof landform !== "undefined" && landform !== null, null, { timeout: 60000 });
+      await page.waitForTimeout(1200);
+      const r = await page.evaluate(() => {
+        const el = document.getElementById("land");
+        return { qs: [...el.querySelectorAll(".land-q")].map((x) => x.textContent.trim()),
+          miss: [...el.querySelectorAll(".land-miss")].map((x) => x.innerText.replace(/\s+/g, " ").trim()),
+          txt: (el.innerText ?? "").replace(/\s+/g, " ").trim() };
+      });
+      must(/どういう土地/.test(r.qs[0] ?? ""), `先頭が第1層でない: ${r.qs.join(" / ")}`);
+      must(r.miss.length === 2, `出ない層の理由が 2 つでない: ${r.miss.length} 個`);
+      // ⚠ 同じ文を 2 回出さない
+      must(new Set(r.miss.map((x) => x.split(" ")[0])).size === 2,
+        `出ない層の理由が重複している: ${r.miss.join(" ／ ")}`);
+      // ⚠ **ここに LIES を当てない。**LIES は「通信断・403 のときに言ってはいけない語」で、
+      //   ⚠ **札幌は本当に 404（整備対象外）**。当てると、正しい説明のほうが落ちる
+      //   （実測 2026-08-19: そう書いて落とした）。
+      // ⚠ 見るのは「無い」と言い切っていないこと。
+      for (const w of ["データが無い", "記録がありません", "残っていない", "存在しません"])
+        must(!r.txt.includes(w), `出ない層を「無い」と言い切っている: 「${w}」`);
+      return `第1層のみ立ち、出ない 2 層は理由つき（${r.miss.map((x) => x.slice(0, 20)).join(" ／ ")}）`;
+    },
+  },
+  {
     // ⚠ **深掘りの画面の再生で、カメラを振らない。**
     //   ⚠ CSS では止まらない（requestAnimationFrame + map.jumpTo の自前実装）。
     //   ⚠ **姿勢は MapLibre のコンパスの style から読む。**地図を外へ公開しない。
@@ -4733,7 +4809,10 @@ const CASES = [
         if (page.url() !== BASE + path)
           await page.goto(BASE + path, { waitUntil: "domcontentloaded", timeout: 45000 });
         await peelReady(page);
-        await page.waitForFunction(() => (document.getElementById("land")?.textContent ?? "").includes("%"),
+        // ⚠ 「%」を待たない。⚠ **割合が出ない土地がある**（札幌・那覇）。
+        //   ⚠ 層になって、答えの 1 行目が第1層（区分名）になったので、% は後ろに来る。
+        await page.waitForFunction(() => /件の足元を判定|%/.test(
+          document.getElementById("land")?.textContent ?? ""),
           null, { timeout: 60000 });
         // ⚠ パネルは閉じたまま（掟の外へ出ない: スマホで既定表示にはしない）
         must(await page.locator("#panel.hide").count() === 1, `${name}: パネルが閉じて始まっていない`);
@@ -4762,9 +4841,12 @@ const CASES = [
           must(hud !== null, `${name}: HUD に水域割合の数字が無い: 「${r.landAll.slice(0, 80)}」`);
           // ⚠ 同じ画面の中で食い違わないこと（計算元は landVerdict の1か所）
           must(pc === hud, `${name}: HUD とパネルで水域割合が違う: HUD「${hud}%」/ パネル「${pc}%」`);
-          // ⚠ 主見出しの区分名も、HUD とパネルで同じであること
-          must(r.landAll.startsWith(r.hero),
-            `${name}: HUD とパネルで主見出しが違う: HUD「${r.landAll.slice(0, 20)}」/ パネル「${r.hero}」`);
+            // ⚠ 主見出しの区分名も、HUD とパネルで同じであること。
+            //   ⚠ **HUD は層になったので、先頭は第1層**（ここは、どういう土地？）。
+            //     主見出しは HUD の**どこか**に、同じ語で在ればよい。
+            //   ⚠ 見ている主張は変えていない: **同じ画面で 2 つの答えを出さないこと**。
+            must(r.landAll.includes(r.hero),
+              `${name}: HUD とパネルで主見出しが違う: HUD「${r.landAll.slice(0, 40)}」/ パネル「${r.hero}」`);
         } else {
           // ⚠ pctRe が無い地点（区分名が主見出しのはず）でここへ来たら、
           //   規則が変わって低い割合が主見出しに戻ったということ。落とす。
@@ -4773,7 +4855,11 @@ const CASES = [
           must(r.what.includes("建物が、明治期には") && r.what.includes("水の上"),
             `${name}: 何の割合かが書かれていない: 「${r.what}」`);
         }
-        must(r.den === den, `${name}: 分母が違う: 「${r.den}」（期待 ${den}）`);
+        // ⚠ **分母がその行に在ること。**完全一致は求めない。
+        //   ⚠ 区分名が主役の土地では、同じ行に「水域だった建物：X%」も入る
+        //     （head が区分名なので、割合の置き場がここしかない）。
+        //   ⚠ 見ている主張は変えていない: **数字を出すなら分母を同じ板に出す**。
+        must(r.den.includes(den), `${name}: 分母が読めない: 「${r.den}」（要る: ${den}）`);
         // ⚠ **同じ画面の中で結果が食い違わないこと。** 計算元は landVerdict の1か所
         if(!hasCategory) must(r.hero === r.num, `${name}: HUD とパネルで割合が違う: HUD「${r.num}」/ パネル「${r.hero}」`);
         const [a, b] = r.den.match(/(\d+) \/ (\d+)/).slice(1);
@@ -4821,7 +4907,10 @@ const CASES = [
       // ⚠ 建物の集計が届くまで待つ。⚠ この検査は最初 peelReady だけで読んでいて落ちた。
       //   札幌は水域が無いので #status が先に「低湿地データがありません」を出し、
       //   **建物を数え終える前に**条件を満たしてしまう。実装ではなく検査が早すぎた。
-      await page.waitForFunction(() => /件を判定しました/.test(document.body.innerText),
+      // ⚠ **答えの板が描かれてから読む。**#status が先に埋まるので、
+      //   ⚠ これだけだと板が空のまま opacity を測って null になる（実測 2026-08-19）。
+      await page.waitForFunction(() => /件を判定しました/.test(document.body.innerText)
+        && document.querySelector("#land .land-alt") !== null,
         null, { timeout: 60000 });
       const t = (await page.locator("#land").textContent()).replace(/\s+/g, " ").trim();
       must(!/\d+\.\d+\s*%/.test(t), `判定できないのに割合を出している: ${t.slice(0, 60)}`);
@@ -4835,13 +4924,24 @@ const CASES = [
       //     実装ではなく検査のほうが早すぎた。届く前の「判定できません」も
       //     要件（数値を作らない・何が分からないかを書く）は満たしている。
       //   ⚠ 地形分類は止まりうる依存なので、**届くことを前提にしない**（届いたときだけ見る）。
-      must(/建物ごとには出せません|判定できません/.test(t), `何が出せないのかが書かれていない: ${t.slice(0, 60)}`);
+        // ⚠ 層になって、第3層の欠落は「1 件ずつの足元は判定できていません」になった。
+        //   ⚠ 見ている主張は変えていない: **何が出せないのかが書かれていること**。
+        must(/建物ごとには出せません|判定できません|判定できていません/.test(t),
+          `何が出せないのかが書かれていない: ${t.slice(0, 60)}`);
       const gotLf = await page.waitForFunction(
         () => (document.getElementById("land")?.textContent ?? "").includes("扇状地"),
         null, { timeout: 20000 }).then(() => true).catch(() => false);
       const t2 = (await page.locator("#land").textContent()).replace(/\s+/g, " ").trim();
-      if (gotLf) must(t2.includes("建物ごとには出せません"),
-        `地形分類が届いたのに「建物ごとには出せません」になっていない: ${t2.slice(0, 60)}`);
+        // ⚠ 地形分類が届いたら、**全部が出せないわけではない**と分かること。
+        //   ⚠ 層になって、その言い方が変わった（「建物ごとには出せません」→
+        //     第1層が立ち、出せないのは建物の層だけ、と位置で示す）。
+        //   ⚠ 見ている主張は変えていない: **範囲を限ること**（何もかも駄目ではない）。
+        if (gotLf) {
+          must(/建物ごとには出せません/.test(t2) || /どういう土地/.test(t2),
+            `地形分類が届いたのに、答えられる範囲を示していない: ${t2.slice(0, 60)}`);
+          must(!/^判定できません/.test(t2),
+            `地形分類が届いたのに「判定できません」で始まっている: ${t2.slice(0, 60)}`);
+        }
       return `${t2.slice(0, 56)}${gotLf ? "" : "（⚠ 地形分類は届かなかった）"}`;
     },
   },
