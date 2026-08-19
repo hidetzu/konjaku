@@ -691,6 +691,26 @@
     /* ⚠ 帯のぶん、中身の頭を空ける。空けないと 1 行目が下敷きになる。 */
     #panel:not(.hide){padding-top:76px}
   }
+  /* ============ 動きを減らす ============ */
+  /* ⚠ OS・ブラウザで「動きを減らす」を入れている人には、動きだけを消す。
+     ⚠ **消すのは動きであって、結果ではない。** 年代は変わるし、寄せた先へも行く。
+       0 にせず .01ms にするのは、`transitionend` / `animationend` を待つ処理を
+       止めないため（0 だと発火しない実装がある）。
+     ⚠ **個別のセレクタを並べない。** 並べると、次に transition を足した人が漏らす。
+       実測（2026-08-19）: この画面は transition 8 宣言・animation 0 宣言。
+       トップは transition 5 宣言・animation 2 宣言。数え上げで維持できる数ではない。
+     ⚠ 同梱 MapLibre の DOM にも届くが、**地図のカメラは WebGL/JS なので影響しない**。
+       MapLibre 自身も同じ扱いをしている（vendor の CSS に同じ媒体クエリがある）。 */
+  @media (prefers-reduced-motion: reduce){
+    *,*::before,*::after{
+      animation-duration:.01ms !important;
+      animation-iteration-count:1 !important;
+      transition-duration:.01ms !important;
+      /* ⚠ いまこの画面に scroll-behavior は 1 つも無い（実測 2026-08-19）。
+         **効いていないが、置いておく。** あとで足した人がここを通る。
+         ⚠ 寄せる操作の behavior は JS 側（scrollToEl）が決めていて、こことは別。 */
+      scroll-behavior:auto !important}
+  }
 </style>
 </head>
 <body>
