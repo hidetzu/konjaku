@@ -170,7 +170,7 @@ PR のレビュー・merge               人
 |---|---|---|
 | hidetzu/konjaku#11 | 自前コードに `prefers-reduced-motion` が **0 件** | ⚠ **変わっていない**（0 件） |
 | hidetzu/konjaku#11 | トップ: `transition` 5 宣言・`animation` 2 宣言 | ⚠ **変わっていない**（5 / 2） |
-| hidetzu/konjaku#11 | `/peel`: `transition` **5 宣言** | ⚠ **8 宣言に増えている**。さらに `scroll-behavior` が **2 件**（Issue に無い） |
+| hidetzu/konjaku#11 | `/peel`: `transition` **5 宣言** | ⚠ **8 宣言に増えている** |
 | hidetzu/konjaku#11 | トップ: smooth scroll **6 か所** | ⚠ **7 か所** |
 | hidetzu/konjaku#12 | `/peel` の閉じたパネルへ Tab が入る | ⚠ **`inert` が入っている**（`peel3d.js` の `sealOldControls`）。実描画「見えない操作に、キーボードで届かない」が見ている。⚠ **Issue が挙げた要素と同じかは、測り直しが要る** |
 | hidetzu/konjaku#12 | トップの `#q` にフォーカス表示が無い | ⚠ **変わっていない**（`index.html:173` に `outline:none`）。⚠ さらに `#memo:focus` も `outline:none` |
@@ -189,7 +189,7 @@ PR のレビュー・merge               人
 
 | | 何 | 渡せるか |
 |---|---|---|
-| **11-a** | ⚠ **CSS の動き**を「動きを減らす」で止める（`transition` 13 宣言・`animation` 2 宣言・`scroll-behavior` 2 件・smooth scroll 7 か所） | ⚠ **YES** |
+| **11-a** | ⚠ **CSS の動き**を「動きを減らす」で止める（`transition` 13 宣言 ＝ トップ 5 ＋ `/peel` 8・`animation` 2 宣言・JS の smooth scroll 7 か所） | ⚠ **YES** |
 | **11-b** | ⚠ **自前 JS の再生**（トップの `▶` 1.3 秒ごと・`/peel` の 11 秒再生） | ⚠ **NO** |
 
 **なぜ 11-a は渡せるか**
@@ -209,6 +209,10 @@ PR のレビュー・merge               人
 
 ⚠ **11-a を渡すなら、先に Issue hidetzu/konjaku#11 の本文を直す。**
 いまの本文は `/peel` を「`transition` 5 宣言」と書いており、**実際は 8 宣言**。
+
+⚠ **こちらが一度取り違えた。**`/peel` に `scroll-behavior` が 2 件あると書いたが、
+実際は `overscroll-behavior` / `overscroll-behavior-x` で、**滑らかスクロールとは別のもの**。
+自前の `scroll-behavior` は **0 件**（滑らかスクロールは JS 側の 7 か所）。
 
 ---
 
