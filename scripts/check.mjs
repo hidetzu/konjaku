@@ -548,32 +548,33 @@ head("3. 内部リンク");
   ok("拡張子なし・実在・自己参照を検査済み");
 }
 
-// ---------- 3.5. 事前計算データの索引 ----------
-// ここが壊れると、黙って実行時 Overpass に落ちる。本番で 504 が常態の相手なので、
-// 「動いてはいるが作品が成立していない」状態になり、気づきにくい（掟: 取れなかったを「無い」と言わない）。
-head("3.5. 事前計算データ（data/areas.json）");
+// ---------- 3.5. 土地ごとの例外を作らない ----------
+// ⚠ **以前ここは範囲索引（豊洲 1 件だけ）を見ていた**（2026-08-20 に外した）。
+//   ⚠ 豊洲だけが専用の集計範囲・事前生成の水域・事前生成の建物を持ち、
+//     ⚠ **1 つの土地だけが他と違う経路を通っていた**（掟: 同じ問いに答える実装を2つ持たない）。
+// ⚠ **守りたかったこと（実行時 Overpass に黙って落ちない）は消していない。**
+//   それは下の「タイル索引」と共通マニフェストの検査が見ている。
+// ⚠ ここが見るのは、**その例外がもう一度生えてこないこと**。
+head("3.5. 土地ごとの例外を作っていない");
 {
-  const raw = await readFile(join(PUB, "data", "areas.json"), "utf8").catch(() => null);
-  if (!raw) bad("public/data/areas.json が無い。peel が全地点で Overpass に落ちる");
-  else {
-    const areas = JSON.parse(raw).areas ?? [];
-    if (!areas.length) bad("areas.json に1件も範囲が無い");
-    for (const a of areas) {
-      const b = a.bbox ?? {};
-      if (!["s", "w", "n", "e"].every((k) => Number.isFinite(b[k])))
-        bad(`${a.id}: bbox が不正`);
-      for (const key of ["buildings", "water"]) {
-        if (!a[key]) continue;                        // 片方だけでもよい
-        const rel = a[key].replace(/^\.\//, "");
-        await readFile(join(PUB, rel))
-          .then(() => ok(`${a.id}: ${rel}`))
-          .catch(() => bad(`${a.id}: ${rel} が存在しない`));
-      }
-    }
+  const gone = ["areas.json", "toyosu-buildings.geojson", "toyosu-water.geojson"];
+  for (const f of gone)
+    existsSync(join(PUB, "data", f))
+      ? bad(`public/data/${f} が戻っている。1 つの土地だけが違う経路を通る`)
+      : ok(`public/data/${f} は無い`);
+  // ⚠ 読む側が生えていないか。**配っていないものを読みに行くと、静かに 404 を出し続ける**
+  // ⚠ **コメントを先に落とす。**落とさないと、上の説明の字面をこの検査が拾う（CLAUDE.md §5）。
+  let reads = 0;
+  for (const [f, s2] of Object.entries(src)) {
+    if (!/\.(js|html)$/.test(f)) continue;
+    // ⚠ HTML のコメント（<!-- -->）も落とす。⚠ **落とさないと、何を外したかを
+    //   説明した .html のコメントを、この検査自身が「読んでいる」と読む**（CLAUDE.md §5）
+    const bare = s2.replace(/<!--[\s\S]*?-->/g, "")
+      .replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+    for (const g of gone)
+      if (bare.includes(g)) { bad(`${f} が data/${g} を読もうとしている（もう配っていない）`); reads++; }
   }
-  // 索引を読む側が消えていないか（peel から data/ 参照が 0 件だった事故の再発防止）
-  if (src["peel3d.js"]?.includes("areas.json")) ok("peel3d.js が索引を読んでいる");
-  else bad("peel3d.js が data/areas.json を参照していない（事前計算データが死んでいる）");
+  if (!reads) ok("公開物のどれも、消した 3 件を読みに行っていない");
 }
 
 // ⚠ **「この場所に 3D の下地があるか」に答える実装を、2 つ持たない**（掟6）。
@@ -657,7 +658,7 @@ for (const f of htmlFiles) {
   const s = src[f];
   const gsi = s.includes("国土地理院");
   // OSM 建物を使うページだけ ODbL 表記が要る
-  const usesOsm = s.includes("overpass") || s.includes("areas.json") || s.includes("-buildings");
+  const usesOsm = s.includes("overpass") || s.includes("data/bl") || s.includes("-buildings");
   const osm = s.includes("OpenStreetMap");
   if (!gsi) bad(`${f}: 地理院タイルの出典表記が無い`);
   else if (usesOsm && !osm) bad(`${f}: OSM を使っているのに ODbL 表記が無い`);
@@ -781,8 +782,8 @@ for (const f of htmlFiles) {
       //   （install の addAll）。2026-08-16 に指摘されるまで、
       //   **検査が事実でないことを「確認済み」として表示していた**。
       //   ⚠ **動的に足す分（0 件）と、SHELL の例外（明示した分）を分けて言う。**
-      const probes = ["/data/bl/index.json", "/data/ev/index.json", "/data/areas.json",
-                      "/data/landform.json", "/data/toyosu-water.geojson"];
+      const probes = ["/data/bl/index.json", "/data/ev/index.json", "/data/assets.json",
+                      "/data/landform.json", "/data/quick-places.json"];
       const dyn = probes.filter((u) => fns.cacheable(u));
       dyn.length
         ? bad(`/data/ が版のキャッシュに**動的に**入る: ${dyn.join("、")}（取り込みで書き換わる。持たない）`)
@@ -908,7 +909,7 @@ for (const f of htmlFiles) {
   // ⚠ **サイト全体の情報を、この画面へ戻さない**（2026-08-18）。
   //   戻すなら、この検査を「何を守っていたか」を読んでから外すこと。
   //   ⚠ 「データについて」は、外した時点で**2 か所が事実と違っていた**
-  //     （住所検索の説明＝この画面から検索を外した／areas.json から建物を読む＝実測で読まれない）。
+  //     （住所検索の説明＝この画面から検索を外した／範囲索引から建物を読む＝実測で読まれない）。
   {
     // ⚠ **コメントを先に落とす。**落とさないと、
     //   「何を外したか」を説明したコメントの字面を、この検査自身が拾う。
@@ -2746,7 +2747,8 @@ head("6. 外部リンク");
       yes(!/(建物|家)(は|が)(無い|ありません)/.test(t), `建物が無いと言い切っている: ${t}`);
 
     // ---- 出どころの但し書き。⚠ 事前計算と実行時を混ぜない ----
-    yes(W.waterPre(true) !== W.waterPre(false), "水域が事前計算かを書き分けていない");
+    // ⚠ 水域の書き分けは 2026-08-20 に消えた。**どの土地でもその場で起こす**ので、
+    //   書き分ける相手が居ない（残すと「事前計算のときがある」と読ませる）。
     yes(W.bldPre(true) !== W.bldPre(false), "建物が事前取り込みかを書き分けていない");
     yes(W.precision(false) !== "" && W.precision(true) === "",
       "粗い区分のときに、そう書いていない");
@@ -3454,7 +3456,12 @@ head("9. 画面の言葉");
         while (j < lines.length && /^\s*(\/\/|$)/.test(lines[j])) j++;
         if (!guard.test(lines[j] ?? "")) naked.push(lines[i].trim().slice(0, 56));
       }
-      if (top < 5) bad(`loadArea の直下の await が ${top} 箇所しか見えていない（この検査が取りこぼしている）`);
+      // ⚠ **この下限は「検査が目を潰していないか」を見るためのもの**で、仕様ではない。
+      //   ⚠ 2026-08-20 に 7 → 4 へ下げた。範囲索引（豊洲 1 件だけの事前計算）を外し、
+      //     その経路にあった await 3 つ（索引・事前生成の水域・事前生成の建物）が消えたため。
+      //   ⚠ **実際の数に合わせて下げること。**下げ忘れると通らず、上げすぎると
+      //     取りこぼしに気づけない。
+      if (top < 4) bad(`loadArea の直下の await が ${top} 箇所しか見えていない（この検査が取りこぼしている）`);
       else naked.length
         ? bad(`loadArea の await ${naked.length} 箇所に、seq の番人が無い: ${naked.join(" / ")}`
             + `（古い呼び出しが、あとから新しい結果を上書きする）`)
