@@ -2270,7 +2270,9 @@ function renderEvents(){
   const span=base ? `${nowSel?"いま":`${year}年`}まで`
     : `${frames[eraIdx-1].label} → ${nowSel?"いま":frames[eraIdx].label}`;
   if(!hit.length){
-    el.innerHTML=`<div class="ev-note">${span}のあいだに、記録のある変化はありません${
+    // ⚠ **「変化が無かった」と読ませない**（2026-08-20）。⚠ こちらが持っている
+    //   記録の話であって、⚠ **現実に何も起きなかったという意味ではない**（掟の一行目）。
+    el.innerHTML=`<div class="ev-note">${span}のあいだに、この期間に表示できる変化の記録は見つかっていません${
       all.length?`（この範囲の記録は ${all.length} 件）`:""}。</div>`;
     evShown=[]; renderPins([]); placeMarkers(); return; }
   el.innerHTML=`<div class="ev-h">${base

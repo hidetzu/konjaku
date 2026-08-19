@@ -12,6 +12,12 @@ import { chromium } from "playwright";
 import { spawn } from "node:child_process";
 import { mkdir, readFile } from "node:fs/promises";
 import { deflateSync } from "node:zlib";
+// ⚠ **一覧行のタグの字は public/words.js が持つ。**⚠ **ここに書き写さない。**
+//   ⚠ 2026-08-20 に踏んだ: この検査が「根拠あり」を直接書いていて、
+//     ⚠ **字を言い直したら、製品ではなく検査のほうが落ちた**（掟: 同じ問いに答える実装を2つ持たない）。
+await import(new URL("../public/words.js", import.meta.url).href);
+const WORDS = globalThis.KonjakuWords;
+if (!WORDS) throw new Error("public/words.js を読み込めない（一覧行のタグを確かめられない）");
 
 const PORT = 8099;
 const BASE = `http://127.0.0.1:${PORT}`;
@@ -329,7 +335,7 @@ const CASES = [
       must(sug.some((s) => s.label.includes("液状化")),
         `水域かつ低地なのに液状化が出ていない: ${sug.map((s) => s.label).join(" / ")}`);
       // タグは行き先ではなく「なぜここに出ているのか」を書く。
-      // 〈ごはん〉と同じ 外部↗ を下げていた頃は、判定から出た語だと分からなかった。
+      // 〈ごはん〉と同じ「外部のサイト」のタグを下げていた頃は、判定から出た語だと分からなかった。
       const badTag = sug.filter((s) => s.tag !== "この土地から");
       must(!badTag.length, `提案のタグが違う: ${badTag.map((s) => `${s.label}=${s.tag}`).join(" / ")}`);
       // 並びの原則は「この場所に固有なものほど上」。ハザードマップ・地理院地図は
@@ -361,8 +367,12 @@ const CASES = [
       });
       must(weld.n >= 3, `判定カードに溶接された行が少なすぎる: ${weld.n}`);
       must(weld.gap === 0, `判定カードと溶接した行の間に隙間がある: ${weld.gap}px`);
-      must(weld.tags.every((t) => t === "根拠あり" || t === "この土地から"),
-        `この場所の判定から出ていない行まで溶接している: ${weld.tags.join(" / ")}`);
+      // ⚠ 溶接してよいのは「今昔の中で開くもの」と「この土地の判定から出たもの」だけ。
+      //   ⚠ **字は words.js から取る。**ここに書き写すと、言い直したときに検査が落ちる
+      const weldable = [WORDS.TAG.own, WORDS.TAG.why];
+      must(weld.tags.every((t) => weldable.includes(t)),
+        `この場所の判定から出ていない行まで溶接している: ${weld.tags.join(" / ")}`
+          + `（溶接してよいのは ${weldable.join(" / ")}）`);
       must(/ハザードマップ|地理院地図|ごはん/.test(weld.firstRest),
         `固定リンクまで溶接に含まれている: 溶接の外の先頭が「${weld.firstRest}」`);
       return `判定「${v.trim().split("\n")[0]}」／バッジ ${badges} 個／標高 ${elev}m／コマンド ${n} 件`
