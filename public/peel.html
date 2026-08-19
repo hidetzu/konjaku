@@ -111,7 +111,13 @@
      ⚠ 上限を掛けて、超える分は中でスクロールさせる。⚠ **消さない・畳まない。** */
   #hud{position:absolute;left:0;right:0;bottom:0;z-index:12;pointer-events:none;
     padding:0 26px 26px;display:flex;flex-direction:column;align-items:center;gap:13px;
-    max-height:calc(100dvh - 62px - 112px - 20px);overflow-y:auto;overscroll-behavior:contain}
+    /* ⚠ **答えの板のぶんを空ける。**⚠ 高さを決め打ちにしない。
+       実測（2026-08-19）: ここは 112px（旧 #land の高さ）で決め打ちしていて、
+       ⚠ **層を出して #land が 152px になった瞬間に 320×480 で 20px 食い込んだ**。
+       ⚠ CLAUDE.md §9「隣り合うものは同じ積み上げに入れる。固定値で避けない」を再び踏んだ。
+       → **実際の高さ**（--land-h）を JS が測って入れる。既定は板が出る前の 0。 */
+    max-height:calc(100dvh - 62px - var(--land-h, 0px) - 20px);
+    overflow-y:auto;overscroll-behavior:contain}
   /* ============ 土地の答え（常時見える） ============ */
   /* ⚠ 年代（60px）より小さく、但し書き（12px）より大きい。この画面の中心の主張。
      ⚠ **画面の上に置く。** 下の HUD に足すと、板のぶんだけ HUD が上へ伸び、
@@ -142,6 +148,11 @@
   .land-den{margin-top:3px;font-size:var(--fs-note);line-height:1.5;color:var(--ink-dim)}
   .land-den b{color:#cbd3dc;font-weight:600}
   .land-sub{margin-top:2px;font-size:var(--fs-note);line-height:1.5;color:var(--ink-faint)}
+  /* 層。⚠ **確実性の高い順に積む**（ADR 0030）。⚠ 層の名前は「その層の問い」 */
+  .land-layer+.land-layer,.land-layer+.land-miss,.land-miss+.land-layer{margin-top:7px}
+  .land-q{font-size:var(--fs-label);color:var(--ink-dim);letter-spacing:.04em;margin-bottom:1px}
+  /* ⚠ 出ない層も、その層の位置に置く。⚠ 薄くするが、消さない */
+  .land-miss{opacity:.8}
   /* ⚠ パネルを開いている間は出さない。同じ答えを同じ画面で2度言わない
      （☰ ボタンと同じ手。`~` は後続の兄弟にしか効かないが、#panel は #hud より前にある）。 */
   #panel:not(.hide) ~ #land{display:none}

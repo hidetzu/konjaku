@@ -2421,6 +2421,79 @@ head("6. 外部リンク");
         + `ready-for-ai の意味は CLAUDE.md にある）`);
 }
 
+// 層を組み立てるところ（peel3d.js の layersOf）。
+// ⚠ **確実性の高い順**（第1層 → 第2層 → 第3層）。ADR 0030 と docs/DOMAIN.md §1。
+// ⚠ 実測（2026-08-19）: 層という値が無かったので、4 地点とも順番が違った。
+{
+  const src2 = src["peel3d.js"] ?? "";
+  const m = /\nfunction layersOf\(area, lf\)\{[\s\S]*?\n\}\n/.exec(src2);
+  const mw = /\nconst WORD = \{[\s\S]*?\n\};/.exec(src2);
+  if (!m || !mw) bad("peel3d.js の layersOf を取り出せない（この検査が何も見ていない）");
+  else {
+    const [L, W] = new Function("KonjakuSwale", "KonjakuProv", "bldWhyArea",
+      `${mw[0]}${m[0]}\nreturn [layersOf, WORD];`)(
+        globalThis.KonjakuSwale, globalThis.KonjakuProv, () => "分母");
+    const fails = [];
+    const yes = (c, what) => { if (!c) fails.push(what); };
+    const LF = { ok: true, value: "旧水部", artificial: "盛土地･埋立地" };
+
+    // ---- 豊洲: 3 層とも立つ ----
+    const toyosu = L({ classified: 533, total: 533, wet: 531, waterRead: true, waterRatio: .953,
+      buildingLand: { name: "河川・湖沼・海面", count: 496, classified: 533, pct: "93.1" },
+      landSummary: { name: "河川・湖沼・海面", pct: "81.5" }, counts: {}, bldState: "ok" }, LF);
+    yes(toyosu.layers.map((x) => x.n).join() === "1,2,3",
+      `豊洲で 3 層が順に並んでいない: ${toyosu.layers.map((x) => x.n).join()}`);
+
+    // ---- ⚠ 第1層は、どの土地でも立つ ----
+    for (const [nm, area] of [
+      ["名古屋", { classified: 0, total: 0, waterRead: true, waterRatio: .017, landSummary: { name: "田", pct: "97.0" }, bldState: "notyet" }],
+      ["札幌", { classified: 0, total: 1364, waterRead: false, waterUnread: false, bldState: "ok" }],
+      ["那覇", { classified: 0, total: 0, waterRead: false, waterUnread: false, bldState: "notyet" }],
+    ]) {
+      const r = L(area, LF);
+      yes(r.layers[0]?.n === 1, `${nm}で第1層が先頭でない: ${r.layers.map((x) => x.n).join()}`);
+      // ⚠ 層は必ず番号順（順序が崩れると、確実性の順でなくなる）
+      const ns = r.layers.map((x) => x.n);
+      yes(ns.join() === [...ns].sort().join(), `${nm}で層の順序が崩れている: ${ns.join()}`);
+      // ⚠ 立たない層は、必ず理由が付く（黙って消さない）
+      for (const n of [2, 3])
+        yes(ns.includes(n) || r.missing.some((x) => x.n === n),
+          `${nm}で第${n}層が、立ちも欠けもしていない（黙って消えている）`);
+    }
+
+    // ---- ⚠ 数字を出すなら、分母がある ----
+    for (const r of [toyosu, L({ classified: 0, total: 0, waterRead: true, waterRatio: .017, bldState: "notyet" }, LF)])
+      for (const x of r.layers)
+        if (x.head.kind === "pct") yes(!!x.den, `数字を出しているのに分母が無い: 第${x.n}層 ${x.head.v}`);
+
+    // ---- ⚠ 出せない理由は、層ごとに違う（同じ文を 2 回出さない）----
+    const sap = L({ classified: 0, total: 1364, waterRead: false, waterUnread: false, bldState: "ok" }, LF);
+    const says = sap.missing.map((x) => W.layerMissing(x.n, x.why));
+    yes(new Set(says).size === says.length, `出せない理由が重複している: ${says.join(" / ")}`);
+
+    // ---- ⚠ 読めなかったのと、範囲の外を混ぜない ----
+    const unread = L({ classified: 0, total: 0, waterRead: false, waterUnread: true, bldState: "notyet" }, LF);
+    yes(unread.missing.find((x) => x.n === 2)?.why === "unread", "読めなかったのに範囲の外と言っている");
+    yes(/読み込め/.test(W.layerMissing(2, "unread")), "読めなかったことを言っていない");
+    yes(!/読み込め/.test(W.layerMissing(2, "outside")), "範囲の外なのに、こちらの都合に読める言い方をしている");
+
+    // ---- ⚠ 層の名前は「問い」。内部の呼び名を出さない ----
+    for (const n of [1, 2, 3]) {
+      const t = W.layerTitle(n);
+      yes(!/第[123]層/.test(t), `層の名前に内部の呼び名が出ている: ${t}`);
+      yes(/？/.test(t), `層の名前が問いの形になっていない: ${t}`);
+    }
+    // ⚠ 第1層で時間の語を使わない（3/4 が明治期と取り違えた）
+    yes(!/もとは|昔は|だった/.test(W.ground1("旧水部")), `第1層に時間の語が入っている: ${W.ground1("旧水部")}`);
+    yes(/この土地は/.test(W.ground1("旧水部")), `主語が「この土地は」でない: ${W.ground1("旧水部")}`);
+
+    fails.length
+      ? bad(`層の組み立てが決めごとと違う（${fails.length} 件）: ${fails.slice(0, 4).join(" / ")}`)
+      : ok(`層を動かして確認（確実性の高い順・第1層は常に立つ・数字には分母・`
+          + `出せない理由は層ごと・名前は問いの形）`);
+  }
+}
+
 // ドメインモデル（docs/DOMAIN.md）が、実物とつながっていること。
 // ⚠ **文書は誰も実行しないので、黙って古くなる。**機械で見られるところだけ見る。
 // ⚠ **中身の正しさ（言葉づかいが良いか）はここでは見ない。**見るのは
