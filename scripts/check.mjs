@@ -1775,7 +1775,9 @@ head("6. 外部リンク");
           if (/&[a-z|(]*$/.test(before) && /^#\d+;/.test(after)) continue;
           // ② URL の断片（地理院地図のズーム/緯度/経度）。同じ行の、この位置より前に URL がある
           if (/https?:\/\/[^\s"'`)]*$/.test(before)) continue;
-          // ③ よそのリポジトリの Issue（gsi-cyberjapan/gsimaps#29）
+          // ③ リポジトリ名つきの参照。⚠ **よそのリポジトリだけではない。**
+          //    自分のリポジトリでも、名前つきなら移行後も同じ Issue を指す
+          //    （落とすのは裸の番号。振り直されると別のものを指すのはそちらだけ）。
           if (/[a-z0-9-]+\/[a-z0-9._-]+$/i.test(before)) continue;
           // ④ 例示。⚠ **「例」の字が行にあるだけでは通さない。**
           //    `#<番号>` のような、実在の番号でない書き方だけを許す
@@ -2359,6 +2361,64 @@ head("6. 外部リンク");
           + `・落ちても exit 0・履歴を読まない・人名を持ち出さない`
           + `・.envrc / .env は git に入っていない）`);
   }
+}
+
+// ⚠ **AI が、人の代わりに「渡してよい」と決めないこと。**
+//   Loop Engineering の入口は `ready-for-ai` ラベルで、**付けるのは人だけ**
+//   （CLAUDE.md 「自分で決める／人に聞く」の節）。
+//   ⚠ Skill や Hook にラベル付与・自動 merge の手順を書くと、**そこが素通りになる**。
+// ⚠ **`.claude/` の中だけを見る。**この検査自身（scripts/）や、禁じ手を説明している
+//   文書まで拾うと、書いた瞬間に落ちる（コメントを先に落とす規則と同じ話）。
+{
+  const dir = join(ROOT, ".claude");
+  const walk = async (d) => {
+    const out = [];
+    for (const e of await readdir(d, { withFileTypes: true })) {
+      const full = join(d, e.name);
+      if (e.isDirectory()) out.push(...await walk(full));
+      else out.push(full);
+    }
+    return out;
+  };
+  const files = existsSync(dir) ? await walk(dir) : [];
+  const FORBIDDEN = [
+    { re: /--add-label[^\n]*ready-for-ai|ready-for-ai[^\n]*--add-label/, why: "ready-for-ai を自分で付けている" },
+    { re: /gh\s+pr\s+merge[^\n]*--auto/, why: "PR を自動 merge している" },
+    { re: /gh\s+(pr|issue)[^\n]*--admin/, why: "保護を飛び越えている（--admin）" },
+    { re: /gh\s+issue\s+close/, why: "Issue を自分で閉じている" },
+  ];
+  // ⚠ **地の文を読まない。手順として書かれた行だけを見る。**
+  //   最初は「〜しない」を含む行を飛ばす形にしたが、**言い方の一覧は永遠に埋まらない**。
+  //   実測（2026-08-19）: 「⚠ gh issue close は使わない。」で落ちた（「使わない」が漏れていた）。
+  //   ⚠ CLAUDE.md 「コメント」の節と同じ踏み方（字面で拾うと、説明文まで拾う）。
+  //   → .md はコード枠（```）の中だけ、それ以外は行コメントを落としてから見る。
+  const steps = (f, src2) => {
+    if (f.endsWith(".md")) {
+      const out = []; let inFence = false;
+      for (const line of src2.split("\n")) {
+        if (/^\s*```/.test(line)) { inFence = !inFence; continue; }
+        if (inFence) out.push(line);
+      }
+      return out;
+    }
+    return src2.split("\n").map((l) => l.replace(/(^|\s)(\/\/|#).*$/, ""));
+  };
+  const hits = [];
+  for (const f of files) {
+    let src2 = ""; try { src2 = await readFile(f, "utf8"); } catch { continue; }
+    for (const line of steps(f, src2))
+      for (const g of FORBIDDEN)
+        if (g.re.test(line)) hits.push(`${f.replace(ROOT + "/", "")}: ${g.why}`);
+  }
+  // ⚠ ラベルの意味が書かれていること。書いていないと、人も何を見て付けるか分からない
+  const rule = await readFile(join(ROOT, "CLAUDE.md"), "utf8").catch(() => "");
+  if (!/ready-for-ai/.test(rule)) hits.push("CLAUDE.md に ready-for-ai の意味が書かれていない");
+  hits.length
+    ? bad(`AI が人の判断を飛ばせる書き方が入っている: ${[...new Set(hits)].join(" / ")}`
+        + `（ラベルを付けるのも merge するのも人。Skill は判定を返すところまで）`)
+    : ok(`Skill と Hook は、人の判断を飛ばさない（${files.length} ファイル・`
+        + `ラベル付与／自動 merge／--admin／Issue を閉じる が無く、`
+        + `ready-for-ai の意味は CLAUDE.md にある）`);
 }
 
 // 言葉を決めるところ（peel3d.js の WORD）。
