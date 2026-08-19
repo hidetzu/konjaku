@@ -833,6 +833,26 @@
     background:rgba(255,255,255,.03);border:1px solid var(--line);font-size:var(--fs-note);line-height:1.75}
   footer .f-body b{color:var(--ink-dim);font-weight:500}
   a{color:var(--action)}
+  /* ============ 動きを減らす ============ */
+  /* ⚠ OS・ブラウザで「動きを減らす」を入れている人には、動きだけを消す。
+     ⚠ **消すのは動きであって、結果ではない。** 年代は変わるし、寄せた先へも行く。
+       0 にせず .01ms にするのは、`transitionend` / `animationend` を待つ処理を
+       止めないため（0 だと発火しない実装がある）。
+     ⚠ **個別のセレクタを並べない。** 並べると、次に transition を足した人が漏らす。
+       実測（2026-08-19）: この画面は transition 5 宣言・animation 2 宣言。
+       /peel は transition 8 宣言。数え上げで維持できる数ではない。
+     ⚠ 同梱 MapLibre の DOM にも届くが、**地図のカメラは WebGL/JS なので影響しない**。
+       MapLibre 自身も同じ扱いをしている（vendor の CSS に同じ媒体クエリがある）。 */
+  @media (prefers-reduced-motion: reduce){
+    *,*::before,*::after{
+      animation-duration:.01ms !important;
+      animation-iteration-count:1 !important;
+      transition-duration:.01ms !important;
+      /* ⚠ いまこの画面に scroll-behavior は 1 つも無い（実測 2026-08-19）。
+         **効いていないが、置いておく。** あとで足した人がここを通る。
+         ⚠ 寄せる操作の behavior は JS 側（scrollToEl）が決めていて、こことは別。 */
+      scroll-behavior:auto !important}
+  }
 </style>
 </head>
 <body>
@@ -1076,6 +1096,16 @@ const RELOCATE_HOW = (isIOS) => isIOS
   : "アドレスバーの鍵アイコン（または ⓘ）→ サイトの設定 → 位置情報 を「許可」に。";
 
 
+// ⚠ **寄せる操作の受け口は、ここ 1 つ。**
+//   「動きを減らす」を入れている人には、滑らかに送らない。
+//   ⚠ **送り先は変えない。**動きだけを消す（掟: 消すのではなく詰める）。
+//   ⚠ 呼ぶたびに聞く。設定は途中で変えられる（読み込み時に1回だけ見ると、変えた人に効かない）。
+//   ⚠ **呼ぶ側は behavior を渡さない。**渡すと、判断が呼ぶ側の数だけ増える
+//     （実測 2026-08-19: この画面に 7 か所あった）。呼ぶ側が言うのは**どこへ寄せるか**だけ。
+//   ⚠ 静的検査が、生の behavior:"smooth" がここ以外に無いことを見ている。
+const lessMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+const scrollToEl = (el, opt) => el?.scrollIntoView({ ...opt, behavior: lessMotion() ? "auto" : "smooth" });
+
 // 検証ロジックは verify.js に集約している（index / peel で重複していたため）。
 // 事実の抽出・根拠の保持・文章化は、すべてそちらの責任。
 
@@ -1147,7 +1177,7 @@ mineToggle.onclick=()=>{
   const el=document.getElementById("mine");
   el.style.display=open?"none":"block";
   // 開いたことが見えるところまで連れていく。押しても何も起きないように見せない
-  if(!open) el.scrollIntoView({behavior:"smooth",block:"nearest"});
+  if(!open) scrollToEl(el,{block:"nearest"});
 };
 document.getElementById("clearOne").onclick=()=>{
   if(!current) return;
@@ -1596,7 +1626,7 @@ function wireAreaItems(){
       //   **下端が画面の外**だった。この画面は同じ失敗を既に踏んでいる
       //   （共有の知らせが 299px 下の画面外にあり、3 体とも「壊れている」と判断した）。
       //   ⚠ block:"nearest" にする。center だと、すでに見えているときにも画面が飛ぶ。
-      box.scrollIntoView({behavior:"smooth",block:"nearest"});
+      scrollToEl(box,{block:"nearest"});
     };
   });
 }
@@ -2395,7 +2425,7 @@ function focusOn(x,i){
     if(big){
       const r=big.getBoundingClientRect();
       const seen=Math.max(0,Math.min(r.bottom,innerHeight)-Math.max(r.top,0));
-      if(seen<r.height*SEEN_ENOUGH) big.scrollIntoView({behavior:"smooth",block:"center"});
+      if(seen<r.height*SEEN_ENOUGH) scrollToEl(big,{block:"center"});
     }
     return;
   }
@@ -2418,7 +2448,7 @@ function focusOn(x,i){
   inner.style.transform=`translate(${tx.toFixed(1)}px,${ty.toFixed(1)}px) scale(${k})`;
   big.classList.add("zoom"); zoomOn=true;
   // 印と名前は markFocus が済ませている（この経路だけ別に書いて取りこぼした過去がある）
-  big.scrollIntoView({behavior:"smooth",block:"nearest"});
+  scrollToEl(big,{block:"nearest"});
 }
 // 寄せたものを解く。強調も名前も、ここ1か所で落とす
 function clearFocus(){
@@ -2577,7 +2607,7 @@ function renderVerdict(){
   const cw=document.getElementById("closeWhy");
   if(cw&&!cw.dataset.on){ cw.dataset.on="1";
     cw.onclick=()=>{ const w=document.getElementById("whyBtn"); if(w) w.click();
-      document.getElementById("verdict")?.scrollIntoView({behavior:"smooth",block:"nearest"}); }; }
+      scrollToEl(document.getElementById("verdict"),{block:"nearest"}); }; }
   const rb=document.getElementById("retryBtn");
   if(rb) rb.onclick=()=>{ const c=current; if(c) openPlace(c.lon,c.lat,c.title); };
   document.getElementById("whyBtn").onclick=(ev)=>{
@@ -2588,7 +2618,7 @@ function renderVerdict(){
     // "" にすると CSS の display:none が復活してしまうので、明示的に block にする
     document.getElementById("result").style.display = open ? "none" : "block";
     document.getElementById("closeWhy")?.style.setProperty("display", open?"none":"block");
-    if(!open){ own.scrollIntoView({behavior:"smooth",block:"nearest"});
+    if(!open){ scrollToEl(own,{block:"nearest"});
       const card=own.firstElementChild;
       if(card){ card.classList.remove("flash"); void card.offsetWidth; card.classList.add("flash"); } }
   };
@@ -2709,7 +2739,7 @@ function wireBadges(){
       setTimeout(()=>{
         const card=k?document.querySelector(`#own .card[data-k="${k}"]`):null;
         const t=card??document.getElementById("own");
-        t?.scrollIntoView({behavior:"smooth",block:"nearest"});
+        scrollToEl(t,{block:"nearest"});
         if(card){ card.classList.remove("flash"); void card.offsetWidth; card.classList.add("flash"); }
       },60);
     };

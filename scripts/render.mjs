@@ -3750,6 +3750,114 @@ const CASES = [
     },
   },
   {
+    // ⚠ **「動きを減らす」を入れている人に、動きだけを消す。**
+    //   ⚠ 静的検査は媒体クエリが「ある」ことしか見られない。
+    //     ⚠ **効いているか**は、計算後の値を読まないと分からない。
+    name: "「動きを減らす」を入れると、自前の動きが残らない", path: `/?${TOYOSU}`, group: "core",
+    setup: (page) => Promise.all([
+      page.emulateMedia({ reducedMotion: "reduce" }),
+      // ⚠ **実際に渡している値を記録する。**受け口は素のスクリプトの中にあって
+      //   window から呼べない。呼べないものを「確認済み」と言わないための記録。
+      page.addInitScript(() => {
+        window.__siv = [];
+        const o = Element.prototype.scrollIntoView;
+        Element.prototype.scrollIntoView = function (opt) { window.__siv.push(opt); return o.call(this, opt); };
+      }),
+    ]),
+    async check(page) {
+      await page.waitForFunction(() => /もとは|記録なし|判定できません/.test(document.body.innerText),
+        null, { timeout: 90000 });
+      const r = await page.evaluate(() => {
+        const sec = (v) => v.split(",").map((x) => x.trim())
+          .map((x) => x.endsWith("ms") ? parseFloat(x) / 1000 : parseFloat(x));
+        const out = [];
+        // ⚠ 自前の宣言を持つ要素を、実際に DOM から拾う（決め打ちしない）
+        for (const el of document.querySelectorAll("body *")) {
+          const st = getComputedStyle(el);
+          for (const [k, v] of [["transition", st.transitionDuration], ["animation", st.animationDuration]])
+            for (const d of sec(v || "0s"))
+              if (d > 0.01) out.push(`${k} ${d}s ${el.tagName.toLowerCase()}.${(el.className || "").toString().slice(0, 24)}`);
+        }
+        return { slow: [...new Set(out)].slice(0, 6), n: out.length,
+                 mq: matchMedia("(prefers-reduced-motion: reduce)").matches };
+      });
+      must(r.mq, "ブラウザ側で「動きを減らす」になっていない（この検査が何も見ていない）");
+      must(r.n === 0, `動きが残っている ${r.n} 件: ${r.slow.join(" / ")}`);
+      // ⚠ 寄せる操作も滑らかにしない。**実際に押して、渡った値を読む**
+      for (const sel of ["#whyBtn", ".area-item"]) {
+        await page.locator(sel).first().click({ timeout: 4000 }).catch(() => {});
+        await page.waitForTimeout(700);
+      }
+      const siv = await page.evaluate(() => window.__siv.map((o) => o && o.behavior));
+      // ⚠ 1 件も起きていないなら、この検査は寄せる操作を見ていない。**起きたことを要求する**
+      must(siv.length > 0, "寄せる操作が一度も起きていない（この検査が何も見ていない）");
+      must(siv.every((v) => v === "auto"),
+        `寄せる操作が滑らかなまま: ${JSON.stringify([...new Set(siv)])}`);
+      return `自前の動き 0 件（transition / animation とも 0.01s 以下）`
+        + `／寄せる操作 ${siv.length} 件はすべて auto`;
+    },
+  },
+  {
+    // ⚠ **動きを減らしていない人の見え方を変えない。**
+    //   ⚠ 「動きを消した」検査だけだと、**全部消してしまっても緑**になる。
+    name: "「動きを減らす」でない人には、いままでの動きが残る", path: `/?${TOYOSU}`, group: "core",
+    setup: (page) => Promise.all([
+      page.emulateMedia({ reducedMotion: "no-preference" }),
+      page.addInitScript(() => {
+        window.__siv = [];
+        const o = Element.prototype.scrollIntoView;
+        Element.prototype.scrollIntoView = function (opt) { window.__siv.push(opt); return o.call(this, opt); };
+      }),
+    ]),
+    async check(page) {
+      await page.waitForFunction(() => /もとは|記録なし|判定できません/.test(document.body.innerText),
+        null, { timeout: 90000 });
+      const r = await page.evaluate(() => ({
+        lyr: getComputedStyle(document.querySelector(".big .lyr")).transitionDuration,
+        bigIn: getComputedStyle(document.querySelector(".big-in")).transitionDuration,
+      }));
+      // ⚠ 実測値そのもの。丸めない
+      must(r.lyr === "0.28s", `年代の重なりが 0.28s でない: ${r.lyr}`);
+      must(r.bigIn === "0.35s", `写真の寄せが 0.35s でない: ${r.bigIn}`);
+      // ⚠ 寄せる操作も、いままでどおり滑らかであること。
+      //   ⚠ これが無いと、**全部 auto にしてしまっても**上の検査は通る
+      for (const sel of ["#whyBtn", ".area-item"]) {
+        await page.locator(sel).first().click({ timeout: 4000 }).catch(() => {});
+        await page.waitForTimeout(700);
+      }
+      const siv = await page.evaluate(() => window.__siv.map((o) => o && o.behavior));
+      must(siv.length > 0, "寄せる操作が一度も起きていない（この検査が何も見ていない）");
+      must(siv.every((v) => v === "smooth"),
+        `動きを減らしていないのに滑らかでない: ${JSON.stringify([...new Set(siv)])}`);
+      return `年代の重なり ${r.lyr}／写真の寄せ ${r.bigIn}／寄せる操作 ${siv.length} 件は smooth（いままでどおり）`;
+    },
+  },
+  {
+    // ⚠ /peel も見る。片方だけ入れても、もう片方は動いたまま
+    name: "「動きを減らす」を入れると、深掘りの画面でも動きが残らない",
+    path: `/peel?${TOYOSU}`, group: "core",
+    setup: (page) => page.emulateMedia({ reducedMotion: "reduce" }),
+    async check(page) {
+      await page.waitForFunction(() => document.querySelector("#map canvas") !== null,
+        null, { timeout: 90000 });
+      await page.waitForTimeout(1500);
+      const r = await page.evaluate(() => {
+        const sec = (v) => v.split(",").map((x) => x.trim())
+          .map((x) => x.endsWith("ms") ? parseFloat(x) / 1000 : parseFloat(x));
+        const out = [];
+        for (const el of document.querySelectorAll("body *")) {
+          const st = getComputedStyle(el);
+          for (const [k, v] of [["transition", st.transitionDuration], ["animation", st.animationDuration]])
+            for (const d of sec(v || "0s"))
+              if (d > 0.01) out.push(`${k} ${d}s ${el.tagName.toLowerCase()}#${el.id}`);
+        }
+        return { slow: [...new Set(out)].slice(0, 6), n: out.length };
+      });
+      must(r.n === 0, `動きが残っている ${r.n} 件: ${r.slow.join(" / ")}`);
+      return `深掘りの画面も 0 件`;
+    },
+  },
+  {
     name: "Overpass が 0 件を返したら、取れなかったと言わない", path: `/peel?${URAYASU}`,
     setup: (page) => Promise.all([
       // 取り込み済みの経路を塞ぐ。⚠ 塞がないと静的で答えてしまい、Overpass の経路を通らない
