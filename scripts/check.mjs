@@ -1344,7 +1344,10 @@ head("6. 外部リンク");
 //   ⚠ 自己参照（--tap:var(--tap)）も、値が無効になるだけで静かに壊れる。実際に踏んだ。
 {
   const { readFileSync: rfc } = await import("node:fs");
-  const files = ["public/index.html", "public/peel.html", "public/peel3d.js",
+    // ⚠ **共通の定義（tokens.css）も見る。**2026-08-20 に 26 個をここへ寄せた。
+    //   ⚠ 入れ忘れると、全部が「定義の無い変数」に見える（実際にそうなった）。
+    const files = ["public/css/tokens.css",
+      "public/index.html", "public/peel.html", "public/peel3d.js",
     "public/share.js", "public/verify.js", "public/places.js", "public/events.js"];
   const defined = new Set(), used = new Map(), self = [];
   for (const f of files) {
@@ -2492,6 +2495,45 @@ head("6. 外部リンク");
       : ok(`層を動かして確認（確実性の高い順・第1層は常に立つ・数字には分母・`
           + `出せない理由は層ごと・名前は問いの形）`);
   }
+}
+
+// 2 画面で共通の見た目の定義は、1 か所にしか書かないこと。
+// ⚠ 実測（2026-08-20）: 同じ名前・同じ値が **26 個**、index.html と peel.html の
+//   両方に書いてあった。⚠ 片方だけ直すと、2 画面で見た目がずれる（ADR 0021）。
+// ⚠ **値が違うものは、ここでは咎めない**（--bg / --ink / --ink-dim / --line / --surface の 5 つ。
+//   ⚠ どちらが正かは決まっていないので、各ページに残してある）。
+{
+  const fails = [];
+  const styleOf = (t) => {
+    const m = /<style>([\s\S]*?)<\/style>/.exec(t ?? "");
+    return (m ? m[1] : "").replace(/\/\*[\s\S]*?\*\//g, "");
+  };
+  const declOf = (css) => {
+    const o = {};
+    for (const m of css.matchAll(/(--[a-z0-9-]+)\s*:\s*([^;}]+)/g)) o[m[1]] = m[2].trim();
+    return o;
+  };
+  // ⚠ src は public/ 直下しか持っていない。⚠ 読めなければ落とす（空振りさせない）
+  const shared = declOf(await readFile(join(PUB, "css", "tokens.css"), "utf8").catch(() => ""));
+  const idx = declOf(styleOf(src["index.html"])), peel = declOf(styleOf(src["peel.html"]));
+  if (!Object.keys(shared).length) fails.push("public/css/tokens.css を読めない（この検査が何も見ていない）");
+  else {
+    // ① 共通のものが、ページ側に残っていないこと
+    for (const [f, d] of [["index.html", idx], ["peel.html", peel]])
+      for (const k of Object.keys(shared))
+        if (k in d) fails.push(`${f} に ${k} が残っている（tokens.css と二重）`);
+    // ② ⚠ 同じ名前・同じ値が 2 ページに新しく生えていないこと
+    for (const k of Object.keys(idx))
+      if (k in peel && idx[k] === peel[k]) fails.push(`${k} が 2 ページに同じ値で書かれている（tokens.css へ）`);
+    // ③ 両ページが読み込んでいること
+    for (const f of ["index.html", "peel.html"])
+      if (!/href="\.\/css\/tokens\.css"/.test(src[f] ?? "")) fails.push(`${f} が tokens.css を読んでいない`);
+  }
+  fails.length
+    ? bad(`2 画面で共通の見た目の定義が 1 か所になっていない: ${fails.slice(0, 5).join(" / ")}`
+        + `（片方だけ直すと、2 画面で見た目がずれる）`)
+    : ok(`2 画面で共通の見た目の定義は tokens.css の 1 か所（${Object.keys(shared).length} 個。`
+        + `⚠ 値が違う 5 つは各ページに残す）`);
 }
 
 // 外へ出る相手の住所は、1 か所にしか書かないこと。
