@@ -3750,6 +3750,48 @@ const CASES = [
     },
   },
   {
+    // ⚠ **読めなかった年代を、トップが黙って落とさない。**
+    //   実測（2026-08-19・出島・利用者役 3 名。⚠ 実在の利用者ではない）:
+    //     落とした版を見せると **3/3 が「その年代の写真は存在しない」と答えた**。
+    //   ⚠ `/peel` は最初から残していた。同じ問いに 2 つの答えがあり、
+    //     実描画が 2 回それで落ちていた（相手先が 1 回 404 を返さなかっただけで）。
+    //   ⚠ **ここは 404 を落とすことも一緒に見る。**残すほうだけ見ると、
+    //     「全部残す」に変えても緑になる。
+    name: "読めなかった年代を、トップが黙って落とさない",
+    path: `/?ll=32.74400,129.87300&q=%E9%95%B7%E5%B4%8E%20%E5%87%BA%E5%B3%B6`, group: "core",
+    // ⚠ gazo3（1984–86）だけ落とす。⚠ gazo2 / gazo4 は 404 のまま（出島には無い）
+    setup: (page) => page.route(/\/xyz\/gazo3\//, (r) => r.abort("timedout")),
+    async check(page) {
+      await waitVerdict(page);
+      const r = await page.evaluate(() => ({
+        yrs: [...document.querySelectorAll("#strip .f .yr")].map((e) => e.textContent.trim()),
+        btn: document.querySelectorAll("#strip button.f").length,
+        unread: [...document.querySelectorAll("#strip .f.unread")].map((e) => ({
+          tag: e.tagName, yr: e.querySelector(".yr")?.textContent.trim() ?? null,
+          dis: e.getAttribute("aria-disabled"),
+          say: getComputedStyle(e.querySelector(".im.err"), "::after").content,
+        })),
+      }));
+      // ⚠ 読めなかった 1984–86 が残っていること
+      must(r.yrs.includes("1984–86"),
+        `読めなかった年代を落としている（「無い」と読まれる）: ${r.yrs.join("/")}`);
+      must(r.unread.length === 1 && r.unread[0].yr === "1984–86",
+        `読めなかったコマが 1 つでない: ${JSON.stringify(r.unread)}`);
+      // ⚠ 404 の年代（出島に写真が無い）は、いままでどおり出さない
+      for (const gone of ["1979–83", "1987–90", "1936–42"])
+        must(!r.yrs.includes(gone), `404 の年代 ${gone} まで出している: ${r.yrs.join("/")}`);
+      // ⚠ 押しても何も起きないので、押せる見た目にしない（ADR 0026）
+      must(r.unread[0].tag !== "BUTTON", `読めないコマが押せるままになっている: ${r.unread[0].tag}`);
+      must(r.unread[0].dis === "true", `読めないコマが aria-disabled でない: ${r.unread[0].dis}`);
+      // ⚠ こちらの都合を回線のせいに読ませない。⚠ 進行形にしない
+      const say = r.unread[0].say;
+      must(!/読み込め|通信|接続|中…|中$/.test(say), `原因を決めつける／進行形の言い方: ${say}`);
+      must(/出せません/.test(say), `いま出せないことを言っていない: ${say}`);
+      return `1984–86 が押せない枠として残り「${say.replace(/\\A/g, " ")}」／`
+        + `押せるコマ ${r.btn}／404 の 3 年代は出ていない`;
+    },
+  },
+  {
     // ⚠ **深掘りの画面の再生で、カメラを振らない。**
     //   ⚠ CSS では止まらない（requestAnimationFrame + map.jumpTo の自前実装）。
     //   ⚠ **姿勢は MapLibre のコンパスの style から読む。**地図を外へ公開しない。
