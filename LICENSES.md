@@ -80,7 +80,6 @@ Noto Sans CJK JP のライセンス全文は
 | `data/landform.json` | 地形分類の凡例 | **国土地理院**（地理院地図の `style.js`） | 下記。⚠ **成因・災害リスクの文は地理院の記述そのまま** |
 | `data/*-water.geojson` | 明治期の水域ポリゴン | **国土地理院**の明治期の低湿地タイルから起こしたもの | 下記。⚠ **加工物** |
 | `data/*-buildings.geojson` | 建物（旧いやり方の1地点） | **OpenStreetMap** | ODbL |
-| `data/areas.json` | 事前計算した範囲の索引 | 自前 | MIT |
 
 ### 国土地理院
 

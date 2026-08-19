@@ -10,9 +10,7 @@ import { VERSION as BL_VERSION } from "./bl-format.mjs";
 const PUB = "public";
 const readJSON = (path) => JSON.parse(readFileSync(path, "utf8"));
 const buildingIndexPath = `${PUB}/data/bl/index.json`;
-const areaIndexPath = `${PUB}/data/areas.json`;
 const buildingIndex = existsSync(buildingIndexPath) ? readJSON(buildingIndexPath) : null;
-const areaIndex = existsSync(areaIndexPath) ? readJSON(areaIndexPath) : { areas: [] };
 
 const manifest = {
   version: 1,
@@ -26,20 +24,9 @@ const manifest = {
       tile: "./data/bl/14/{x}/{y}.json",
       at: buildingIndex?.at ?? null,
     },
-    land: {
-      source: "gsi-swale",
-      format: "area-geojson-legacy",
-      zoom: 16,
-      // landタイルの共通出力ができるまでは、既存の範囲索引を互換参照する。
-      index: "./data/areas.json",
-      areas: (areaIndex.areas ?? []).map((area) => ({
-        id: area.id,
-        title: area.title,
-        bbox: area.bbox,
-        asset: area.water ?? null,
-        source: area.source?.water ?? "gsi-swale",
-      })),
-    },
+    // ⚠ ここには以前 `land` があった（2026-08-20 に外した）。
+    //   `data/areas.json`（豊洲 1 件だけの範囲索引）の互換参照で、
+    //   ⚠ **ブラウザ側は一度も読んでいなかった**。水域はその場で起こす形に一本化した。
     places: {
       source: "seeds/areas.jsonl",
       format: "json",
@@ -52,4 +39,3 @@ mkdirSync(`${PUB}/data`, { recursive: true });
 writeFileSync(`${PUB}/data/assets.json`, JSON.stringify(manifest, null, 2) + "\n");
 console.log(`共通アセット索引を書き出しました: ${PUB}/data/assets.json`);
 console.log(`  buildings: ${manifest.layers.buildings.index}`);
-console.log(`  land: ${manifest.layers.land.areas.length} 範囲（タイル化前の互換形式）`);

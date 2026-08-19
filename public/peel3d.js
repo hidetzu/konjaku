@@ -177,7 +177,7 @@ async function sampleSwale(lon,lat){
 //   Overpass は本番で 504／無応答が常態で、README と OGP が掲げる
 //   99.4%（建物）が利用者の画面に出ていなかった。
 //   事前に取ってある範囲では、実行時に外部へ出ない。
-//   どの範囲のデータがあるかは data/areas.json で引く
+//   どの範囲が取り込み済みかは data/bl の索引で引く（ground.js の 1 か所）
 
 // 取り込み済みの建物タイル（z14）。
 // ⚠ 束ねない。実測で、いちばん重い z14 タイルが 6,510件 / gz 174KB。
@@ -251,27 +251,14 @@ function unpackBuildings(d){
   }
   return out;
 }
-//   （地点を足すときに HTML を触らなくて済むように、索引を外へ出した）。
+// ⚠ **ここには以前、土地ごとの範囲索引があった**（2026-08-20 に外した）。
+//   豊洲 1 件だけが専用の集計範囲・事前生成の水域・事前生成の建物を持ち、
+//   ⚠ **豊洲だけが他の土地と違う経路を通っていた**（掟: 同じ問いに答える実装を2つ持たない）。
+//   建物は data/bl の z14 タイルへ、水域はその場の生成へ一本化した。
+//   ⚠ 実測（2026-08-20）: 水域は 646 面・面積合計・外接まで**まったく同じ**に出る
+//     （ラスタのタイル境界に吸着するので、bbox が少しずれても結果が変わらない）。
+//   ⚠ 建物の集計範囲だけは変わる（533 件 → 543 件。割合は 99.6% のまま）。
 // ============================================================
-let AREAS=null;
-async function loadAreas(){
-  if(AREAS) return AREAS;
-  const j=await loadJSON("./data/areas.json");
-  AREAS=j?.areas??[];            // 索引が読めなければ Overpass の道に落ちるだけ
-  return AREAS;
-}
-async function loadJSON(path){
-  try{
-    const r=await fetch(path,{signal:AbortSignal.timeout(15000)});
-    return r.ok?await r.json():null;
-  }catch{ return null; }
-}
-// 調べる地点がその範囲に入っていれば、その範囲の事前計算データを使う。
-// 集計範囲は事前計算の bbox そのものにする（件数と % が範囲と一致していないと、
-// 「545件すべての足元を判定した」が言えなくなる）。
-const findArea=(areas,lon,lat)=>areas.find((a)=>{
-  const b=a.bbox; return lon>=b.w&&lon<=b.e&&lat>=b.s&&lat<=b.n;
-})??null;
 
 // ============================================================
 // 水域をその場でポリゴン化する（build-water.js のブラウザ版）
@@ -417,7 +404,7 @@ const centroid=(ring)=>{let x=0,y=0;const n=ring.length-1;
 //   （取り込み済みアセットの名称と実行時経路の名称を揃えるため）。
 // ⚠ 実測データが更新されて建物の形が動けば、この鍵は変わる。そのときは
 //   「復元できませんでした」と言う。黙って別の建物を選ばない。
-// ⚠ 6 桁 ≒ 0.1m。豊洲 533 件では衝突しない。
+// ⚠ 6 桁 ≒ 0.1m。豊洲 543 件では衝突しない。
 const bldKey=(lon,lat)=>`${lon.toFixed(6)},${lat.toFixed(6)}`;
 // 年 → 時間座標（tau）。E の並びは ALL_ERAS と同じ順（現在・1987–90 …・明治期）。
 // ⚠ ここが返すのは**時間座標であって段の番号ではない**。地点によって段は減るが、
@@ -480,10 +467,12 @@ map.on("load",()=>{
 });
 
 // 建物を押したとき。
-// ⚠ ここが 3D で唯一 100% 言えるところ。実測（豊洲 533件）:
-//     足元の判定  533 / 533 = 100%（1件ずつ画素を読んでいる）
-//     高さ        実測 42 / 533 = 7.9%（79% が種別ごとの既定値）
-//     建設年      8 / 533 = 1.5%（10街40万件では 0.30%）
+// ⚠ ここが 3D で唯一 100% 言えるところ。実測（2026-08-20・豊洲 543件）:
+//     足元の判定  543 / 543 = 100%（1件ずつ画素を読んでいる）
+//     高さ        実測 40 / 543 = 7.4%（残りは階数からの換算と、種別ごとの既定値）
+//     建設年      8 / 543 = 1.5%（10街40万件では 0.30%）
+// ⚠ 2026-08-20 に分母が 533 → 543 になった。豊洲だけが専用の集計範囲を
+//   持つのをやめ、⚠ **どの土地とも同じ枠（地点 ± HALF）**で数えるようにしたため。
 //   だから押した先の主役は足元で、高さと建設年はその下に、出所つきで置く。
 //
 // ⚠ 結果は**押した場所の近く**に出す。以前は左パネルの中だけに書いていて、
@@ -653,10 +642,6 @@ async function loadArea(lon,lat,title,opt){
   //   選んだ結果（判定の数字）が 214px 下へ押し出される。
   const findBox=document.getElementById("findBox");
   if(findBox) findBox.open=false;
-  // 事前計算データがある範囲では、その bbox をそのまま集計範囲にする。
-  // 表示の中心は要求された地点のままにするが、集計範囲を勝手にずらすと
-  // 「この範囲の N 件すべてを判定した」が言えなくなる。
-  const pre=findArea(await loadAreas(),lon,lat);
   // ⚠ **await のたびに、自分がまだ最新の呼び出しかを確かめる。**
   //   seq は 2026-08-18 まで取るだけで一度も見ていなかった（setTimeline の中だけが見ていた）。
   //   loadArea は 7 つの await を挟んでから area / statusEl / setData を書くので、
@@ -664,7 +649,10 @@ async function loadArea(lon,lat,title,opt){
   //   ⚠ 押せる経路がある: 低湿地データが読めないと再試行ボタンが出る（この下）。
   //     そのとき建物の問い合わせは最大 20 秒待っている最中で、その間ずっと押せる。
   if(seq!==areaSeq) return;   // 別の場所へ移った／押し直された。古い結果で上書きしない
-  const bbox=pre?pre.bbox:{w:lon-HALF_LON,e:lon+HALF_LON,s:lat-HALF_LAT,n:lat+HALF_LAT};
+  // ⚠ **集計範囲は、どの土地でも同じ作り方**（調べる地点 ± HALF）。
+  //   ⚠ 土地ごとに枠を変えると、「この範囲の N 件すべてを判定した」の N が
+  //     どこから来た数字か読めなくなる。
+  const bbox={w:lon-HALF_LON,e:lon+HALF_LON,s:lat-HALF_LAT,n:lat+HALF_LAT};
   map.jumpTo({center:[lon,lat],zoom:15.05,pitch:56,bearing:-20});
   // パネルを畳むと、どこを調べているのか分からなくなる。地図上に印を残す。
   if(marker) marker.remove();
@@ -694,20 +682,11 @@ async function loadArea(lon,lat,title,opt){
   statusEl.innerHTML=`<span class="go">明治期の低湿地データを読んでいます…</span>`;
 
   // --- 1. 水域 ---
-  // 事前計算があればそれを使う（ブラウザ側の生成は数秒かかる）。
-  // 無い／読めないときだけ、その場でタイルから起こす。
-  let w=null;
-  if(pre?.water){
-    const gj=await loadJSON(pre.water);
-    if(seq!==areaSeq) return;   // 別の場所へ移った／押し直された。古い結果で上書きしない
-    if(gj) w={ geojson:gj, ratio:gj.metadata?.waterRatio??0, rects:gj.features.length,
-               tiles:{ok:1,absent:0,unreachable:0}, pre:true,
-               classCounts:gj.metadata?.classCounts??null,
-               classifiedPixels:gj.metadata?.classifiedPixels??0,
-               transparentPixels:gj.metadata?.transparentPixels??0,
-               unknownPixels:gj.metadata?.unknownPixels??0 };
-  }
-  if(!w) w=await buildWater(bbox);
+  // ⚠ **どの土地でも、その場でタイルから起こす**（2026-08-20 に一本化）。
+  //   以前は豊洲だけ事前生成の GeoJSON を読んでいた。
+  //   ⚠ 実測（2026-08-20・豊洲・375×667）: 事前生成 0.2 秒 → その場で起こして 0.5 秒。
+  //     ⚠ **出てくる形は同じ**（646 面・面積合計・外接まで一致）。
+  const w=await buildWater(bbox);
   if(seq!==areaSeq) return;   // 別の場所へ移った／押し直された。古い結果で上書きしない
   map.getSource("water").setData(w.geojson);
 
@@ -725,13 +704,12 @@ async function loadArea(lon,lat,title,opt){
     statusEl.innerHTML=`<span class="err">このエリアは、明治期の低湿地データで<b>水域に該当しません</b>。</span>
       <span style="color:var(--ink-dim)">空中写真の年代送りは使えます。</span>`;
   } else {
-    statusEl.innerHTML=`<span style="color:var(--ink-dim)">水域 ${w.rects} 面${
-      WORD.waterPre(w.pre)}を判定しました。</span>`;
+    statusEl.innerHTML=`<span style="color:var(--ink-dim)">水域 ${w.rects} 面を判定しました。</span>`;
   }
   // 建物を待たずに、いま言えることだけで一度出す。
   // 判定できない土地では「判定できません」がここで出る。以前はここで初期値の
   // 「–%」が残り、Overpass が返った瞬間に「0.0% ── 実測値」へ化けていた（掟: 取れなかったを「無い」と言わない）。
-  area={ title, areaTitle:pre?.title??null, bldState:"loading",
+  area={ title, bldState:"loading",
     total:0, wet:0, classified:0, unread:0, counts:{}, dated:0,
     waterRatio:w.ratio, waterRead, waterUnread,
     landSummary:summarizeLand(w.classCounts,w.classifiedPixels), buildingLand:null };
@@ -748,7 +726,7 @@ async function loadArea(lon,lat,title,opt){
   //   状態は area.bldState（loading / ok / notyet / fail）が1つだけ持つ
   //   ⚠ notyet = **こちらがまだ用意していない**。fail = 用意はあるが取れなかった。混ぜない
   //   （掟: 同じ問いに答える実装を2つ持たない。以前は pending と source:"none" の2つで表していた）。
-  let feats=null, viaPre=false, bldSource=null;
+  let feats=null, bldSource=null;
   // ⚠ まずタイル索引を見る。取り込んであれば Overpass に出ない。
   //   索引に無いタイルが1枚でもあれば静的では答えない（欠けたまま「これで全部」と言わない）。
   //   索引の単位は z14 で、ev（年つきの事物）とは**別の索引**。潰すと
@@ -769,18 +747,13 @@ async function loadArea(lon,lat,title,opt){
       return c[0]>=bbox.w&&c[0]<=bbox.e&&c[1]>=bbox.s&&c[1]<=bbox.n;
     };
     feats=bl.features.filter(inBox);
-    viaPre=true; blAt=bl.at; blTrunc=bl.truncated; bldSource="tiles";
+    blAt=bl.at; blTrunc=bl.truncated; bldSource="tiles";
     // ⚠ ここで 0 件でも `null` に戻さない。索引が「見た」と言っている区画を全部読めたなら、
     //   **0 件がこの範囲の答え**。別のソースで上書きしない（掟: 索引は見た範囲）。
   }
-  // ⚠ `feats===null`（＝タイルで答えられなかった）ときだけ、次のソースへ行く。
-  //   `!feats` にすると `[]` でも通ってしまい、上の判断が無かったことになる。
-  if(feats===null && pre?.buildings){
-    const gj=await loadJSON(pre.buildings);
-    if(seq!==areaSeq) return;   // 別の場所へ移った／押し直された。古い結果で上書きしない
-    // ⚠ 0 件の GeoJSON も「読めた」。読めたかどうかは features の有無で見る（長さで見ない）
-    if(gj?.features){ feats=gj.features; viaPre=true; bldSource="pre"; }
-  }
+  // ⚠ **ここには以前、豊洲だけの事前生成 GeoJSON を読む落ち先があった**（2026-08-20 に外した）。
+  //   ⚠ 通常経路では一度も読まれておらず、⚠ **同じ問いに 2 つ目の答え**を用意していただけ。
+  //   ⚠ タイルで答えられなかったときは、この下の問い合わせへ行く。1 土地だけの例外は作らない。
   if(feats===null){
     // ⚠ **未登録なら、先にそう言う。**待たせてから「取れなかった」と言うのが、
     //   いちばんがっかりする（利用者役の指摘 2026-08-18）。
@@ -862,15 +835,16 @@ async function loadArea(lon,lat,title,opt){
   for(const f of feats) counts[f.properties.meiji]=(counts[f.properties.meiji]||0)+1;
   // 足元を実際に判定できた件数。ここが 0 なら % は出さない（掟: 取れなかったを「無い」と言わない 札幌の 0.0%）
   const classified=feats.length-(counts["データなし"]??0)-(counts["読み込めず"]??0);
-  area={ title, areaTitle:viaPre?(pre?.title??null):null,
+  area={ title,
     // ⚠ 0 件でも「取れた」。bldState は取得の成否だけを持ち、件数は total が持つ
     bldState:"ok", bldSource, blAt, blTrunc,
     total:feats.length, wet:feats.filter(f=>f.properties.wasWater).length,
     classified, unread:counts["読み込めず"]??0,
     counts, dated:feats.filter(f=>f.properties.exact).length,
     // ⚠ 高さの出所を、**この画面が名乗る範囲**で数える。
-    //   取り込み全域（14,806件）では 93.8% が既定値だが、豊洲の集計範囲（533件）では
-    //   80.1%。範囲の違う数字を出すのは、99.4% を 40.9% に化けさせたのと同じ事故。
+    //   取り込み全域（14,806件）では 93.8% が既定値だが、豊洲の集計範囲（543件）では
+    //   80.5%（437 / 543・2026-08-20 実測）。範囲の違う数字を出すのは、
+    //   99.4% を 40.9% に化けさせたのと同じ事故。
     // ⚠ 生成元が3つあって語彙が違う（ingest は measured、Overpass 経路は height）。
     //   両方を実測として数える。heightSource が無いデータでは数えない（行ごと出さない）
     hSrc:(()=>{
@@ -895,9 +869,9 @@ async function loadArea(lon,lat,title,opt){
   //   言えるのは **OSM に登録された建物が 0 件**であることまで（掟: データにない ≠ 現実にない）。
   statusEl.innerHTML=`<span style="color:var(--ink-dim)">${waterRead?`水域 ${w.rects} 面 ／ `:""}${
     area.total===0
-      ? `この範囲に、<b>OSM に登録された建物は 0 件</b>です${WORD.bldPre(viaPre)}。`
+      ? `この範囲に、<b>OSM に登録された建物は 0 件</b>です${WORD.bldPre(bldSource==="tiles")}。`
         + `水域と空中写真で表示しています。`
-      : `建物 ${area.total} 件を判定しました${WORD.bldPre(viaPre)}。`}</span>${
+      : `建物 ${area.total} 件を判定しました${WORD.bldPre(bldSource==="tiles")}。`}</span>${
       blAt?`<span style="color:var(--ink-dim)"> 建物を取り込んだのは ${blAt}。</span>`:""}${
       blTrunc?`<span class="err"> この範囲は建物が多く、取りきれていない可能性があります。</span>`:""}`;
   if(!waterRead) statusEl.innerHTML = (waterUnread
@@ -943,10 +917,9 @@ const WORD = {
     : "OSM の height タグ",
   // 建設年。⚠ 「不明」と「記載なし」を混ぜない（無いのは OSM の記載であって、建物の年ではない）
   builtYear: (made) => made ? `建設年 <b>${made}</b>` : "建設年 <b>不明</b>（OSM に記載なし）",
-  // 水域を、その場で起こしたか・事前に計算してあったか
-  waterPre: (isPre) => isPre ? "（事前計算データ）" : "",
   // ⚠ 建物を、実行時に問い合わせたか・事前に取り込んであったか（2 か所で使う）
-  bldPre: (viaPre) => viaPre ? "（事前に取り込んだデータ）" : "",
+  //   ⚠ 判定は `bldSource==="tiles"` の 1 か所から渡す（同じ問いに 2 つ目の旗を持たない）
+  bldPre: (fromTiles) => fromTiles ? "（事前に取り込んだデータ）" : "",
   // 地形分類の精度。⚠ 粗いときは**必ず**そう書く（詳細版が無い土地がある）
   precision: (fine) => fine ? "" : "（広い区分）",
   // ⚠ **掟の核心。**読めなかったのか、本当に無いのか（取れなかった ≠ 無い）
@@ -1055,7 +1028,7 @@ function layersOf(area, lf){
       layers.push({ n:2, title:WORD.layerTitle(2), head:{kind:"pct", v:(area.waterRatio*100).toFixed(1)},
         // ⚠ **分母は「何を数えたか」。**「なぜ面積比なのか」ではない。
         //   ⚠ 第2層が常に立つようになった時点で bldWhyArea は嘘になった
-        //     （実測 2026-08-19: 建物 533 件ある豊洲に「建物が 0 件のため」と出た）。
+        //     （実測 2026-08-19: 建物のある豊洲に「建物が 0 件のため」と出た）。
         //   ⚠ 建物で答えられない理由は、**第3層の欠落**が言う。
         what:"の面積が、明治期には水だった", den:"この範囲全体の面積で数えた割合",
         subs: area.landSummary ? [{kind:"top", v:area.landSummary}] : [] });
@@ -1158,10 +1131,9 @@ function paintLayer(L){
 function showResult(){
   if(!area) return;
   resultEl.style.display="";
-  // 集計範囲が事前計算の範囲のときは、それを明示する（中心とズレうるため）
-  document.getElementById("placeName").textContent =
-    area.areaTitle && area.areaTitle!==area.title
-      ? `${area.title}（集計範囲: ${area.areaTitle}）` : area.title;
+  // ⚠ 以前は「（集計範囲: 〜）」を添える枝があった（2026-08-20 に外した）。
+  //   ⚠ **土地ごとの専用の集計範囲が無くなり、中心とズレることが無くなった**ため。
+  document.getElementById("placeName").textContent = area.title;
   // ⚠ **パネルも層で描く。**HUD と同じ値（layersOf）を使う。
   //   ⚠ 2 か所で作ると、同じ画面で言うことが食い違う（ADR 0021）。
   //     実測（2026-08-19）: HUD だけ層にしたとき、⚠ **豊洲で 99.6% が 2 回**出ていた
@@ -1184,9 +1156,9 @@ function showResult(){
 //   → 分類の行と、判定できなかった件数を、**別のもの**として返す。
 //
 // ⚠ **分割（足すと判定できた件数になる）と、素性（そうである件数）を混ぜない。**
-//   「建設年が分かる 8 / 533」「高さが実測 42 / 533」は分割ではなく**素性**なので、
+//   「建設年が分かる 8 / 543」「高さが実測 40 / 543」は分割ではなく**素性**なので、
 //   同じ表に混ぜていた。素性は #est（常時見える）と #prov（台帳）が持つ。
-//   実測（2026-08-15）: 8 / 533 が #est・#prov・内訳 の 3 か所にあった。
+//   実測（2026-08-15）: 8 / 533 が #est・#prov・内訳 の 3 か所にあった（当時の分母）。
 //
 // ⚠ 地図も DOM も見ない。検査がこの関数だけを取り出して回せる。
 const NOT_CLASS={"データなし":"outside","読み込めず":"unread"};
