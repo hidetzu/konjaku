@@ -686,7 +686,7 @@ async function loadArea(lon,lat,title,opt){
   resultEl.style.display="none";
   // ⚠ 前の場所の答えを残さない。地図はもう新しい場所へ跳んでいるので、
   //   ここに古い割合が残ると「この土地の答え」として読まれる
-  renderLand(null);
+  paintLand(landEl, null);
   statusEl.innerHTML=`<span class="go">明治期の低湿地データを読んでいます…</span>`;
 
   // --- 1. 水域 ---
@@ -968,6 +968,31 @@ const WORD = {
   //   地形分類が受け皿として答えられるなら「建物ごとには」と範囲を限る。
   //   受け皿も無いなら「判定できません」。⚠ **どちらも数値を作らない**（0% を出さない）。
   cantSay: (hasLandform) => hasLandform ? "建物ごとには出せません" : "判定できません",
+  // ⚠ **層の名前は、その層が答えている「問い」で呼ぶ**（docs/DOMAIN.md §1）。
+  //   ⚠ 「第1層」「第2層」は内部の呼び名。**画面に出さない**。
+  layerTitle: (n) =>
+    n === 1 ? "ここは、どういう土地？"
+    : n === 2 ? "昔は、何があった？"
+              : "いま建っている建物は、何の上？",
+  // ⚠ 第1層。**主語は「この土地は」に統一**（実測 2026-08-19: 利用者役 2/4 が
+  //   「この場所」と「この土地」を別物と読んだ）。
+  //   ⚠ **時間の語（もとは・昔は）を使わない。**3/4 が明治期（第2層）と取り違えた。
+  //   ⚠ 成因と人の手は**行を分ける**。1 行に混ぜると「もとから埋立地だった」に読める。
+  ground1: (name) => `この土地は <b>${name}</b>`,
+  ground1Art: (art) => `人の手で <b>${art}</b> になっています`,
+  // ⚠ 出ない層の理由。**3 つを混ぜない**（原因の持ち主が違う）。
+  //   unread=こちらが読めていない ／ outside=相手の資料の範囲外 ／ notyet=こちらがまだ用意していない
+  //   ⚠ **層ごとに理由が違う。**第2層は資料の話、第3層は建物の話。
+  //     同じ文を両方に出すと、同じ画面に同じ行が 2 回並ぶ（実測 2026-08-19・札幌）。
+  layerMissing: (n, why) =>
+    n === 2
+      // ⚠ **語は既存に揃える。**実測（2026-08-19）: 「整備対象外」が public 11・検査 21 に対し、
+      //   ⚠ 私が持ち込んだ「整備している範囲の外」は 2 だけだった。**新語を増やさない。**
+      ? (why === "unread" ? "明治期の低湿地データを読み込めませんでした"
+                          : "この範囲は明治期の低湿地データの整備対象外です")
+      : (why === "unread" ? "建物の足元を読み込めませんでした"
+        : why === "outside" ? "建物は出ていますが、1 件ずつの足元は判定できていません"
+                            : KonjakuProv.NOTYET),
 };
 
 // 見出しに使う1行。粗い区分しか無いときは、そう書く
@@ -1034,49 +1059,128 @@ const bldWhyArea=(bldState)=>
   : bldState==="notyet"? `${KonjakuProv.NOTYET}。範囲全体の面積で出しています`
                        : "建物が取れなかったため、面積比で出している";
 
-const landEl=document.getElementById("land");
-function renderLand(v){
-  if(!landEl) return;
-  if(!v){ landEl.innerHTML=""; return; }        // 場所を切り替えた直後。前の答えを残さない
-  const sub=(t)=>t?`<div class="land-sub">${t}</div>`:"";
-  if(v.kind==="ratio"||v.kind==="area"){
-    const landIsWater=v.land&&KonjakuSwale.isWater(v.land.name);
-    // 数字だけを置かない。**何の割合か**と**分母**を必ず同じ板に出す
-    const what=v.kind==="ratio"
-      ? (v.land && !landIsWater
-        ? `建物の足元は、明治期には<b>${esc(v.land.name)}</b>が最多でした`
-        : `の建物が、明治期には<b>水の上</b>だった`)
-      : `の面積が、明治期には<b>水</b>だった`;
-    const den=v.kind==="ratio"
-      ? `${v.classified} / ${v.total}件の足元を判定`
-      : bldWhyArea(v.bldState);
-    const land=v.kind==="ratio"&&v.land
-      ? `<div class="land-sub">区分を特定できた足元のうち ${esc(v.land.name)} ${v.land.count} / ${v.land.classified}件（${v.land.pct}%）</div>`
-      : (v.land?`<div class="land-sub">この範囲で最も多い区分: <b>${esc(v.land.name)}</b>（${v.land.pct}%）</div>`:"");
-    const water=v.kind==="ratio"&&v.land
-      ? `<div class="land-sub">水域だった建物: ${v.pct}%</div>` : "";
-    landEl.innerHTML=v.kind==="ratio"&&v.land&&!landIsWater
-      ? `<div class="land-line"><b class="land-alt">${esc(v.land.name)}</b><span class="land-what">${what}</span></div><div class="land-den">${den}</div>${land}${water}`
-      : `<div class="land-line"><b class="land-num">${v.pct}<small>%</small></b>`
-        + `<span class="land-what">${what}</span></div><div class="land-den">${den}</div>${land}`;
-    return;
-  }
-  if(v.kind==="dry"){
-    landEl.innerHTML=`<div class="land-line"><b class="land-alt">水域なし</b></div>`
-      + `<div class="land-den">この範囲は、明治期の低湿地データで水域に該当しません</div>`
-      + (v.land?`<div class="land-sub">この範囲で最も多い区分: <b>${esc(v.land.name)}</b>（${v.land.pct}%）</div>`:"");
-    return;
-  }
-  // 判定できない。⚠ 数値を作らない（0% は出さない）。何が分からないのかを書く
-  const head=WORD.cantSay(!!v.lf);
-  const why=v.unread
-    ? `明治期の低湿地データを<b>読み込めませんでした</b>`
-    : `明治期の低湿地データは<b>整備対象外</b>です`;
-  landEl.innerHTML=`<div class="land-line"><b class="land-alt">${head}</b></div>`
-    + `<div class="land-den">${why}</div>`
-    + sub(v.scope==="building"?`建物 ${v.total} 件は出ています${v.lf?` ／ ${v.lf}`:""}`:v.lf)
-    + (v.land?`<div class="land-sub">この範囲で最も多い区分: <b>${esc(v.land.name)}</b>（${v.land.pct}%）</div>`:"");
+// 土地の答えを、**層の列**にする。
+// ⚠ **確実性の高い順**（第1層 → 第2層 → 第3層）。docs/DOMAIN.md §1 と ADR 0030。
+// ⚠ **地図も DOM も見ない。**検査がこの関数だけを取り出して回せる。
+// ⚠ **文字列を組み立てない。**言葉は WORD が持ち、ここは「どの層が、どの値で立つか」だけ決める。
+//
+// 実測（2026-08-19・main = c8beb88）: 層という値が無かったので、4 地点とも順番が違った。
+//   豊洲 第3層→第2層（⚠ 第1層が無い） ／ 札幌・那覇 ⚠ 出せない断りから始まり、第1層が最後。
+//
+// ⚠ **head は 3 種に分ける**（1 つの文字列にしない）。
+//   pct  … 数字。⚠ **den（分母）が無ければ作れない**
+//   name … 区分名
+//   none … 出せない。⚠ **数値を作らない**（0% を出さない）
+function layersOf(area, lf){
+  const layers=[], missing=[];
+  // ---- 第1層: ここは、どういう土地？ ⚠ **常に見る**（全国 24 地点で 24/24）----
+  if(lf && lf.ok)
+    layers.push({ n:1, title:WORD.layerTitle(1), head:{kind:"name", v:lf.value},
+      subs: lf.artificial ? [{kind:"art", v:lf.artificial}] : [] });
+  else if(lf && lf.state==="unreachable") missing.push({ n:1, why:"unread" });
+  if(!area) return { layers, missing };
+
+  // ---- 第2層: 昔は、何があった？（明治期の低湿地データ）----
+  //   ⚠ **建物の有無と関係なく、明治期が読めていれば立てる**（ADR 0030 の表）。
+  //     ⚠ 最初「面は建物が無いときだけ」と書いて、豊洲で第2層が消えた（実測 2026-08-19）。
+  //   ⚠ 第2層は**面**の話、第3層は**建物ごと**の話。分母が違うので、同じ層に置かない。
+  if(area.waterRead){
+    if(area.waterRatio>0)
+      layers.push({ n:2, title:WORD.layerTitle(2), head:{kind:"pct", v:(area.waterRatio*100).toFixed(1)},
+        // ⚠ **分母は「何を数えたか」。**「なぜ面積比なのか」ではない。
+        //   ⚠ 第2層が常に立つようになった時点で bldWhyArea は嘘になった
+        //     （実測 2026-08-19: 建物 533 件ある豊洲に「建物が 0 件のため」と出た）。
+        //   ⚠ 建物で答えられない理由は、**第3層の欠落**が言う。
+        what:"の面積が、明治期には水だった", den:"この範囲全体の面積で数えた割合",
+        subs: area.landSummary ? [{kind:"top", v:area.landSummary}] : [] });
+    else
+      layers.push({ n:2, title:WORD.layerTitle(2), head:{kind:"name", v:"水域なし"},
+        den:"この範囲は、明治期の低湿地データで水域に該当しません",
+        subs: area.landSummary ? [{kind:"top", v:area.landSummary}] : [] });
+  } else missing.push({ n:2, why: area.waterUnread ? "unread" : "outside" });
+
+  // ---- 第3層: いま建っている建物は、何の上？ ----
+  if(area.classified>0){
+    const land=area.buildingLand;
+    const isWater=land&&KonjakuSwale.isWater(land.name);
+    layers.push({ n:3, title:WORD.layerTitle(3),
+      head: (land&&!isWater) ? {kind:"name", v:land.name} : {kind:"pct", v:(area.wet/area.classified*100).toFixed(1)},
+      what: (land&&!isWater) ? "建物の足元は、明治期には最多でした" : "の建物が、明治期には水の上だった",
+      // ⚠ **水域だった割合は、分母と同じ行に置く。**
+      //   ⚠ 区分名が主役の土地（渋谷・上野・西新宿）では、head が「田」なので、
+      //     **水の割合がどこにも出なくなる**。実測 2026-08-19: HUD から消えていた。
+      //   ⚠ 補足に置くと HUD で畳まれて消える。**答えの一部なので、畳まない側に置く。**
+      den:`${area.classified} / ${area.total}件の足元を判定`
+        + ((land&&!isWater)?` ／ 水域だった建物：${(area.wet/area.classified*100).toFixed(1)}%`:""),
+      subs: land ? [{kind:"share", v:land}] : [] });
+  } else if(area.total>0)
+    missing.push({ n:3, why:"outside", note:`建物 ${area.total} 件` });
+  else if(area.bldState==="notyet") missing.push({ n:3, why:"notyet" });
+  return { layers, missing };
 }
+
+const landEl=document.getElementById("land");
+// ここは組み立てるだけ。⚠ **何と言うか・どの層が立つかは上で決まっている**（WORD と layersOf）。
+// ⚠ **出ない層も、その層の位置に置く。**黙って消すと「その土地に何も無い」に読まれる
+//   （ADR 0001）。
+// ⚠ **常時見える HUD には、第1層＋もう 1 層だけ。**
+//   実測（2026-08-19・375×667・豊洲）: 3 層を全部出すと #land が **320px** になり、
+//   下端 y=382 が**調べている地点（画面中央 y=333）を覆った**。
+//   ⚠ 補足を畳んでも 291px で足りない。**嵩は層そのもの。**
+// ⚠ **層の順序は変えない。**出す数を絞るだけ（ADR 0030）。
+// ⚠ **もう 1 層は「いちばん確実に立っているもの」。**
+//   第3層（建物ごと・1 件ずつ判定した実測）＞ 第2層（面）。
+//   ⚠ 立っている層が 1 つも無ければ、出せない理由を**その層の位置**に出す。
+function hudLayers(m){
+  const first=m.layers.find((L)=>L.n===1);
+  const rest=m.layers.filter((L)=>L.n!==1).sort((a,b)=>b.n-a.n)[0]??null;
+  return { first, rest };
+}
+// ⚠ **下から伸びる箱に、答えの板の高さを教える。**
+//   ⚠ CSS だけでは、別の要素の高さを読めない。だから JS が測って渡す。
+//   ⚠ **決め打ちにしない。**実測（2026-08-19）: 112px の決め打ちで、
+//     層を出して 152px になった瞬間に 320×480 で 20px 食い込んだ。
+function syncLandH(el){
+  const h=el && el.innerHTML ? Math.ceil(el.getBoundingClientRect().height) : 0;
+  document.documentElement.style.setProperty("--land-h", `${h}px`);
+}
+function paintLand(el, m, only){
+  if(!el) return;
+  if(!m){ el.innerHTML=""; syncLandH(el); return; }   // 場所を切り替えた直後。前の答えを残さない
+  const by=new Map(m.missing.map((mi)=>[mi.n,mi]));
+  const keep=only ? (()=>{ const h=hudLayers(m); return new Set([h.first?.n, h.rest?.n].filter(Boolean)); })() : null;
+  const out=[];
+  for(const n of [1,2,3]){
+    const L=m.layers.find((x)=>x.n===n);
+    if(L){ if(!keep||keep.has(n)) out.push(paintLayer(only?{...L, hud:true}:L)); continue; }
+    const M=by.get(n);
+    // ⚠ 出ない層は、絞っていても**必ず出す**。黙って消すと「その土地に何も無い」に読まれる
+    if(M) out.push(`<div class="land-miss"><div class="land-sub">${WORD.layerMissing(n, M.why)}</div>`
+      + (M.note?`<div class="land-sub">${M.note}</div>`:"")+`</div>`);
+  }
+  el.innerHTML=out.join("");
+  syncLandH(el);
+}
+function paintLayer(L){
+  // ⚠ 数字を出すなら、分母を同じ板に出す（掟: 数字は主張範囲の分母で書く）
+  const head=L.head.kind==="pct"
+    ? `<b class="land-num">${L.head.v}<small>%</small></b>`
+    : `<b class="land-alt">${esc(L.head.v)}</b>`;
+  const what=L.what?`<span class="land-what">${L.what}</span>`:"";
+  const den=L.den?`<div class="land-den">${L.den}</div>`:"";
+  // ⚠ 受け皿の名前に x を使わない。**x は「外部から来た文字列」に予約**されていて、
+  //   静的検査がそこを esc() の対象として見る（ここは自前の値だが、名前で判別している）。
+  // ⚠ HUD では補足を出さない。実測（2026-08-19・320×640・名古屋）: 出すと y=333 まで伸び、
+  //   調べている地点（中央 y=320）を **13px** 覆った。⚠ パネル側では出す。
+  const subs=(L.hud?[]:(L.subs??[])).map((sb)=>
+      sb.kind==="art"   ? `<div class="land-sub">${WORD.ground1Art(esc(sb.v))}</div>`
+    : sb.kind==="top"   ? `<div class="land-sub">この範囲で最も多い区分: <b>${esc(sb.v.name)}</b>（${sb.v.pct}%）</div>`
+    : sb.kind==="share" ? `<div class="land-sub">区分を特定できた足元のうち ${esc(sb.v.name)} ${sb.v.count} / ${sb.v.classified}件（${sb.v.pct}%）</div>`
+    : sb.kind==="wet"   ? `<div class="land-sub">水域だった建物: ${sb.v}%</div>` : "").join("");
+  return `<div class="land-layer"><div class="land-q">${L.title}</div>`
+    + `<div class="land-line">${head}${what}</div>${den}${subs}</div>`;
+}
+
 
 function showResult(){
   if(!area) return;
@@ -1091,8 +1195,16 @@ function showResult(){
   //   ヒーローの数字は「実際に判定できたもの」からしか作らない。
   //   1408件すべてが「データなし」なのに 0.0% と出し、それを
   //   「1件ずつ判定した実測値」と書いていたのが札幌だった（掟: 取れなかったを「無い」と言わない）。
+  // ⚠ **層は 1 か所で決める**（layersOf）。HUD もパネルも、ここが作った同じ値を描く。
+  //   ⚠ 2 か所で作ると、同じ画面で言うことが食い違う（掟: 同じ問いに答える実装を2つ持たない）。
+  //   ⚠ 実測（2026-08-19）: HUD だけ層にしたとき、**PC のパネルは古い形のまま**だった。
+  //     #land は PC では 0×0（狭い幅の道具）なので、PC では何も変わっていなかった。
+  //   ⚠ **いまは HUD だけ。**PC のパネル（heroNum / heroCap）はまだ古い形で、
+  //     ⚠ **同じ問いに 2 つの答えが残っている**（掟に反する状態）。
+  //     ⚠ パネルを層にすると heroNum と重複するので、**検査 8 件の置き換えとセット**になる。
+  //     1 PR = 1 つの理由 を守って、そちらは別に出す。
+  paintLand(landEl, layersOf(area, landform), true);   // HUD は第1層＋1 つ
   const v=landVerdict();
-  renderLand(v);
   if(v.kind==="ratio"){
     const landIsWater=v.land&&KonjakuSwale.isWater(v.land.name);
     if(v.land&&!landIsWater){
