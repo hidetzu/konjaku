@@ -3419,11 +3419,19 @@ head("9. 画面の言葉");
 // ⚠ **この検査自身も 1 件に数える。**数えないと、足すたびに 1 ずれる。
 // ⚠ どれかが落ちていると ✓ が減るので、ここも一緒に落ちる。
 //   **落ちた側を直すのが先**で、SPEC の数字を合わせにいく話ではない。
+// ⚠ **外へ出る指定（--links / --links-new）のときは数えない。**
+//   その指定でしか走らない検査があるぶん、必ず多くなる。
+//   実測（2026-08-19）: 手元も CI の 1 回目も 151 件だったが、CI は同じジョブで
+//   `--links-new` をもう一度回しており、そちらが **153 件**で落ちた。
+//   ⚠ **黙って飛ばさない。**数えなかったことを、その場で名乗る。
 {
   const spec = await readFile(join(ROOT, "docs", "SPEC.md"), "utf8").catch(() => "");
   const m = /静的[^\n]*?\*\*(\d+)件\*\*/.exec(spec);
   const mine = passed + 1;
-  if (!m) bad("docs/SPEC.md に「静的 **N件**」が無い（この検査が何も見ていない）");
+  const how = CHECK_LINKS ? "--links" : NEW_LINKS !== null ? "--links-new" : null;
+  if (how) ok(`docs/SPEC.md の件数とは突き合わせていない（${how} 付きは、その指定でしか`
+    + `走らない検査があるぶん多くなる。素の \`node scripts/check.mjs\` が見る）`);
+  else if (!m) bad("docs/SPEC.md に「静的 **N件**」が無い（この検査が何も見ていない）");
   else if (Number(m[1]) !== mine)
     bad(`docs/SPEC.md の静的検査が ${m[1]}件 と名乗っているが、実際は ${mine}件`
       + `（検査を足したら SPEC も直す。⚠ 実描画の件数は render.mjs 側が見る）`);
