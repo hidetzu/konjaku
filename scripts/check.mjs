@@ -2421,6 +2421,50 @@ head("6. 外部リンク");
         + `ready-for-ai の意味は CLAUDE.md にある）`);
 }
 
+// 「動きを減らす」を入れている人に、動きだけを消していること。
+// ⚠ **画面ごとに要る。**片方だけ入れても、もう片方は動いたままになる。
+// ⚠ **寄せる操作は受け口 1 つに通す。**生の behavior:"smooth" が散ると、
+//   片方だけ直し忘れる（実測 2026-08-19: index.html に 7 か所あった）。
+{
+  const fails = [];
+  const MQ = "@media (prefers-reduced-motion: reduce)";
+  for (const f of ["index.html", "peel.html"])
+    if (!(src[f] ?? "").includes(MQ)) fails.push(`${f} に「動きを減らす」の媒体クエリが無い`);
+  // ⚠ **受け口が behavior を決めているので、字面はそこに 1 つだけ残る。**
+  //   ⚠ 「1 個までなら許す」にしない。**受け口の行かどうか**で見る。
+  //     数で許すと、受け口を消して別の場所に 1 個書いても通ってしまう。
+  // ⚠ **コメントを先に落とす。**落とさないと、この検査を説明したコメントを
+  //   検査自身が拾う（CLAUDE.md「コメント」の節。実測 2026-08-19 に踏んだ）。
+  for (const f of Object.keys(src)) {
+    const stray = (src[f] ?? "").split("\n")
+      .map((line, i) => ({ line: line.replace(/(^|\s)\/\/.*$/, ""), i }))
+      .filter((x) => /behavior\s*:\s*["']smooth["']/.test(x.line) && !/scrollToEl/.test(x.line));
+    if (stray.length)
+      fails.push(`${f}:${stray.map((x) => x.i + 1).join("・")} に生の behavior:"smooth"`
+        + `（受け口 scrollToEl を通すこと。呼ぶ側は「どこへ寄せるか」だけ言う）`);
+  }
+  // ⚠ 受け口そのものが消えていないこと（消すと、上の走査は 0 件で通ってしまう）
+  if (!/const scrollToEl\s*=/.test(src["index.html"] ?? ""))
+    fails.push("index.html に受け口 scrollToEl が無い（この検査が何も見ていない）");
+  // ⚠ **同じ問いを 2 か所で聞いている。**CSS の媒体クエリと JS の matchMedia。
+  //   片方だけ直すと、**CSS は詰まったのに寄せる操作は滑らかなまま**になる。
+  //   ⚠ 1 つにはできない（CSS と JS で書く場所が違う）。だから機械で突き合わせる。
+  {
+    const cond = (t) => {
+      const a2 = /@media\s*\(\s*prefers-reduced-motion\s*:\s*([a-z-]+)\s*\)/.exec(t ?? "");
+      const b2 = /matchMedia\(\s*["']\(prefers-reduced-motion:\s*([a-z-]+)\)["']\s*\)/.exec(t ?? "");
+      return [a2?.[1] ?? null, b2?.[1] ?? null];
+    };
+    const [css, js] = cond(src["index.html"]);
+    if (!css || !js) fails.push(`index.html で条件を読めない（CSS=${css} / JS=${js}）`);
+    else if (css !== js) fails.push(`CSS は ${css}・JS は ${js} を見ている（食い違うと片方だけ効く）`);
+  }
+  fails.length
+    ? bad(`「動きを減らす」の扱いが揃っていない: ${fails.join(" / ")}`
+        + `（動きだけを消す。送り先や年代の送りは変えない）`)
+    : ok(`「動きを減らす」を両画面が見ていて、寄せる操作は受け口 1 つを通っている`);
+}
+
 // 言葉を決めるところ（peel3d.js の WORD）。
 // ⚠ HTML から外へ出したのは、**検査が字面ではなく判断そのものを見られるようにする**ため。
 //   ⚠ 取り出せなくなったら落とす（黙って素通りさせない）。
