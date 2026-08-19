@@ -3716,6 +3716,40 @@ const CASES = [
     },
   },
   {
+    // ⚠ **資料の範囲外を、分類の 1 行として出さない。**
+    //   実測（2026-08-19, 375×667 札幌）: 内訳に「データなし 1364 / 1364」が 1 行だけ出て、
+    //   `isWater("データなし")` が false なので**陸の色見本（#d8cfa8）**が付いていた。
+    //   ⚠ 「明治期は陸だった建物が 1364 件」と読める。掟: データにない ≠ 現実にない。
+    //   ⚠ **静的検査では捕まらない。**色見本が付くかは DOM を見ないと分からない。
+    name: "資料の範囲外に、陸の色を塗らない", path: `/peel?${SAPPORO}`, group: "core",
+    async check(page) {
+      // 建物が出そろうまで待つ（件数が動いている途中を読まない）
+      await page.waitForFunction(() => {
+        const t = document.getElementById("breakdown")?.textContent ?? "";
+        return /件/.test(t) && !/取得中/.test(t);
+      }, null, { timeout: 90000 });
+      const r = await page.evaluate(() => ({
+        rows: [...document.querySelectorAll("#breakdown .stat")].map((e) => ({
+          t: e.innerText.replace(/\s+/g, " ").trim(),
+          bg: getComputedStyle(e.querySelector(".swatch")).backgroundColor })),
+        hint: [...document.querySelectorAll("#breakdown .hint")]
+          .map((e) => e.innerText.replace(/\s+/g, " ").trim()).join(" ／ "),
+      }));
+      // ⚠ 分類の行が 1 本もないこと。1 本でもあれば「明治期は○○だった」と読める
+      must(r.rows.length === 0,
+        `資料の範囲外を分類の行にしている: ${r.rows.map((x) => `${x.t}[${x.bg}]`).join(" / ")}`);
+      // ⚠ 件数は落とさない。落とすと「建物が無い」に読める
+      must(/1364|\d{3,}/.test(r.hint), `件数を落としている: ${r.hint}`);
+      must(/範囲の外|整備している範囲/.test(r.hint), `範囲の外であることを言っていない: ${r.hint}`);
+      // ⚠ こちらの都合（読み込めない）に読める言い方をしない
+      must(!/読み込め|取得中|取得できません/.test(r.hint),
+        `範囲の外なのに、こちらの都合に読める言い方をしている: ${r.hint}`);
+      // ⚠ 「無い」と言い切らない
+      must(!/(建物|記録)(は|が)?(無い|ありません)/.test(r.hint), `無いと言い切っている: ${r.hint}`);
+      return `内訳の分類行 0 本／「${r.hint.slice(0, 46)}」`;
+    },
+  },
+  {
     name: "Overpass が 0 件を返したら、取れなかったと言わない", path: `/peel?${URAYASU}`,
     setup: (page) => Promise.all([
       // 取り込み済みの経路を塞ぐ。⚠ 塞がないと静的で答えてしまい、Overpass の経路を通らない
