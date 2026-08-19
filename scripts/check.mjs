@@ -2125,6 +2125,66 @@ head("6. 外部リンク");
   }
 }
 
+// 「取得の結末」と「一覧行のタグ」の字は **public/words.js の1か所**。
+// ⚠ **2 画面（トップと /peel）と共有カードが、同じ字を使う。**
+//   ⚠ 以前は 4 ファイルが同じ字を別々に書いていて、片方だけ直せば
+//     **同じ状態に 2 通りの言い方**ができた（実際に踏んでいる。prov.js の冒頭に記録がある）。
+// ⚠ DOM も地図も見ないので、ここで全部の枝を回す。
+{
+  await import(`file://${join(PUB, "words.js")}`);
+  const W = globalThis.KonjakuWords;
+  const fails = [];
+  const eq = (got, want, what) => { if (got !== want) fails.push(`${what}: ${got} ≠ ${want}`); };
+  const yes = (c, what) => { if (!c) fails.push(what); };
+
+  if (!W) fails.push("words.js を読み込めない（この検査が何も見ていない）");
+  else {
+    // ---- ⚠ 読めて 0 件 と 答えを出せない を、同じ語にしない（掟の核心）----
+    yes(W.S.noRecord !== W.S.cantTell, "「読めて 0 件」と「答えを出せない」が同じ語になっている");
+    eq(W.meiji("田", true), "田", "値があるときは、その値を出す");
+    eq(W.meiji("田", false), "田", "値があれば none に関係なくその値");
+    eq(W.meiji(null, true), W.S.noRecord, "読めて 0 件のとき");
+    eq(W.meiji(null, false), W.S.cantTell, "答えを出せないとき");
+    // ⚠ **0 件を「無い」と言い切らない。**資料の話に留める
+    yes(!/^ありません|存在しません|無い$/.test(W.S.noRecord),
+      `0 件の語が「無い」と言い切っている: ${W.S.noRecord}`);
+    // ⚠ **答えを出せないときに、数や割合を作らない**
+    yes(!/\d/.test(W.S.cantTell), `答えを出せないのに数字が入っている: ${W.S.cantTell}`);
+
+    // ---- ⚠ 根拠カードと共有カードは、同じ行を描く ----
+    eq(W.meijiBadge(true), `明治期: ${W.S.noRecord}`, "根拠カードの 0 件の行");
+    eq(W.meijiBadge(false), `明治期: ${W.S.cantTell}`, "根拠カードの答えを出せない行");
+
+    // ---- ⚠ タグ。知らない tag は外部扱い（既定値はここ 1 つ）----
+    for (const t of ["own", "why", "ext"]) eq(W.tag(t), W.TAG[t], `tag(${t})`);
+    eq(W.tag("zzz"), W.TAG.ext, "知らない tag が外部扱いになっていない");
+    eq(W.tag(undefined), W.TAG.ext, "tag 無しが外部扱いになっていない");
+    // ⚠ **3 つの名前が互いに違う。**同じ字だと、押した先が区別できない
+    yes(new Set(Object.values(W.TAG)).size === 3, "タグの名前が重なっている");
+    // ⚠ **消した priv が戻っていない。**付ける場所が無い語を画面に置かない
+    yes(!("priv" in W.TAG), "tag:priv が戻っている（付ける場所がどこにも無い）");
+  }
+  fails.length
+    ? bad(`words.js の単体テストが失敗（${fails.length} 件）: ${fails.slice(0, 6).join(" / ")}`)
+    : ok(`words.js を動かして確認（0 件と答えを出せないを分ける・根拠カードと共有カードが同じ行・タグ 3 つと既定値）`);
+}
+
+// ⚠ **字を持っているのは words.js だけ。**呼ぶ側に写しを作らない。
+{
+  const OWNED = ["記録なし", "この土地から", "今昔で見る", "別のサイト↗"];
+  const bare = (f) => (src[f] ?? "")
+    .replace(/<!--[\s\S]*?-->/g, "").replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+  const spill = [];
+  for (const f of Object.keys(src)) {
+    if (f === "words.js" || !/\.(js|html)$/.test(f)) continue;
+    for (const w of OWNED) if (bare(f).includes(w)) spill.push(`${f}「${w}」`);
+  }
+  spill.length
+    ? bad(`words.js が持つ字を、呼ぶ側が書き写している: ${spill.join("、")}`
+        + `（片方だけ直すと、同じ状態に 2 通りの言い方ができる）`)
+    : ok(`words.js が持つ字（${OWNED.length} 語）は、呼ぶ側に写しが無い`);
+}
+
 // 「いま画面に出ているもの」（台帳）は **public/prov.js の1か所**。
 // ⚠ ここが掟の一行目（取れなかった ≠ 無い）を、いちばん広い面で守っている。
 //   以前は peel3d.js の render() の中で組んでいたので、
@@ -2703,7 +2763,9 @@ head("6. 外部リンク");
   if (!m) bad("peel3d.js の WORD を取り出せない（この検査が何も見ていない）");
   else {
     // ⚠ prov.js を借りている行がある。Node でも同じものを渡す
-    const W = new Function("KonjakuProv", `${m[0]}\nreturn WORD;`)(globalThis.KonjakuProv);
+    // ⚠ **words.js も借りている。**渡し忘れると undefined で落ちる（黙って素通りさせない）
+      const W = new Function("KonjakuProv", "KonjakuWords", `${m[0]}\nreturn WORD;`)(
+        globalThis.KonjakuProv, globalThis.KonjakuWords);
     const fails = [];
     const yes = (c, what) => { if (!c) fails.push(what); };
 
@@ -3328,12 +3390,19 @@ head("9. 画面の言葉");
   const SCREEN_WORDS = [
     { word: "自前・根拠あり", kind: "分類", live: 1, next: "#9d",
       files: ["index.html"], seat: "根拠パネルの見出しのバッジ" },
-    { word: "根拠あり", kind: "分類", live: 2, next: "#9c",
-      files: ["index.html"], seat: "上のバッジと、一覧行のタグ（TAG_LABEL.own）" },
-    { word: "この土地から", kind: "分類", live: 1, next: "#9c",
-      files: ["index.html"], seat: "一覧行のタグ（TAG_LABEL.why）" },
-    { word: "外部↗", kind: "分類", live: 2, next: "#9c",
-      files: ["index.html"], seat: "一覧行のタグ（TAG_LABEL.ext と、その既定値）" },
+    // ⚠ **2026-08-20 に、字の持ち主を `public/words.js` の 1 か所へ寄せた。**
+    //   ⚠ **画面に出る字は 1 文字も変えていない。**⚠ **だから live はほとんど減らない。**
+    //     減ったのは**写し**のほう（外部↗ 2 → 1・記録なし 3 → 1・判定できません 5 → 3）。
+    //   ⚠ **言い換えそのものは、まだ済んでいない**（画面に出る言葉なので人が決める）。
+    // ⚠ **一覧行のタグは 2026-08-20 に「行き先」で言い直した**（#9c）。
+    //   ⚠ `根拠あり` → `今昔で見る` ／ `外部↗` → `別のサイト↗`。
+    //   ⚠ **`根拠あり` は作り手側の分類で、しかも実態と合っていなかった**
+    //     （own は「根拠がある行」ではなく「今昔の中で開くレンズ」。why の側にも根拠はある）。
+    { word: "根拠あり", kind: "分類", live: 1, next: "#9d",
+      files: ["index.html"],
+      seat: "⚠ **残りは根拠パネルのバッジ「自前・根拠あり」1 つだけ**（そちらは #9d）。一覧行のタグからは消えた" },
+    { word: "この土地から", kind: "分類", live: 1, next: "済",
+      files: ["words.js"], seat: "words.js の TAG.why。⚠ **これは行き先そのもの**なので残す" },
     { word: "ベクトル直読み", kind: "分類", live: 1, next: "#9d",
       files: ["verify.js"], seat: "根拠カードの取得方法バッジ（地形分類）" },
     { word: "直読み", kind: "分類", live: 4, next: "#9d",
@@ -3344,15 +3413,20 @@ head("9. 画面の言葉");
       files: ["index.html"], seat: "フッターの畳み見出し。中身は判定方法・位置誤差・提供範囲・限界。⚠ 2026-08-18 に /peel から外した" },
     { word: "この範囲にできていたもの", kind: "分類", live: 1, next: "#9d",
       files: ["index.html"], seat: "フッターの出典欄。年の意味（開業／設立／完成）を区別できない" },
-    { word: "記録のある変化はありません", kind: "状態", live: 1, next: "#9c",
+    // ⚠ **2026-08-20 に言い直した**（#9c）。⚠ **「変化が無かった」と読ませない。**
+    //   こちらが持っている記録の話であって、現実に何も起きなかったという意味ではない。
+    { word: "この期間に表示できる変化の記録は見つかっていません", kind: "状態", live: 1, next: "済",
       files: ["index.html"], seat: "正常0件。Wikidata は読めている" },
-    { word: "記録なし", kind: "状態", live: 3, next: "#9c",
-      files: ["index.html", "verify.js", "share.js"], seat: "正常0件（明治期タイルは読めた）。共有カードにも出る" },
-    { word: "判定できません", kind: "状態", live: 5, next: "#9c",
-      files: ["index.html", "verify.js", "peel3d.js"],
+    { word: "記録なし", kind: "状態", live: 1, next: "#9c",
+      files: ["words.js"],
+      seat: "正常0件（明治期タイルは読めた）。⚠ **2026-08-20 に 3 → 1**。"
+          + "index.html / verify.js / share.js が同じ字を別々に書いていた（共有カードにも出る）" },
+    { word: "判定できません", kind: "状態", live: 3, next: "#9c",
+      files: ["verify.js", "peel3d.js", "words.js"],
       seat: "判定できない。「判定できませんでした」も含む。"
-          + "⚠ 2026-08-19 に 7 → 5 件。peel3d.js が 3 か所に書き写していたのを "
-          + "WORD.cantSay の 1 か所へ寄せた（言葉が減ったのではなく、重複が消えた）" },
+          + "⚠ 2026-08-19 に 7 → 5（peel3d.js の 3 か所を WORD.cantSay へ）。"
+          + "⚠ 2026-08-20 に 5 → 3（字の持ち主を words.js へ）。"
+          + "⚠ **残る 2 件は語ではなく文**。主語が違うので 1 つにしていない" },
     { word: "未取得", kind: "状態", live: 7, next: "#9e",
       files: ["index.html", "peel3d.js", "prov.js"],
       seat: "取得方法バッジと、/peel の台帳。⚠ 2画面にある。"
@@ -3664,11 +3738,15 @@ head("9. 画面の言葉");
 
   // ⚠ 短い語（「自分」）は本文の検索で数えられない。宣言そのものを読む。
   {
-    const m = /const TAG_LABEL\s*=\s*\{([^}]*)\}/.exec(seen["index.html"] ?? "");
-    if (!m) bad("index.html の TAG_LABEL を読めない（一覧行のタグの棚卸しが何も見ていない）");
+    // ⚠ **2026-08-20 に、宣言の場所が index.html → words.js へ移った。**
+    //   ⚠ 見ているものは同じ（一覧行に何と出るか）。読む先だけ変えた。
+    //   ⚠ 「自分」（priv）は同じときに消した。⚠ **付ける場所がどこにも無く、
+    //     画面に出ようがない語**だったため。
+    const m = /const TAG\s*=\s*\{([^}]*)\}/.exec(seen["words.js"] ?? "");
+    if (!m) bad("words.js の TAG を読めない（一覧行のタグの棚卸しが何も見ていない）");
     else {
       const got = [...m[1].matchAll(/:\s*"([^"]*)"/g)].map((x) => x[1]);
-      const want = ["根拠あり", "自分", "この土地から", "外部↗"];
+      const want = ["今昔で見る", "この土地から", "別のサイト↗"];
       got.join("／") === want.join("／")
         ? ok(`一覧行のタグは棚卸しのとおり（${got.join("・")}）`)
         : bad(`一覧行のタグが棚卸しと違う: ${got.join("・")}（棚卸しは ${want.join("・")}）`);

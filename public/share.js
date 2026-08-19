@@ -157,7 +157,8 @@ window.KonjakuShare = (function (w) {
     if (l.ok) x = pill(g, x, by, l.value + (l.fine ? "" : "（広い区分）"), accent);
     if (l.artificial) x = pill(g, x, by, l.artificial, EST);
     if (m.ok && m.value) x = pill(g, x, by, `明治期: ${m.value}`, m.water ? WATER : LAND);
-    else if (m.ok && m.none) x = pill(g, x, by, "明治期: 記録なし", DIM);
+    // ⚠ 字は words.js。⚠ **根拠カード（verify.js）と同じ行**なので、写すと割れる
+    else if (m.ok && m.none) x = pill(g, x, by, KonjakuWords.meijiBadge(true), DIM);
     if (e.ok) x = pill(g, x, by, `標高 ${e.value.toFixed(2)}m`, e.value < 0 ? EST : DIM);
     if (p.ok && p.value.length) x = pill(g, x, by, `${p.value[0].label}年から`, DIM);
 
