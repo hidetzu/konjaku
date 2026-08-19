@@ -917,7 +917,10 @@
 
 <div id="result">
   <div class="group">
-    <div class="gh">この土地について <span class="tag own">自前・根拠あり</span></div>
+    <!-- ⚠ ここには「自前・根拠あり」のバッジがあった（2026-08-20 に消した）。
+         ⚠ **中身が全部この土地の根拠なので、バッジが何も分けていなかった。**
+         ⚠ 作り手側の分類でもある（掟: 内部状態をそのまま画面に出さない）。 -->
+    <div class="gh">この土地について</div>
     <div id="own"></div>
     <!-- 開くと自動で下までスクロールするので、? は画面の外にある。
          ここに閉じる手段が無いと、戻り方が見えない -->
@@ -1005,7 +1008,7 @@
     </div>
   </details>
   <details class="f-more">
-    <summary>データについて</summary>
+    <summary>データ・判定について</summary>
     <div class="f-body">
       <b>判定</b>：<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" rel="noopener">国土地理院タイル</a>
       （<a href="https://www.gsi.go.jp/bousaichiri/lfc_index.html" target="_blank" rel="noopener">地形分類</a>／年代別空中写真／<a href="https://www.gsi.go.jp/bousaichiri/lc_meiji.html" target="_blank" rel="noopener">明治期の低湿地</a>／標高）。
@@ -1014,7 +1017,7 @@
       住所検索も<a href="https://github.com/gsi-cyberjapan/gsimaps/issues/29" target="_blank" rel="noopener">地理院地図からの利用を想定した機能</a>のため、
       どちらも予告なく仕様変更・停止の可能性があります。主要平野部の外では<b>広い区分</b>でしか答えられません（そのときは画面にそう表示します）。<br>
       明治期の資料は三角点整備前のため<b>位置誤差</b>を含みます。街区単位の判断に留めてください。<br>
-      <b>この範囲にできていたもの</b>：<a href="https://www.wikidata.org/" target="_blank" rel="noopener">Wikidata</a>（CC0）。
+      <b>この範囲で、年が記録されているもの</b>：<a href="https://www.wikidata.org/" target="_blank" rel="noopener">Wikidata</a>（CC0）。
       年が記録されているものだけで、<b>写真に写っているかどうかまでは確かめていません</b>。<br>
       <b>建物</b>：© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a>（ODbL）
     </div>
@@ -1063,7 +1066,7 @@ const TOPWORD = {
   // ⚠ **取得方法の呼び名。**掟の語彙なので、ここ 1 か所で決める。
   //   未取得＝読めなかった／境目＝近傍で答えが割れた／それ以外は実際の取得方法。
   method: (state, mixed, method) =>
-    state === "unreachable" ? "未取得" : mixed ? "境目" : method,
+    KonjakuWords.method(state, mixed, method),
   // ⚠ **掟の核心。**正常に記録が無いのと、判定できないのは別。
   //   ⚠ **字は words.js が持つ**（2026-08-20）。以前はここと verify.js と share.js が
   //     同じ字を別々に書いていて、片方だけ直せば**同じ状態に 2 通りの言い方**ができた。
@@ -1491,7 +1494,9 @@ function headHTML(){
            ⚠ title はタッチ端末では一生見えないので、aria-label も置く。 -->
       <button class="why" id="shareBtn" title="この判定を共有する"
         aria-label="この判定を共有する"><i>🖼</i><span>共有する</span></button>
-      <button class="why" id="whyBtn" title="根拠を見る"
+      <!-- ⚠ 吹き出しは、見えている字と揃える（2026-08-20）。⚠ **読み上げは吹き出しを読む**ので、
+           ここだけ「根拠を見る」のままだと、⚠ **見える人と聞く人で機能の名前が変わる**。 -->
+      <button class="why" id="whyBtn" title="なぜそう言える？"
         aria-expanded="false"><i>?</i><span>なぜそう言える？</span></button>
     </div>
     <!-- ⚠ 押した結果は、押したボタンの隣に出す。
@@ -2583,7 +2588,7 @@ function renderVerdict(){
     ${timeHTML(meiji.facts)}
     ${bs.length ? `<div class="badges">${bs.map((b)=>
       `<button class="badge ${b.tone}" data-k="${b.key??""}"
-        title="このバッジの根拠を見る"><i>${b.icon}</i>${b.text}</button>`).join("")}</div>` : ""}
+        title="なぜそう言える？（この項目）"><i>${b.icon}</i>${b.text}</button>`).join("")}</div>` : ""}
     ${risk ? `<details class="risk"><summary><span class="rl">⚠ この土地で気をつけること</span>
         <span class="rs2">${risk.of} 一般についての、国土地理院の記述</span></summary>
       <div class="rbody">${risk.text}
