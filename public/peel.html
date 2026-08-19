@@ -31,6 +31,9 @@
 <meta name="apple-mobile-web-app-title" content="今昔">
 <link rel="apple-touch-icon" href="/icon-192.png">
 <link rel="stylesheet" href="./vendor/maplibre-gl.css">
+<!-- ⚠ 2 画面で共通の見た目の定義。**ここが唯一の出どころ**（ADR 0021）。
+     ⚠ 画面ごとに値が違うものは、下の <style> に残してある。 -->
+<link rel="stylesheet" href="./css/tokens.css">
 <style>
   /* 色の意味は index.html と同じ。⚠ 値だけ違う（地図の上なので、面はより暗い）。
      名前を揃えてあるので、テーマを足すときは両方に同じ名前で書けばよい。 */
@@ -40,26 +43,10 @@
     --line:rgba(255,255,255,.13);
     --ink:#eef1f5;
     --ink-dim:#8e99a6;
-    --ink-faint:#6b7683;
-    --evidence:#7ee0a5;
-    --estimate:#e6c47a;
-    --missing:#e08a7a;
-    --water:#5ba3e0;
-    --action:#6fc3ff;
-    --tap:44px;
 
     /* 文字の大きさ。⚠ 名前も段も index.html と揃える。
        二層にしてあり、**値は --text-* にしか書かない**。使う側は --fs-* を書く。
        理由と実測は index.html の同じ節に全文がある。 */
-    --text-2xs:11px;
-    --text-xs:12px;
-    --text-sm:12.5px;
-    --text-md:13px;
-    --text-base:14px;
-    --text-lg:15px;
-    --text-xl:16px;
-    --text-2xl:17px;
-    --text-3xl:19px;
     /* ⚠ ここから下は index.html に無い段。3D は数字そのものが主役なので大きい。 */
     --text-4xl:22px;         /* 数字を出せないときの、ヒーローの代わりの文 */
     --text-hero:38px;
@@ -69,19 +56,9 @@
     --text-chevron:17px;
     --text-hero-lg:60px;     /* 画面が狭いときは --text-hero に落とす（下のメディアクエリ） */
 
-    --fs-label:var(--text-2xs);      /* 「実測」「推定」の印・節の見出し */
-    --fs-evidence:var(--text-xs);    /* 根拠。出所の台帳・内訳 */
-    --fs-note:var(--text-xs);
     --fs-chevron:var(--text-chevron);        /* 但し書き */
-    --fs-badge:var(--text-sm);
-    --fs-lead:var(--text-md);
-    --fs-body:var(--text-base);
-    --fs-claim:var(--text-lg);
     /* ⚠ 入力欄は 16px 未満にしない。iOS Safari は 16px 未満の入力欄に触れると
        ページごと拡大し、戻らない。index.html と同じ約束（見た目の都合で下げないこと）。 */
-    --fs-input:var(--text-xl);
-    --fs-era:var(--text-2xl);
-    --fs-sign:var(--text-3xl);
     --fs-hero-sm:var(--text-4xl);    /* 数字を出せないとき（「判定できません」） */
     --fs-hero:var(--text-hero);      /* 99.6% と年。この画面の主役 */
     --fs-hero-lg:var(--text-hero-lg);
