@@ -163,13 +163,18 @@ async function waitStrip(page, timeout = 30000) {
 // 通信が落ちただけの土地に「整備対象外」「データが無い」「残っていない」と書いていた。
 // しかも根拠UI（参照タイル・読んだ画素）付きで。人の目に頼らず、ここで落とす。
 const LIES = ["整備対象外", "データが無い", "記録がありません", "残っていない", "データなし"];
-// 成り立ちの1文が出ていること。⚠ **形は2通りある**（2026-08-17 に増えた）。
-//   「もとは 水だった土地（旧水部）です。いまは 盛土地･埋立地 です。」… 定義に「かつて」がある区分
-//   「この場所は 扇状地 です。」                                    … それ以外
-//   ⚠ 前は `/この場所は .+ です/` だけを見ていたので、文を変えた瞬間に
-//     **「成り立ちが出ていない」ではなく「時間切れ」で落ちた**（原因が読めない落ち方だった）。
-//   ⚠ 守っている意図は「区分名を含む1文が出ていること」。文言そのものではない。
-const VERDICT_SENTENCE = /(この場所は .+ です|もとは .+（.+）です。)/;
+// 成り立ちの1文が出ていること。
+// ⚠ **字を書き写さない**（2026-08-20。hidetzu/konjaku#122）。
+//   ⚠ ここには文言そのものが直書きしてあった。⚠ **コメント自身が
+//     「守っている意図は区分名を含む1文が出ていること。文言そのものではない」と
+//     書いていたのに、正規表現は文言そのものだった。**
+//   ⚠ 言い回しを ADR 0030 へ揃えた瞬間、⚠ **製品ではなく検査が落ちた**（これで 4 回目）。
+// ⚠ **主語は words.js の 1 か所から取る。**⚠ 区分名は土地ごとに変わるので、
+//   ⚠ **「主語＋何か」が出ていること**だけを見る（それがこの検査の主張）。
+const RE_ESC = (t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const G1_MARK = "@@";
+const G1_HEAD = WORDS.ground1Lines(G1_MARK, null)[0].split(G1_MARK)[0];
+const VERDICT_SENTENCE = new RegExp(RE_ESC(G1_HEAD) + "\\S+");
 const GSI_ROUTE = "**://*.gsi.go.jp/**";
 // 写真タイルだけを落とす。低湿地（swale）・標高・建物は生かしたまま、
 // 「地表のラスタだけが1枚も届いていない」状態を作るための経路。
@@ -2140,7 +2145,15 @@ const CASES = [
       // 「計算上」作っていたが、実物は .scope の overflow:hidden で下端が切られ、
       // 右端は後から重なる #q が先に拾って、実際に押せるのは 42×42 だった。
       // ここでは **その座標を押したとき目的の要素に届くか** を elementFromPoint で見る。
+      // ⚠ **突く前に、画面の中へ入れる**（2026-08-20。hidetzu/konjaku#122）。
+      //   ⚠ elementFromPoint は**画面の外を見ない**ので、初期画面から出ているだけで
+      //     ⚠ **「なし」が返り、重なりがあるように見える。**
+      //   ⚠ ここが見たいのは**重なり**であって、画面内かどうかではない
+      //     （画面内かどうかは「重ねる操作が、写真と一緒に初期画面に見える」が見ている）。
+      //   ⚠ 実測（375×720）: 答えを画面の先頭へ動かしたぶん、
+      //     ⚠ **「なぜそう言える？」の下端が 710 → 725 になり、5px 切れた。**
       const reach = (sel) => page.$eval(sel, (e, size) => {
+        e.scrollIntoView({ block: "center" });
         const r = e.getBoundingClientRect();
         const cx = r.left + r.width / 2, cy = r.top + r.height / 2, h = size / 2 - 1;
         const pts = [[0, 0], [-h, -h], [h, -h], [-h, h], [h, h], [0, -h], [0, h], [-h, 0], [h, 0]];
@@ -2167,7 +2180,7 @@ const CASES = [
       // タッチ端末では物理キーが無い。使えない説明で候補を隠さない
       must(await page.locator(".kbd").count() === 0 || !(await page.locator(".kbd").isVisible()),
         "タッチ端末なのにキーヒントが出ている（候補が隠れる）");
-      return `? と ✕ が実測で 44×44 に届く／隅を押して開く／候補の最小高 ${min}px／キーヒントは非表示`;
+      return `? と 共有 と ✕ が実測で 44×44 に届く／隅を押して開く／候補の最小高 ${min}px／キーヒントは非表示`;
     },
   },
   {
@@ -2188,7 +2201,7 @@ const CASES = [
         if (!b || !s) return null;
         const bb = b.getBoundingClientRect(), sb = s.getBoundingClientRect();
         const cells = [...document.querySelectorAll("#strip .f")].map((e) => e.getBoundingClientRect());
-        return { gap: Math.round(sb.top - bb.bottom), y: Math.round(bb.y),
+        return { gap: Math.round(sb.top - bb.bottom), y: Math.round(bb.y), vh: window.innerHeight,
           w: Math.round(bb.width), h: Math.round(bb.height),
           cell: Math.round(cells[0]?.width ?? 0), rows: new Set(cells.map((c) => Math.round(c.top))).size,
           label: document.querySelector(".strip-ops-tx")?.textContent.trim() ?? "" };
@@ -2197,8 +2210,14 @@ const CASES = [
       // ⚠ 「そば」を px で言う。1 画面ぶん離れていたら「そば」ではない
       must(g.gap >= 0 && g.gap < 60,
         `▶ が帯から離れている: ${g.gap}px（実測 移す前は 487px。帯の直前に置く）`);
-      // ⚠ **帯より上にあること。** 下に置くと「送る先」を見ながら押せない
-      must(g.y < 300, `▶ が帯より下にいる: y=${g.y}`);
+      // ⚠ **帯より上にあること。** 下に置くと「送る先」を見ながら押せない。
+      //   ⚠ **絶対の y で書かない**（2026-08-20 に直した。hidetzu/konjaku#122）。
+      //     ⚠ 以前は `y < 300` だった。⚠ **これは「帯より上」の代用**で、
+      //       ⚠ **答えを画面の先頭へ動かしただけで落ちた**（帯ごと下がっただけで、
+      //       ▶ と帯の上下は変わっていない）。⚠ **代用ではなく、主張そのものを書く。**
+      must(g.gap >= 0, `▶ が帯より下にいる: 帯との差 ${g.gap}px`);
+      // ⚠ **初期画面で押せること。**⚠ 押せない場所にあるなら「そば」でも意味がない
+      must(g.y + g.h <= g.vh, `▶ が初期画面の外にいる: y=${g.y}〜${g.y + g.h}（画面 ${g.vh}）`);
       // 指で押す端末では 44px（Apple の指針）
       must(g.w >= 44 && g.h >= 44, `▶ が指で押すには小さい: ${g.w}×${g.h}px`);
       // ⚠ **コマを縮めていないこと。** 帯の中に入れるとコマが縮む（実測 27→25px / 21→18px）。
@@ -2532,6 +2551,102 @@ const CASES = [
       return { gone, msg: `${r.era}: 「${r.txt}」／理由を断定せず・「無い」と言わず・`
         + `通信のせいにしない／戻すと消える` };
       }
+    },
+  },
+
+  {
+    // ⚠ **着いた直後の画面に、答えと写真と「重ねる」が全部入る**（hidetzu/konjaku#122）。
+    //
+    //   ⚠ **既存の「重ねる操作が、写真と一緒に初期画面に見える」では足りない。**
+    //     ⚠ あちらは 1936–42 のコマへ移し、⚠ **拡大してから**測っている。
+    //     ⚠ **着いた直後（明治期のコマ・拡大なし）を誰も見ていなかった。**
+    //     ⚠ 実際に穴だった: 写真の上限を外しても、あちらは緑のまま。
+    //       ⚠ 着いた直後は 375×667 で 671（画面 667）、320×640 で 655（画面 640）だった。
+    //
+    //   ⚠ **その大きさで読み込む。**⚠ 伸縮すると写真が前の高さを保つ（同じ穴を踏む）。
+    //   ⚠ **hasTouch を付ける。**⚠ 付けないと (hover:none) が効かず、⚠ **14px ずれる**
+    //     （2026-08-20 実測: 付けない 645 / 付ける 659。実機は触れる端末）。
+    name: "着いた直後の画面に、答えと写真と重ねるが入る", path: "/", group: "core",
+    async check(page) {
+      const out = [];
+      for (const [w, h] of [[375, 667], [344, 882], [320, 640]]) {
+        const ctx = await page.context().browser().newContext({
+          viewport: { width: w, height: h }, hasTouch: true, serviceWorkers: "block" });
+        try {
+          const p2 = await ctx.newPage();
+          await p2.goto(`${BASE}/?${TOYOSU}`, { waitUntil: "domcontentloaded", timeout: 45000 });
+          await waitVerdict(p2);
+          await waitStrip(p2);
+          await p2.waitForSelector("#ovRow", { state: "attached", timeout: 30000 });
+          await settleAfterCondition(p2);
+          const g = await p2.evaluate(() => {
+            const R = (s) => { const e = document.querySelector(s);
+              if (!e || !e.checkVisibility()) return null;
+              const b = e.getBoundingClientRect();
+              return { t: Math.round(b.top), b: Math.round(b.bottom) }; };
+            const d = document.documentElement;
+            return { ans: R(".v-head"), big: R("#big"), ov: R("#ovRow"),
+              gq: [...document.querySelectorAll(".verdict .gq")]
+                .filter((e) => e.checkVisibility()).map((e) => e.textContent.trim()),
+              lines: [...document.querySelectorAll(".v-head .tx")].length,
+              vh: innerHeight, over: d.scrollWidth - d.clientWidth };
+          });
+          // ⚠ **問いの見出しが 2 つ出ている**（第1層・第2層）
+          must(g.gq.length === 2, `${w}×${h}: 問いの見出しが 2 つでない（${g.gq.length} 個: ${g.gq.join(" / ")}）`);
+          // ⚠ **字は words.js の 1 か所から。**⚠ ここへ書き写さない
+          must(g.gq[0] === WORDS.layerTitle(1) && g.gq[1] === WORDS.layerTitle(2),
+            `${w}×${h}: 見出しが words.js と違う（${g.gq.join(" / ")}）`);
+          // ⚠ **成因と人工改変は行を分ける**（ADR 0030 §4-4）
+          must(g.lines === 2, `${w}×${h}: 答えが 2 行になっていない（${g.lines} 行）`);
+          // ⚠ **3 つとも初期画面に入る**
+          for (const [nm, r] of [["答え", g.ans], ["写真", g.big], ["重ねる", g.ov]]) {
+            must(r, `${w}×${h}: ${nm} が見えていない`);
+            must(r.b <= g.vh, `${w}×${h}: ${nm} が初期画面の外にある（下端 ${r.b} / 画面 ${g.vh}）`);
+          }
+          must(g.over <= 0, `${w}×${h}: 横にあふれている（${g.over}px）`);
+          out.push(`${w}×${h} 答え${g.ans.b}／写真${g.big.b}／重ねる${g.ov.b}（画面 ${g.vh}）`);
+        } finally { await ctx.close(); }
+      }
+      return out.join(" ／ ");
+    },
+  },
+
+  {
+    // ⚠ **トップと /peel が、同じ第1層を同じ字で出す**（hidetzu/konjaku#122）。
+    //   ⚠ **字を書き写さない。**⚠ **両方を実際に描いて、突き合わせる**（掟）。
+    //   ⚠ 以前は トップ「もとは 水だった土地（旧水部）です。いまは …」／
+    //     /peel「この土地は 旧水部 ／ 人の手で …」と、⚠ **同じ第1層が画面ごとに違った**
+    //     （ADR 0030 §4 の実測）。
+    name: "トップと /peel が、同じ土地に同じ答えを出す", path: "/", group: "core",
+    async check(page) {
+      const ctx = await page.context().browser().newContext({
+        viewport: { width: 375, height: 667 }, hasTouch: true, serviceWorkers: "block" });
+      try {
+        const text = async (url, sel) => {
+          const p2 = await ctx.newPage();
+          await p2.goto(url, { waitUntil: "domcontentloaded", timeout: 45000 });
+          // ⚠ **「判定中…」を除く。**⚠ 除かないと判定中の字を突き合わせてしまう
+          await p2.waitForFunction((s) => {
+            const t = (document.querySelector(s)?.innerText ?? "").trim();
+            return t.length > 3 && !t.includes("判定中");
+          }, sel, { timeout: 60000 });
+          await settleAfterCondition(p2);
+          const t = await p2.$eval(sel, (e) => e.innerText.replace(/\s+/g, " ").trim());
+          await p2.close();
+          return t;
+        };
+        const top = await text(`${BASE}/?${TOYOSU}`, ".v-head");
+        const peel = await text(`${BASE}/peel?${TOYOSU}`, ".land-g1");
+        // ⚠ **主語は同じ。**⚠ words.js の 1 か所から取る（ここへ書き写さない）
+        const head = WORDS.ground1Lines("@@", null)[0].split("@@")[0].trim();
+        must(top.startsWith(head), `トップの答えが「${head}」で始まっていない: ${top}`);
+        must(peel.startsWith(head), `/peel の答えが「${head}」で始まっていない: ${peel}`);
+        // ⚠ **区分名まで一致すること。**/peel は第1層だけを出すので、トップの 1 行目と比べる
+        const top1 = top.split("\n")[0].trim();
+        must(peel === top1 || top.startsWith(peel),
+          `トップと /peel で第1層の字が違う: トップ「${top}」／peel「${peel}」`);
+        return `トップ「${top}」／/peel「${peel}」`;
+      } finally { await ctx.close(); }
     },
   },
 
@@ -4038,7 +4153,29 @@ const CASES = [
       // ⚠ PC でも見えることが今回の要点。スマホだけ見ると、直したつもりで直っていない
       for (const [w, h] of [[1280, 800], [375, 667], [320, 640]]) {
         await page.setViewportSize({ width: w, height: h });
-        await page.waitForTimeout(600);
+        // ⚠ **その大きさで読み込み直す**（2026-08-20。hidetzu/konjaku#122）。
+        //   ⚠ 伸縮するだけでは、⚠ **写真が前の大きさの高さを保つ。**
+        //   ⚠ 実際に穴だった: 写真の上限（縦の短い画面）を丸ごと外しても緑のままで、
+        //     ⚠ **実機の読み込みでは 375×667 も 320×640 も画面から出ていた**
+        //     （重ねる下端 671/667・655/640）。⚠ **伸縮は実機の代わりにならない。**
+        await page.goto(page.url(), { waitUntil: "domcontentloaded", timeout: 45000 });
+        await waitVerdict(page);
+        await waitStrip(page);
+        await page.waitForSelector("#ovRow", { state: "attached", timeout: 30000 });
+        // ⚠ **読み込み直したら、見る状態も作り直す。**
+        //   写真の年代（1936–42）へ移し、⚠ **地図を載せる**（帰属表示は地図が載って初めて出る）
+        await page.evaluate(() => document.querySelectorAll("#strip .f")[1]?.click());
+        await settleAfterClick(page);
+        await page.click("#zIn");
+        await settleAfterClick(page);
+        // ⚠ **帰属表示が出るまで待つ。**⚠ 地図は読み込み直しのたびに載せ直しになり、
+        //   ⚠ **CI では出るまでに時間がかかる。**待たずに測ると、まだ画面の上のほうに
+        //   ⚠ **前の位置の帰属表示が残っていて、−517px のような値が出る**（実際に CI で落ちた）。
+        await page.waitForFunction(() => {
+          const a = document.querySelector(".maplibregl-ctrl-attrib");
+          return !!a && a.getBoundingClientRect().height > 0;
+        }, null, { timeout: 60000 });
+        await settleAfterCondition(page);
         const g = await geom();
         must(g.inViewport,
           `${w}×${h}: 重ねる操作が初期画面の外にある（y=${g.ov?.t}〜${g.ov?.b} / 画面 ${g.h}）`);
@@ -4575,7 +4712,12 @@ const CASES = [
       }),
     ]),
     async check(page) {
-      await page.waitForFunction(() => /もとは|記録なし|判定できません/.test(document.body.innerText),
+      // ⚠ **字を書き写さない**（2026-08-20）。⚠ 以前は答えの言い回しを待っており、
+      //   ⚠ **ADR 0030 へ揃えた瞬間に時間切れで落ちた。**
+      // ⚠ **「判定中…」を除く**（除かないと判定中に素通りする。上と同じ）。
+      await page.waitForFunction(
+        () => { const t = (document.querySelector("#verdict .v-head")?.innerText ?? "").trim();
+                return t.length > 3 && !t.includes("判定中"); },
         null, { timeout: 90000 });
       const r = await page.evaluate(() => {
         const sec = (v) => v.split(",").map((x) => x.trim())
@@ -4620,7 +4762,12 @@ const CASES = [
       }),
     ]),
     async check(page) {
-      await page.waitForFunction(() => /もとは|記録なし|判定できません/.test(document.body.innerText),
+      // ⚠ **字を書き写さない**（2026-08-20）。⚠ 以前は答えの言い回しを待っており、
+      //   ⚠ **ADR 0030 へ揃えた瞬間に時間切れで落ちた。**
+      // ⚠ **「判定中…」を除く**（除かないと判定中に素通りする。上と同じ）。
+      await page.waitForFunction(
+        () => { const t = (document.querySelector("#verdict .v-head")?.innerText ?? "").trim();
+                return t.length > 3 && !t.includes("判定中"); },
         null, { timeout: 90000 });
       const r = await page.evaluate(() => ({
         lyr: getComputedStyle(document.querySelector(".big .lyr")).transitionDuration,
@@ -6441,7 +6588,13 @@ const CASES = [
       const NAGOYA = "q=%E5%90%8D%E5%8F%A4%E5%B1%8B&ll=35.17090,136.88160";
       const top = async () => {
         await page.waitForFunction(
-          () => /です|ません/.test(document.querySelector("#verdict .v-head")?.innerText ?? ""),
+          // ⚠ **字を書き写さない。**⚠ 以前は「です」「ません」を待っており、
+          //   ⚠ **言い回しを変えた瞬間に時間切れで落ちた**（2026-08-20）。
+          // ⚠ **「判定中…」を除く。**⚠ 除かないと**判定中に素通りする**
+          //   （答えの行は、待っているあいだも「この土地の成り立ちを判定中…」を出している。
+          //    ⚠ 手元では速くて素通りせず、⚠ **CI で落ちた**）。
+          () => { const t = (document.querySelector("#verdict .v-head")?.innerText ?? "").trim();
+                  return t.length > 3 && !t.includes("判定中"); },
           null, { timeout: 45000 });
         await settleAfterCondition(page);
         return page.evaluate(() => ({
