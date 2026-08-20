@@ -1575,11 +1575,9 @@ function onMapError(e){
   const id=e.sourceId;
   if(!id) return;
   const st=e.error?.status;
-  // ⚠ 語彙は places.js の whyOf に合わせる（掟: 同じ問いに答える実装を2つ持たない）
-  const why=st===0||st==null ? "通信できません"
-          : st===403||st===401 ? "サーバが拒否しました"
-          : st>=500 ? `サーバが ${st} を返しました`
-          : `サーバが ${st} を返しました`;
+  // ⚠ 落ち方から理由を決めるのは photos.js の 1 か所（2026-08-20）。
+  //   ⚠ **トップと同じ判断**なので、ここに写さない。
+  const why=KonjakuPhotos.whyOf(st);
   const had=failedSources.get(id);
   failedSources.set(id,{ status:st??0, why });
   // 落ち方が変わった／初めて落ちたときだけ描き直す。1枚ごとに描き直さない
@@ -1593,25 +1591,17 @@ map.on("error",onMapError);
 // ⚠ **この関数は地図も DOM も見ない。** 覆っているかだけを答える。
 //   keys は読めたタイルの "z/x/y"、xf/yf は z0 段でのタイル座標（小数）。
 //   検査はこの関数だけを取り出して回す（ブラウザを立てずに境界を確かめられる）。
-function tilesCover(keys,xf,yf,z0){
-  for(const k of keys){
-    const [z,x,y]=k.split("/").map(Number), n=2**(z-z0);
-    if(Math.floor(xf*n)===x&&Math.floor(yf*n)===y) return true;
-  }
-  return false;
-}
+// ⚠ 中身は photos.js の 1 か所（2026-08-20）。⚠ **トップと同じ判断**
+const tilesCover=(keys,xf,yf,z0)=>KonjakuPhotos.covers(keys,xf,yf,z0);
 // 地表がいまどういう状態か。⚠ **地図も DOM も見ない。**（検査が直に回す）
 //   arrived … その地点を覆うタイルが読めた
 //   late    … 猶予を過ぎても読めていない
 //   fail    … 落ちたことを実際に観測した（why はその理由）
 // ⚠ **fail と late を混ぜない。** late は「まだ来ていない／404 で写真が無い」を含み、
 //   こちらは理由を知らない。知らないことを「読み込めませんでした」と書かない。
-function groundState(arrived, late, fail){
-  if(arrived) return { kind:"ok" };
-  if(fail) return { kind:"fail", why:fail.why };
-  if(late) return { kind:"late" };
-  return { kind:"pending" };
-}
+// ⚠ 中身は photos.js の 1 か所（2026-08-20）。⚠ **トップと同じ 4 状態**
+const groundState=(arrived,late,fail,era,online)=>
+  KonjakuPhotos.stateOf(arrived,late,fail,era,online);
 
 function rasterArrived(id){
   const s=okTiles.get(id);
@@ -1754,23 +1744,18 @@ const GROUND_GRACE_MS = 1200;
 //   online===true  … つながっているのに取れない理由を、こちらは知らない。
 //                    「確認してください」に留める（誰のせいとも断定しない）
 // ⚠ 語彙は places.js の検索側に合わせる（掟: 同じ問いに答える実装を2つ持たない）。
-function eraReadout(state, isLatest, isMeiji, sub, online){
-  const what = isMeiji ? "明治期の地面" : isLatest ? "いまの街の写真" : "この年代の写真";
-  // ⚠ **普段は名乗らない。** 出ているのが当たり前のときに「表示中」と書いても、
-  //   何のことか分からないまま**主役（年代）から目を奪う**（実測 2026-08-19・320幅:
-  //   年代の字 38px に対して「表示中」は 12px だが、行の頭に居るので先に読まれる）。
-  //   ⚠ **消すのは「普段」だけ。**出ていないときは必ず名乗る
-  //     （「出ていないものを表示中と言わない」を直したときの性質。崩さない）。
-  if(state?.kind==="ok"||!state) return { kick:"", sub };
-  if(state.kind==="fail")
-    return { kick:"出せません",
-      sub:`${what}を読み込めませんでした（${state.why}）`,
-      hint: online===false ? "インターネットに接続していません"
-                           : "接続を確認してください" };
-  if(state.kind==="late") return { kick:"選択中", sub:`${what}は、まだ出ていません` };
-  // ⚠ 猶予の中（pending）。まだ届いていないが、**普通の回線ならすぐ届く**
-  //   （実測: 通常回線 69〜403ms）。ここで名乗ると、読み込みのたびに一瞬光る。
-  return { kick:"", sub };
+// ⚠ **ここは置くだけ。**⚠ **何も判断しない**（2026-08-20 のオーナー指示）。
+//   ⚠ 状態は photos.js、字は words.js。⚠ **置き方だけが、この画面の責務。**
+//   ⚠ 以前はここが「何の写真か」も組み立てていて、⚠ **トップと 2 か所に同じ判断があった。**
+// ⚠ **普段は名乗らない。** 出ているのが当たり前のときに「表示中」と書いても、
+//   何のことか分からないまま**主役（年代）から目を奪う**（実測 2026-08-19・320幅:
+//   年代の字 38px に対して「表示中」は 12px だが、行の頭に居るので先に読まれる）。
+//   ⚠ **消すのは「普段」だけ。**出ていないときは必ず名乗る（words.js が lead を返す）。
+function eraReadout(state, sub){
+  const say=KonjakuWords.photoSay(state);
+  if(!say) return { kick:"", sub };          // ⚠ ok / pending は名乗らない
+  // ⚠ この画面は、名乗り・本文・接続の話を **3 か所に分けて**置く
+  return { kick:say.lead, sub:say.body, hint:say.hint||undefined };
 }
 let groundGid=null, groundSince=0, groundTimer=null;
 function groundLate(gid, arrived){
@@ -1788,7 +1773,10 @@ function describe(v){
   const gid=near?near.id:"swale";
   const arrived=rasterArrived(gid);
   const late=groundLate(gid,arrived);
-  const gstate=groundState(arrived, late, failedSources.get(gid));
+  // ⚠ **素性（何の写真か）と online も、状態と一緒に持たせる。**
+  //   ⚠ **画面が組み立てない**（組み立てると、その判断が画面ごとに増える）。
+  const gstate=groundState(arrived, late, failedSources.get(gid),
+    { isLatest: !!near&&near.id===Konjaku.LATEST.id, isMeiji: !near }, navigator.onLine);
   // 猶予が明けたら、もう一度だけ描き直す（届けば onTileData が描き直す）
   if(groundTimer){ clearTimeout(groundTimer); groundTimer=null; }
   if(!arrived&&!late)
@@ -1799,8 +1787,7 @@ function describe(v){
   ground={ id:gid, ok:arrived };
 
   eraEl.querySelector(".y").textContent=cur.label;
-  const read=eraReadout(gstate, !!near&&near.id===Konjaku.LATEST.id, !near,
-                        near?subOf(near):MEIJI.sub, navigator.onLine);
+  const read=eraReadout(gstate, near?subOf(near):MEIJI.sub);
   eraEl.querySelector(".kick").textContent=read.kick;
   eraEl.querySelector(".s").textContent=read.sub;
   // ⚠ 接続の話は**別の行**に置く。写真の話と混ぜると、どちらが事実か読めなくなる

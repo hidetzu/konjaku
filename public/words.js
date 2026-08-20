@@ -107,5 +107,45 @@
     "調べた場所は<b>URL に入り</b>、開くと<b>配信元（Cloudflare）に届きます</b>。"
     + "<b>こちらの記録には残りません</b>（計測に地名も座標も送らず、Cookie も使いません）。";
 
-  g.KonjakuWords = { S, meiji, meijiBadge, TAG, tag, METHOD, EDGE, UNREAD, method, PRIVACY_SHORT };
+  // ============================================================
+  // 写真が届いていないときに、何と言うか
+  //
+  // ⚠ **状態を決めるのは photos.js。**⚠ **字を決めるのはここ。**⚠ **置き方は画面。**
+  //   ⚠ この 3 つを分ける（2026-08-20 のオーナー指示）。
+  //   ⚠ **相手先の振る舞いが変わっても、直すのは photos.js の 1 か所。**
+  //   ⚠ **言い方を変えるなら、直すのはここの 1 か所。**⚠ **画面は触らない。**
+  //
+  // ⚠ **画面から「何の写真か」を渡させない。**⚠ 渡させると、⚠ **その判断が画面ごとに増える**
+  //   （2026-08-20 の途中まで、トップと /peel が別々に組み立てていた）。
+  //   ⚠ **photos.js が状態と一緒に era の素性を返すので、それを見る。**
+  //
+  // ⚠ **知っていることだけ言う。**
+  //   fail    … ⚠ **落ちたのを実際に観測した。**理由まで言える
+  //   late    … ⚠ **理由を知らない。**⚠ **「読み込めませんでした」と言わない**
+  //   pending … 猶予の中。⚠ **何も言わない**（言うと読み込みのたびに光る）
+  //   ok      … 何も言わない
+  //
+  // ⚠ **返すのは「画面が判断できる情報」。**⚠ **どう置くかは決めない。**
+  //   lead … 頭に出す短い名乗り（無いこともある）
+  //   body … 本文
+  //   hint … 接続の話（⚠ **知っているときだけ**。無いこともある）
+  const photoSay = (state) => {
+    if (!state || state.kind === "ok" || state.kind === "pending") return null;
+    const e = state.era ?? {};
+    // ⚠ 「何の写真か」は、状態が持っている素性から決める。⚠ **画面に組み立てさせない**
+    const what = e.isMeiji ? "明治期の地面" : e.isLatest ? "いまの街の写真" : "この年代の写真";
+    if (state.kind === "late")
+      // ⚠ **理由を断定しない。**404 は「遅い」と区別できない
+      return { lead: "選択中", body: `${what}は、まだ出ていません`, hint: "" };
+    // fail
+    return {
+      lead: "出せません",
+      body: `${what}を読み込めませんでした（${state.why}）`,
+      // ⚠ **onLine が false のときだけ言い切る。**⚠ **こちらが知っている範囲でしか言わない**
+      hint: state.online === false ? "インターネットに接続していません" : "接続を確認してください",
+    };
+  };
+
+  g.KonjakuWords = { S, meiji, meijiBadge, TAG, tag, METHOD, EDGE, UNREAD, method,
+                     PRIVACY_SHORT, photoSay };
 })(typeof window === "undefined" ? globalThis : window);

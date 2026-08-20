@@ -2474,6 +2474,68 @@ const CASES = [
   },
 
   {
+    // ⚠ **写真が届かないときに、画面へ出ること**（hidetzu/konjaku#116）。
+    //   ⚠ **状態は photos.js、字は words.js、置くのは画面。**⚠ **3 つが繋がっているかを見る。**
+    //   ⚠ **理由を断定しない。**`<img>` からは落ちた理由が取れないので late に留める。
+    //     ⚠ **「読み込めませんでした」と書いたら落とす。**
+    //   ⚠ **Service Worker を止める。**⚠ 止めないとキャッシュから返り、
+    //     ⚠ **止めたはずのタイルが届く**（2026-08-20 に踏んだ。naturalWidth=256 のままだった）。
+    //   ⚠ **見えているかは checkVisibility()。**⚠ textContent は隠れた字も返す（CLAUDE.md §9）。
+    name: "写真が届かない年代で、理由を断定せずに断る", path: "/",
+    async check(page) {
+      // ⚠ **Service Worker を止めた場を、自分で作る**（走者の既定では止まらない）。
+      //   ⚠ 止めないとキャッシュから返り、⚠ **止めたはずのタイルが届く。**
+      const ctx = await page.context().browser().newContext({
+        viewport: { width: 375, height: 667 }, hasTouch: true, serviceWorkers: "block" });
+      let r = null, gone = null;
+      try {
+        const p2 = await ctx.newPage();
+        await p2.route((u) => /xyz\/gazo1\//.test(u.href), (q) => q.abort("connectionrefused"));
+        await p2.goto(`${BASE}/?q=%E8%B1%8A%E6%B4%B2&ll=35.6548,139.7975`,
+          { waitUntil: "domcontentloaded", timeout: 45000 });
+        r = await run(p2);
+        gone = r.gone;
+      } finally { await ctx.close(); }
+      const page2 = null; void page2;
+      return r.msg;
+
+      async function run(page) {
+      await page.waitForFunction(() => document.querySelectorAll(".strip .f").length > 1,
+        null, { timeout: 60000 });
+      // ⚠ 止めた年代（1974–78）へ。⚠ **押すと地図が起きる**ので setEra を直に呼ぶ
+      await page.evaluate(() => { const f = [...document.querySelectorAll(".strip .f")];
+        const i = f.findIndex((e) => /1974/.test(e.textContent)); if (i >= 0) setEra(i); });
+      await page.waitForFunction(() =>
+        document.getElementById("bigErr")?.checkVisibility?.() === true, null, { timeout: 30000 });
+      const r = await page.evaluate(() => {
+        const e = document.getElementById("bigErr");
+        return { seen: e.checkVisibility(), txt: e.textContent.replace(/\s+/g, " ").trim(),
+                 era: document.querySelector(".strip .f.on")?.textContent?.trim() };
+      });
+      must(r.seen, "写真が届いていないのに、断りが出ていない");
+      // ⚠ **理由を知らないので断定しない**（404 と区別できない）
+      must(!/読み込めませんでした|取得できませんでした|失敗/.test(r.txt),
+        `理由を知らないのに断定している: ${r.txt}`);
+      // ⚠ **「無い」と言わない**（掟の一行目）
+      for (const w of LIES) must(!r.txt.includes(w), `「${w}」と断定している: ${r.txt}`);
+      // ⚠ **通信のせいにしない**（つながっているかどうかを、こちらは知らない）
+      must(!/通信|接続|インターネット/.test(r.txt), `理由を知らないのに通信のせいにしている: ${r.txt}`);
+      // ⚠ **何の写真かを名乗る**（年代が分からないと、何が出ていないのか読めない）
+      must(/写真|地面/.test(r.txt), `何が出ていないのか書かれていない: ${r.txt}`);
+      // ⚠ **届いている年代へ戻したら、断りは消える**
+      await page.evaluate(() => { const f = [...document.querySelectorAll(".strip .f")];
+        const i = f.findIndex((e) => /明治期/.test(e.textContent)); if (i >= 0) setEra(i); });
+      await settleAfterClick(page);
+      const gone = await page.evaluate(() =>
+        document.getElementById("bigErr")?.checkVisibility?.() ?? false);
+      must(!gone, "届いている年代なのに、断りが残っている");
+      return { gone, msg: `${r.era}: 「${r.txt}」／理由を断定せず・「無い」と言わず・`
+        + `通信のせいにしない／戻すと消える` };
+      }
+    },
+  },
+
+  {
     // ⚠ **プライバシーの 3 段は、場所を送る前に読めること。**
     //   ⚠ 以前は畳んだフッターの中にしかなく、⚠ **利用者役 2/4 が「これは先に見たかった」**。
     //   ⚠ **「見えている」だけでなく「畳まれていない」「画面内」まで見る。**

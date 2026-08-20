@@ -514,7 +514,9 @@
      写真が落ちても「どの年代を見ようとしていたか」は残す（消すと、何が落ちたか分からない） */
   .big.err .lyr,.big.err .mk,.big.err .bl{display:none}
   .big.err .big-err{display:grid;place-items:center;position:absolute;inset:0;
-    font-size:var(--fs-note);color:var(--estimate);text-align:center;padding:0 12px}
+    font-size:var(--fs-note);color:var(--estimate);text-align:center;padding:0 12px;
+    /* ⚠ 理由と接続の話を 2 行で出す（2026-08-20）。⚠ **1 行に詰めると読めない** */
+    white-space:pre-line;line-height:1.7}
   /* --- 寄る --- */
   .big-in{position:absolute;inset:0;transition:transform .35s cubic-bezier(.2,.7,.2,1)}
   /* 拡大量と移動量は JS が入れる（枠の外にあるものを真ん中へ寄せるため） */
@@ -1132,6 +1134,7 @@
 <!-- 外部から来た文字列（Wikidata のラベル・地理院の地名・OSM のタグ）を
      HTML として実行させないための1か所。⚠ ほかより先に読む（下のインラインが使う） -->
 <script src="./esc.js"></script>
+  <script src="./photos.js"></script>
   <script src="./words.js"></script>
 <!-- ⚠ verify.js / peel3d.js より**先に**読む。明治期の 14 区分と 1 画素の分類は
      ここが唯一の定義で、あとの2つはこれを借りている（掟6: 同じ問いに答える実装を2つ持たない）。 -->
@@ -1867,7 +1870,9 @@ function timeHTML(f){
         <button type="button" id="zIn" title="拡大">＋</button>
         <button type="button" id="zOut" title="縮小">−</button>
       </div>
-      <span class="big-err" id="bigErr">この年代の写真を読み込めませんでした</span>
+      <!-- ⚠ **中身は空にしておく**（2026-08-20）。⚠ **字は words.js が入れる。**
+           ⚠ 直書きしていた頃は、⚠ **状態に関係なく同じ 1 文**だった。 -->
+      <span class="big-err" id="bigErr"></span>
     </div>
     <!-- ⚠ **写真の外、すぐ下。** 中に載せていたが、実測（2026-08-17）で
          ZFold5 のカバー画面（344px）だと写真が 278×209px しかなく、
@@ -2584,6 +2589,21 @@ function unzoom(){
   big.classList.remove("zoom"); zoomOn=false;
 }
 
+// ⚠ **写真が届いていないときに、画面へ書く。**⚠ **状態を渡すだけ。**
+//   ⚠ **状態は photos.js、字は words.js。**⚠ **ここは書き込むだけで、何も決めない。**
+//   ⚠ 以前はここに文が直書きしてあり（HTML の #bigErr）、⚠ **3 通りが 1 つに潰れていた。**
+//   ⚠ **/peel と同じ状態なら、同じ字が出る**（検査が突き合わせる）。
+function paintBigState(state){
+  const big=document.getElementById("big"), err=document.getElementById("bigErr");
+  if(!big||!err) return;
+  const say=KonjakuWords.photoSay(state);
+  big.classList.toggle("err", !!say);
+  if(!say) return;
+  // ⚠ **理由を知っているときだけ、理由を書く。**⚠ 接続の話も、知っている範囲でだけ
+  err.textContent = say.hint ? `${say.body}\n${say.hint}` : say.body;
+}
+
+
 function wireStrip(){
   // 読めなかった1枚は、黙って詰めずに枠として残す（写真が無いのか読めないのか区別できない）
   document.querySelectorAll("#strip img").forEach((im)=>{
@@ -2598,14 +2618,24 @@ function wireStrip(){
   //   「この年代の写真を読み込めませんでした」と出て、写真ごと消えていた。
   //   4枚とも駄目なときだけ、読み込めなかったと言う。
   document.querySelectorAll("#big .lyr img").forEach((im)=>{
-    const judge=()=>{
-      const on=document.querySelector("#big .lyr.on");
-      if(!on) return;
-      const t=[...on.querySelectorAll("img")];
-      if(!t.every((e)=>e.complete)) return;
-      document.getElementById("big")?.classList.toggle("err",
-        t.every((e)=>!e.naturalWidth));
-    };
+      // ⚠ **状態を決めるのは photos.js の 1 か所**（2026-08-20）。⚠ **/peel と同じ 4 状態。**
+      //   ⚠ 以前はここが「4 枚とも駄目か」だけを見て、⚠ **3 通り（通信断 / 404 / 圏外）を
+      //     1 つの文に潰していた**（実測 2026-08-20: 3 通りとも同じ字だった）。
+      //   ⚠ **`<img>` からは落ちた理由が取れない。**⚠ **だから「落ちたのを観測した」とは
+      //     言えず、late（理由を知らない）に留める。**⚠ **知らないことを断定しない。**
+      //   ⚠ **/peel は MapLibre の error から status が取れる**ので fail まで言える。
+      //     ⚠ **取り方が違うので、言えることも違う。**⚠ **同じ状態なら、同じ字になる。**
+      const judge=()=>{
+        const on=document.querySelector("#big .lyr.on");
+        if(!on) return;
+        const t=[...on.querySelectorAll("img")];
+        if(!t.every((e)=>e.complete)) return;
+        // ⚠ 1 枚でも写っていれば届いている（端のタイルは撮影範囲の外で 404 になる）
+        const arrived=t.some((e)=>e.naturalWidth>0);
+        // ⚠ **素性（何の写真か）も、状態と一緒に持たせる。**⚠ **画面が組み立てない。**
+        paintBigState(KonjakuPhotos.stateOf(arrived, !arrived, null,
+          { isLatest: eraIdx===frames.length-1, isMeiji: frames[eraIdx]?.id==="meiji" }));
+      };
     im.addEventListener("error",judge);
     im.addEventListener("load",judge);
   });
