@@ -287,6 +287,22 @@ const settleAfterCondition = (page) => page.waitForTimeout(300);
 //   残っているのは CSS の遷移ぶん
 const settleAfterClick = (page) => page.waitForTimeout(400);
 
+// ⚠ **押した先で画面が寄る（滑らかスクロール）ときは、これを使う。**
+//   ⚠ **決め打ちの待ちだと、速い機械で通って CI で落ちる。**
+//     実測（2026-08-20・CPU を 6 倍遅くして再現）: 400ms では写真が **0%** しか見えず、
+//     ⚠ **止まるまで待てば 100%**。⚠ 決め打ちの待ちを縮めた PR で 1800ms → 400ms にした
+//     箇所で、実際に CI が落ちた（⚠ **手元の速い機械では 3/3 通っていた**）。
+//   ⚠ **時間ではなく「動きが止まったこと」を見る。**
+const settleAfterScroll = async (page) => {
+  await page.waitForFunction(() => {
+    const y = Math.round(window.scrollY);
+    if (window.__lastScrollY === y) return true;
+    window.__lastScrollY = y; return false;
+  }, null, { timeout: 30000, polling: 250 });
+  await page.evaluate(() => { delete window.__lastScrollY; });
+  await settleAfterCondition(page);
+};
+
 const SWALE_ROUTE = "**://cyberjapandata.gsi.go.jp/xyz/swale/**";
 const LFC_ROUTE = "**://maps.gsi.go.jp/xyz/experimental_landformclassification*/**";
 const DEM_ROUTE = "**://cyberjapandata.gsi.go.jp/xyz/dem*/**";
@@ -2977,7 +2993,8 @@ const CASES = [
 
       // (1) ☆ を押したら、記録のパネルが**見えるところ**に出ること
       await page.click("#mineToggle");
-      await settleAfterClick(page);
+      // ⚠ 押すと記録のパネルへ寄る（index.html の scrollToEl）。⚠ **寄り終わるまで待つ**
+      await settleAfterScroll(page);
       const mine = await page.$eval("#mine", (e) => {
         const r = e.getBoundingClientRect();
         return { y: Math.round(r.y), h: Math.round(r.height), inView: r.y < innerHeight && r.bottom > 0 };
@@ -5289,7 +5306,10 @@ const CASES = [
       const before = await seen();
       const name = (await page.locator(".ev-it").first().locator(".ev-l").innerText()).trim();
       await page.locator(".ev-it").first().click();
-      await settleAfterClick(page);
+      // ⚠ 押した先で画面が寄る。⚠ **寄り終わるまで待つ**（時間で待たない）
+      await page.waitForFunction(() =>
+        document.getElementById("big")?.classList.contains("zoom"), null, { timeout: 30000 });
+      await settleAfterScroll(page);
       const after = await seen();
       must(after.zoom, "押しても寄っていない");
       // ⚠ ここが本体。寄っただけで見えていなければ、押しても何も起きないのと同じ。
