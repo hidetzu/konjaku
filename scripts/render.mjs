@@ -2555,6 +2555,82 @@ const CASES = [
   },
 
   {
+    // ⚠ **同じ数字を、画面の 2 か所で言わない**（hidetzu/konjaku#130）。
+    //
+    //   ⚠ **実測（2026-08-20・main = 42784fa・豊洲・1280×800・SW 無効）**
+    //     y376  区分を特定できた足元のうち 河川・湖沼・海面 510 / 543件（93.9%）
+    //     y876  河川・湖沼・海面 510 / 543                    ⚠ **内訳**
+    //     ⚠ **同じ数字・同じ区分名が、⚠ 500px 離れて 2 回。**
+    //   ⚠ **内訳が正本**（2 位以下も出す）。
+    //
+    //   ⚠ **葉だけを拾う走査では数えられない。**⚠ 内訳の行は
+    //     `<span class="nm"><i class="swatch">…</i>河川・湖沼・海面</span>` で、
+    //     ⚠ **`.nm` に子がいるので葉にならない**（2026-08-20 に踏んだ）。
+    //     ⚠ **「1 行に見える箱」を拾う**（改行を含まない innerText）。
+    name: "同じ数字を、画面の 2 か所で言わない", path: "/", group: "core",
+    async check(page) {
+      const ctx = await page.context().browser().newContext({
+        viewport: { width: 1280, height: 800 }, serviceWorkers: "block" });
+      try {
+        const p2 = await ctx.newPage();
+        await p2.goto(`${BASE}/peel?${TOYOSU}`, { waitUntil: "domcontentloaded", timeout: 45000 });
+        await p2.waitForFunction(() => /この土地は/.test(document.body.textContent ?? ""),
+          null, { timeout: 60000 });
+        await settleAfterCondition(p2);
+        await p2.waitForFunction(() => /\/ \d+/.test(
+          document.getElementById("breakdown")?.innerText ?? ""), null, { timeout: 60000 });
+        const r = await p2.evaluate(() => {
+          // ⚠ **「一番内側の箱」だけを数える。**
+          //   ⚠ 内訳は section > rows > row と入れ子になっており、
+          //     ⚠ **どれも「河川・湖沼・海面 510 / 543」を含む**。
+          //     ⚠ 数えると 3 か所に見えるが、⚠ **画面では 1 か所**（2026-08-20 に踏んだ）。
+          //   ⚠ **改行で切らない。**⚠ 内訳の行は flex で名前と数が離れており、
+          //     ⚠ **innerText に改行が入る**（同上）。
+          const has = (e, ...ws) => {
+            const t = (e.innerText ?? "").replace(/\s+/g, " ");
+            return ws.every((w) => t.includes(w));
+          };
+          const innermost = (...ws) => {
+            const out = [];
+            for (const e of document.querySelectorAll("body *")) {
+              if (!e.checkVisibility?.() || !has(e, ...ws)) continue;
+              // ⚠ 子孫にも同じものがあるなら、⚠ **この箱は入れ物にすぎない**
+              if ([...e.querySelectorAll("*")].some((c) => c.checkVisibility?.() && has(c, ...ws))) continue;
+              out.push([Math.round(e.getBoundingClientRect().top),
+                (e.innerText ?? "").replace(/\s+/g, " ").trim()]);
+            }
+            return out;
+          };
+          const top = document.getElementById("breakdown")?.innerText
+            ?.split("\n").map((x) => x.trim()).filter(Boolean)[0] ?? "";
+          return {
+            pair: innermost("河川・湖沼・海面", "510").map(([y, t]) => `y${y} ${t.slice(0, 44)}`),
+            raw: innermost("510").map(([y, t]) => `y${y} ${t.slice(0, 40)}`),
+            breakdownTop: top,
+            est: document.getElementById("est")?.innerText?.replace(/\s+/g, " ").trim() ?? "",
+            panelH: document.getElementById("panel")?.scrollHeight ?? 0,
+          };
+        });
+        // ⚠ **区分名と件数の組は 1 か所だけ**
+        must(r.pair.length === 1,
+          `1 位の区分名と件数が ${r.pair.length} か所にある: ${r.pair.join(" ／ ")}`);
+        // ⚠ **消した側の字が戻っていない**
+        must(!r.pair.some((x) => /区分を特定できた足元のうち/.test(x)),
+          `第3層の本文に「区分を特定できた足元のうち」が戻っている: ${r.pair.join(" ／ ")}`);
+        // ⚠ **生の件数は残っている**（消しただけにしない）
+        must(r.raw.length >= 1, "510 / 543 が画面から消えている（内訳が受け皿になっていない）");
+        must(/河川・湖沼・海面/.test(r.breakdownTop),
+          `内訳の 1 行目が区分名で始まっていない: ${r.breakdownTop}`);
+        // ⚠ **この Issue で触らないと決めたもの**（②）
+        must(/建物が消える年代は演出/.test(r.est) && /503 \/ 543/.test(r.est),
+          `3D の帯を触っている: ${r.est.slice(0, 80)}`);
+        return `1 位の組 ${r.pair.length} か所（${r.pair[0]}）／内訳の頭「${r.breakdownTop}」`
+          + `／板の中身 ${r.panelH}px`;
+      } finally { await ctx.close(); }
+    },
+  },
+
+  {
     // ⚠ **明治期の「面」を画面から外しても、答えも本数も変わらない**（hidetzu/konjaku#126）。
     //
     //   ⚠ **これは仕組みだけの変更。**⚠ **見え方も、外への要求も、1 つも変わってはいけない。**
