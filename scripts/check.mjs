@@ -1390,6 +1390,44 @@ head("6. 外部リンク");
     if (!defined.has(v)) bad(`判定の格を表す変数が消えている: ${v}`);
 }
 
+  // ⚠ **狭い幅を既定にする**（2026-08-20・hidetzu/konjaku#93。`docs/DOMAIN.md` §4-2）。
+  //   ⚠ **`max-width` で書くと、狭い画面が「例外」になる。**
+  //   ⚠ この作品は狭い画面で使われる（実測の基準幅は 375×667）。
+  //   ⚠ **既定のほうを例外として書くと、足すたびに広い側の打ち消しが要る。**
+  //
+  // ⚠ **既存の 1 箇所（peel.html の max-width:680px）は残している。**
+  //   ⚠ 中身は 110 組で、⚠ **104 組が狭い側にしか無い**（うち 92 組は値の付け替え）。
+  //   ⚠ 組み直すと「狭い幅が 1px も変わらない」を保てない。
+  //   ⚠ **`/peel` の CSS を作り直すときに、一緒に直す。**⚠ **それまでは増やさない。**
+  //
+  // ⚠ **数だけでなく場所も見る。**⚠ 数だけだと、⚠ **別のファイルへ移しても通ってしまう。**
+  // ⚠ **`@media (hover:none)` は対象外**（幅ではなく入力手段）。
+  {
+    const ALLOW = [["peel.html", "680px"]];   // ⚠ **増やすときは、ここに理由と一緒に書く**
+    const css = await readFile(join(PUB, "css", "tokens.css"), "utf8");
+    const found = [];
+    for (const [f, s0] of [["index.html", src["index.html"]], ["peel.html", src["peel.html"]],
+                           ["css/tokens.css", css]]) {
+      // ⚠ **コメントを先に落とす。**⚠ 落とさないと、⚠ **この決めごとを説明した字を拾う**
+      const bare = (s0 ?? "").replace(/<!--[\s\S]*?-->/g, "").replace(/\/\*[\s\S]*?\*\//g, "");
+      for (const m of bare.matchAll(/@media[^{]*\(\s*max-width\s*:\s*([^)]+?)\s*\)/g))
+        found.push([f.replace("css/", ""), m[1].trim()]);
+    }
+    const extra = found.filter(([f, v]) => !ALLOW.some(([af, av]) => af === f && av === v));
+    const gone = ALLOW.filter(([af, av]) => !found.some(([f, v]) => f === af && v === av));
+    extra.length
+      ? bad(`max-width を新しく書いている: ${extra.map(([f, v]) => `${f} の ${v}`).join("、")}`
+          + `（狭い幅を既定にする。広い幅だけ min-width で足す。docs/DOMAIN.md §4-2）`)
+      : gone.length
+        ? bad(`許していた max-width が消えている: ${gone.map(([f, v]) => `${f} の ${v}`).join("、")}`
+            + `（⚠ **直したなら、この検査の ALLOW と docs/DOMAIN.md §4-2 も直す**）`)
+        : ok(`max-width の幅指定は ${found.length} 箇所だけ（peel.html の 680px。理由は docs/DOMAIN.md §4-2）`);
+    // ⚠ **決めごとが文書に書かれていること。**⚠ 検査だけあって理由が無いと、次の人が外す
+    const dom = await readFile(join(ROOT, "docs", "DOMAIN.md"), "utf8");
+    for (const w of ["狭い幅を既定", "min-width", "104 組"])
+      if (!dom.includes(w)) bad(`docs/DOMAIN.md に「${w}」が無い（決めごとと、残す理由を書く）`);
+  }
+
   // ⚠ **PC の 2 カラムは、寸法を 1 か所で決める**（2026-08-20・hidetzu/konjaku#87）。
   //   ⚠ **呼ぶ側に幅を写さない。**写すと、変えるときに 2 か所を直すことになる。
   //   ⚠ **`max-width` を新しく書かない**（狭い幅を既定にする方針・hidetzu/konjaku#93）。
