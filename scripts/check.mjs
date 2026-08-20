@@ -1390,6 +1390,39 @@ head("6. 外部リンク");
     if (!defined.has(v)) bad(`判定の格を表す変数が消えている: ${v}`);
 }
 
+  // ⚠ **PC の 2 カラムは、寸法を 1 か所で決める**（2026-08-20・hidetzu/konjaku#87）。
+  //   ⚠ **呼ぶ側に幅を写さない。**写すと、変えるときに 2 か所を直すことになる。
+  //   ⚠ **`max-width` を新しく書かない**（狭い幅を既定にする方針・hidetzu/konjaku#93）。
+  {
+    const bad2 = [];
+    const css = await readFile(join(PUB, "css", "tokens.css"), "utf8");
+    const idx2 = (src["index.html"] ?? "").replace(/<!--[\s\S]*?-->/g, "");
+    // ⚠ 幅の定義は tokens.css の 1 か所
+    const def = [...css.matchAll(/--detail-pane-width\s*:\s*([^;]+);/g)];
+    if (def.length !== 1) bad2.push(`--detail-pane-width の定義が ${def.length} 個（1 個にする）`);
+    else if (!/rem/.test(def[0][1])) bad2.push(`--detail-pane-width が rem でない: ${def[0][1].trim()}`);
+    // ⚠ 呼ぶ側は var() で呼ぶ。⚠ **数字を書かない**
+    if (!/var\(--detail-pane-width\)/.test(idx2))
+      bad2.push("index.html が --detail-pane-width を使っていない（2 カラムの幅が別の場所で決まっている）");
+    // ⚠ 2 カラムの規則は min-width の中だけ。⚠ 狭い幅は素のまま
+    const mq = [...idx2.matchAll(/@media\s*\(min-width:\s*([\d.]+)rem\)\s*\{/g)].map((m) => m[1]);
+    if (!mq.includes("68.75"))
+      bad2.push("2 カラムの切り替え（min-width:68.75rem）が無い");
+    // ⚠ **格子（grid）で作らない。**⚠ 実測（2026-08-20・1280×800）: 列を指定しても
+    //   ⚠ **行が左右で共有され、2 つの列ではなく 2 列の表**になる。
+    //   ⚠ 左の「明治期の面」（119px）が右の帯を押し下げ、右の写真（400px）が
+    //     左のバッジを y=946 へ押し下げた。⚠ **「重ねる」が画面の外へ出た。**
+    //   ⚠ **列ごとに独立して積むのは float。**⚠ 戻したら止める。
+    const two = idx2.slice(idx2.indexOf("@media (min-width:68.75rem)"));
+    if (/\.verdict\{[^}]*display:\s*grid/.test(two))
+      bad2.push("2 カラムを grid で作っている（行が左右で共有され、2 列の表になる）");
+    if (!/float:\s*right;\s*clear:\s*right/.test(two))
+      bad2.push("右の列が float:right + clear:right で積まれていない（列が独立しない）");
+    bad2.length
+      ? bad(`PC の 2 カラムの寸法が 1 か所で決まっていない: ${bad2.join("、")}`)
+      : ok("PC の 2 カラムは、幅がトークン 1 か所・切り替えは min-width・左右が同じ行から始まる");
+  }
+
   // ⚠ **ブラウザの文字サイズ設定に追従すること**（2026-08-20・hidetzu/konjaku#91）。
   //   ⚠ 直す前は `html,body{font:14px/1.65 …}` があり、⚠ **画面が設定を上書きしていた。**
   //     実測（375×667）: 設定を 125% / 150% にしても

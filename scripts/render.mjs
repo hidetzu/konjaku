@@ -2324,6 +2324,93 @@ const CASES = [
     },
   },
   {
+    // ⚠ **PC の 2 カラム**（hidetzu/konjaku#87）。
+    //   ⚠ **静的検査だけでは足りない。**「grid と書いてある」ことは見られても、
+    //     ⚠ **実際に答えが画面の中へ入るか**は描かないと分からない。
+    //   ⚠ **高さ 800px を必ず含める。**⚠ 900 以上だと、直す前でも通ってしまう
+    //     （実測 2026-08-20: 答えの下端 y=811。800 では外、900 では中）。
+    //   ⚠ **境目（1099 / 1100）そのものを見る。**
+    //   ⚠ **狭い幅を対にして見る。**PC だけ見ると、スマホを壊しても緑になる。
+    name: "PC では答えが画面の中に入り、狭い幅は変わらない",
+    path: "/?q=%E8%B1%8A%E6%B4%B2&ll=35.6548,139.7975",
+    async check(page) {
+      await page.waitForFunction(
+        () => /旧水部|土地/.test(document.getElementById("verdict")?.textContent ?? ""),
+        null, { timeout: 60000 });
+      const read = () => page.evaluate(() => {
+        const d = document.documentElement;
+        const g = (s) => { const e = document.querySelector(s);
+          if (!e || !e.checkVisibility()) return null;
+          const b = e.getBoundingClientRect();
+          return { x: Math.round(b.left), y: Math.round(b.top), w: Math.round(b.width), b: Math.round(b.bottom) }; };
+        const vd = document.getElementById("verdict"), lb = document.getElementById("list");
+        return {
+          vhead: g(".v-head"), big: g("#big"),
+          // ⚠ **2 カラムかどうかは、見た目で決める。**⚠ 作り方（grid / float）を書かない。
+          //   ⚠ 2026-08-20 に踏んだ: grid をやめて float にしたら、
+          //     ⚠ **製品ではなく検査が落ちた**（gridTemplateColumns を見ていた）。
+          //   ⚠ **答えと写真の横の範囲が重ならなければ、横に並んでいる＝2 カラム。**
+          twoCol: (() => {
+            const a = document.querySelector(".v-head")?.getBoundingClientRect();
+            const c = document.getElementById("big")?.getBoundingClientRect();
+            if (!a || !c) return null;
+            return !(a.left < c.right && c.left < a.right);
+          })(),
+          // ⚠ 溶接（判定の箱と一覧が 1 枚に見えている）
+          weld: lb && lb.checkVisibility()
+            ? Math.round(lb.getBoundingClientRect().top - vd.getBoundingClientRect().bottom) : null,
+          // ⚠ DOM の順（読み上げとキーボードの順）
+          order: [...vd.children].map((e) => e.id || String(e.className).split(" ")[0] || e.tagName).join(","),
+          over: d.scrollWidth - d.clientWidth, vh: innerHeight, pageH: d.scrollHeight,
+        };
+      });
+      // ---- ⚠ 狭い幅は 1 カラムのまま ----
+      const narrow = {};
+      for (const [w, h] of [[375, 667], [344, 882], [320, 640]]) {
+        await page.setViewportSize({ width: w, height: h });
+        await settleAfterCondition(page);
+        const r = await read();
+        must(r.twoCol === false, `${w}px: 狭い幅が 2 カラムになっている`);
+        must(r.over <= 0, `${w}px: 横にあふれている（${r.over}px）`);
+        narrow[w] = r;
+      }
+      // ---- ⚠ 境目そのもの ----
+      await page.setViewportSize({ width: 1099, height: 800 });
+      await settleAfterCondition(page);
+      const at1099 = await read();
+      must(at1099.twoCol === false, "1099px で 2 カラムになっている（1100 から、のはず）");
+      await page.setViewportSize({ width: 1100, height: 800 });
+      await settleAfterCondition(page);
+      const at1100 = await read();
+      must(at1100.twoCol === true, "1100px で 2 カラムになっていない");
+      // ---- ⚠ PC で、答えが画面の中 ----
+      const out = [];
+      for (const [w, h] of [[1100, 800], [1280, 800], [1440, 900], [1920, 1080]]) {
+        await page.setViewportSize({ width: w, height: h });
+        await settleAfterCondition(page);
+        const r = await read();
+        must(r.vhead, `${w}px: 答えの文が見えていない`);
+        must(r.vhead.b <= r.vh, `${w}px: 答えが画面の外にある（下端 ${r.vhead.b} > ${r.vh}）`);
+        must(r.over <= 0, `${w}px: 横にあふれている（${r.over}px）`);
+        // ⚠ 左に答え、右に写真。⚠ **左右が入れ替わっていないこと**
+        must(r.big && r.big.x > r.vhead.x,
+          `${w}px: 写真が答えより左にある（写真 x=${r.big?.x} / 答え x=${r.vhead.x}）`);
+        // ⚠ **溶接を壊していないこと**
+        must(r.weld === 0, `${w}px: 判定の箱と一覧の溶接が外れている（隙間 ${r.weld}px）`);
+        // ⚠ **縦のあふれを増やしていないこと。**⚠ この Issue は、それを直すもの。
+        //   ⚠ 直す前は 4 幅とも 1879px（2026-08-20 実測）。⚠ **超えたら本末転倒。**
+        must(r.pageH <= 1879,
+          `${w}px: 横を使ったのに縦が増えている（ページ高 ${r.pageH} > 直す前の 1879）`);
+        // ⚠ **DOM の順が、狭い幅と同じであること**（CSS だけで割った証拠）
+        must(r.order === narrow[375].order,
+          `${w}px: DOM の順が狭い幅と違う（読み上げとキーボードの順が変わっている）`);
+        out.push(`${w}: 答え y=${r.vhead.b} 写真 ${r.big.w}px`);
+      }
+      return `1099 は 1 カラム／1100 から 2 カラム／${out.join(" ／ ")}`;
+    },
+  },
+
+  {
     // ⚠ **ブラウザの文字サイズ設定に追従すること**（hidetzu/konjaku#91）。
     //   ⚠ **静的検査だけでは足りない。**「html に px が無い」ことは見られても、
     //     ⚠ **実際に字が大きくなるか**は描かないと分からない。
