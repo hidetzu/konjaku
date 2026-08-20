@@ -2625,9 +2625,11 @@ const CASES = [
         const text = async (url, sel) => {
           const p2 = await ctx.newPage();
           await p2.goto(url, { waitUntil: "domcontentloaded", timeout: 45000 });
-          await p2.waitForFunction((s) =>
-            (document.querySelector(s)?.innerText ?? "").trim().length > 3,
-            sel, { timeout: 60000 });
+          // ⚠ **「判定中…」を除く。**⚠ 除かないと判定中の字を突き合わせてしまう
+          await p2.waitForFunction((s) => {
+            const t = (document.querySelector(s)?.innerText ?? "").trim();
+            return t.length > 3 && !t.includes("判定中");
+          }, sel, { timeout: 60000 });
           await settleAfterCondition(p2);
           const t = await p2.$eval(sel, (e) => e.innerText.replace(/\s+/g, " ").trim());
           await p2.close();
@@ -4166,6 +4168,14 @@ const CASES = [
         await settleAfterClick(page);
         await page.click("#zIn");
         await settleAfterClick(page);
+        // ⚠ **帰属表示が出るまで待つ。**⚠ 地図は読み込み直しのたびに載せ直しになり、
+        //   ⚠ **CI では出るまでに時間がかかる。**待たずに測ると、まだ画面の上のほうに
+        //   ⚠ **前の位置の帰属表示が残っていて、−517px のような値が出る**（実際に CI で落ちた）。
+        await page.waitForFunction(() => {
+          const a = document.querySelector(".maplibregl-ctrl-attrib");
+          return !!a && a.getBoundingClientRect().height > 0;
+        }, null, { timeout: 60000 });
+        await settleAfterCondition(page);
         const g = await geom();
         must(g.inViewport,
           `${w}×${h}: 重ねる操作が初期画面の外にある（y=${g.ov?.t}〜${g.ov?.b} / 画面 ${g.h}）`);
@@ -4704,9 +4714,10 @@ const CASES = [
     async check(page) {
       // ⚠ **字を書き写さない**（2026-08-20）。⚠ 以前は答えの言い回しを待っており、
       //   ⚠ **ADR 0030 へ揃えた瞬間に時間切れで落ちた。**
-      //   ⚠ 待ちたいのは「判定が確定して、答えの行に何か出たこと」。
+      // ⚠ **「判定中…」を除く**（除かないと判定中に素通りする。上と同じ）。
       await page.waitForFunction(
-        () => (document.querySelector("#verdict .v-head")?.innerText ?? "").trim().length > 3,
+        () => { const t = (document.querySelector("#verdict .v-head")?.innerText ?? "").trim();
+                return t.length > 3 && !t.includes("判定中"); },
         null, { timeout: 90000 });
       const r = await page.evaluate(() => {
         const sec = (v) => v.split(",").map((x) => x.trim())
@@ -4753,9 +4764,10 @@ const CASES = [
     async check(page) {
       // ⚠ **字を書き写さない**（2026-08-20）。⚠ 以前は答えの言い回しを待っており、
       //   ⚠ **ADR 0030 へ揃えた瞬間に時間切れで落ちた。**
-      //   ⚠ 待ちたいのは「判定が確定して、答えの行に何か出たこと」。
+      // ⚠ **「判定中…」を除く**（除かないと判定中に素通りする。上と同じ）。
       await page.waitForFunction(
-        () => (document.querySelector("#verdict .v-head")?.innerText ?? "").trim().length > 3,
+        () => { const t = (document.querySelector("#verdict .v-head")?.innerText ?? "").trim();
+                return t.length > 3 && !t.includes("判定中"); },
         null, { timeout: 90000 });
       const r = await page.evaluate(() => ({
         lyr: getComputedStyle(document.querySelector(".big .lyr")).transitionDuration,
@@ -6578,8 +6590,11 @@ const CASES = [
         await page.waitForFunction(
           // ⚠ **字を書き写さない。**⚠ 以前は「です」「ません」を待っており、
           //   ⚠ **言い回しを変えた瞬間に時間切れで落ちた**（2026-08-20）。
-          //   ⚠ 待ちたいのは「判定が確定して、答えの行に何か出たこと」。
-          () => (document.querySelector("#verdict .v-head")?.innerText ?? "").trim().length > 3,
+          // ⚠ **「判定中…」を除く。**⚠ 除かないと**判定中に素通りする**
+          //   （答えの行は、待っているあいだも「この土地の成り立ちを判定中…」を出している。
+          //    ⚠ 手元では速くて素通りせず、⚠ **CI で落ちた**）。
+          () => { const t = (document.querySelector("#verdict .v-head")?.innerText ?? "").trim();
+                  return t.length > 3 && !t.includes("判定中"); },
           null, { timeout: 45000 });
         await settleAfterCondition(page);
         return page.evaluate(() => ({
