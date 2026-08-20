@@ -48,13 +48,13 @@
        二層にしてあり、**値は --text-* にしか書かない**。使う側は --fs-* を書く。
        理由と実測は index.html の同じ節に全文がある。 */
     /* ⚠ ここから下は index.html に無い段。3D は数字そのものが主役なので大きい。 */
-    --text-4xl:22px;         /* 数字を出せないときの、ヒーローの代わりの文 */
-    --text-hero:38px;
+    --text-4xl:1.375rem;         /* 数字を出せないときの、ヒーローの代わりの文 */
+    --text-hero:2.375rem;
     --text-hero-fit-max:11.5vw;
-    --text-ruler-year:30px;
-    --text-ruler-arrow:20px;
-    --text-chevron:17px;
-    --text-hero-lg:60px;     /* 画面が狭いときは --text-hero に落とす（下のメディアクエリ） */
+    --text-ruler-year:1.875rem;
+    --text-ruler-arrow:1.25rem;
+    --text-chevron:1.0625rem;
+    --text-hero-lg:3.75rem;     /* 画面が狭いときは --text-hero に落とす（下のメディアクエリ） */
 
     --fs-chevron:var(--text-chevron);        /* 但し書き */
     /* ⚠ 入力欄は 16px 未満にしない。iOS Safari は 16px 未満の入力欄に触れると
@@ -70,8 +70,10 @@
     --fs-ruler-arrow:var(--text-ruler-arrow);
   }
   *{box-sizing:border-box}
-  html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);overflow:hidden;
-    font:14px/1.6 -apple-system,"Hiragino Sans","Noto Sans JP",sans-serif}
+  /* ⚠ **html に font-size を書かない**（2026-08-20）。トップと同じ理由。
+     ⚠ 0.875rem × 既定 16px = 14px で、いままでと同じ大きさ。 */
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);overflow:hidden}
+  body{font:0.875rem/1.6 -apple-system,"Hiragino Sans","Noto Sans JP",sans-serif}
   #map{position:absolute;inset:0;transition:filter .25s linear}
   #vig{position:absolute;inset:0;z-index:3;pointer-events:none;
     background:radial-gradient(ellipse at 50% 45%,rgba(0,0,0,0) 45%,rgba(0,0,0,.55) 100%)}
