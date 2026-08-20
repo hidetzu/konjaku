@@ -364,6 +364,35 @@
        gap にそのぶんを含めないと、いちばん左（現在）で ▶ と重なる。
        ⚠ 左右の padding も同じ理由（右端＝明治期のノブが画面の縁に触れる）。 */
     #bar{padding:0 16px;gap:36px}
+
+    /* ⚠ **Time Controller**（2026-08-20。hidetzu/konjaku#132）。
+       ⚠ **PC では「現在の年代を見る」と「年代を動かす」を 1 つの器にする。**
+       ⚠ **スマホは 1 文字も変えない**（Owner 決定 3）。⚠ だからここ（広い側）にだけ書く。
+
+       ⚠ **実測（2026-08-20・main = 5210c9e・1280×800・豊洲・SW 無効）**
+         #era        580×196  y429   ⚠ 別の器
+         #timePanel  720×136  y638   ⚠ 別の器
+         #eraToggle / #timeToggle    ⚠ 「閉じる ⌄」が 2 個
+
+       ⚠ **幅を揃えて隙間を消し、⚠ 角を落として 1 つの箱に見せる。**
+       ⚠ **DOM の順は変えていない**（読み上げとキーボードの順はそのまま）。 */
+    #hud{gap:0}
+    #era,#timePanel{width:min(720px,100%)}
+    #era{border-bottom-left-radius:0;border-bottom-right-radius:0;
+      border-bottom:0;box-shadow:0 -12px 38px rgba(0,0,0,.42)}
+    #timePanel{border-top-left-radius:0;border-top-right-radius:0;border-top:0}
+
+    /* ⚠ **全体は畳まない**（Owner 決定 2）。⚠ 畳むのは「年代を動かす」操作部だけ。
+       ⚠ **常時表示: 現在の年代 ／ #over ／ #est。**
+       ⚠ **`#est` は、⚠ 3D を誤解しないための断り**（`peel3d.js` の同名コメントを読む）。
+         ⚠ **畳んで消えると、⚠ 推定の高さで建物が立った絵を断りなしに見せることになる**（掟 §1）。
+       ⚠ だから ⚠ **年代の説明を畳む仕掛け（#eraToggle）を PC では出さない。** */
+    #eraToggle{display:none}
+
+    /* ⚠ **「いま何年代か」は 1 か所**（Owner 決定 1）。
+       ⚠ `#timeSummary` は「畳んだときの受け皿」だが、⚠ **PC では上の `.y` が常に出ている。**
+       ⚠ 実測（2026-08-20）: 帯を畳むと `.y`「現在」と `#timeSummary`「現在」が同時に出ていた。 */
+    #timePanel.collapsed #timeSummary{display:none}
   }
   #drum::-webkit-scrollbar{display:none}
 

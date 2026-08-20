@@ -2559,6 +2559,70 @@ const CASES = [
   },
 
   {
+    // ⚠ **PC では、年代の表示と年代の操作が 1 つの器**（hidetzu/konjaku#132）。
+    //
+    //   ⚠ **実測（2026-08-20・main = 5210c9e・豊洲・1280×800・SW 無効）**
+    //     #era        580×196 y429   ⚠ 別の器
+    //     #timePanel  720×136 y638   ⚠ 別の器
+    //     ⚠ **「閉じる ⌄」が 2 個**（#eraToggle / #timeToggle）
+    //
+    //   ⚠ **全体は畳まない**（Owner 決定 2）。⚠ 畳むのは操作部（▶ と横棒）だけ。
+    //   ⚠ **畳んでも、⚠ 現在の年代と #est（限界）は残る。**
+    //     ⚠ #est が消えると、⚠ **推定の高さで建物が立った絵を断りなしに見せる**（掟 §1）。
+    name: "PC では、年代の表示と操作が 1 つの器になっている", path: "/", group: "core",
+    async check(page) {
+      const ctx = await page.context().browser().newContext({
+        viewport: { width: 1280, height: 800 }, serviceWorkers: "block" });
+      try {
+        const p2 = await ctx.newPage();
+        await p2.goto(`${BASE}/peel?${TOYOSU}`, { waitUntil: "domcontentloaded", timeout: 45000 });
+        await p2.waitForFunction(() => /この土地は/.test(document.body.textContent ?? ""),
+          null, { timeout: 60000 });
+        await settleAfterCondition(p2);
+        const look = () => p2.evaluate(() => {
+          const vis = (s) => { const e = document.querySelector(s);
+            return !!(e && e.checkVisibility?.()); };
+          const box = (id) => { const e = document.getElementById(id);
+            const b = e.getBoundingClientRect();
+            return { w: Math.round(b.width), t: Math.round(b.top), b: Math.round(b.bottom) }; };
+          const era = box("era"), tp = box("timePanel");
+          return {
+            gap: tp.t - era.b, sameWidth: era.w === tp.w,
+            toggles: [...document.querySelectorAll("#eraToggle,#timeToggle")]
+              .filter((e) => e.checkVisibility?.()).length,
+            // ⚠ 「いま何年代か」を出しているもの
+            years: [".era-readout .y", "#timeSummary", "#rlYear"].filter(vis),
+            est: vis("#est"), over: vis("#over"), play: vis("#play"), track: vis("#track"),
+          };
+        });
+        const a = await look();
+        // ⚠ **1 つの器に見えること**（幅が同じで、隙間が無い）
+        must(a.sameWidth, "年代の表示と操作で、器の幅が違う（1 つに見えない）");
+        must(a.gap === 0, `年代の表示と操作のあいだに隙間がある（${a.gap}px）`);
+        // ⚠ **「閉じる ⌄」は 1 個**
+        must(a.toggles === 1, `PC で「閉じる」が ${a.toggles} 個ある（1 つにまとめる）`);
+        // ⚠ **「いま何年代か」は 1 か所**
+        must(a.years.length === 1,
+          `「いま何年代か」を ${a.years.length} か所が出している: ${a.years.join(" / ")}`);
+        // ⚠ **開いているときは、操作が見える**
+        must(a.play && a.track, "PC で ▶ か横棒が出ていない");
+        must(a.est, "PC で限界（#est）が出ていない");
+        // ⚠ **畳むと、⚠ 操作だけが隠れる**
+        await p2.click("#timeToggle");
+        await settleAfterClick(p2);
+        const b2 = await look();
+        must(!b2.play && !b2.track, "畳んだのに ▶ か横棒が残っている（畳む意味が無い）");
+        must(b2.est, "⚠ 畳むと限界（#est）が消える（推定の絵を断りなしに見せることになる）");
+        must(b2.years.length === 1,
+          `畳んだら「いま何年代か」が ${b2.years.length} か所になった: ${b2.years.join(" / ")}`);
+        must(b2.toggles === 1, `畳んだら「閉じる」が ${b2.toggles} 個になった`);
+        return `幅そろい・隙間 ${a.gap}px・閉じる 1 個・年代 1 か所`
+          + `／畳むと ▶ と横棒だけ隠れ、限界は残る`;
+      } finally { await ctx.close(); }
+    },
+  },
+
+  {
     // ⚠ **PC では、見えない箱（#land）に土地情報を組み立てない**（hidetzu/konjaku#131）。
     //
     //   ⚠ **実測（2026-08-20・main = bc8dc46・豊洲・SW 無効）**
