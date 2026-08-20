@@ -1040,6 +1040,30 @@ function layersOf(area, lf){
 }
 
 const landEl=document.getElementById("land");
+
+// ⚠ **HUD（#land）は、⚠ 見えているときだけ描く**（2026-08-20。hidetzu/konjaku#131）。
+//
+//   ⚠ **実測（2026-08-20・main = bc8dc46・豊洲・SW 無効）**
+//     PC 初期        #land 0×0     ⚠ **display:none。⚠ なのに 72 字が書かれていた**
+//     PC ✕ で閉じた   #land 520×130 ⚠ ここで初めて要る
+//     スマホ 初期     #land 285×156 ⚠ こちらは最初から要る
+//
+//   ⚠ **model は作り直さない。**⚠ `layersOf` を 2 回呼ぶと、
+//     ⚠ **同じ画面で言うことが食い違う**（ADR 0021。⚠ 実測 2026-08-19 で豊洲の 99.6% が 2 回）。
+//   ⚠ **`.hide` を切り替える 1 か所（setPanelHidden）から呼ぶ。**
+//     ⚠ 同じ同期処理の中で描くので、⚠ **空白の瞬間を見せない。**
+//   ⚠ **開き直したときに空へ戻さない。**⚠ Owner がそこまで求めていない（契約 5）。
+//     ⚠ 見えていないので、⚠ 消す意味も無い。
+let landModel = null;
+function hudVisible(){
+  // ⚠ **`checkVisibility()` は opacity を見ない**（2026-08-20 に踏んだ）。
+  //   ⚠ ここで見たいのは「パネルが表示責務を持っているか」なので、⚠ **クラスで見る。**
+  return panel ? panel.classList.contains("hide") : true;
+}
+function syncHud(){
+  if(!landModel || !hudVisible()) return;
+  paintLand(landEl, landModel, true);
+}
 // ここは組み立てるだけ。⚠ **何と言うか・どの層が立つかは上で決まっている**（WORD と layersOf）。
 // ⚠ **出ない層も、その層の位置に置く。**黙って消すと「その土地に何も無い」に読まれる
 //   （ADR 0001）。
@@ -1119,9 +1143,17 @@ function showResult(){
   //     実測（2026-08-19）: HUD だけ層にしたとき、⚠ **豊洲で 99.6% が 2 回**出ていた
   //     （heroNum と第3層）。⚠ 利用者役 3/4 が指摘した。
   //   ⚠ HUD は第1層＋1 つに絞るが、**パネルは 3 層とも**。
-  const model=layersOf(area, landform);
-  paintLand(landEl, model, true);                                 // HUD
-  paintLand(document.getElementById("landAll"), model, false);    // ⚠ パネルは全部
+  // ⚠ **model は 1 回だけ作り、⚠ 持ち回る**（2026-08-20。hidetzu/konjaku#131）。
+  //   ⚠ **layersOf を 2 回呼ばない。**⚠ 2 か所で作ると、同じ画面で言うことが食い違う（ADR 0021）。
+  //   ⚠ HUD は、⚠ **パネルが閉じて表示責務を引き継ぐときに、この model から描く。**
+  landModel = layersOf(area, landform);
+  // ⚠ **パネルは常に描く**（PC の初期表示はこちらが答えを持つ）
+  paintLand(document.getElementById("landAll"), landModel, false);    // ⚠ パネルは全部
+  // ⚠ **HUD は、⚠ 見えているときだけ描く。**
+  //   ⚠ 以前は常に描いていたが、⚠ **PC ではパネルが開いていて `#land` は display:none**。
+  //     ⚠ 実測（2026-08-20・1280×800・豊洲）: ⚠ **見えない箱に 72 字を書いていた。**
+  //   ⚠ **中身が要る瞬間は、⚠ パネルが閉じるとき**（下の syncHud）。
+  syncHud();
 
   paintBreakdown(document.getElementById("breakdown"), breakdown(area.counts, area.total), area.bldState);
 }
@@ -1963,10 +1995,22 @@ const lessMotionMQ=matchMedia("(prefers-reduced-motion: reduce)");
 // スマホの初期折りたたみが打ち消されてしまう。
 const isNarrow = narrow();   // ⚠ 初期状態は読み込み時の幅で決める（あとで変えない）
 let panelOpen = !isNarrow;              // スマホでは主役（3Dの絵）を隠さない
-const applyPanel = () => { panel.classList.toggle("hide", !panelOpen);
+// ⚠ **パネルを閉じる／開くのは、⚠ ここ 1 か所を通す**（2026-08-20。hidetzu/konjaku#131）。
+//   ⚠ **入口は 2 つある。**⚠ ✕（applyPanel）と ▶ の再生（setChrome）。
+//     ⚠ 実測（2026-08-20・1280×800）: ⚠ **▶ を押しても panel は "col hide" になり、
+//       `#land` が 520×130 で出る。**⚠ ✕ だけに描画を足すと、⚠ **▶ で空の HUD が出る。**
+//   ⚠ **`.hide` を外すのと `#land` を描くのを、⚠ 同じ同期処理の中でやる。**
+//     ⚠ requestAnimationFrame や setTimeout を挟まない（⚠ 空白を見せない）。
+const setPanelHidden = (hidden) => {
+  panel.classList.toggle("hide", hidden);
+  // ⚠ **HUD が表示責務を引き継ぐ瞬間に、⚠ その場で描く。**
+  //   ⚠ **model は作り直さない**（landModel を使う。⚠ layersOf を 2 回呼ばない）。
+  syncHud();
+};
+const applyPanel = () => { setPanelHidden(!panelOpen);
   // ⚠ 全画面で読むあいだ、地図側の操作を閉じる／戻す
   if(typeof sealOldControls==="function") sealOldControls(); };
-function setChrome(playing){ panel.classList.toggle("hide", playing || !panelOpen); }
+function setChrome(playing){ setPanelHidden(playing || !panelOpen); }
 const openPanel  = () => { panelOpen = true;  applyPanel(); };
 const closePanel = () => { panelOpen = false; applyPanel(); };
 document.getElementById("closePanel").onclick = closePanel;
