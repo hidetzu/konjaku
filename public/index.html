@@ -104,8 +104,14 @@
         ここが同じ色に見えるテーマは、この製品では成立しない。 */
 
   *{box-sizing:border-box}
-  html,body{margin:0;min-height:100%;background:var(--bg);color:var(--ink);
-    font:14px/1.65 -apple-system,"Hiragino Sans","Noto Sans JP",sans-serif}
+  /* ⚠ **html に font-size を書かない**（2026-08-20）。書くと、
+       ⚠ **ブラウザの文字サイズ設定を画面が上書きしてしまう**。
+     ⚠ 実測（2026-08-20・375×667）: 設定を 125% / 150% にしても
+       ⚠ **body も h1 も #q も 1px も変わらなかった**（14 / 19 / 16px のまま）。
+     ⚠ **本文の大きさは変えない。**0.875rem × 既定 16px = 14px で、いままでと同じ。
+       ⚠ rem なので、設定を上げれば一緒に大きくなる。 */
+  html,body{margin:0;min-height:100%;background:var(--bg);color:var(--ink)}
+  body{font:0.875rem/1.65 -apple-system,"Hiragino Sans","Noto Sans JP",sans-serif}
   .wrap{max-width:680px;margin:0 auto;padding:34px 18px 90px}
   header{margin-bottom:20px}
   h1{margin:0 0 3px;font-size:var(--fs-sign);letter-spacing:.05em;font-weight:500}
@@ -715,9 +721,15 @@
   /* 粗い区分で答えたときの断り書き。判定を打ち消す情報なので、判定と同じ枠の中に置く */
   .coarse{margin-top:8px;padding:6px 9px;border-radius:7px;font-size:var(--fs-note);line-height:1.5;
     background:rgba(230,196,122,.09);border-left:2px solid var(--estimate);color:#cbb98f}
+  /* ⚠ **nowrap は残す**（バッジの途中で折り返すと、何のバッジか読めなくなる）。
+     ⚠ **ただし、画面より広くならないようにする**（2026-08-20）。
+       実測: 文字サイズ 150%・320px 幅で「📷1936–42年から見られる（7年代）」が
+       ⚠ **339px になり、画面（320px）を 52px はみ出していた**。
+     ⚠ **max-width で頭打ちにし、あふれたら … で切る。**
+       ⚠ 切れても押せるし、⚠ **全文は吹き出し（title）に残す**。 */
   .badge{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:999px;
     font-size:var(--fs-note);letter-spacing:.01em;border:1px solid var(--line);background:rgba(255,255,255,.04);
-    color:var(--ink-dim);white-space:nowrap}
+    color:var(--ink-dim);white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis}
   .badge i{font-style:normal;font-size:var(--fs-note)}
   .badge.water{color:var(--water);border-color:rgba(91,163,224,.35);background:rgba(91,163,224,.10)}
   .badge.land{color:#d8cfa8;border-color:rgba(216,207,168,.3);background:rgba(216,207,168,.08)}
