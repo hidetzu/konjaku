@@ -889,22 +889,38 @@ for (const f of htmlFiles) {
   // ⚠ **1 段でも落ちると、いちばん強い約束だけが残って「通信していない」と読める。**
   //   それは 2026-08-15 に直した嘘へ戻ること。だから 3 段を項目で見る。
   // ⚠ 一字一句そろえない（短い版なので正当に違う）。**言っていることで見る。**
+  // ⚠ **2026-08-20 に、字は words.js の PRIVACY_SHORT へ寄せた。**
+  //   ⚠ **HTML の中の字ではなく、実際に出る文で見る。**
+  //   ⚠ 併せて、⚠ **2 画面が同じ 1 か所から出しているか**も見る（写しを作らせない）。
   {
-    const short = grab(peel, "data-privacy-short");
     const NEED3 = [
       [/URL|アドレス欄/, "調べた場所が URL に載ること（載る）"],
       [/(Cloudflare|配信元)[^。]*(届|渡)/, "その URL を開くと配信元へ届くこと（届く）"],
       [/こちらの記録には[^。]*残りません|こちらの記録に[^。]*残りません/, "こちらの記録には残らないこと（残らない）"],
     ];
-    if (!short)
-      bad("peel.html に短いプライバシー（data-privacy-short）が無い。/peel も URL に地名と座標を載せる");
-    else {
-      const miss = NEED3.filter(([re]) => !re.test(short)).map(([, n]) => n);
-      miss.length
-        ? bad(`peel.html の短いプライバシーから段が落ちている: ${miss.join("、")}`
-            + "（1 段でも落ちると、いちばん強い約束だけが残って「通信していない」と読める）")
-        : ok("peel.html の短いプライバシーに「載る → 届く → 残らない」の3段がある");
-    }
+    // ⚠ **ここは words.js の読み込みより前の節。**⚠ 読まずに参照すると、
+    //   ⚠ **「PRIVACY_SHORT が無い」と嘘の理由で落ちる**（2026-08-20 に踏んだ）。
+    await import(`file://${join(PUB, "words.js")}`);
+    const short = globalThis.KonjakuWords?.PRIVACY_SHORT ?? "";
+    // ⚠ **出す箱が両方にあること。**箱が無ければ、文があっても画面には出ない
+    const boxes = [
+        ["peel.html", /data-privacy-short/.test(peel)],
+        ["index.html", /id="privacyShort"/.test(idx)],
+    ].filter(([, has]) => !has).map(([f]) => f);
+    // ⚠ **入れる側が両方あること。**箱だけあって空だと、⚠ **余白だけが増える**
+    const fills = [
+        ["index.html", /privacyShort[\s\S]{0,300}PRIVACY_SHORT/.test(idx)],
+        ["peel3d.js", /data-privacy-short[\s\S]{0,300}PRIVACY_SHORT/.test(
+          await readFile(join(PUB, "peel3d.js"), "utf8"))],
+    ].filter(([, has]) => !has).map(([f]) => f);
+    const miss = NEED3.filter(([re]) => !re.test(short)).map(([, n]) => n);
+    if (!short) bad("words.js に PRIVACY_SHORT が無い（両画面のプライバシーが空になる）");
+    else if (boxes.length) bad(`プライバシーの 3 段を出す箱が無い: ${boxes.join("、")}`);
+    else if (fills.length) bad(`プライバシーの 3 段を入れていない: ${fills.join("、")}（箱だけ残ると余白が増える）`);
+    else if (miss.length)
+      bad(`プライバシーの 3 段から段が落ちている: ${miss.join("、")}`
+        + "（1 段でも落ちると、いちばん強い約束だけが残って「通信していない」と読める）");
+    else ok("プライバシーの「載る → 届く → 残らない」は words.js の 1 か所で、2 画面が同じ文を出す");
   }
   // ⚠ **サイト全体の情報を、この画面へ戻さない**（2026-08-18）。
   //   戻すなら、この検査を「何を守っていたか」を読んでから外すこと。

@@ -2324,6 +2324,61 @@ const CASES = [
     },
   },
   {
+    // ⚠ **プライバシーの 3 段は、場所を送る前に読めること。**
+    //   ⚠ 以前は畳んだフッターの中にしかなく、⚠ **利用者役 2/4 が「これは先に見たかった」**。
+    //   ⚠ **「見えている」だけでなく「畳まれていない」「画面内」まで見る。**
+    //     ⚠ 畳んであると、送る前に読めるとは言えない（それが元の状態だった）。
+    //   ⚠ **3 段そろっていること。**1 段でも落ちると、いちばん強い約束だけが残って
+    //     「通信していない」と読める（2026-08-15 に直した嘘へ戻る）。
+    name: "場所を送る前に、プライバシーの3段が読める", path: "/",
+    async check(page) {
+      const NEED = [[/URL|アドレス欄/, "載る"],
+                    [/(Cloudflare|配信元)[^。]*(届|渡)/, "届く"],
+                    [/こちらの記録には[^。]*残りません/, "残らない"]];
+      const out = [];
+      for (const [w, h] of [[375, 667], [344, 882], [320, 640], [1280, 800]]) {
+        await page.setViewportSize({ width: w, height: h });
+        await page.waitForFunction(
+          () => (document.getElementById("privacyShort")?.textContent ?? "").length > 10,
+          null, { timeout: 30000 });
+        const r = await page.evaluate(() => {
+          const e = document.getElementById("privacyShort");
+          const b = e.getBoundingClientRect();
+          const q = document.querySelector("#q").getBoundingClientRect();
+          const d = document.documentElement;
+          return { seen: e.checkVisibility(), inView: b.bottom <= innerHeight,
+                   y: Math.round(b.top), qy: Math.round(q.top),
+                   txt: e.textContent.replace(/\s+/g, " ").trim(),
+                   inDetails: !!e.closest("details"),
+                   over: d.scrollWidth > d.clientWidth };
+        });
+        must(r.seen, `${w}px: プライバシーの3段が見えていない`);
+        must(r.inView, `${w}px: プライバシーの3段が画面の外にある（y=${r.y}）`);
+        must(!r.inDetails, `${w}px: プライバシーの3段が畳んだ中にある（送る前に読めない）`);
+        must(r.y > r.qy, `${w}px: 検索欄より上にある（y=${r.y} / #q=${r.qy}）`);
+        must(!r.over, `${w}px: 横にあふれている`);
+        const miss = NEED.filter(([re]) => !re.test(r.txt)).map(([, n]) => n);
+        must(!miss.length, `${w}px: 段が落ちている（${miss.join("・")}）: ${r.txt.slice(0, 60)}`);
+        out.push(`${w}: y=${r.y}`);
+      }
+      // ⚠ **詳しい説明は残っていること**（要約が出たからといって消さない）
+      const sums = await page.$$eval("footer summary", (es) => es.map((e) => e.textContent.trim()));
+      must(sums.some((t) => /プライバシー/.test(t)),
+        `畳んである詳しい説明が消えている: ${sums.join("・")}`);
+      // ⚠ **場所を選んだら消える。**送ったあとに残すと「これから送ります」に読める
+      await page.setViewportSize({ width: 375, height: 667 });
+      await page.goto(`${page.url().split("?")[0]}?q=%E8%B1%8A%E6%B4%B2&ll=35.6548,139.7975`);
+      await page.waitForFunction(
+        () => /旧水部|土地/.test(document.getElementById("verdict")?.textContent ?? ""),
+        null, { timeout: 60000 });
+      await settleAfterCondition(page);
+      const still = await page.evaluate(() =>
+        document.getElementById("privacyShort")?.checkVisibility() ?? false);
+      must(!still, "場所を選んだあとも、送る前の案内が出たままになっている");
+      return `4 幅すべてで畳まず画面内（${out.join(" / ")}）／3 段そろい／詳しい説明は残る／場所を選ぶと消える`;
+    },
+  },
+  {
     name: "最初の画面が、場所を検索する画面だと5秒で分かる", path: "/",
     viewport: { width: 375, height: 667 }, hasTouch: true,
     async check(page) {
