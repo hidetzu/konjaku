@@ -1624,10 +1624,22 @@ const CASES = [
       await waitVerdict(page);
       const v = await page.locator("#verdict").textContent();
       must(VERDICT_SENTENCE.test(v), `成り立ちが出ていない: ${v.trim().slice(0, 60)}`);
-      // バッジ自体に「広い区分」と書いてあること。本文だけだと読まれない
+      // ⚠ **「広い区分」を言うのは、判定カードの `coarse` の行 1 つだけ**
+      //   （2026-08-21。hidetzu/konjaku#139）。
+      //   ⚠ **前はバッジにも書いていた。**⚠ バッジ「低地（広い区分）」と
+      //     答え「この土地は 低地」で、⚠ **同じ区分名が 2 か所**に出ていた
+      //     （掟: 同じ問いに答える表示を 2 つ持たない）。
+      //   ⚠ **限界を消したのではない。**⚠ 出る条件は前と同じ（`!l.fine`）で、
+      //     ⚠ **言う場所を 1 つにした。**⚠ だからここは「出ていること」と
+      //     「2 か所目が無いこと」の両方を見る。
+      const coarseVisible = await page.locator("#verdict .coarse").isVisible();
+      must(coarseVisible, "粗い区分なのに、判定カードがそう言う行を出していない");
+      const coarseTx = await page.$eval("#verdict .coarse",
+        (e) => e.textContent.replace(/\s+/g, " ").trim());
+      must(/広い区分/.test(coarseTx), `判定カードが「広い区分」と言っていない: 「${coarseTx}」`);
       const badge = await page.$$eval("#verdict .badge", (els) => els.map((e) => e.textContent.trim()));
-      must(badge.some((b) => b.includes("広い区分")),
-        `粗い区分なのにバッジがそう言っていない: ${badge.join(" / ")}`);
+      must(!badge.some((b) => b.includes("広い区分")),
+        `同じことをバッジでも言っている（2 か所になっている）: ${badge.join(" / ")}`);
       must(/詳細版が整備されていない/.test(v),
         `なぜ粗いのかが書かれていない: ${v.trim().slice(0, 120)}`);
       // 根拠側でも、どの精度で答えたのかを名指しすること
@@ -1639,6 +1651,45 @@ const CASES = [
       const sug = await suggestionsOf(page);
       must(!sug.length, `広い区分しか分かっていないのに提案が出ている: ${sug.map((s) => s.label).join(" / ")}`);
       return `${v.trim().split("\n")[0]}／バッジ ${badge.join(" / ")}`;
+    },
+  },
+  {
+    // ⚠ **同じ区分名を、判定カードの 2 か所で言わない**（2026-08-21。hidetzu/konjaku#139）。
+    //   ⚠ 前は バッジ「🌊 旧水部」と 答え「この土地は 旧水部」が並んでいた。
+    //   ⚠ 人工地形も同じ（バッジ「🏗 盛土地･埋立地」／答え「人の手で 盛土地･埋立地 に
+    //     なっています」）。⚠ 実測（375×667・hasTouch・SW 無効・2026-08-21）で
+    //     **豊洲・軽井沢・上野・札幌の 4 地点すべて**が該当した。
+    // ⚠ **バッジという層を消したのではない。**⚠ 明治期・標高・写真は残す。
+    //   ⚠ **そこにしか無いから**（明治期のデータなし／記録なし は、ほかのどこにも出ない）。
+    // ⚠ **区分名を書き写さない。**⚠ 答えの行の `<b>` が、⚠ **強調している語そのもの**なので、
+    //   ⚠ そこから取る。⚠ 土地ごとに変わる語を検査に直書きすると、⚠ 語が増えた日に落ちる。
+    name: "区分名を、判定カードの 2 か所で言わない", path: `/?${TOYOSU}`,
+    async check(page) {
+      const out = [];
+      for (const [name, q] of [["豊洲", TOYOSU], ["軽井沢", KARUIZAWA],
+                               ["札幌", SAPPORO], ["清澄白河", KIYOSUMI]]) {
+        if (page.url() !== BASE + `/?${q}`)
+          await page.goto(BASE + `/?${q}`, { waitUntil: "domcontentloaded", timeout: 45000 });
+        await waitVerdict(page);
+        const r = await page.evaluate(() => ({
+          // ⚠ 答えの行が強調している語（＝地形分類と人工地形）
+          words: [...document.querySelectorAll("#verdict .v-head b")].map((e) => e.textContent.trim()),
+          badges: [...document.querySelectorAll("#verdict .badge")]
+            .map((e) => ({ k: e.dataset.k ?? "", t: e.textContent.replace(/\s+/g, " ").trim() })),
+        }));
+        must(r.words.length > 0, `${name}: 答えの行が区分名を強調していない`);
+        for (const w of r.words) {
+          const hit = r.badges.filter((b) => b.t.includes(w));
+          must(hit.length === 0,
+            `${name}: 「${w}」を答えとバッジの 2 か所で言っている: ${hit.map((h) => h.t).join(" / ")}`);
+        }
+        // ⚠ **残すものが残っていること。**⚠ 消しすぎると、ここにしか無い事実が落ちる。
+        const keys = new Set(r.badges.map((b) => b.k));
+        for (const k of ["meiji", "elevation", "photos"])
+          must(keys.has(k), `${name}: ${k} のバッジが消えている: ${[...keys].join(" / ")}`);
+        out.push(`${name} 答え ${r.words.join("・")}／バッジ ${r.badges.length} 個`);
+      }
+      return out.join("／");
     },
   },
   {

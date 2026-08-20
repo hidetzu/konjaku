@@ -632,18 +632,22 @@
     const out = [];
     const l = f.byKey.landform, m = f.byKey.meiji, e = f.byKey.elevation, p = f.byKey.photos;
 
-    // 地形分類が先頭。主題に直接答えるのはこれ（掟: 主題は「成り立ち」。明治期は手法のひとつ）
+    // ⚠ **地形分類そのものは、ここには置かない**（2026-08-21。hidetzu/konjaku#139）。
+    //   ⚠ **答えの行（`v-head`）が同じ語を出している。**⚠ 実測（375×667・hasTouch・SW 無効）:
+    //     ⚠ 豊洲・軽井沢・上野・札幌の **4 地点すべてで、同じ区分名が 2 か所**に出ていた
+    //     （バッジ「🌊 旧水部」／答え「この土地は 旧水部」）。
+    //   ⚠ 人工地形も同じ（バッジ「🏗 盛土地･埋立地」／答え「人の手で 盛土地･埋立地 に
+    //     なっています」）。⚠ **掟: 同じ問いに答える表示を 2 つ持たない。**
+    //   ⚠ **「（広い区分）」も、ここでは言わない。**⚠ 判定カードの `coarse` の行が
+    //     「この範囲には詳細版が整備されていないため、広い区分で答えています」を出している
+    //     （⚠ 実測: 軽井沢で 66px。⚠ 出る条件も `!l.fine` で同じ）。
+    //   ⚠ **消したのは「言い直し」だけ。**⚠ 下の「読み込めませんでした」は残す。
+    //     ⚠ 答えの行は、読めなかったときは区分名を出さないので、⚠ **これは重複ではない。**
+    //     ⚠ 取れなかったことを黙ると「無い」に読まれる（掟）。
     if (l.state === UNREACHABLE) {
       out.push({ icon: "⚠", text: "地形分類を読み込めませんでした", key: "landform", tone: "warn" });
-    } else if (l.ok) {
-      out.push({ icon: WATERY.has(l.value) ? "🌊" : "🗻", key: "landform",
-        tone: WATERY.has(l.value) ? "water" : "land",
-        // 広い区分で答えているときは、それを黙らずにバッジ自体に書く
-        text: `${l.value}${l.fine ? "" : "（広い区分）"}` });
-      if (l.artificial)
-        out.push({ icon: "🏗", key: "landform", tone: "warn", text: l.artificial });
-      else if (l.artificialUnread)
-        out.push({ icon: "⚠", key: "landform", tone: "warn", text: "盛土・埋立を読み込めませんでした" });
+    } else if (l.ok && !l.artificial && l.artificialUnread) {
+      out.push({ icon: "⚠", key: "landform", tone: "warn", text: "盛土・埋立を読み込めませんでした" });
     }
 
     // 取れなかったときは、土地についての主張をひとつも置かない。
