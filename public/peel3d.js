@@ -1024,7 +1024,15 @@ function layersOf(area, lf){
       //   ⚠ 補足に置くと HUD で畳まれて消える。**答えの一部なので、畳まない側に置く。**
       den:`${area.classified} / ${area.total}件の足元を判定`
         + ((land&&!isWater)?` ／ 水域だった建物：${(area.wet/area.classified*100).toFixed(1)}%`:""),
-      subs: land ? [{kind:"share", v:land}] : [] });
+      // ⚠ **ここにあった `kind:"share"` の補足を落とした**（2026-08-20。hidetzu/konjaku#130）。
+      //   ⚠ 出していたのは「区分を特定できた足元のうち 河川・湖沼・海面 510 / 543件（93.9%）」。
+      //   ⚠ **同じ数字・同じ区分名が、⚠ 下の「内訳」の 1 行目にもあった**
+      //     （実測 2026-08-20・1280×800・豊洲: y376 と y876。⚠ **500px 離れて 2 回**）。
+      //   ⚠ **内訳が正本。**⚠ あちらは 2 位以下も出すので、⚠ 1 位だけを別の場所で繰り返す意味が無い。
+      //   ⚠ **区分名は消えない。**⚠ 内訳の 1 行目がそれ。
+      //   ⚠ **93.9%（＝ 1 位 ÷ 判定できた件数）だけは画面から消える。**
+      //     ⚠ 生の件数（510 / 543）は内訳に残るので、⚠ 数えられる。
+      subs: [] });
   } else if(area.total>0)
     missing.push({ n:3, why:"outside", note:`建物 ${area.total} 件` });
   else if(area.bldState==="notyet") missing.push({ n:3, why:"notyet" });
@@ -1094,7 +1102,6 @@ function paintLayer(L){
   const subs=(L.hud?[]:(L.subs??[])).map((sb)=>
       sb.kind==="art"   ? `<div class="land-sub">${WORD.ground1Art(esc(sb.v))}</div>`
     : sb.kind==="top"   ? `<div class="land-sub">この範囲で最も多い区分: <b>${esc(sb.v.name)}</b>（${sb.v.pct}%）</div>`
-    : sb.kind==="share" ? `<div class="land-sub">区分を特定できた足元のうち ${esc(sb.v.name)} ${sb.v.count} / ${sb.v.classified}件（${sb.v.pct}%）</div>`
     : sb.kind==="wet"   ? `<div class="land-sub">水域だった建物: ${sb.v}%</div>` : "").join("");
   return `<div class="land-layer"><div class="land-q">${L.title}</div>`
     + `<div class="land-line">${head}${what}</div>${den}${subs}</div>`;
