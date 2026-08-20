@@ -922,8 +922,6 @@ const WORD = {
   // ⚠ 建物を、実行時に問い合わせたか・事前に取り込んであったか（2 か所で使う）
   //   ⚠ 判定は `bldSource==="tiles"` の 1 か所から渡す（同じ問いに 2 つ目の旗を持たない）
   bldPre: (fromTiles) => fromTiles ? "（事前に取り込んだデータ）" : "",
-  // 地形分類の精度。⚠ 粗いときは**必ず**そう書く（詳細版が無い土地がある）
-  precision: (fine) => fine ? "" : "（広い区分）",
   // ⚠ **掟の核心。**読めなかったのか、本当に無いのか（取れなかった ≠ 無い）
   meijiGap: (unread) => unread ? "読み込めていない" : "無い",
   // 建物が 1 件も出ないとき、その理由を書き分ける。
@@ -976,15 +974,15 @@ const WORD = {
                             : KonjakuProv.NOTYET),
 };
 
-// 見出しに使う1行。粗い区分しか無いときは、そう書く
-function landformLine(){
-  const l=landform;
-  if(!l) return "";
-  if(l.state==="unreachable") return `<span style="opacity:.7">地形分類も、いま読み込めませんでした</span>`;
-  if(!l.ok) return "";
-  const art=l.artificial?`／いまは <b>${l.artificial}</b>`:"";
-  return `この土地は <b>${l.value}</b>${art}${WORD.precision(l.fine)}`;
-}
+// ⚠ **ここにあった landformLine() を消した**（2026-08-20。hidetzu/konjaku#125）。
+//   ⚠ **呼び出し元が 1 つも無かった**（public/ 全体を走査）。⚠ **画面に一度も出ていない**
+//     （豊洲・札幌 × 375×667 / 344×882 / 320×640 / 1280×800 で 0 件）。
+//   ⚠ **字面が `この土地は …／いまは …` だったので、⚠ 生きていると誤読された。**
+//     ⚠ 呼び出し元を数えずに「/peel の HUD が第1層を 2 通りで出している」と判断し、
+//       ⚠ **その誤りを 4 か所に書いた**（静的検査のコメント・docs/DOMAIN.md・PR 本文・Issue 本文）。
+//   ⚠ **第1層の字は public/words.js の ground1Lines() ただ 1 つ**（hidetzu/konjaku#122）。
+//     ⚠ 情報パネルは WORD.ground1 / ground1Art 経由で、そこから出している。
+//   ⚠ **WORD.precision も一緒に消した**（ここからしか呼ばれていなかった）。
 
 
 // 常時見える HUD 側の描画。⚠ 数字は layersOf() が作ったものだけを使う。
