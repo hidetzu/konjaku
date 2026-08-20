@@ -936,6 +936,10 @@
      ここが唯一の定義で、あとの2つはこれを借りている（掟6: 同じ問いに答える実装を2つ持たない）。 -->
 <script src="./swale.js"></script>
 <script src="./verify.js"></script>
+<!-- 取得済みの土地情報を控える、ただ1か所。⚠ **verify.js より後に読む**（取得の層を借りる）。
+     ⚠ 画面はここだけを見る。⚠ **Konjaku.landform / meiji / facts を画面から直接呼ばない**
+     （scripts/check.mjs が見張っている）。 -->
+<script src="./land.js"></script>
 <!-- ⚠ places.js は読まない（2026-08-18）。この画面から検索を外したので、使う相手がいない。
      ⚠ 「検索の並べ替えと確度の判定は places.js の1か所」という決まりは**生きている**。
        この画面に検索を戻すことがあれば、自前で書かずに places.js を読むこと

@@ -1140,6 +1140,10 @@
      ここが唯一の定義で、あとの2つはこれを借りている（掟6: 同じ問いに答える実装を2つ持たない）。 -->
 <script src="./swale.js"></script>
 <script src="./verify.js"></script>
+<!-- 取得済みの土地情報を控える、ただ1か所。⚠ **verify.js より後に読む**（取得の層を借りる）。
+     ⚠ 画面はここだけを見る。⚠ **Konjaku.landform / meiji / facts を画面から直接呼ばない**
+     （scripts/check.mjs が見張っている）。 -->
+<script src="./land.js"></script>
 <!-- 住所検索の応答を並べ替える。scripts/search-check.mjs がこのファイルをそのまま読んで
      35語の回帰検査を回すので、検査した実装と出荷する実装が同じであることを保証できる -->
 <script src="./places.js"></script>
@@ -3322,7 +3326,8 @@ async function openPlace(lon,lat,title,opt){
   const own=document.getElementById("own");
   own.innerHTML=`<div class="card"><div class="d">この土地の成り立ちを判定中…</div></div>`;
   // 検証器から「事実の集合」を受け取る。答えではなく、根拠つきの事実の並び。
-  const f = await Konjaku.facts(lon, lat);
+  // 取得の層を直接呼ばない。⚠ **取れたものは land.js が控え、/peel が使い回す**
+  const f = await KonjakuLand.facts(lon, lat);
   const m = f.byKey.meiji, el = f.byKey.elevation, ph = f.byKey.photos;
 
   // 見出し（コマンドの外に出す事実。掟: 外部の助言は、実測で確かめてから採る）
