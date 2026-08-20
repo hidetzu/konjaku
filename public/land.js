@@ -126,6 +126,42 @@
     return f;
   }
 
+  // ---- 明治期の「面」（この範囲で何がどれだけあったか）----
+  //
+  // ⚠ **「点」とは別の入口・別のキー**（ADR 0030）。⚠ **混ぜない。**
+  //   meijiPoint(lon, lat)  この地点は何だったか        キー 5 桁の lat,lon
+  //   meijiArea(bounds)     この範囲で何がどれだけか    キー bbox
+  //   ⚠ **点の結果から面を推測しない。**⚠ **面を点の代用にしない。**
+  //
+  // ⚠ **控えるのは集計だけ**（2026-08-20。hidetzu/konjaku#126）。
+  //   ⚠ **mask は控えない。**⚠ 実測: 豊洲で 1,310,720 バイト（1.25 MB）・渋谷で 1.00 MB。
+  //     ⚠ **sessionStorage は約 5MB。**⚠ **2 地点で埋まる。**
+  //   ⚠ **mask はメモリの中で画面へ渡すだけ。**⚠ 同じ画面のうちは inflight が効く。
+  const areaKey = (b, z) =>
+    "area:" + z + ":" + [b.w, b.s, b.e, b.n].map((v) => Number(v).toFixed(5)).join(",");
+
+  // 控えてよい部分だけを取り出す。⚠ **mask を含めない**
+  const areaSummary = (a) => ({
+    tw: a.tw, th: a.th, x0: a.x0, y0: a.y0, z: a.z, waterPx: a.waterPx,
+    classCounts: a.classCounts, classifiedPixels: a.classifiedPixels,
+    transparentPixels: a.transparentPixels, unknownPixels: a.unknownPixels,
+    tiles: a.tiles, ratio: a.ratio,
+  });
+
+  async function meijiArea(bounds, z = 16) {
+    const id = areaKey(bounds, z);
+    if (inflight.has(id)) return inflight.get(id);
+    const p = (async () => {
+      const a = await g.Konjaku.swaleArea(bounds, z);
+      // ⚠ **1 枚も読めていない回は控えない**（掟: 取得できなかった ≠ 存在しなかった）。
+      //   ⚠ 控えると、一度つながらなかった範囲がその先ずっと「読めない範囲」になる。
+      if (a && a.tiles && a.tiles.ok > 0) write(id, "summary", areaSummary(a));
+      return a;
+    })().finally(() => inflight.delete(id));
+    inflight.set(id, p);
+    return p;
+  }
+
   // 検査用。⚠ **画面からは呼ばない**
   const forget = (lon, lat) => {
     const s = store();
@@ -139,6 +175,6 @@
     } catch { /* 消せないだけ */ }
   };
 
-  g.KonjakuLand = { V, PREFIX, key, keepable, terrain, meijiPoint, elevation, photos,
-                    facts, forget };
+  g.KonjakuLand = { V, PREFIX, key, areaKey, keepable, terrain, meijiPoint, elevation, photos,
+                    meijiArea, facts, forget };
 })(typeof window === "undefined" ? globalThis : window);
