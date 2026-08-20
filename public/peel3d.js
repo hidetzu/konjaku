@@ -2055,3 +2055,14 @@ addEventListener("keydown",(e)=>{
   const typing=(el)=>!!el&&(el.isContentEditable||el.tagName==="TEXTAREA"
     ||(el.tagName==="INPUT"&&TYPE_IN.includes(el.type)));
   if(e.code==="Space"&&!typing(document.activeElement)){e.preventDefault();playBtn.onclick()}});
+
+// ⚠ **プライバシーの 3 段。**⚠ 字は words.js の 1 か所（トップの検索欄の下と同じ文）。
+//   ⚠ 以前はこの HTML の中に直接書いていた。⚠ **写しがあると、片方だけ直せてしまう。**
+//   ⚠ 中身は自前の定数 1 つだけ。外から来た文字列は混ぜない。
+{
+  const el = document.querySelector("[data-privacy-short]");
+  if (el) {
+    if (KonjakuWords?.PRIVACY_SHORT) el.innerHTML = KonjakuWords.PRIVACY_SHORT;
+    else el.remove();   // ⚠ 空の箱を残さない
+  }
+}

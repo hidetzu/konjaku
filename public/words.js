@@ -90,5 +90,22 @@
   const method = (state, mixed, key) =>
     state === "unreachable" ? UNREAD : mixed ? EDGE : (METHOD[key] ?? "");
 
-  g.KonjakuWords = { S, meiji, meijiBadge, TAG, tag, METHOD, EDGE, UNREAD, method };
+  // ============================================================
+  // プライバシーの 3 段（載る → 届く → 残らない）
+  //
+  // ⚠ **1 段でも落とすと、いちばん強い約束だけが残って「通信していない」と読める**
+  //   （2026-08-15 に実際そうなっていた）。⚠ **3 段そろえて 1 つの文。**
+  //
+  // ⚠ **順番を変えない。**「計測には送らない」だけを先に書くと、また言い切りすぎになる。
+  //
+  // ⚠ **2 画面が同じ文を出す**（トップの検索欄の下と、/peel の情報パネル）。
+  //   ⚠ **だから 1 か所で持つ。**⚠ 以前は /peel だけが持っていて、
+  //     トップは畳んだフッターの中にしか無かった（⚠ **送る前に読めなかった**）。
+  //
+  // ⚠ **詳しい説明は消さない。**これは要約で、全文はトップのフッターにある。
+  const PRIVACY_SHORT =
+    "調べた場所は<b>URL に入り</b>、開くと<b>配信元（Cloudflare）に届きます</b>。"
+    + "<b>こちらの記録には残りません</b>（計測に地名も座標も送らず、Cookie も使いません）。";
+
+  g.KonjakuWords = { S, meiji, meijiBadge, TAG, tag, METHOD, EDGE, UNREAD, method, PRIVACY_SHORT };
 })(typeof window === "undefined" ? globalThis : window);
