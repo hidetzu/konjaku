@@ -3053,13 +3053,20 @@ head("6. 外部リンク");
 //   **404 は拾えない**（MapLibre は 404 を異常と見なさない）。だから 404 は前者に留まる。
 // ⚠ ブラウザでは「まだ来ていない」状態を狙って作りにくい。関数を取り出して直に回す。
 //   ⚠ **取り出せなくなったら落とす**（黙って素通りさせない）。
-{
-  const gm = /\nfunction groundState\(arrived, late, fail\)\{[\s\S]*?\n\}/.exec(src["peel3d.js"] ?? "");
-  const em = /\nfunction eraReadout\(state, isLatest, isMeiji, sub, online\)\{[\s\S]*?\n\}/.exec(src["peel3d.js"] ?? "");
-  if (!gm || !em) bad(`peel3d.js の ${!gm ? "groundState" : "eraReadout"} を取り出せない（この検査が何も見ていない）`);
-  else {
-    const G = new Function(`${gm[0]}\nreturn groundState;`)();
-    const f = new Function(`${em[0]}\nreturn eraReadout;`)();
+  // ⚠ **2026-08-20 に、状態を決めるのは public/photos.js の 1 か所へ移した。**
+  //   ⚠ **見ている主張は変えていない。**取り出す先だけ変えた。
+  //   ⚠ **字を決めるのは words.js。**⚠ **状態と字を分けてある。**
+  {
+    await import(`file://${join(PUB, "photos.js")}`);
+    await import(`file://${join(PUB, "words.js")}`);
+    const P = globalThis.KonjakuPhotos;
+    // ⚠ **2026-08-20 に引数が減った**（素性と online は状態が持つ）。⚠ **置くだけになった。**
+    const em = /\nfunction eraReadout\(state, sub\)\{[\s\S]*?\n\}/.exec(src["peel3d.js"] ?? "");
+    if (!P || !em) bad(`${!P ? "photos.js を読み込めない" : "peel3d.js の eraReadout を取り出せない"}（この検査が何も見ていない）`);
+    else {
+      const G = P.stateOf;
+      // ⚠ eraReadout は words.js を借りている。Node でも同じものを渡す
+      const f = new Function("KonjakuWords", `${em[0]}\nreturn eraReadout;`)(globalThis.KonjakuWords);
     const fails = [];
     const yes = (c, what) => { if (!c) fails.push(what); };
     const FAIL = { why: "通信できません" };
@@ -3072,6 +3079,9 @@ head("6. 外部リンク");
     yes(G(false, true, null).kind === "late", "猶予を過ぎたのに late にならない");
     yes(G(false, false, null).kind === "pending", "まだ猶予中なのに pending にならない");
 
+    // ⚠ **2026-08-20: 素性（何の写真か）と online は、状態が持つようになった。**
+    //   ⚠ **見ている主張は変えていない。**⚠ 渡し方だけ変えた。
+    const E = (isLatest, isMeiji) => ({ isLatest, isMeiji });
     for (const [isLatest, isMeiji, what] of [[true, false, "現在"], [false, false, "過去"], [false, true, "明治期"]]) {
       // ---- 届いているとき ----
       // ⚠ **普段は名乗らない。**（2026-08-19 に変えた）
@@ -3079,13 +3089,13 @@ head("6. 外部リンク");
       //   実測: 320 幅で年代の字 38px に対し名乗りは 12px だが、行の頭に居るので先に読まれ、
       //   利用者役は「何のことか一瞬分からなかった」と答えた。
       //   ⚠ **守りたいのは「出ていないものを表示中と言わない」ほう。**それは下で見る。
-      const ok = f(G(true, false, null), isLatest, isMeiji, "最新の空中写真", true);
+      const ok = f(G(true, false, null, E(isLatest, isMeiji), true), "最新の空中写真");
       yes(!ok.kick, `${what}: 届いているのに「${ok.kick}」と名乗っている（普段は名乗らない）`);
       yes(ok.sub === "最新の空中写真", `${what}: 届いているときの説明が変わった`);
       yes(!ok.hint, `${what}: 届いているのに接続の話をしている`);
 
       // ---- 猶予切れ（理由を知らない）----
-      const late = f(G(false, true, null), isLatest, isMeiji, "最新の空中写真", true);
+      const late = f(G(false, true, null, E(isLatest, isMeiji), true), "最新の空中写真");
       yes(late.kick !== "表示中", `${what}: 出ていないのに「表示中」と言っている`);
       // ⚠ **出ていないときは必ず名乗る。**空にすると、普段と見分けがつかなくなる
       yes(!!late.kick, `${what}: 出ていないのに何も名乗っていない（普段と区別がつかない）`);
@@ -3096,14 +3106,14 @@ head("6. 外部リンク");
       yes(!/が無い|ありません|存在しません/.test(late.sub), `${what}: 「無い」と言い切っている`);
 
       // ---- 落ちたのを観測したとき ----
-      const bad1 = f(G(false, true, FAIL), isLatest, isMeiji, "最新の空中写真", true);
+      const bad1 = f(G(false, true, FAIL, E(isLatest, isMeiji), true), "最新の空中写真");
       yes(!!bad1.kick, `${what}: 落ちたのに何も名乗っていない`);
       yes(/読み込めませんでした/.test(bad1.sub), `${what}: 落ちたのに、そう書いていない`);
       yes(bad1.sub.includes("通信できません"), `${what}: 観測した理由を落としている`);
       // ⚠ つながっているときは**言い切らない**。取れない理由をこちらは知らない
       yes(bad1.hint === "接続を確認してください",
         `${what}: online=true なのに「${bad1.hint}」と言っている（言い切らない）`);
-      const off = f(G(false, true, FAIL), isLatest, isMeiji, "最新の空中写真", false);
+      const off = f(G(false, true, FAIL, E(isLatest, isMeiji), false), "最新の空中写真");
       yes(/接続していません/.test(off.hint ?? ""),
         `${what}: 圏外だと端末が言っているのに、そう伝えていない`);
       // ⚠ 落ちても「無い」とは言わない（掟の一行目）
@@ -3111,7 +3121,7 @@ head("6. 外部リンク");
     }
     // 3 つは別の文。どれが出ていないのか分かること
     const subs = new Set(["現在", "過去", "明治期"].map((_, i) =>
-      f(G(false, true, null), i === 0, i === 2, "x", true).sub));
+      f(G(false, true, null, { isLatest: i === 0, isMeiji: i === 2 }, true), "x").sub));
     yes(subs.size === 3, `出ていないときの説明が ${subs.size} 種類しかない（現在・過去・明治期で書き分ける）`);
     fails.length
       ? bad(`eraReadout / groundState の単体テストが失敗（${fails.length} 件）: ${fails.slice(0, 5).join(" / ")}`)
@@ -3123,11 +3133,12 @@ head("6. 外部リンク");
 // 地表のタイルが「その地点を覆っているか」の計算（peel3d.js の tilesCover）。
 // ⚠ ブラウザでは、狙ったタイルだけを届かせる／届かせない状態を作れない。
 //   関数を取り出して直に回す。⚠ **取り出せなくなったら落とす**（黙って素通りさせない）。
-{
-  const m = /\nfunction tilesCover\(keys,xf,yf,z0\)\{[\s\S]*?\n\}/.exec(src["peel3d.js"] ?? "");
-  if (!m) bad("peel3d.js の tilesCover を取り出せない（この検査が何も見ていない）");
-  else {
-    const f = new Function(`${m[0]}\nreturn tilesCover;`)();
+  // ⚠ **2026-08-20 に public/photos.js の 1 か所へ移した。**⚠ 見ている主張は同じ。
+  {
+    await import(`file://${join(PUB, "photos.js")}`);
+    const f = globalThis.KonjakuPhotos?.covers;
+    if (!f) bad("photos.js の covers を取り出せない（この検査が何も見ていない）");
+    else {
     const fails = [];
     const yes = (c, what) => { if (!c) fails.push(what); };
     const Z = 16;
@@ -3543,6 +3554,39 @@ head("9. 画面の言葉");
       ? bad(`render.mjs が words.js の字を書き写している: ${copied.map((w) => `「${w}」`).join("、")}`
           + `（言い直すと、製品ではなく検査が落ちる。WORDS から取ること）`)
       : ok(`render.mjs は words.js の字（${OWNED_BY_WORDS.length} 語）を書き写していない`);
+  }
+
+  // ⚠ **写真の状態と、画面を分断したままにする**（2026-08-20・hidetzu/konjaku#116）。
+  //   ⚠ **層は 3 つ。**⚠ **越えたら止める。**
+  //     photos.js  … ⚠ **状態を決める。**⚠ **文字列を 1 つも持たない**
+  //     words.js   … ⚠ **字を決める。**⚠ **状態の作り方を知らない**
+  //     画面        … ⚠ **置くだけ。**⚠ **何も判断しない**
+  //   ⚠ **相手先の振る舞いが変わっても、直すのは photos.js の 1 か所。**
+  //   ⚠ 実際に踏んだ: 「何の写真か」を 2 画面が別々に組み立てていた。
+  {
+    const bad2 = [];
+    // ⚠ **コメントを先に落とす。**⚠ 落とさないと、⚠ **何を直したかの説明を拾う**（CLAUDE.md §5）
+    const ph = stripJs(await readFile(join(PUB, "photos.js"), "utf8"), "photos.js");
+    // ⚠ **取得の層に、画面へ出す字を書かない。**
+    //   ⚠ 「通信できません」などの理由は、⚠ **places.js と揃える約束**なのでここが持つ。
+    //   ⚠ **それ以外の、利用者へ向けた文を書かない。**
+    for (const w of ["まだ出ていません", "読み込めませんでした", "接続を確認", "インターネット"])
+      if (ph.includes(w)) bad2.push(`photos.js が画面の字を持っている（「${w}」）`);
+    // ⚠ **画面が「何の写真か」を組み立てない。**⚠ 組み立てると、判断が画面ごとに増える
+    for (const f of ["index.html", "peel3d.js"]) {
+      const bare = (src[f] ?? "").replace(/<!--[\s\S]*?-->/g, "")
+        .replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+      // ⚠ **写真の状態の文脈だけを見る。**⚠ 「明治期の地面と見くらべる」は深掘りの案内で、
+      //   ⚠ **別の文**（それまで拾うと、直しようのない誤検出になる）。
+      for (const w of ["いまの街の写真", "この年代の写真は", "明治期の地面は"])
+        if (bare.includes(w)) bad2.push(`${f} が「何の写真か」を組み立てている（「${w}」）`);
+      // ⚠ **画面が接続の話を自分で決めない**（photoSay が返したものを置くだけ）
+      if (/navigator\.onLine\s*===?\s*false/.test(bare))
+        bad2.push(`${f} が接続の話を自分で判断している（状態に持たせる）`);
+    }
+    bad2.length
+      ? bad(`写真の状態と画面が分断できていない: ${bad2.join("、")}`)
+      : ok("写真は「状態（photos.js）→ 字（words.js）→ 置くだけ（画面）」に分かれている");
   }
 
   // ⚠ **画面から消した語が、戻っていないこと。**

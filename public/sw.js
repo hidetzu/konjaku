@@ -18,7 +18,7 @@
 //   一度来た人に古い `/` と `/share.js` が出続けた。しかもローカルは初回訪問なので
 //   絶対に再現せず、CI も全部通る。流入を測り始める直前に一度踏みかけた。
 //   なぜハッシュにしたかの全文は scripts/sw-hash.mjs の頭にある。
-const VERSION = "konjaku-5c3fb6f5";
+const VERSION = "konjaku-7b682754";
 // ⚠ addAll は1件でも 404 すると install ごと reject し、キャッシュが丸ごと死ぬ。
 //   この一覧を足し引きしたときも版は変わる（一覧そのものもハッシュの材料に入れてある）。
 const SHELL = [
@@ -27,7 +27,7 @@ const SHELL = [
   //   オフラインでも画面が成り立つための最小限に入る。
   // ⚠ words.js も同じ性質。**来ないと両ページの語が undefined になる**
   //   （取得の結末と一覧行のタグを、2 画面で 1 か所から出している）。
-  "/esc.js", "/words.js", "/verify.js", "/places.js", "/share.js", "/events.js",
+  "/esc.js", "/photos.js", "/words.js", "/verify.js", "/places.js", "/share.js", "/events.js",
   // ⚠ 2 画面で共通の見た目の定義。**来ないと両ページの色も文字サイズも決まらない**
   //   （esc.js と同じ性質。オフラインでも画面が成り立つための最小限）。
   //   ⚠ 68 KB の地図 CSS とは別物で、実測 1,650 バイト。
