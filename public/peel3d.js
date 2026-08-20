@@ -144,33 +144,17 @@ map.addControl(new maplibregl.NavigationControl({visualizePitch:true}),"top-righ
 //   「明治期のデータがありません」と書いてしまう（掟: 取れなかったを「無い」と言わない）。
 // ============================================================
 const OK="ok", ABSENT="absent", UNREACHABLE="unreachable";
-const tileCache = new Map();
-function getTile(x,y){
-  const k=`${x}/${y}`;
-  if(!tileCache.has(k)) tileCache.set(k,readTile(x,y,k));
-  return tileCache.get(k);
-}
-async function readTile(x,y,k){
-  const res=await Konjaku.loadImage(`${GSI}/swale/${Z}/${x}/${y}.png`);
-  // 失敗は覚えない。覚えると再試行が空振りする
-  if(res.state===UNREACHABLE){ tileCache.delete(k); return {state:UNREACHABLE,data:null}; }
-  if(res.state===ABSENT) return {state:ABSENT,data:null};
-  const c=document.createElement("canvas"); c.width=c.height=256;
-  const g=c.getContext("2d",{willReadFrequently:true}); g.drawImage(res.image,0,0);
-  return {state:OK,data:g.getImageData(0,0,256,256).data};
-}
-const classify = KonjakuSwale.classify;
-async function sampleSwale(lon,lat){
-  const xf=lon2xf(lon),yf=lat2yf(lat),x=Math.floor(xf),y=Math.floor(yf);
-  const {state,data:d}=await getTile(x,y);
-  if(state!==OK) return {state};      // absent（整備対象外） / unreachable（読めていない）
-  const i=(Math.floor((yf-y)*256)*256+Math.floor((xf-x)*256))*4;
-  const [r,g,b,a]=[d[i],d[i+1],d[i+2],d[i+3]];
-  if(a===0) return {state:OK,none:true,rgba:[r,g,b,a]};
-  const c=classify(r,g,b);
-  return c?{state:OK,cls:c,water:!!c.water,rgba:[r,g,b,a]}
-          :{state:OK,unknown:true,rgba:[r,g,b,a]};
-}
+// ⚠ **ここにあった tileCache / getTile / readTile を外した**（2026-08-20。hidetzu/konjaku#126）。
+//   ⚠ タイル URL の組み立て・canvas の画素読み・分類・失敗の数え方・キャッシュは
+//     ⚠ **取得の層（verify.js の swaleArea）と、控える層（land.js の meijiArea）が持つ。**
+//   ⚠ **この画面は「どう描くか」だけを持つ**（docs/DOMAIN.md §3-3）。
+//   ⚠ **3 つめのキャッシュだった。**land.js の inflight／verify.js の imgCache と別に
+//     Map を持っていて、⚠ **同じ「もう取ったか」に 3 か所が答えていた。**
+
+// 1 点の明治期。⚠ **取得の層が持つ**（2026-08-20 に外へ出した）。
+//   ⚠ **面（swaleArea）と同じタイル束を使う**ので、⚠ **要求は増えない**（以前もそうだった）。
+//   ⚠ **返す形は変えていない**（state / none / unknown / cls / water / rgba）。
+const sampleSwale=(lon,lat)=>Konjaku.swalePixel(lon,lat,Z);
 
 // ============================================================
 // 事前計算データ（掟: 取れなかったを「無い」と言わない）
@@ -265,33 +249,18 @@ function unpackBuildings(d){
 //   ラスタのままだと地面に貼った絵にしかならず、水が「戻ってくる」感じが出ない。
 //   重ならない矩形に分解するので、半透明にしても継ぎ目が濃くならない。
 // ============================================================
+// 明治期の「面」を、地図へ描ける形にする。
+//
+// ⚠ **取得・分類・集計は、ここではやらない**（2026-08-20。hidetzu/konjaku#126）。
+//   ⚠ **verify.js の swaleArea が mask と集計を返し、land.js が控える。**
+//   ⚠ ここに残っているのは **mask を矩形へ分解して GeoJSON にする**ところだけ。
+//     ⚠ **それは「どう描くか」の都合**（MapLibre のレイヤに合わせた形）で、
+//       描き方が変われば形も変わる（Owner 判断＝案B）。
+// ⚠ **水かどうかを、ここで判定しない。**⚠ mask は既に水／非水に畳んである。
+//   ⚠ **水の定義は swale.js の isWater ただ 1 つ**（掟: 同じ問いに答える実装を2つ持たない）。
 async function buildWater(bbox){
-  const x0=Math.floor(lon2xf(bbox.w)), x1=Math.floor(lon2xf(bbox.e));
-  const y0=Math.floor(lat2yf(bbox.n)), y1=Math.floor(lat2yf(bbox.s));
-  const TW=(x1-x0+1)*256, TH=(y1-y0+1)*256;
-  const mask=new Uint8Array(TW*TH);
-  let waterPx=0, classifiedPixels=0, transparentPixels=0, unknownPixels=0;
-  const classCounts=Object.fromEntries(SWALE.map((c)=>[c.name,0]));
-  // タイルごとの結末を数える。1枚も読めていないのに「データがありません」と
-  // 書かないために、absent（404）と unreachable（読めず）を分けて持つ。
-  const tiles={ok:0,absent:0,unreachable:0};
-
-  const jobs=[];
-  for(let ty=y0;ty<=y1;ty++) for(let tx=x0;tx<=x1;tx++)
-    jobs.push(getTile(tx,ty).then((r)=>({tx,ty,...r})));
-  for(const {tx,ty,state,data:d} of await Promise.all(jobs)){
-    if(state!==OK){ tiles[state]++; continue; }
-    tiles.ok++;
-    const ox=(tx-x0)*256, oy=(ty-y0)*256;
-    for(let y=0;y<256;y++) for(let x=0;x<256;x++){
-      const i=(y*256+x)*4;
-      if(d[i+3]===0){ transparentPixels++; continue; }
-      const c=classify(d[i],d[i+1],d[i+2]);
-      if(!c){ unknownPixels++; continue; }
-      classCounts[c.name]++; classifiedPixels++;
-      if(c.water){ mask[(oy+y)*TW+(ox+x)]=1; waterPx++; }
-    }
-  }
+  const a=await KonjakuLand.meijiArea(bbox,Z);
+  const {mask,tw:TW,th:TH,x0,y0}=a;
 
   // 貪欲法で重ならない矩形に分解
   const used=new Uint8Array(TW*TH), feats=[];
@@ -310,9 +279,11 @@ async function buildWater(bbox){
     feats.push({type:"Feature",properties:{},geometry:{type:"Polygon",
       coordinates:[[[lonA,latA],[lonB,latA],[lonB,latB],[lonA,latB],[lonA,latA]]]}});
   }
+  // ⚠ **集計はそのまま渡す。**⚠ ここで数え直さない（掟: 同じ問いに答える実装を2つ持たない）
   return { geojson:{type:"FeatureCollection",features:feats},
-           ratio: TW*TH ? waterPx/(TW*TH) : 0, tiles, rects:feats.length,
-           classCounts, classifiedPixels, transparentPixels, unknownPixels };
+           ratio:a.ratio, tiles:a.tiles, rects:feats.length,
+           classCounts:a.classCounts, classifiedPixels:a.classifiedPixels,
+           transparentPixels:a.transparentPixels, unknownPixels:a.unknownPixels };
 }
 
 function summarizeLand(counts, classifiedPixels){

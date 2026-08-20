@@ -3701,6 +3701,129 @@ head("9. 画面の言葉");
       : ok("土地情報は「取得（verify.js）→ 控える（land.js）→ 置くだけ（画面）」に分かれている");
   }
 
+  // ⚠ **明治期の「面」も、取得の層が持つ**（hidetzu/konjaku#126）。
+  //
+  //   ⚠ **2026-08-20 まで、⚠ peel3d.js の中に 74 行あった**
+  //     （tileCache / getTile / readTile / buildWater）。⚠ その中身は
+  //     ⚠ **タイル URL の組み立て・複数枚の取得・canvas の画素読み・分類・集計・
+  //       失敗の数え方・キャッシュ**で、⚠ **全部が取得の層の仕事だった。**
+  //   ⚠ **3 つめのキャッシュでもあった**（land.js の inflight／verify.js の imgCache と別）。
+  //
+  //   ⚠ **線の引き方**（Owner 判断＝案B。⚠ **矩形化は画面に残す**）
+  //     verify.js   swaleArea(bbox) … mask ＋ 集計。⚠ **GeoJSON は作らない**
+  //     land.js     meijiArea(bounds) … 呼んで控える。⚠ **取り方は知らない**
+  //     peel3d.js   mask → 矩形 → GeoJSON → MapLibre。⚠ **水かどうかは判定しない**
+  //
+  //   ⚠ **コメントは落としてある**（seen を使う。CLAUDE.md §5）。
+  {
+    const bad5 = [];
+    const VJ = seen["verify.js"] ?? "", LD = seen["land.js"] ?? "", PJ = seen["peel3d.js"] ?? "";
+    if (!VJ || !LD || !PJ) bad5.push("読めていないファイルがある（この検査が何も見ていない）");
+
+    // ⚠ **取得の層が持っていること。**⚠ **名前の境界まで見る**（2026-08-20 に直した）。
+    //   ⚠ includes だけだと、⚠ **`swaleAreaX` に改名しても `swaleArea` を含むので通る**
+    //     （実際にわざと壊したら落ちなかった）。
+    for (const w of ["swaleArea", "swalePixel"])
+      if (!new RegExp("function\\s+" + w + "\\s*\\(").test(VJ))
+        bad5.push(`verify.js が function ${w}() を持っていない`);
+    if (!/\bswaleTiles\b/.test(VJ)) bad5.push("verify.js が swaleTiles（面と点で共有するタイル束）を持っていない");
+    // ⚠ **公開していること。**⚠ 定義があっても配っていなければ画面から呼べない
+    for (const w of ["swaleArea", "swalePixel"])
+      if (!new RegExp("\\b" + w + "\\b(?![\\w(])").test(VJ.split("global.Konjaku")[1] ?? ""))
+        bad5.push(`verify.js が ${w} を配っていない（Konjaku から呼べない）`);
+    // ⚠ **画面が持っていないこと。**⚠ 戻ってきたら落とす
+    for (const w of ["const tileCache", "function getTile", "function readTile"])
+      if (PJ.includes(w)) bad5.push(`peel3d.js に ${w} が戻っている（取得の層の仕事）`);
+    // ⚠ **画面がタイル URL を組み立てないこと**（swale に限らず）
+    if (/\$\{GSI\}\/swale\//.test(PJ))
+      bad5.push("peel3d.js が明治期タイルの URL を組み立てている");
+    // ⚠ **画面が「水かどうか」を決めないこと。**⚠ 水の定義は swale.js の isWater ただ 1 つ。
+    //   ⚠ **「決める」と「答えを読む」は別**（2026-08-20 に検査を書き直した）。
+    //     ⚠ 最初は `.water` を数えて落としていたが、⚠ **2 件とも誤検出**だった:
+    //       peel3d.js:791  s.water … ⚠ **取得の層が出した答えを写しているだけ**
+    //       peel3d.js:1156 r.water … ⚠ **色見本の色を選んでいるだけ**（見せ方）
+    //     ⚠ **決めているかどうかは、画素から起こしているかで見る。**
+    if (/\bclassify\s*\(/.test(PJ)) bad5.push("peel3d.js が画素を分類している（水の定義が 2 か所になる）");
+    if (/getImageData\s*\(/.test(PJ)) bad5.push("peel3d.js が画素を読んでいる（取得の層の仕事）");
+    // ⚠ **水の面（mask）を画面で組み立てないこと**（swaleArea が返したものを使う）
+    if (/mask\s*\[[^\]]*\]\s*=/.test(PJ)) bad5.push("peel3d.js が水の面を組み立てている");
+    // ⚠ **控える層が GeoJSON を作らないこと**（案B の線）
+    for (const w of ['"Feature"', '"Polygon"', "FeatureCollection"])
+      if (LD.includes(w)) bad5.push(`land.js が GeoJSON を作っている（${w}）。描き方は画面が持つ`);
+    if (VJ.includes("FeatureCollection"))
+      bad5.push("verify.js が GeoJSON を作っている。描き方は画面が持つ");
+    // ⚠ **mask を控えないこと**（豊洲 1.25MB。sessionStorage 約 5MB を 2 地点で埋める）
+    if (/write\([^)]*mask/.test(LD)) bad5.push("land.js が mask を控えている（1.25MB。保存が埋まる）");
+    if (!LD.includes("areaSummary")) bad5.push("land.js が、控える中身を絞っていない（areaSummary が無い）");
+    // ⚠ **点と面が別の入口・別のキー**（ADR 0030）
+    for (const w of ["meijiPoint", "meijiArea", "areaKey"])
+      if (!LD.includes(w)) bad5.push(`land.js に ${w} が無い（点と面を分けていない）`);
+    // ⚠ **画面が取得の層の面を直接呼ばないこと**（控える層を通す）
+    if (/Konjaku\.swaleArea\s*\(/.test(PJ))
+      bad5.push("peel3d.js が取得の層の面を直接呼んでいる（land.js を通す）");
+    bad5.length
+      ? bad(`明治期の「面」が、取得と画面に分かれていない: ${bad5.join("、")}`)
+      : ok("明治期の面は「取得（verify.js swaleArea）→ 控える（land.js meijiArea）→ "
+         + "矩形化だけ（peel3d.js）」に分かれている");
+  }
+
+  // ⚠ **land.js の面を動かして確かめる。**⚠ 字面ではなく振る舞いを見る。
+  {
+    const fails = [];
+    const mkStore = () => { const m = new Map();
+      return { getItem: (k) => m.get(k) ?? null, setItem: (k, v) => m.set(k, String(v)),
+               removeItem: (k) => m.delete(k), _m: m }; };
+    const fresh = async (store, konjaku) => {
+      const g = { sessionStorage: store, Konjaku: konjaku };
+      const code = await readFile(join(PUB, "land.js"), "utf8");
+      new Function("g", code.replace(/\(typeof window === "undefined" \? globalThis : window\)/, "(g)"))(g);
+      return g.KonjakuLand;
+    };
+    // 偽の取得の層。⚠ **何回呼ばれたかを数える**
+    const mk = (tilesOk = 1) => {
+      const n = { swaleArea: 0 };
+      return { n, STATE: { UNREACHABLE: "unreachable" },
+        swaleArea: async (b, z) => { n.swaleArea++;
+          return { mask: new Uint8Array(4), tw: 2, th: 2, x0: 1, y0: 2, z,
+            waterPx: 1, classCounts: { 水: 1 }, classifiedPixels: 1,
+            transparentPixels: 0, unknownPixels: 0,
+            tiles: { ok: tilesOk, absent: 0, unreachable: tilesOk ? 0 : 1 }, ratio: 0.25 }; } };
+    };
+    const BB = { w: 139.79, s: 35.65, e: 139.80, n: 35.66 };
+
+    // 1. 点と面で、キーが別
+    { const L = await fresh(mkStore(), mk());
+      if (L.areaKey(BB, 16) === L.key(139.7975, 35.6548))
+        fails.push("点と面が同じキーになっている"); }
+    // 2. 範囲が違えば、キーも違う
+    { const L = await fresh(mkStore(), mk());
+      if (L.areaKey(BB, 16) === L.areaKey({ ...BB, e: 139.81 }, 16))
+        fails.push("違う範囲が同じキーになっている"); }
+    // 3. ⚠ **mask を控えていない**（保存の中身に mask が入らない）
+    { const st = mkStore(), L = await fresh(st, mk());
+      await L.meijiArea(BB, 16);
+      const saved = [...st._m.values()].join("");
+      if (/mask/.test(saved)) fails.push("mask を控えている（1.25MB。保存が埋まる）");
+      if (!/classCounts/.test(saved)) fails.push("集計を控えていない（控える意味が無い）"); }
+    // 4. ⚠ **1 枚も読めていない回は控えない**（掟: 取得できなかった ≠ 存在しなかった）
+    { const st = mkStore(), L = await fresh(st, mk(0));
+      await L.meijiArea(BB, 16);
+      if (st._m.size !== 0) fails.push("1 枚も読めていない回を控えている（読めない範囲として固まる）"); }
+    // 5. 同時に 2 回頼まれても、取得は 1 回
+    { const K = mk(), L = await fresh(mkStore(), K);
+      await Promise.all([L.meijiArea(BB, 16), L.meijiArea(BB, 16)]);
+      if (K.n.swaleArea !== 1) fails.push(`同時の 2 回が ${K.n.swaleArea} 本になっている`); }
+    // 6. ⚠ **mask はそのまま返る**（画面が矩形化に使う）
+    { const L = await fresh(mkStore(), mk());
+      const a = await L.meijiArea(BB, 16);
+      if (!(a.mask instanceof Uint8Array)) fails.push("mask が返っていない（画面が描けない）");
+      if (a.tw !== 2 || a.x0 !== 1) fails.push("mask の大きさ・左上が返っていない（経緯度へ戻せない）"); }
+    fails.length
+      ? bad(`land.js の面の単体テストが失敗（${fails.length} 件）: ${fails.slice(0, 5).join(" / ")}`)
+      : ok("land.js の面を動かして確認（点と別のキー・範囲ごとのキー・mask を控えない・"
+         + "読めない回を控えない・同時の重なり・mask はそのまま返る）");
+  }
+
   // ⚠ **第1層の字と、問いの見出しは words.js の 1 か所**（hidetzu/konjaku#122）。
   //   ⚠ 2026-08-20 まで、⚠ **同じ第1層をトップと /peel が別々に組んでいた**
   //     （トップ: verify.js の plainPast ／ /peel: peel3d.js の WORD.ground1）。
