@@ -1049,10 +1049,14 @@ const CASES = [
         // ⚠ **出そろってから比べる。**層は別々に返るので、途中で読むと
         //   「あとから第1層が増えた」のを上書きと取り違える（実測 2026-08-19）。
         //   ⚠ 見ている主張は変えていない: **古い呼び出しが今の答えを消さないこと**。
-        () => /件の足元を判定/.test(document.getElementById("land")?.textContent ?? "")
+        // ⚠ **PC で答えを持つのは #landAll（パネル）**（2026-08-20。hidetzu/konjaku#131）。
+        //   ⚠ #land は HUD で、⚠ **パネルが開いているあいだは描かれない。**
+        //   ⚠ 見ている主張は変えていない: **古い呼び出しが今の答えを消さないこと**。
+        () => /件の足元を判定/.test(document.getElementById("landAll")?.textContent ?? "")
           && typeof landform !== "undefined" && landform !== null,
         null, { timeout: 60000 });
-      const mid = await page.locator("#land").textContent();
+      // ⚠ **PC ではパネル（#landAll）が答えを持つ**（同上）
+      const mid = await page.locator("#landAll").textContent();
       // ③ ⚠ **古い呼び出しの返事が、実際に返ってくるまで待つ。**
       //   ⚠ 決め打ちの秒数ではなく、返ったことを見る（上の印）。
       //   ⚠ **返る前に読むと、この検査は何も見ていないことになる**
@@ -1062,7 +1066,7 @@ const CASES = [
       //   ⚠ **上書きするかもしれない側の処理は、そのあとに走る**。
       //   ⚠ 早く読むと「上書きされなかった」ではなく「まだ上書きしていない」を見てしまう
       await page.waitForTimeout(1000);
-      const land = await page.locator("#land").textContent();
+      const land = await page.locator("#landAll").textContent();
       const status = await page.locator("#status").textContent();
       must(/件の足元を判定/.test(land),
         `前の場所の返事が、いまの答えを消した: ${land.replace(/\s+/g, " ").slice(0, 80)}`);
@@ -2551,6 +2555,110 @@ const CASES = [
       return { gone, msg: `${r.era}: 「${r.txt}」／理由を断定せず・「無い」と言わず・`
         + `通信のせいにしない／戻すと消える` };
       }
+    },
+  },
+
+  {
+    // ⚠ **PC では、見えない箱（#land）に土地情報を組み立てない**（hidetzu/konjaku#131）。
+    //
+    //   ⚠ **実測（2026-08-20・main = bc8dc46・豊洲・SW 無効）**
+    //     PC 初期  #land は display:none（0×0）⚠ **なのに 72 字が書かれていた**
+    //
+    //   ⚠ **PC でもパネルは閉じられる。**⚠ **入口は 2 つ**（✕ と ▶ の再生）。
+    //     ⚠ 実測: ▶ を押しても panel は "col hide" になり、#land が 520×130 で出る。
+    //     ⚠ **✕ だけに描画を足すと、⚠ ▶ で空の HUD が出る。**
+    //
+    //   ⚠ **待たずに読む。**⚠ 待つと、⚠ **遅れて埋まっても緑になる**（契約 4「空白を見せない」）。
+    name: "PC では、見えない箱に土地情報を組み立てない", path: "/", group: "core",
+    async check(page) {
+      const ctx = await page.context().browser().newContext({
+        viewport: { width: 1280, height: 800 }, serviceWorkers: "block" });
+      try {
+        const p2 = await ctx.newPage();
+        const errs = [];
+        p2.on("pageerror", (e) => errs.push(e.message));
+        await p2.goto(`${BASE}/peel?${TOYOSU}`, { waitUntil: "domcontentloaded", timeout: 45000 });
+        await p2.waitForFunction(() => /この土地は/.test(document.body.textContent ?? ""),
+          null, { timeout: 60000 });
+        await settleAfterCondition(p2);
+        const read = () => p2.evaluate(() => ({
+          cls: document.getElementById("panel")?.className ?? "",
+          n: (document.getElementById("land")?.innerText ?? "").replace(/\s+/g, " ").trim().length,
+        }));
+        // ⚠ **初期は書いていない**
+        const a = await read();
+        must(!a.cls.includes("hide"), `PC でパネルが閉じて始まっている（${a.cls}）`);
+        must(a.n === 0, `PC の初期表示で、見えない箱に ${a.n} 字が書かれている`);
+        // ⚠ **✕ の直後、⚠ 待たずに読む**
+        await p2.click("#closePanel");
+        const b = await read();
+        must(b.cls.includes("hide"), `✕ でパネルが閉じていない（${b.cls}）`);
+        must(b.n > 0, "✕ の直後、HUD が空のまま（空白を見せている）");
+        must(errs.length === 0, `例外が出た: ${errs.slice(0, 2).join(" / ")}`);
+        await p2.close();
+
+        // ⚠ **▶ の経路は、⚠ まっさらな画面から見る。**
+        //   ⚠ **✕ を先に押すと、⚠ 開き直しても中身が残る**（契約 5）ので、
+        //     ⚠ **▶ に描画が無くても中身があるように見える**（2026-08-20 に踏んだ。
+        //     ⚠ わざと壊しても落ちなかった）。
+        const p3 = await ctx.newPage();
+        const errs3 = [];
+        p3.on("pageerror", (e) => errs3.push(e.message));
+        await p3.goto(`${BASE}/peel?${TOYOSU}`, { waitUntil: "domcontentloaded", timeout: 45000 });
+        await p3.waitForFunction(() => /この土地は/.test(document.body.textContent ?? ""),
+          null, { timeout: 60000 });
+        await settleAfterCondition(p3);
+        const read3 = () => p3.evaluate(() => ({
+          cls: document.getElementById("panel")?.className ?? "",
+          n: (document.getElementById("land")?.innerText ?? "").replace(/\s+/g, " ").trim().length,
+        }));
+        const c0 = await read3();
+        must(c0.n === 0, `▶ を押す前から HUD に ${c0.n} 字ある（この検査が何も見ていない）`);
+        // ⚠ **▶ の直後、⚠ 待たずに読む**（⚠ 2 つめの入口）
+        await p3.click("#play");
+        const c = await read3();
+        must(c.cls.includes("hide"), `▶ でパネルが閉じていない（${c.cls}）`);
+        must(c.n > 0, "▶ の直後、HUD が空のまま（2 つめの入口に描画が無い）");
+        await p3.click("#play");
+        await settleAfterClick(p3);
+        must(errs3.length === 0, `例外が出た: ${errs3.slice(0, 2).join(" / ")}`);
+        return `初期 ${a.n} 字／✕ 直後 ${b.n} 字／⚠ 別の画面で ▶ 直後 ${c.n} 字（例外 0 件）`;
+      } finally { await ctx.close(); }
+    },
+  },
+
+  {
+    // ⚠ **HUD が表示中に model が更新されたら、#land も更新される**（契約 6）。
+    //   ⚠ 地形分類をわざと遅らせ、⚠ **先にパネルを閉じてから**届かせる。
+    //   ⚠ **遅れて届いたものが HUD に乗らないと、⚠ 古い答えが残る。**
+    name: "HUD が出ているあいだに答えが変わったら、HUD も変わる", path: "/", group: "core",
+    async check(page) {
+      const ctx = await page.context().browser().newContext({
+        viewport: { width: 1280, height: 800 }, serviceWorkers: "block" });
+      try {
+        const p2 = await ctx.newPage();
+        // ⚠ 地形分類（ベクトル）だけを 12 秒遅らせる
+        await p2.route(LFC_ROUTE, async (r) => {
+          await new Promise((x) => setTimeout(x, 12000));
+          await r.continue();
+        });
+        await p2.goto(`${BASE}/peel?${TOYOSU}`, { waitUntil: "domcontentloaded", timeout: 45000 });
+        await p2.waitForTimeout(4000);
+        await p2.click("#closePanel");
+        await settleAfterClick(p2);
+        const before = await p2.evaluate(() =>
+          (document.getElementById("land")?.innerText ?? "").replace(/\s+/g, " ").trim());
+        must(before.length > 0, "パネルを閉じたのに HUD が空（地形分類より先に閉じた場合）");
+        // ⚠ 遅れて届くのを待つ。⚠ **時間切れで落とさない**（⚠ 何を主張していたのか読めなくなる）
+        const moved = await p2.waitForFunction((b) =>
+          (document.getElementById("land")?.innerText ?? "").replace(/\s+/g, " ").trim() !== b,
+          before, { timeout: 45000 }).then(() => true).catch(() => false);
+        const after = await p2.evaluate(() =>
+          (document.getElementById("land")?.innerText ?? "").replace(/\s+/g, " ").trim());
+        must(moved && after !== before,
+          `遅れて届いた答えが HUD に乗っていない（古い答えが残る）: 「${before.slice(0, 40)}」`);
+        return `閉じた直後「${before.slice(0, 30)}」→ 届いたあと「${after.slice(0, 30)}」`;
+      } finally { await ctx.close(); }
     },
   },
 
@@ -5931,9 +6039,15 @@ const CASES = [
     name: "PC ではパネルが答えを持ち、閉じると HUD が引き継ぐ", path: `/peel?${TOYOSU}`,
     async check(page) {
       await peelReady(page);
-      await page.waitForFunction(() => (document.getElementById("land")?.textContent ?? "").includes("%"),
+      // ⚠ **待つのはパネル側**（2026-08-20。hidetzu/konjaku#131）。
+      //   ⚠ **PC の初期表示で #land は描かれない**（見えないから）。
+      //   ⚠ 以前はここが #land を待っており、⚠ **textContent が display:none でも読めるので通っていた。**
+      await page.waitForFunction(() => (document.getElementById("landAll")?.textContent ?? "").includes("%"),
         null, { timeout: 60000 });
       must(await page.locator("#panel.hide").count() === 0, "PC でパネルが閉じて始まっている");
+      // ⚠ **開いているあいだ、HUD には何も書かれていない**（hidetzu/konjaku#131 の要点）
+      must((await page.$eval("#land", (e) => e.innerText.trim())).length === 0,
+        "パネルを開いているのに、見えない HUD に土地情報が書かれている");
       const heroOpen = await effOpacity(page, "#landAll");
       must(heroOpen > 0, `パネルの答えが読めない: 実効 opacity ${heroOpen}`);
       must(await effOpacity(page, "#land") === 0, "パネルを開いているのに HUD にも同じ答えが出ている");
@@ -6835,7 +6949,8 @@ const CASES = [
       await settleAfterCondition(page);
       const t = await page.evaluate(() => ({
         status: (document.getElementById("status")?.innerText ?? "").replace(/\s+/g, " "),
-        land: (document.getElementById("land")?.innerText ?? "").replace(/\s+/g, " "),
+        // ⚠ **PC で答えを持つのは #landAll（パネル）**（2026-08-20。hidetzu/konjaku#131）
+        land: (document.getElementById("landAll")?.innerText ?? "").replace(/\s+/g, " "),
         // ⚠ 台帳はパネルの中。閉じていても DOM には入る
         prov: (document.getElementById("prov")?.innerText ?? "").replace(/\s+/g, " "),
       }));
