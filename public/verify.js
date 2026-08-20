@@ -234,6 +234,104 @@
         : null };
   }
 
+  // ---- 明治期の「面」（この範囲で何がどれだけあったか）----
+  //
+  // ⚠ **「点」とは別の問い**（ADR 0030 ／ hidetzu/konjaku#121 の Owner Decision）。
+  //   meiji(lon,lat) … この地点は何だったか        ⚠ トップが使う
+  //   swaleArea(bbox) … この範囲で何がどれだけか   ⚠ /peel が使う
+  //   ⚠ **点の結果から面を推測しない。**⚠ **面を点の代用にしない。**
+  //
+  // ⚠ **2026-08-20 に peel3d.js から移した**（hidetzu/konjaku#126）。
+  //   ⚠ 以前は画面コードの中に、⚠ **タイル URL の組み立て・複数枚の取得・canvas の画素読み・
+  //     分類・集計・失敗の数え方・キャッシュ**が全部あった（74 行）。
+  //   ⚠ **取り方を知っているのはこの層だけ**（docs/DOMAIN.md §3-3）。
+  //
+  // ⚠ **返すのは値だけ。**⚠ **GeoJSON を作らない**（描き方の都合は画面が持つ。
+  //   hidetzu/konjaku#126 の Owner 判断＝案B）。
+  //
+  // ⚠ **tiles を ok / absent / unreachable に分けて返す。**⚠ **ここを潰すと掟の一行目に反する**
+  //   （1 枚も読めていないのに「データがありません」と書くことになる）。
+  const swaleTiles = new Map();
+  function swaleTile(x, y, z) {
+    const k = `${z}/${x}/${y}`;
+    if (!swaleTiles.has(k)) swaleTiles.set(k, readSwaleTile(x, y, z, k));
+    return swaleTiles.get(k);
+  }
+  async function readSwaleTile(x, y, z, k) {
+    const res = await loadImage(`${GSI}/swale/${z}/${x}/${y}.png`);
+    // ⚠ **失敗は覚えない。**覚えると再試行が空振りする
+    if (res.state === UNREACHABLE) { swaleTiles.delete(k); return { state: UNREACHABLE, data: null }; }
+    if (res.state === ABSENT) return { state: ABSENT, data: null };
+    const g = ctx();
+    g.clearRect(0, 0, 256, 256); g.drawImage(res.image, 0, 0);
+    return { state: OK, data: g.getImageData(0, 0, 256, 256).data };
+  }
+
+  // 経緯度 ⇄ タイル座標（小数）。⚠ tileOf と同じ式だが、⚠ **面は端数まで要る**
+  const lon2xf = (l, z) => ((l + 180) / 360) * 2 ** z;
+  const lat2yf = (l, z) => { const r = l * Math.PI / 180;
+    return ((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2) * 2 ** z; };
+
+  // 1 画素だけ読む。⚠ **面と同じタイル束を使う**ので、⚠ **要求は増えない。**
+  //
+  // ⚠ **これは meiji(lon,lat) とは別のもの。**⚠ 混ぜない。
+  //   meiji()      … 根拠つきの「事実」（近傍 15×15 の一致率・200m 四方の集計・出典）を組む。
+  //                  ⚠ **1 地点について 1 回だけ呼ぶもの。**
+  //   swalePixel() … ⚠ **画素 1 つの答えだけ。**⚠ 建物 1 件ごとに何百回も呼ばれる。
+  //   ⚠ **建物ごとに meiji() を呼んではいけない。**⚠ 近傍計算と集計が件数ぶん走る。
+  async function swalePixel(lon, lat, z = 16) {
+    const xf = lon2xf(lon, z), yf = lat2yf(lat, z);
+    const x = Math.floor(xf), y = Math.floor(yf);
+    const { state, data: d } = await swaleTile(x, y, z);
+    if (state !== OK) return { state };   // absent（整備対象外）／ unreachable（読めていない）
+    const i = (Math.floor((yf - y) * 256) * 256 + Math.floor((xf - x) * 256)) * 4;
+    const rgba = [d[i], d[i + 1], d[i + 2], d[i + 3]];
+    if (rgba[3] === 0) return { state: OK, none: true, rgba };
+    const c = classify(rgba[0], rgba[1], rgba[2]);
+    return c ? { state: OK, cls: c, water: !!c.water, rgba }
+             : { state: OK, unknown: true, rgba };
+  }
+
+  // bbox {w,e,n,s} の範囲を、z のタイル群から読んで数える。
+  // 返すもの:
+  //   mask              水の画素を 1 にした Uint8Array（TW×TH）。⚠ **控えない**（1.25MB になる）
+  //   tw / th / x0 / y0 mask の大きさと左上のタイル座標（⚠ 画面が経緯度へ戻すのに要る）
+  //   waterPx           水の画素数
+  //   classCounts       14 区分ごとの画素数
+  //   classifiedPixels / transparentPixels / unknownPixels
+  //   tiles             {ok, absent, unreachable}
+  //   ratio             水の割合（mask 全体に対する）
+  async function swaleArea(bbox, z = 16) {
+    const x0 = Math.floor(lon2xf(bbox.w, z)), x1 = Math.floor(lon2xf(bbox.e, z));
+    const y0 = Math.floor(lat2yf(bbox.n, z)), y1 = Math.floor(lat2yf(bbox.s, z));
+    const tw = (x1 - x0 + 1) * 256, th = (y1 - y0 + 1) * 256;
+    const mask = new Uint8Array(tw * th);
+    let waterPx = 0, classifiedPixels = 0, transparentPixels = 0, unknownPixels = 0;
+    const classCounts = Object.fromEntries(SWALE.map((c) => [c.name, 0]));
+    // ⚠ タイルごとの結末を数える。⚠ **absent（404）と unreachable（読めず）を分けて持つ**
+    const tiles = { ok: 0, absent: 0, unreachable: 0 };
+
+    const jobs = [];
+    for (let ty = y0; ty <= y1; ty++) for (let tx = x0; tx <= x1; tx++)
+      jobs.push(swaleTile(tx, ty, z).then((r) => ({ tx, ty, ...r })));
+    for (const { tx, ty, state, data: d } of await Promise.all(jobs)) {
+      if (state !== OK) { tiles[state]++; continue; }
+      tiles.ok++;
+      const ox = (tx - x0) * 256, oy = (ty - y0) * 256;
+      for (let y = 0; y < 256; y++) for (let x = 0; x < 256; x++) {
+        const i = (y * 256 + x) * 4;
+        if (d[i + 3] === 0) { transparentPixels++; continue; }
+        const c = classify(d[i], d[i + 1], d[i + 2]);
+        if (!c) { unknownPixels++; continue; }
+        classCounts[c.name]++; classifiedPixels++;
+        if (c.water) { mask[(oy + y) * tw + (ox + x)] = 1; waterPx++; }
+      }
+    }
+    return { mask, tw, th, x0, y0, z, waterPx, classCounts,
+      classifiedPixels, transparentPixels, unknownPixels, tiles,
+      ratio: tw * th ? waterPx / (tw * th) : 0 };
+  }
+
   // ---- 地形分類 ----
   // 「その土地はどうやってできたか」の主たる手法（掟: 主題は「成り立ち」。明治期は手法のひとつ）。明治期の低湿地は
   // 同じ問いに別の角度から答える、もうひとつの手法として残してある。
@@ -840,6 +938,6 @@
   }
 
   global.Konjaku = { GSI, SWALE, ERAS, LATEST, AREA, tileOf, loadImage, classify, isWatery,
-    landform, meiji, elevation, photos, facts, narrate, badges, suggestions,
+    landform, meiji, swaleArea, swalePixel, elevation, photos, facts, narrate, badges, suggestions,
     STATE: { OK, ABSENT, UNREACHABLE }, TIMEOUT_MS };
 })(window);
