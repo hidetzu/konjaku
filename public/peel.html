@@ -358,42 +358,7 @@
 
   /* ---- PC: 横棒（スライダー） ---- */
   /* ⚠ PC は 1 段 77px あり、横棒のほうが一覧できる。ドラムは出さない。 */
-  @media(min-width:681px){
-    #drum,#drumWrap,#drumMark,#drumPos{display:none}
-    /* ⚠ **ノブは横棒の外へ半径ぶん（16px）はみ出す。**
-       gap にそのぶんを含めないと、いちばん左（現在）で ▶ と重なる。
-       ⚠ 左右の padding も同じ理由（右端＝明治期のノブが画面の縁に触れる）。 */
-    #bar{padding:0 16px;gap:36px}
 
-    /* ⚠ **Time Controller**（2026-08-20。hidetzu/konjaku#132）。
-       ⚠ **PC では「現在の年代を見る」と「年代を動かす」を 1 つの器にする。**
-       ⚠ **スマホは 1 文字も変えない**（Owner 決定 3）。⚠ だからここ（広い側）にだけ書く。
-
-       ⚠ **実測（2026-08-20・main = 5210c9e・1280×800・豊洲・SW 無効）**
-         #era        580×196  y429   ⚠ 別の器
-         #timePanel  720×136  y638   ⚠ 別の器
-         #eraToggle / #timeToggle    ⚠ 「閉じる ⌄」が 2 個
-
-       ⚠ **幅を揃えて隙間を消し、⚠ 角を落として 1 つの箱に見せる。**
-       ⚠ **DOM の順は変えていない**（読み上げとキーボードの順はそのまま）。 */
-    #hud{gap:0}
-    #era,#timePanel{width:min(720px,100%)}
-    #era{border-bottom-left-radius:0;border-bottom-right-radius:0;
-      border-bottom:0;box-shadow:0 -12px 38px rgba(0,0,0,.42)}
-    #timePanel{border-top-left-radius:0;border-top-right-radius:0;border-top:0}
-
-    /* ⚠ **全体は畳まない**（Owner 決定 2）。⚠ 畳むのは「年代を動かす」操作部だけ。
-       ⚠ **常時表示: 現在の年代 ／ #over ／ #est。**
-       ⚠ **`#est` は、⚠ 3D を誤解しないための断り**（`peel3d.js` の同名コメントを読む）。
-         ⚠ **畳んで消えると、⚠ 推定の高さで建物が立った絵を断りなしに見せることになる**（掟 §1）。
-       ⚠ だから ⚠ **年代の説明を畳む仕掛け（#eraToggle）を PC では出さない。** */
-    #eraToggle{display:none}
-
-    /* ⚠ **「いま何年代か」は 1 か所**（Owner 決定 1）。
-       ⚠ `#timeSummary` は「畳んだときの受け皿」だが、⚠ **PC では上の `.y` が常に出ている。**
-       ⚠ 実測（2026-08-20）: 帯を畳むと `.y`「現在」と `#timeSummary`「現在」が同時に出ていた。 */
-    #timePanel.collapsed #timeSummary{display:none}
-  }
   #drum::-webkit-scrollbar{display:none}
 
   /* ============ パネル ============ */
@@ -562,7 +527,13 @@
   .maplibregl-ctrl-group button .maplibregl-ctrl-icon{filter:invert(1) brightness(1.7)}
   /* 指の当たり判定。既定は 29×29 で iOS の最小 var(--tap) を下回っていた */
   .maplibregl-ctrl-group button{width:var(--tap)!important;height:var(--tap)!important}
-  @media(max-width:680px){
+  /* ⚠ **狭い幅が既定**（2026-08-21。hidetzu/konjaku#133）。
+     ⚠ **ここから下は、⚠ もともと `@media(max-width:680px)` の中にあったもの。**
+     ⚠ **原文のまま外へ出した**（コメントも値も動かしていない）。
+     ⚠ 広い画面で違う値が要るものは、⚠ **下の `@media(min-width:681px)` に書く。**
+     ⚠ **`max-width` を新しく書かない**（docs/DOMAIN.md §4-2）。
+     ⚠ **順番が効く。**⚠ 広い側は、⚠ **この下に置く**（前に置くと狭い値が PC でも勝つ）。 */
+
     #panel{width:calc(100% - 28px);max-height:58%}
     /* ⚠ 狭い幅でも帰属表示の場所を空ける（12 → 26px）。
        ⚠ **この 14px は HUD を押し上げる。** 320×640 では HUD が画面中央（＝いま調べている
@@ -712,6 +683,92 @@
       backdrop-filter:blur(18px);border-bottom:1px solid var(--line)}
     /* ⚠ 帯のぶん、中身の頭を空ける。空けないと 1 行目が下敷きになる。 */
     #panel:not(.hide){padding-top:76px}
+
+  @media(min-width:681px){
+    /* ⚠ **ここから下は「PC の本来の値」**（2026-08-21。hidetzu/konjaku#133）。
+       ⚠ **狭い側を素の指定へ出したので、⚠ 広い画面で違う値が要るものを、ここへ書き戻す。**
+       ⚠ **どれも「Desktop の正当な差分」**（Owner 決定 3）。
+         ⚠ `unset` / `initial` は使っていない。⚠ **実際の値をそのまま書いている。**
+       ⚠ **値は反転前の素の CSS から機械で拾った**（⚠ 手で打ち直していない）。 */
+
+    /* 板は左上の小さな箱に戻す（狭い幅は全画面） */
+    /* ⚠ **値は素の #panel（この上）と同じ。**⚠ 打ち直していない。
+       ⚠ **z-index も戻す。**⚠ 狭い幅は全画面で読むので 16 まで上げているが、
+         ⚠ **PC は 11**（#chrome 13・#hud 12 の下）。
+       ⚠ 実測（2026-08-21）: 戻し忘れて、⚠ **✕ が #panel の下敷きになり押せなくなった**
+         （実描画 3 件が page.click の時間切れで落ちた）。 */
+    #panel{position:absolute;top:14px;left:14px;right:auto;bottom:auto;z-index:11;
+      width:300px;max-width:none;max-height:calc(100% - 190px);
+      border-radius:11px;border:1px solid var(--line);padding:15px}
+    #panel:not(.hide){padding-top:64px}
+    #panel.hide{transform:translateX(-14px)}
+    /* ⚠ **PC では、板を開いていても HUD を出す。**⚠ 狭い幅は 3D を隠さないために消している */
+    #panel:not(.hide) ~ #hud{display:flex}
+    #chrome{position:absolute;top:14px;left:14px;right:auto;z-index:13;
+      display:flex;gap:8px;padding:0;background:none;border-bottom:0;backdrop-filter:none;
+      justify-content:flex-start;align-items:stretch}
+    #panel:not(.hide) ~ #chrome{position:absolute;top:14px;left:14px;right:auto;
+      padding:0;background:none;border-bottom:0;backdrop-filter:none;
+      justify-content:flex-start;align-items:stretch}
+    /* ⚠ **PC では ☰ を出す。**⚠ 狭い幅は、⚠ **板を開いているあいだ ☰ を隠している**
+       （全画面で読むので、開く導線が要らない）。⚠ 広い画面では板と地図が並ぶので出す。
+       ⚠ 実測（2026-08-21）: これを書き忘れて、⚠ **#chrome が 269 → 123px になった。** */
+    #panel:not(.hide) ~ #chrome #toggle{display:inline-flex}
+    #closePanel span{display:none}
+    #chrome a span,#toggle span,#panel:not(.hide) ~ #chrome a span{display:inline}
+
+    /* 年代の箱は、広い幅の大きさに戻す */
+    #hud{padding:0 26px 26px}
+    #era{padding:9px 12px 11px}
+    #era .y{display:block;font-size:var(--fs-hero-lg)}
+    #era .era-readout{display:inline-block;min-width:148px;padding:0 76px}
+    #era.collapsed .era-readout{min-width:0;padding:0}
+    .era-panel-head{min-height:80px}
+    #timePanel .time-panel-head{display:flex}
+    /* ⚠ **▶ と横棒の行**（#bar）。⚠ 狭い幅ではドラムに差し替えるため隠している */
+    #bar{display:flex}
+    .time-panel-head{padding:0 10px 0 14px}
+    #timePanelBody{padding:7px 14px 10px}
+    #timePanelTitle{font-size:var(--fs-body)}
+
+    /* 年代を選ぶ道具は、PC では横棒（狭い幅はものさし・ドラム） */
+    #ruler{display:none}
+    #track{display:block}
+    #track .lab{letter-spacing:normal;font-size:var(--fs-note)}
+    #drum,#drumWrap,#drumMark,#drumPos{display:none}
+    /* ⚠ **ノブは横棒の外へ半径ぶん（16px）はみ出す。**
+       gap にそのぶんを含めないと、いちばん左（現在）で ▶ と重なる。
+       ⚠ 左右の padding も同じ理由（右端＝明治期のノブが画面の縁に触れる）。 */
+    #bar{padding:0 16px;gap:36px}
+
+    /* ⚠ **Time Controller**（2026-08-20。hidetzu/konjaku#132）。
+       ⚠ **PC では「現在の年代を見る」と「年代を動かす」を 1 つの器にする。**
+       ⚠ **スマホは 1 文字も変えない**（Owner 決定 3）。⚠ だからここ（広い側）にだけ書く。
+
+       ⚠ **実測（2026-08-20・main = 5210c9e・1280×800・豊洲・SW 無効）**
+         #era        580×196  y429   ⚠ 別の器
+         #timePanel  720×136  y638   ⚠ 別の器
+         #eraToggle / #timeToggle    ⚠ 「閉じる ⌄」が 2 個
+
+       ⚠ **幅を揃えて隙間を消し、⚠ 角を落として 1 つの箱に見せる。**
+       ⚠ **DOM の順は変えていない**（読み上げとキーボードの順はそのまま）。 */
+    #hud{gap:0}
+    #era,#timePanel{width:min(720px,100%)}
+    #era{border-bottom-left-radius:0;border-bottom-right-radius:0;
+      border-bottom:0;box-shadow:0 -12px 38px rgba(0,0,0,.42)}
+    #timePanel{border-top-left-radius:0;border-top-right-radius:0;border-top:0}
+
+    /* ⚠ **全体は畳まない**（Owner 決定 2）。⚠ 畳むのは「年代を動かす」操作部だけ。
+       ⚠ **常時表示: 現在の年代 ／ #over ／ #est。**
+       ⚠ **`#est` は、⚠ 3D を誤解しないための断り**（`peel3d.js` の同名コメントを読む）。
+         ⚠ **畳んで消えると、⚠ 推定の高さで建物が立った絵を断りなしに見せることになる**（掟 §1）。
+       ⚠ だから ⚠ **年代の説明を畳む仕掛け（#eraToggle）を PC では出さない。** */
+    #eraToggle{display:none}
+
+    /* ⚠ **「いま何年代か」は 1 か所**（Owner 決定 1）。
+       ⚠ `#timeSummary` は「畳んだときの受け皿」だが、⚠ **PC では上の `.y` が常に出ている。**
+       ⚠ 実測（2026-08-20）: 帯を畳むと `.y`「現在」と `#timeSummary`「現在」が同時に出ていた。 */
+    #timePanel.collapsed #timeSummary{display:none}
   }
   /* ============ 動きを減らす ============ */
   /* ⚠ OS・ブラウザで「動きを減らす」を入れている人には、動きだけを消す。
