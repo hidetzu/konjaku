@@ -18,7 +18,7 @@
 //   一度来た人に古い `/` と `/share.js` が出続けた。しかもローカルは初回訪問なので
 //   絶対に再現せず、CI も全部通る。流入を測り始める直前に一度踏みかけた。
 //   なぜハッシュにしたかの全文は scripts/sw-hash.mjs の頭にある。
-const VERSION = "konjaku-d0d19ca2";
+const VERSION = "konjaku-74d40f7f";
 // ⚠ addAll は1件でも 404 すると install ごと reject し、キャッシュが丸ごと死ぬ。
 //   この一覧を足し引きしたときも版は変わる（一覧そのものもハッシュの材料に入れてある）。
 const SHELL = [

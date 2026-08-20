@@ -14,15 +14,15 @@
  */
 :root {
   /* 文字の段（⚠ px 固定。rem 化は別 Issue） */
-  --text-2xl: 17px;
-  --text-2xs: 11px;
-  --text-3xl: 19px;
-  --text-base: 14px;
-  --text-lg: 15px;
-  --text-md: 13px;
-  --text-sm: 12.5px;
-  --text-xl: 16px;
-  --text-xs: 12px;
+  --text-2xl: 1.0625rem;
+  --text-2xs: 0.6875rem;
+  --text-3xl: 1.1875rem;
+  --text-base: 0.875rem;
+  --text-lg: 0.9375rem;
+  --text-md: 0.8125rem;
+  --text-sm: 0.78125rem;
+  --text-xl: 1rem;
+  --text-xs: 0.75rem;
 
   /* 意味ごとの文字サイズ */
   --fs-badge: var(--text-sm);

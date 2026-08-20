@@ -2324,6 +2324,69 @@ const CASES = [
     },
   },
   {
+    // ⚠ **ブラウザの文字サイズ設定に追従すること**（hidetzu/konjaku#91）。
+    //   ⚠ **静的検査だけでは足りない。**「html に px が無い」ことは見られても、
+    //     ⚠ **実際に字が大きくなるか**は描かないと分からない。
+    //   ⚠ 直す前の実測（2026-08-20・375×667）: 設定を 125% / 150% にしても
+    //     ⚠ **body も h1 も 1px も変わらなかった**（14 / 19px のまま）。
+    //   ⚠ **既定（100%）で 1px も変えていないこと**を、対にして見る。
+    //     ⚠ 片側だけだと、既定を壊しても緑になる。
+    //   ⚠ **場所を選んだあとの画面も見る。**⚠ **あふれていたのはそちら**（バッジは
+    //     場所を選ばないと出ない）。⚠ 2026-08-20 に踏んだ: 未選択だけを見ていて、
+    //     ⚠ **わざと壊しても落ちなかった。**
+    name: "ブラウザの文字サイズを上げると、字が大きくなる",
+    path: "/?q=%E8%B1%8A%E6%B4%B2&ll=35.6548,139.7975",
+    async check(page) {
+      // ⚠ 判定が出るまで待つ（バッジはそのあとに出る）
+      await page.waitForFunction(
+        () => /旧水部|土地/.test(document.getElementById("verdict")?.textContent ?? ""),
+        null, { timeout: 60000 });
+      const read = () => page.evaluate(() => {
+        const d = document.documentElement;
+        const g = (s) => { const e = document.querySelector(s);
+          return e && e.checkVisibility() ? parseFloat(getComputedStyle(e).fontSize) : null; };
+        return { root: parseFloat(getComputedStyle(d).fontSize),
+                 body: parseFloat(getComputedStyle(document.body).fontSize),
+                 h1: g("h1"), q: g("#q"),
+                 over: d.scrollWidth - d.clientWidth };
+      });
+      const out = [];
+      for (const [w, h] of [[375, 667], [344, 882], [320, 640], [1280, 800]]) {
+        await page.setViewportSize({ width: w, height: h });
+        await page.waitForSelector("#q", { timeout: 30000 });
+        // ⚠ バッジが出ていること。⚠ **出ていない画面を測っても、あふれは捕まらない**
+        await page.waitForFunction(() => document.querySelectorAll(".badges .badge").length > 0,
+          null, { timeout: 30000 });
+        await settleAfterCondition(page);
+        const base = await read();
+        // ⚠ **既定は 14px のまま**（0.875rem × 16px）。⚠ ここが動いたら既定を壊している
+        must(base.body === 14, `${w}px: 既定の本文が 14px でない（${base.body}px）`);
+        must(base.root === 16, `${w}px: ルートがブラウザの既定（16px）でない（${base.root}px）`);
+        must(base.over <= 0, `${w}px: 既定で横にあふれている（${base.over}px）`);
+        for (const scale of [125, 150]) {
+          // ⚠ ブラウザの「文字サイズ N%」＝ 初期ルートを 16×N/100 にすること
+          const tag = await page.addStyleTag({ content: `:root{font-size:${16 * scale / 100}px !important}` });
+          await settleAfterClick(page);
+          const big = await read();
+          const want = 14 * scale / 100;
+          must(Math.abs(big.body - want) < 0.51,
+            `${w}px/${scale}%: 本文が追従していない（${big.body}px。${want}px のはず）`);
+          must(big.h1 > base.h1,
+            `${w}px/${scale}%: 見出しが追従していない（${base.h1} → ${big.h1}px）`);
+          must(big.q > base.q,
+            `${w}px/${scale}%: 入力欄が追従していない（${base.q} → ${big.q}px）`);
+          // ⚠ **大きくして崩れないこと。**⚠ nowrap のバッジが画面をはみ出していた
+          must(big.over <= 0, `${w}px/${scale}%: 横にあふれている（${big.over}px）`);
+          out.push(`${w}/${scale}%: ${big.body}px`);
+          await tag.evaluate((e) => e.remove());
+          await settleAfterClick(page);
+        }
+      }
+      return `既定は 14px のまま／125%・150% で追従し、4 幅とも横あふれ 0（${out.slice(0, 4).join(" ")} …）`;
+    },
+  },
+
+  {
     // ⚠ **プライバシーの 3 段は、場所を送る前に読めること。**
     //   ⚠ 以前は畳んだフッターの中にしかなく、⚠ **利用者役 2/4 が「これは先に見たかった」**。
     //   ⚠ **「見えている」だけでなく「畳まれていない」「画面内」まで見る。**

@@ -1390,6 +1390,36 @@ head("6. 外部リンク");
     if (!defined.has(v)) bad(`判定の格を表す変数が消えている: ${v}`);
 }
 
+  // ⚠ **ブラウザの文字サイズ設定に追従すること**（2026-08-20・hidetzu/konjaku#91）。
+  //   ⚠ 直す前は `html,body{font:14px/1.65 …}` があり、⚠ **画面が設定を上書きしていた。**
+  //     実測（375×667）: 設定を 125% / 150% にしても
+  //     ⚠ **body も h1 も #q も 1px も変わらなかった**（14 / 19 / 16px のまま）。
+  //   ⚠ **`--text-*` を rem にするだけでは足りない。**⚠ **html の px を外すのが本体。**
+  //   ⚠ 既定時の見た目は変えていない（0.875rem × 既定 16px = 14px）。
+  {
+    const bad2 = [];
+    const css = await readFile(join(PUB, "css", "tokens.css"), "utf8");
+    for (const [f, st0] of [["index.html", src["index.html"]], ["peel.html", src["peel.html"]],
+                            ["tokens.css", css]]) {
+      const st = (st0 ?? "").replace(/<!--[\s\S]*?-->/g, "").replace(/\/\*[\s\S]*?\*\//g, "");
+      // ⚠ **html セレクタに font-size / font 短縮形を書かない。**
+      //   ⚠ body に書くのはよい（ルートを動かさない）。
+      for (const m of st.matchAll(/(^|[}\n])\s*([^{}\n]*\bhtml\b[^{}]*)\{([^}]*)\}/g)) {
+        const sel = m[2].trim(), body = m[3];
+        if (/font-size\s*:/.test(body) || /(^|;)\s*font\s*:/.test(body))
+          bad2.push(`${f}「${sel}」に文字の大きさがある（ブラウザの設定を画面が上書きする）`);
+      }
+      // ⚠ **--text-* は rem。**px に戻すと、設定を上げても字が変わらない
+      for (const m of st.matchAll(/(--text-[a-z0-9-]+)\s*:\s*([^;]+);/g)) {
+        const [, name, v] = m;
+        if (/\d\s*(px|pt)\b/.test(v)) bad2.push(`${f} ${name}: ${v.trim()}（rem で書く）`);
+      }
+    }
+    bad2.length
+      ? bad(`文字サイズがブラウザ設定に追従しない: ${bad2.join("、")}`)
+      : ok("文字の根元は rem で、html に font-size を書いていない（ブラウザの文字サイズ設定に追従する）");
+  }
+
 // ⚠ 文字の大きさは、生の px で書かない。
 //   直す前は font-size の宣言が 127 件・値が 16 種に散らばっていて、同じ「根拠」を出すのに
 //   9 / 9.5 / 10 / 10.5px が混在していた。**まとめて上げることができない状態**だった。
