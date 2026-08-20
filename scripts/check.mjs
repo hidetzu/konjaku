@@ -1395,15 +1395,16 @@ head("6. 外部リンク");
   //   ⚠ この作品は狭い画面で使われる（実測の基準幅は 375×667）。
   //   ⚠ **既定のほうを例外として書くと、足すたびに広い側の打ち消しが要る。**
   //
-  // ⚠ **既存の 1 箇所（peel.html の max-width:680px）は残している。**
-  //   ⚠ 中身は 110 組で、⚠ **104 組が狭い側にしか無い**（うち 92 組は値の付け替え）。
-  //   ⚠ 組み直すと「狭い幅が 1px も変わらない」を保てない。
-  //   ⚠ **`/peel` の CSS を作り直すときに、一緒に直す。**⚠ **それまでは増やさない。**
+  // ⚠ **残していた 1 箇所（peel.html の max-width:680px）は、2026-08-21 に無くなった。**
+  //   ⚠ 狭い側の 112 組を素の指定へ出し、⚠ **広い画面で違う値だけを min-width へ書いた。**
+  //   ⚠ **6 幅（375 / 344 / 320 / 1280 / 1440 / 1920）で、字も位置も 1px も変わっていない。**
+  //   ⚠ **`unset` / `initial` / `revert` は 0 組**（＝帳尻合わせをしていない）。
+  //   ⚠ **許可一覧は空。**⚠ **増やすときは、ここに理由と一緒に書く。**
   //
   // ⚠ **数だけでなく場所も見る。**⚠ 数だけだと、⚠ **別のファイルへ移しても通ってしまう。**
   // ⚠ **`@media (hover:none)` は対象外**（幅ではなく入力手段）。
   {
-    const ALLOW = [["peel.html", "680px"]];   // ⚠ **増やすときは、ここに理由と一緒に書く**
+    const ALLOW = [];   // ⚠ **空。**⚠ 増やすときは、ここに理由と一緒に書く
     const css = await readFile(join(PUB, "css", "tokens.css"), "utf8");
     const found = [];
     for (const [f, s0] of [["index.html", src["index.html"]], ["peel.html", src["peel.html"]],
@@ -1421,10 +1422,10 @@ head("6. 外部リンク");
       : gone.length
         ? bad(`許していた max-width が消えている: ${gone.map(([f, v]) => `${f} の ${v}`).join("、")}`
             + `（⚠ **直したなら、この検査の ALLOW と docs/DOMAIN.md §4-2 も直す**）`)
-        : ok(`max-width の幅指定は ${found.length} 箇所だけ（peel.html の 680px。理由は docs/DOMAIN.md §4-2）`);
+        : ok(`幅の max-width は ${found.length} 箇所（⚠ **狭い幅が既定**。docs/DOMAIN.md §4-2）`);
     // ⚠ **決めごとが文書に書かれていること。**⚠ 検査だけあって理由が無いと、次の人が外す
     const dom = await readFile(join(ROOT, "docs", "DOMAIN.md"), "utf8");
-    for (const w of ["狭い幅を既定", "min-width", "104 組"])
+    for (const w of ["狭い幅を既定", "min-width", "1px も変わっていない"])
       if (!dom.includes(w)) bad(`docs/DOMAIN.md に「${w}」が無い（決めごとと、残す理由を書く）`);
   }
 
