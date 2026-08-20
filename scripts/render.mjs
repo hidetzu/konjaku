@@ -2727,6 +2727,55 @@ const CASES = [
   },
 
   {
+    // ⚠ **深掘りの導線は 1 か所**（hidetzu/konjaku#138）。
+    //
+    //   ⚠ **実測（2026-08-21・main = 8219774・豊洲・SW 無効）**
+    //     根拠を開くと ⚠ **`#own` に 1 個・一覧に 1 個**。
+    //     ⚠ 同時に目に入りはしない（開くと一覧は画面の上の外へ流れる）が、
+    //     ⚠ **DOM には常に 2 つあり、⚠ 同じ判定で同じことを言っていた。**
+    //   ⚠ 利用者役 4 名に画面だけを見せた: ⚠ **4/4 が一覧行を残すと答え、4/4 が根拠側を否定した。**
+    //
+    //   ⚠ **一覧行は残す。**⚠ 消すと、⚠ 「深掘りが無くなった」になる。
+    name: "深掘りの導線が、根拠を開いても 1 か所のまま", path: "/", group: "core",
+    async check(page) {
+      const out = [];
+      for (const [w, h] of [[1280, 800], [375, 667]]) {
+        const ctx = await page.context().browser().newContext({
+          viewport: { width: w, height: h }, hasTouch: w < 680, serviceWorkers: "block" });
+        try {
+          const p2 = await ctx.newPage();
+          await p2.goto(`${BASE}/?${TOYOSU}`, { waitUntil: "domcontentloaded", timeout: 45000 });
+          await waitVerdict(p2);
+          await settleAfterCondition(p2);
+          const look = () => p2.evaluate(() => ({
+            own: document.querySelectorAll('#own a[href*="./peel"]').length,
+            list: [...document.querySelectorAll('#list a[href*="./peel"], #list .it')]
+              .filter((e) => /この場所を深掘り/.test(e.textContent ?? "")).length,
+            listY: (() => { const e = [...document.querySelectorAll("#list .it")]
+              .find((x) => /この場所を深掘り/.test(x.textContent ?? ""));
+              return e ? Math.round(e.getBoundingClientRect().top) : null; })(),
+          }));
+          // ⚠ **初期は一覧に 1 個だけ**
+          const a = await look();
+          must(a.list === 1, `${w}px: 一覧の深掘り行が ${a.list} 個（1 個のはず）`);
+          must(a.own === 0, `${w}px: 根拠パネルに深掘りの導線が ${a.own} 個ある`);
+          must(a.listY !== null, `${w}px: 一覧の深掘り行が見つからない`);
+          // ⚠ **根拠を開いても増えない**
+          await p2.click("#whyBtn");
+          await p2.waitForSelector("#own .ev", { timeout: 30000 });
+          await settleAfterCondition(p2);
+          const b2 = await look();
+          must(b2.own === 0,
+            `${w}px: 根拠を開くと深掘りの導線が ${b2.own} 個に増える（1 か所のはず）`);
+          must(b2.list === 1, `${w}px: 根拠を開いたら一覧の行が ${b2.list} 個になった`);
+          out.push(`${w}px 一覧 ${a.list}（y${a.listY}）／根拠 ${a.own}→${b2.own}`);
+        } finally { await ctx.close(); }
+      }
+      return out.join(" ／ ");
+    },
+  },
+
+  {
     // ⚠ **同じ数字を、画面の 2 か所で言わない**（hidetzu/konjaku#130）。
     //
     //   ⚠ **実測（2026-08-20・main = 42784fa・豊洲・1280×800・SW 無効）**
@@ -6964,8 +7013,13 @@ const CASES = [
       // (1) 取り込んである場所（豊洲）: 出る。⚠ 断り書きは付けない
       await page.goto(`${BASE}/?${TOYOSU}`, { waitUntil: "domcontentloaded" });
       const yes = await top();
-      must(yes.peel === 1 && yes.ownPeel === 1,
-        `取り込んである場所で導線が出ていない: 一覧 ${yes.peel} / 根拠 ${yes.ownPeel}`);
+      // ⚠ **導線は一覧の 1 か所**（2026-08-21。hidetzu/konjaku#138）。
+      //   ⚠ 以前は根拠パネルにも同じカードがあり、⚠ **ここで 2 本あることを求めていた。**
+      //   ⚠ 利用者役 4/4 が根拠側を否定した（唐突／2 回出る／根拠の一部に見える）。
+      //   ⚠ **見ている主張は変えていない**: 取り込んである場所で導線が出ること。
+      must(yes.peel === 1, `取り込んである場所で導線が出ていない: 一覧 ${yes.peel} 本`);
+      must(yes.ownPeel === 0,
+        `根拠パネルに導線が戻っている: ${yes.ownPeel} 本（導線は一覧の 1 か所）`);
       must(!/順に増やしています/.test(yes.list),
         `対応してある場所に、対応していないと書いている: ${yes.list.slice(0, 80)}`);
       // (2) まだ用意していない場所（名古屋）: ⚠ **出る。押せる。** そのうえで押す前に言う
@@ -6984,9 +7038,13 @@ const CASES = [
       const mark = await page.evaluate(() =>
         document.querySelector('#list [href^="./peel"]')?.innerText ?? "");
       must(!mark.includes("⚠"), `在庫の話に ⚠ を使っている（危険の印と紛らわしい）: ${mark.slice(0, 60)}`);
-      // ⚠ 一覧と根拠カードで言うことが変わらない
-      must(no.ownPeel === 1 && /対応した場所から順に増やしています/.test(no.own),
-        `根拠カードだけ言い方が違う: 導線 ${no.ownPeel} 本 / ${no.own.slice(0, 80)}`);
+      // ⚠ **根拠パネルに導線を戻さない**（2026-08-21。hidetzu/konjaku#138）。
+      //   ⚠ 以前は「一覧と根拠カードで言うことが変わらない」を見ていたが、
+      //     ⚠ **根拠カードそのものを消した**ので、⚠ **戻っていないことを見る。**
+      //   ⚠ **言い方が 1 か所であることは、⚠ 静的検査が字の持ち主で見ている**
+      //     （TOPWORD.peelLead の 1 か所）。
+      must(no.ownPeel === 0,
+        `根拠パネルに導線が戻っている: ${no.ownPeel} 本（導線は一覧の 1 か所）`);
       // (3) ⚠ 索引を読めなかっただけのときは、何も断らない（取得できなかった ≠ 用意していない）
       await page.route("**/data/assets.json", (r) => r.abort());
       await page.goto(`${BASE}/?${NAGOYA}`, { waitUntil: "domcontentloaded" });
@@ -6995,7 +7053,7 @@ const CASES = [
       must(!/順に増やしています/.test(unknown.list),
         `索引を読めなかっただけなのに「対応していない」と断定している: ${unknown.list.slice(0, 90)}`);
       await page.unroute("**/data/assets.json");
-      return `対応済み 1 本（断りなし）／未対応 1 本（押す前に断る・⚠ なし・一覧と根拠で同じ）／`
+      return `対応済み 1 本（断りなし）／未対応 1 本（押す前に断る・⚠ なし・根拠には置かない）／`
         + `索引を読めないときは断らない`;
     },
   },

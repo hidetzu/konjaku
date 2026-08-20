@@ -3810,6 +3810,41 @@ head("9. 画面の言葉");
          + "（3D の帯の断りと、出典の 2 つは残してある）");
   }
 
+  // ⚠ **深掘りの導線は 1 か所**（hidetzu/konjaku#138）。
+  //
+  //   ⚠ **実測（2026-08-21・main = 8219774・豊洲・SW 無効）**
+  //     根拠を開くと ⚠ **`#own` に 1 個・一覧に 1 個**。⚠ **DOM には常に 2 つあった。**
+  //   ⚠ 利用者役 4 名に画面だけを見せた: ⚠ **4/4 が一覧行を残すと答え、4/4 が根拠側を否定した。**
+  //   ⚠ **字も 1 か所**（TOPWORD.peelLead）。⚠ 以前は一覧行が同じ字を書き写していた。
+  {
+    const bad8 = [];
+    const IX = seen["index.html"] ?? "";
+    if (!IX) bad8.push("index.html を読めていない（この検査が何も見ていない）");
+    // ⚠ **根拠パネルの組み立てに、./peel へのリンクが無いこと**
+    //   ⚠ **`own.innerHTML` は 2 か所ある**（⚠ 判定中の 1 行と、⚠ 根拠カードの本体）。
+    //     ⚠ **最初の 1 つだけを見ると、⚠ 判定中のほうを掴んで何も見ない**（2026-08-21 に踏んだ）。
+    //   ⚠ **全部を見る。**⚠ どれか 1 つにでも ./peel があれば落とす。
+    const owns = [...IX.matchAll(/own\.innerHTML\s*=[\s\S]{0,2500}?;\n/g)].map((m) => m[0]);
+    if (owns.length < 2)
+      bad8.push(`根拠パネルの組み立てが ${owns.length} 個しか見つからない（この検査が何も見ていない）`);
+    for (const o of owns)
+      if (/\.\/peel\?/.test(o))
+        bad8.push("根拠パネルに ./peel への導線が戻っている（導線は一覧行の 1 か所）");
+    // ⚠ **字の持ち主は TOPWORD.peelLead**。⚠ 呼ぶ側が書き写していないこと
+    const OWNED = ["いまの街が、明治期の地面のどこに立っているか",
+                   "空中写真を年代で切りかえて、明治期の地面と見くらべる"];
+    for (const w of OWNED) {
+      const n = IX.split(w).length - 1;
+      if (n !== 1) bad8.push(`「${w.slice(0, 18)}…」が index.html に ${n} 個ある（peelLead の 1 か所だけ）`);
+    }
+    // ⚠ **一覧行が peelLead を通っていること**（⚠ 死にコードにしない）
+    if (!/sub\s*:\s*TOPWORD\.peelLead\(/.test(IX))
+      bad8.push("行動一覧が TOPWORD.peelLead を通っていない（字が 2 か所になる）");
+    bad8.length
+      ? bad(`深掘りの導線が 1 か所になっていない: ${bad8.join("、")}`)
+      : ok("深掘りの導線は行動一覧の 1 か所で、字も TOPWORD.peelLead の 1 か所から出ている");
+  }
+
   // ⚠ **見えない箱に土地情報を組み立てない**（hidetzu/konjaku#131）。
   //
   //   ⚠ **実測（2026-08-20・main = bc8dc46・豊洲・SW 無効）**
