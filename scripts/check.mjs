@@ -3688,6 +3688,58 @@ head("9. 画面の言葉");
       : ok("土地情報は「取得（verify.js）→ 控える（land.js）→ 置くだけ（画面）」に分かれている");
   }
 
+  // ⚠ **第1層の字と、問いの見出しは words.js の 1 か所**（hidetzu/konjaku#122）。
+  //   ⚠ 2026-08-20 まで、⚠ **同じ第1層をトップと /peel が別々に組んでいた**
+  //     （トップ: verify.js の plainPast ／ /peel: peel3d.js の WORD.ground1）。
+  //     ⚠ 実測（ADR 0030 §4）: トップ「もとは 水だった土地（旧水部）です。…」／
+  //       /peel「この土地は 旧水部」。⚠ **同じ土地に 2 通りの答え**が出ていた。
+  //   ⚠ **コメントは落としてある**（seen を使う。CLAUDE.md §5）。
+  {
+    const bad4 = [];
+    const W = seen["words.js"] ?? "";
+    if (!W) bad4.push("words.js を読めていない（この検査が何も見ていない）");
+    // ⚠ **words.js が持っていること**
+    for (const w of ["layerTitle", "ground1Lines", "ground1Text"])
+      if (!W.includes(w)) bad4.push(`words.js が ${w} を持っていない`);
+    // ⚠ **呼ぶ側が書き写していないこと。**⚠ 主語も、問いの見出しも
+    const OWNED = ["この土地は ", "人の手で ", "ここは、どういう土地？", "昔は、何があった？",
+                   "いま建っている建物は、何の上？"];
+    // ⚠ **既知の積み残し。**⚠ **増えたら落ちる**（狭い幅を既定にする決めごとの max-width 許可一覧と同じやり方）。
+    //   ⚠ peel3d.js の landformLine() は、/peel の HUD（常に見えている 1 行）で
+    //     ⚠ **同じ第1層を「この土地は …／いまは …」と別の形で組んでいる。**
+    //   ⚠ **これは 2026-08-20 より前からある。**⚠ こちらが持ち込んだものではない。
+    //   ⚠ **寄せると /peel の見え方が変わる。**hidetzu/konjaku#122 は
+    //     「/peel の見え方が変わったら止まる」を止まる条件にしているので、⚠ **ここでは寄せない。**
+    //   ⚠ **人の判断待ち。**⚠ 決まったらこの行を消す。
+    const KNOWN = [["peel3d.js", "この土地は "]];
+    for (const f of Object.keys(seen)) {
+      if (f === "words.js" || !/\.(js|html)$/.test(f)) continue;
+      for (const w of OWNED) {
+        if (!(seen[f] ?? "").includes(w)) continue;
+        if (KNOWN.some(([kf, kw]) => kf === f && kw === w)) continue;
+        bad4.push(`${f} が words.js の字を書き写している（「${w}」）`);
+      }
+    }
+    // ⚠ **許可した写しが、本当に 1 つだけであること。**⚠ 増えていたら落とす
+    {
+      const n = (seen["peel3d.js"] ?? "").split("この土地は ").length - 1;
+      if (n !== 1) bad4.push(`peel3d.js の第1層の写しが ${n} 個ある（許しているのは 1 個だけ）`);
+    }
+    // ⚠ **3 つの呼び手が、全部 words.js を通っていること**
+    for (const [f, w] of [["index.html", "KonjakuWords.ground1Lines"],
+                          ["index.html", "KonjakuWords.layerTitle"],
+                          ["peel3d.js", "KonjakuWords.ground1Lines"],
+                          ["peel3d.js", "KonjakuWords.layerTitle"],
+                          ["verify.js", "KonjakuWords.ground1Text"]])
+      if (!(seen[f] ?? "").includes(w)) bad4.push(`${f} が ${w} を通っていない`);
+    // ⚠ **verify.js に第1層の組み立てが残っていないこと**（消したものが戻らない）
+    if (/function plainPast|PLAIN_PAST/.test(seen["verify.js"] ?? ""))
+      bad4.push("verify.js に第1層の組み立て（plainPast）が戻っている");
+    bad4.length
+      ? bad(`第1層の字と問いの見出しが 1 か所から出ていない: ${bad4.join("、")}`)
+      : ok("第1層の字と問いの見出しは words.js の 1 か所で、トップ・/peel・共有カードが借りている");
+  }
+
   // ⚠ **land.js を動かして確かめる。**⚠ 字面ではなく、⚠ **実際の振る舞い**を見る。
   //   ⚠ DOM も地図も要らない作りにしてあるので、ブラウザを立てずに全部回せる。
   {
@@ -3822,6 +3874,11 @@ head("9. 画面の言葉");
       ["直読み", "同上"],
       ["データについて", "フッターの見出し。`データ・判定について` にした"],
       ["この範囲にできていたもの", "フッターの出典欄。`この範囲で、年が記録されているもの` にした"],
+      // 2026-08-20（hidetzu/konjaku#122・ADR 0030 §4 をトップへ適用）
+      ["もとは ", "第1層の主語。⚠ **3/4 が明治期（第2層）と取り違えた**（ADR 0030 §4-3）"],
+      ["この場所は ", "第1層の主語。⚠ **`この土地は` に統一**（実測 9:1。ADR 0030 §4-1）"],
+      ["水だった土地", "平易な言い換え。⚠ **原典の語をそのまま出す**（ADR 0030 §4-5）"],
+      ["上の「もとは」は", "明治期の畳み見出し。⚠ **指し先を字面で書いていた**ので、言い回しを変えたら指し先を失った"],
     ];
     const back = [];
     for (const [w, why] of GONE_WORDS)

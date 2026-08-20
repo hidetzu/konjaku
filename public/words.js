@@ -146,6 +146,42 @@
     };
   };
 
+  // ---- 土地の答えの、問いと文 ----
+  //
+  // ⚠ **層の名前は、その層が答えている「問い」で呼ぶ**（docs/DOMAIN.md §1、ADR 0029）。
+  //   ⚠ 「第1層」「第2層」は内部の呼び名。**画面に出さない**。
+  // ⚠ **2026-08-20 に peel3d.js の WORD から移した。**⚠ トップにも同じ見出しを出すので、
+  //   ⚠ **持ち主が 2 か所になる**のを避けた（掟: 同じ問いに答える実装を2つ持たない）。
+  const LAYER_TITLE = {
+    1: "ここは、どういう土地？",
+    2: "昔は、何があった？",
+    3: "いま建っている建物は、何の上？",
+  };
+  const layerTitle = (n) => LAYER_TITLE[n] ?? "";
+
+  // ⚠ 第1層の文。⚠ **ADR 0030 §4 が決めたとおりに組む。**
+  //   1 主語は「この土地は」に統一（実測 9:1。利用者役 2/4 が「この場所」と別物と読んだ）
+  //   3 「もとは」を使わない（3/4 が明治期＝第2層と取り違えた）
+  //   4 成因と人工改変は行を分ける（1 行に混ぜると「もとから埋立地だった」に読める）
+  //   5 原典の語をそのまま出す（平易な言い換えを足さない。時間の語を使わずに済む）
+  //
+  // ⚠ **行で返す。**⚠ 1 本の文字列にして返すと、⚠ **受け取る側が割り方を決めることになり、
+  //   画面ごとに割れ方が変わる**（4 が守れない）。
+  // ⚠ **em は区分名の強め方。**画面は太字、共有カードの文は素のまま。
+  //   ⚠ **強めるかどうかは見た目の話なので、呼ぶ側が決める。**⚠ 語はここが決める。
+  const ground1Lines = (name, artificial, em) => {
+    const b = em ?? ((s) => s);
+    const out = [`この土地は ${b(name)}`];
+    if (artificial) out.push(`人の手で ${b(artificial)} になっています`);
+    return out;
+  };
+
+  // ⚠ 1 本にまとめて読む相手（共有カードの文・読み上げ）のための形。
+  //   ⚠ **行の作り方は上の 1 か所。**ここは繋ぎ方だけを決める。
+  const ground1Text = (name, artificial) =>
+    ground1Lines(name, artificial).join("。") + "。";
+
   g.KonjakuWords = { S, meiji, meijiBadge, TAG, tag, METHOD, EDGE, UNREAD, method,
-                     PRIVACY_SHORT, photoSay };
+                     PRIVACY_SHORT, photoSay,
+                     LAYER_TITLE, layerTitle, ground1Lines, ground1Text };
 })(typeof window === "undefined" ? globalThis : window);

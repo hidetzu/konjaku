@@ -274,19 +274,6 @@
   .area-list .rest{opacity:.75}
   .area-list .sw-rest{background:repeating-linear-gradient(45deg,
     rgba(255,255,255,.22) 0 3px, rgba(255,255,255,.06) 3px 6px)}
-  /* 出どころの違い。⚠ **畳むが消さない**（常に開くと本命の行を押し下げる）。
-     ⚠ 名乗りだけで「別の資料」だと分かるようにする。畳んだまま読み終える人がいる */
-  .area-src{margin-top:6px}
-  .area-src summary{font-size:var(--fs-evidence);color:var(--ink-dim);cursor:pointer;
-    line-height:1.5;list-style:none}
-  .area-src summary::-webkit-details-marker{display:none}
-  .area-src summary::before{content:"▸ ";color:var(--ink-faint)}
-  .area-src[open] summary::before{content:"▾ "}
-  /* ⚠ ここは 44px を取らない。畳みの見出しに 44px を取ると、畳んだのに
-     元の 36px より**高くなり**、本命の行をさらに押し下げた（実測 1075 → 1083）。
-     ⚠ 代わりに横幅いっぱいを当たり判定にする（行全体が押せる） */
-  .area-src summary{padding:3px 0}
-  .area-note{margin-top:6px;font-size:var(--fs-evidence);color:var(--ink-faint);line-height:1.5}
   /* 区分を押すと出る解説。⚠ **こちらでは書かない**（凡例の解説文をそのまま出す）。
      ⚠ カーソルオーバにしない。スマホで hover が効かない */
   .area-list .area-item{display:inline-flex;align-items:center;gap:6px;
@@ -363,7 +350,27 @@
   .verdict .tx{flex:1;min-width:0}
   .verdict .dim{color:var(--ink-dim);font-size:var(--fs-badge)}
   .verdict{display:block}
-  .verdict .v-head{display:flex;align-items:center;gap:10px}
+  /* ⚠ **問いの見出し**（2026-08-20。hidetzu/konjaku#122）。⚠ 答えより控えめにする。
+     ⚠ 見出しのほうが目立つと、答えが読まれない（原則3: 結論 → 詳細 → 根拠）。 */
+  .verdict .gq{font-size:var(--fs-note);color:var(--ink-dim);font-weight:600;
+    margin:7px 0 2px;line-height:1.4}
+  .verdict .gq:first-child{margin-top:0}
+  /* ⚠ **2 行になる**（成因と人工改変。ADR 0030 §4-4）。⚠ 横並びにしない */
+  .verdict .v-head{display:flex;flex-direction:column;align-items:flex-start;gap:2px}
+  /* ⚠ **縦が短い画面では、写真に上限を置く**（2026-08-20。hidetzu/konjaku#122）。
+     ⚠ 答えを先頭へ動かしたぶん（103px）、⚠ **「重ねる」が初期画面から出た**
+       （実測 375×667: y=628〜672 / 画面 667。320×640: 612〜656 / 画面 640）。
+     ⚠ **「重ねる」は写真と一緒に見えていなければならない**（押した結果が見えない）。
+       既存の検査が 1280×800 / 375×667 / 320×640 の 3 つで守っている。
+     ⚠ **29rem は、見出し・答え・年代のコマ・重ねる の合計から出した実測値**で、
+       ⚠ 縦に余裕がある画面（375×720 以上）では 1px も効かない。
+     ⚠ 実測（29rem あり）: 375×667 で写真 391–586・重ねる 591–635。
+                          320×640 で写真 416–584・重ねる 589–633。 */
+  .verdict > #big{max-height:calc(100dvh - 29rem)}
+  /* ⚠ **次の段と接させない**（2026-08-20）。⚠ 接すると、44×44 の下端 1px を隣の見出しが拾い、
+     ⚠ **指で押せる大きさが実質 43px になる**（実測: .v-acts の下端 349 と #yrBig の上端 349）。
+     ⚠ computed style は 44 のままなので、⚠ **座標を押して確かめないと気づけない。** */
+  .verdict .v-acts{margin-bottom:10px}
   /* ✕ と同じ理由で、ボタンそのものを 44×44 にする（見た目の丸は 22px のまま） */
   .verdict .why{flex:none;width:var(--tap);height:var(--tap);padding:0;border:0;background:transparent;
     color:var(--ink-dim);font:inherit;font-size:var(--fs-note);cursor:pointer;display:grid;place-items:center}
@@ -906,15 +913,24 @@
     .verdict > #ovRow{float:right;clear:right;
       width:calc(100% - var(--detail-pane-width) - 20px)}
 
-    /* ⚠ **左＝読むもの。**⚠ 幅を決めて、右の float の左に流す */
+    /* ⚠ **左＝読むもの。**⚠ 幅を決めて、右の float の左に流す。
+       ⚠ **float:left にしてはいけない**（2026-08-20 にやって戻した。hidetzu/konjaku#122）。
+         ⚠ float は、⚠ **前の float の上端より上に出られない。**
+         ⚠ 写真の下に置いた「共有する／なぜそう言える？」は DOM 上で右の float の後ろに来るので、
+           ⚠ **左の段ごと y=661 まで落ち、ページ高が 1439 → 1773 に増えた**（1100×800 実測）。
+         ⚠ **流れの中の箱は、前の float を無視して上から積める。**だから float にしない。 */
+    .verdict > .gq,
     .verdict > .v-head,
     .verdict > .v-acts,
+    .verdict > .share-msg,
+    .verdict > .say-msg,
     .verdict > #area,
     .verdict > .strip-foot,
     .verdict > #ev,
     .verdict > .badges,
     .verdict > .risk,
     .verdict > .coarse,
+    .verdict > .retry-msg,
     .verdict > .ev-tip{width:var(--detail-pane-width);clear:left}
 
     /* ⚠ 判定を待っているあいだの 1 行は、横いっぱいで出す */
@@ -928,12 +944,14 @@
                               実測（30rem だけ・1280×800）: 重ねるの下端が **864**（画面 800）。
                               ⚠ **写真と操作が離れると、何を重ねるのか分からない**
                               （既存の検査が守っている。⚠ **実際にそれが落ちた**）。
-       ⚠ 1280×800 では写真が 352px になり、⚠ **1 カラムのときの 368px をわずかに下回る**。
-         ⚠ **横は 614 → 734px なので、見えている面積は増えている。**
        ⚠ **2 つとも効いている**（2026-08-20 に片方ずつ外して確かめた）。
          30rem を外すと      1920×1080 で「重ねる」が **1091**（画面 1080）→ 外へ出る
-         100dvh-28rem を外すと 1280×800 で「重ねる」が **804**（画面 800）→ 外へ出る */
-    .verdict > #big{max-height:min(30rem, calc(100dvh - 28rem))}
+         100dvh-28rem を外すと 1280×800 で「重ねる」が **804**（画面 800）→ 外へ出る
+       ⚠ **28rem → 33rem にした**（2026-08-20。hidetzu/konjaku#122）。
+         ⚠ 答えを先頭へ動かしたので、⚠ **右の段が答えの下からしか始まれない**
+           （float は、前の float の上端より上に出られない）。⚠ その差だけ写真を詰める。
+         ⚠ 実測（1280×800）: 28rem のままだと「重ねる」が **865**（画面 800）で外へ出る。 */
+    .verdict > #big{max-height:min(30rem, calc(100dvh - 33rem))}
   }
 
 </style>
@@ -1594,11 +1612,42 @@ function layoutBig(){
 // y=676（渋谷では 963）にあり、**答えが折り返しの下**だった。
 // しかも一覧の件数で位置が 300px 動いていた。写真の次に読むものにする。
 function headHTML(){
-  return `<div class="v-head">
-      <span class="tx">${meiji.text}</span>
+  // ⚠ **問いを見出しとして出す**（2026-08-20。hidetzu/konjaku#122）。
+  //   ⚠ **字は words.js の 1 か所**で、/peel の層見出しと同じもの。
+  //   ⚠ 実測（利用者役 4 名・375×667・画面だけを見せた）: 4/4 が「見出しあり」を選び、
+  //     ⚠ **見出しが無いと 2 名が「明治期 低湿地データが見出しに見える」**と答えた。
+  // ⚠ **答えは 2 行。**⚠ 成因と人工改変を 1 行に混ぜると「もとから埋立地だった」に読める
+  //   （ADR 0030 §4-4。⚠ **行の割り方は words.js が決める**）。
+  //
+  // ⚠ **ここに入れてよいのは 103px まで**（実測 2026-08-20・375×667・hasTouch）。
+  //   ⚠ この下に年代のコマ（132px）が積まれ、⚠ **その下の写真が画面から出る**。
+  //   ⚠ 実際にやってしまった: 共有・なぜ（54px）と 2 行の限界を入れたら
+  //     ⚠ **写真の下端が 723 になり（画面 667）、画素を数える検査が落ちた。**
+  //   ⚠ **共有・なぜは写真の下（actsHTML）。**⚠ ここへ持ってこない。
+  const lf = meiji.facts?.byKey?.landform;
+  const lines = (lf && lf.ok)
+    ? KonjakuWords.ground1Lines(esc(lf.value), lf.artificial ? esc(lf.artificial) : null,
+        (v) => `<b>${v}</b>`)
+    : [esc(meiji.text ?? "")];
+  return `<div class="gq">${esc(KonjakuWords.layerTitle(1))}</div>
+    <div class="v-head">
+      ${lines.map((t) => `<span class="tx">${t}</span>`).join("")}
     </div>
-    <!-- ⚠ **答えの一文とは別の行にする。** 中に混ぜると一文が割れる（上の .v-acts のコメント） -->
-    <div class="v-acts">
+    <!-- ⚠ **ここに「いつの姿かは資料に書かれていません」を置いていた**（2026-08-20 の途中）。
+         ⚠ **根拠カード（地形分類）へ移した。**⚠ 出どころの話は、出どころの欄に置く。
+         ⚠ **消したのではない。**⚠ 限界は必ず書く（掟）。移した先で出している。
+         ⚠ **ここへ戻さない。**⚠ 実測（375×667・hasTouch）: この 1 行（21px）を足すと
+           ⚠ **「重ねる」が初期画面から出る**（320×640 で y=677 / 画面 640）。
+           ⚠ 見出し・答え・年代のコマ・写真・重ねるが、640px にぎりぎり収まっている。 -->`;
+}
+
+// 答えに対する操作（共有する・なぜそう言える？）。
+// ⚠ **写真の下に置く**（2026-08-20）。⚠ 答えの真下に置くと 54px を使い、
+//   ⚠ **写真の下端が画面から出る**（実測 375×667: 写真 491–723 / 画面 667）。
+// ⚠ **答えから離れるのは承知の上。**⚠ 押した結果（共有の知らせ・根拠パネル）は
+//   このボタンの隣に出るので、⚠ **押した人には見える**（下の .share-msg のコメント）。
+function actsHTML(){
+  return `<div class="v-acts">
       <!-- ⚠ ↗ は使わない。利用者役のエージェント3体とも「どこかへ飛ぶ」と予想し、3体とも外れた。
            ↗ は同じ画面で「外部サイトへ出る」の意味でも使っている（一覧のタグ・出典）。
            実際に起きるのは画像の生成なので、絵の記号にする。
@@ -1614,8 +1663,19 @@ function headHTML(){
          以前はこの知らせが判定ブロックの末尾にあり、実測でボタン y=744 に対して y=1043、
          **299px 下の画面外**だった。利用者役のエージェント3体とも「押しても何も起きない＝壊れている」と判断し、
          1体は2回押して画像が2枚落ちた（2026-08-14）。 -->
-    <div class="share-msg" id="shareMsg" style="display:none"></div>
-    ${areaHTML()}`;
+    <div class="share-msg" id="shareMsg" style="display:none"></div>`;
+}
+
+// 第2層（昔は、何があった？）。⚠ **答えとは離して、写真の下に置く。**
+//
+// ⚠ **答えと一緒に先頭へ寄せない**（2026-08-20。hidetzu/konjaku#122）。
+//   ⚠ 実測（豊洲・375×667・hasTouch）: 一緒に寄せると明治期は 515 で読めるが、
+//     ⚠ **写真の上端が 404 → 647 に落ち、320×640 では画面から出た（673）。**
+//   ⚠ **667px に、答え・明治期の割合・写真の 3 つは同時に入らない。**
+//     ⚠ **答えと写真を画面内に残す**ほうを採った（Owner 判断）。
+function areaBlockHTML(){
+  const a=areaHTML();
+  return a ? `<div class="gq">${esc(KonjakuWords.layerTitle(2))}</div>${a}` : "";
 }
 
 // この範囲の内訳（面）。**凡例と数字を同じ場所で出す。**
@@ -1680,25 +1740,16 @@ function areaHTML(){
       rest>0.0005?`<li class="rest"><i class="sw sw-rest"></i><span class="nm">その他${
         others>0?`（${others} 区分）`:""}</span><b>${pct(rest)}</b></li>`:""}</ul>
     <div class="area-why" id="areaWhy" hidden></div>
-    <!-- ⚠ **短く。** ここを 3 文で書いたら本命の行（立体で見る）を押し下げ、
-         検査が落ちた（「本命が埋もれている: y=1089」）。落とせないのは 2 点だけ:
-         「別の資料」と「時期が書かれていない」。これが無いと、初見の人が上下を
-         同じ話と読んで**誤った統合**をした（「泥地＋水で約50%」） -->
-    <!-- ⚠ **畳むが、消さない。** 常に開いていると本命の行（立体で見る）を押し下げ、
-         検査が落ちた（実測 y=1043 → 1089）。畳めば 36px 戻る。
-         ⚠ 名乗りで中身が分かるようにする（「詳しく」ではなく、何が書いてあるかを言う）。
-           畳んだ見出しだけ読んでも「別の資料」だと分かる形にしてある。 -->
-    <details class="area-src">
-      <!-- ⚠ **1 行に収める**（2 行だと 18px 押し下げる）。畳んだまま読み終える人がいるので、
-           名乗りだけで「別の資料」だと分かること。中身は開けば読める -->
-      <summary>上の「もとは」は<b>別の資料</b>です</summary>
-      <!-- ⚠ **上の文を決め打ちしない。** ここに「もとは 水だった土地（旧水部）」と
-           書いていたら、渋谷（氾濫平野・海岸平野）で画面と食い違った（オーナーが発見）。
-           上の文が何であっても通る書き方にする。 -->
-      <div class="area-note">この割合は<b>明治期の資料</b>（1868〜1912年）から数えたものです。
-        上の1文は<b>地形分類</b>という別の資料で、<b>いつの姿かは書かれていません</b>。
-        同じ場所の、別の時期の話が並んでいます。</div>
-    </details>
+    <!-- ⚠ **ここにあった「上の「もとは」は別の資料です」の畳みを消した**（2026-08-20。
+         hidetzu/konjaku#122）。⚠ **消したのは、問いの見出しがその仕事をするようになったから。**
+         ⚠ もともとは、上（第1層・いまの成り立ち）と下（第2層・明治期）が地続きに見えて、
+           初見の人が**誤った統合**をした（「泥地＋水で約50%」）ので足した補足だった。
+         ⚠ いまは「ここは、どういう土地？」「昔は、何があった？」が見出しとして立っており、
+           ⚠ **別の問いだと見出しで分かる。**⚠ その上で補足を残すと、
+           ⚠ **どの文を指しているのか分からない中途半端な説明**になる（Owner 判断）。
+         ⚠ **限界そのものは消していない。**⚠ 「いつの姿かは書かれていません」は
+           ⚠ **第1層の限界**なので、根拠カード（地形分類）へ移した。
+         ⚠ 「明治期（1868〜1912年）」は .area-lead が既に名乗っている。 -->
   </div>`;
 }
 
@@ -1794,8 +1845,9 @@ function resolveWantEra(){
 
 function timeHTML(f){
   frames=buildFrames(f);
-  // ⚠ 写真が無くても、判定文だけは必ず出す。ここを空で返すと答えごと消える
-  if(!frames.length) return headHTML();
+  // ⚠ 写真が無くても、判定文は出る。⚠ **答えは renderVerdict が先に描く**ので、
+  //   ここは空で返してよい（2026-08-20。以前はここが headHTML を返していた）。
+  if(!frames.length) return actsHTML();
   // ⚠ 描く前に当てる。描いたあとで差し替えると、共有先で**既定の年代が一瞬見えてから**
   //   目的の年代に飛ぶ（「戻された」ように見える）。
   resolveWantEra();
@@ -1889,7 +1941,7 @@ function timeHTML(f){
       <input type="checkbox" id="ovSwale">
       <span>明治期の土地を重ねる<small class="ov-st" id="ovState"></small></span>
     </label>` : ""}`
-    + headHTML()
+    + actsHTML()
     // ⚠ 「現在を重ねる」を外した（2026-08-14）。実測 30px。
     //   帯が時間軸なのに、その真下に**2本目の時間の操作**が並んでいた。
     //   ⚠ ▶ は残す。/eras を撤去したときに「前提条件」として移した3機能の1つ
@@ -2722,8 +2774,15 @@ function renderVerdict(){
     ? (lfF.artificialRisk ? { text: lfF.artificialRisk, of: lfF.artificial }
       : lfF.risk ? { text: lfF.risk, of: lfF.value } : null)
     : null;
+  // ⚠ **答えを先頭に置く**（2026-08-20。hidetzu/konjaku#122）。
+  //   ⚠ 実測（豊洲・375×667・hasTouch）: 答えの下端 **659 → 272**。
+  //     ⚠ 320×640 では **643（画面外）→ 303**。⚠ 見出しを足しても画面に入る。
+  //   ⚠ **写真は画面内に残す**（上端 404）。⚠ 明治期の割合まで先頭へ寄せると
+  //     写真が 654 へ落ちて画面から出るので、そこまではやらない（Owner 判断）。
   el.innerHTML=`
+    ${headHTML()}
     ${timeHTML(meiji.facts)}
+    ${areaBlockHTML()}
     ${bs.length ? `<div class="badges">${bs.map((b)=>
       `<button class="badge ${b.tone}" data-k="${b.key??""}"
         title="なぜそう言える？（この項目）"><i>${b.icon}</i>${b.text}</button>`).join("")}</div>` : ""}
@@ -3381,6 +3440,16 @@ async function openPlace(lon,lat,title,opt){
       ? `<div class="v ${Konjaku.isWatery(lf.value) ? "w" : ""}">${
           lf.value}${lf.artificial ? `　<span style="font-size:var(--fs-note)">＋ ${lf.artificial}</span>` : ""}</div>`
         + (lf.why ? `<div class="d" style="margin-top:3px">${lf.why}</div>` : "")
+        // ⚠ **時期の限界。**⚠ 消さない（掟: 限界は必ず書く）。
+        //   ⚠ 旧水部の定義は「…**かつて**…水部であったと確認できた土地」で、
+        //     ⚠ **明治期に限定していない。**⚠ 下の「昔は、何があった？」（明治期）と
+        //     並ぶと同じ時期の話に読まれ、実際に初見の人が誤った統合をした
+        //     （「泥地＋水で約50%」）。
+        //   ⚠ **2026-08-20 に、明治期の側の畳み（.area-src）からここへ移した。**
+        //     ⚠ あちらは「上の『もとは』は別の資料です」と、⚠ **指し先を字面で書いていた**ので、
+        //       言い回しを変えた瞬間に指し先を失った。⚠ **出どころの話は、出どころの欄に置く。**
+        //   ⚠ **⚠ の印は使わない**（この製品では災害リスク専用。在庫や限界に使わない）。
+        + `<div class="d" style="margin-top:3px">この区分に、いつの姿かは書かれていません</div>`
         + (lf.risk ? `<div class="d" style="margin-top:3px">災害リスク: ${lf.risk}</div>` : "")
       : `<div class="v warn">${KonjakuWords.S.cantTell}</div>`;
   own.innerHTML =
