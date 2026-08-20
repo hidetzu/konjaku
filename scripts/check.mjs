@@ -2847,14 +2847,19 @@ head("6. 外部リンク");
     // ⚠ 値があるときは、but でも but でもなく、その値をそのまま出す
     yes(T.meiji("旧水部", true) === "旧水部", "値があるのに、言い換えている");
 
-    // ---- ⚠ 取得方法の呼び名。掟の語彙 ----
-    yes(T.method("unreachable", false, "raster") === "未取得",
-      "読めなかったのに「未取得」と言っていない");
-    yes(T.method("ok", true, "raster") === "境目", "答えが割れたのに「境目」と言っていない");
-    yes(T.method("ok", false, "raster") === "raster", "普通に取れたのに取得方法を書き換えている");
-    // ⚠ 読めなかったが先。読めていないのに「境目」と言わない
-    yes(T.method("unreachable", true, "raster") === "未取得",
-      "読めていないのに「境目」と言っている（割れたのではなく、読めていない）");
+    // ---- ⚠ 取得方法の呼び名。⚠ **字は words.js が持つ**（2026-08-20 に移した）----
+    //   ⚠ ここは「トップが words.js を通しているか」だけを見る。字そのものは
+    //     words.js の単体テストが見る（掟: 同じ問いに答える実装を2つ持たない）。
+    const KW = globalThis.KonjakuWords;
+    yes(T.method("unreachable", false, "read") === KW.UNREAD,
+      "読めなかったのに、そう書いていない");
+    yes(T.method("ok", true, "read") === KW.EDGE, "答えが割れたのに、そう書いていない");
+    yes(T.method("ok", false, "read") === KW.METHOD.read, "普通に取れたのに、読んだ値と書いていない");
+    // ⚠ 読めなかったが先。読めていないのに「近くで分かれている」と言わない
+    yes(T.method("unreachable", true, "read") === KW.UNREAD,
+      "読めていないのに「分かれている」と言っている（割れたのではなく、読めていない）");
+    // ⚠ **内部の鍵を画面に漏らさない**
+    yes(T.method("ok", false, "zzz") === "", `知らない鍵が画面に出ている: ${T.method("ok", false, "zzz")}`);
 
     // ---- 但し書きは、当てはまるときだけ ----
     yes(T.clipped(false) === "" && /切れ/.test(T.clipped(true)), "枠の切れを書き分けていない");
@@ -3388,8 +3393,12 @@ head("9. 画面の言葉");
   //   live … コメントを落としたあとに残る件数。**0 になったら、この行ごと消す**
   //   next … どの段で直すか
   const SCREEN_WORDS = [
-    { word: "自前・根拠あり", kind: "分類", live: 1, next: "#9d",
-      files: ["index.html"], seat: "根拠パネルの見出しのバッジ" },
+    // ⚠ **2026-08-20（#9d）に、次の 4 語が画面から消えた。**⚠ **行ごと落とした。**
+    //   `自前・根拠あり` … ⚠ **中身が全部この土地の根拠で、バッジが何も分けていなかった**
+    //   `根拠あり`       … ⚠ 一覧行のタグは #9c で `今昔で見る` に。バッジは上と一緒に消えた
+    //   `直読み` `ベクトル直読み`
+    //                  … ⚠ **取り方の話で、確かさを語っていなかった**。`読んだ値` に。
+    //                    ⚠ **字は words.js の METHOD が持ち、verify.js は鍵だけ渡す**
     // ⚠ **2026-08-20 に、字の持ち主を `public/words.js` の 1 か所へ寄せた。**
     //   ⚠ **画面に出る字は 1 文字も変えていない。**⚠ **だから live はほとんど減らない。**
     //     減ったのは**写し**のほう（外部↗ 2 → 1・記録なし 3 → 1・判定できません 5 → 3）。
@@ -3398,21 +3407,21 @@ head("9. 画面の言葉");
     //   ⚠ `根拠あり` → `今昔で見る` ／ `外部↗` → `別のサイト↗`。
     //   ⚠ **`根拠あり` は作り手側の分類で、しかも実態と合っていなかった**
     //     （own は「根拠がある行」ではなく「今昔の中で開くレンズ」。why の側にも根拠はある）。
-    { word: "根拠あり", kind: "分類", live: 1, next: "#9d",
-      files: ["index.html"],
-      seat: "⚠ **残りは根拠パネルのバッジ「自前・根拠あり」1 つだけ**（そちらは #9d）。一覧行のタグからは消えた" },
     { word: "この土地から", kind: "分類", live: 1, next: "済",
       files: ["words.js"], seat: "words.js の TAG.why。⚠ **これは行き先そのもの**なので残す" },
-    { word: "ベクトル直読み", kind: "分類", live: 1, next: "#9d",
-      files: ["verify.js"], seat: "根拠カードの取得方法バッジ（地形分類）" },
-    { word: "直読み", kind: "分類", live: 4, next: "#9d",
-      files: ["verify.js"], seat: "取得方法バッジ。うち1件は「ベクトル直読み」の一部" },
-    { word: "境目", kind: "分類", live: 5, next: "#9d",
-      files: ["index.html", "verify.js"], seat: "取得方法バッジと、その説明文" },
-    { word: "データについて", kind: "分類", live: 1, next: "#9d",
-      files: ["index.html"], seat: "フッターの畳み見出し。中身は判定方法・位置誤差・提供範囲・限界。⚠ 2026-08-18 に /peel から外した" },
-    { word: "この範囲にできていたもの", kind: "分類", live: 1, next: "#9d",
-      files: ["index.html"], seat: "フッターの出典欄。年の意味（開業／設立／完成）を区別できない" },
+    { word: "境目", kind: "分類", live: 4, next: "済",
+      files: ["verify.js"],
+      seat: "⚠ **2026-08-20 に 5 → 4。**取得方法バッジからは消えた（`近くで分かれている` に）。"
+          + "⚠ **残る 4 件は語ではなく文**（「区分の境目にあたる可能性がある」など）。"
+          + "⚠ **作り手側の分類ではなく、土地そのものの説明**なので残す" },
+    { word: "データ・判定について", kind: "分類", live: 1, next: "済",
+      files: ["index.html"],
+      seat: "フッターの畳み見出し。⚠ **2026-08-20 に「データについて」から。**"
+          + "中身は判定方法・位置誤差・提供範囲・限界まで説明していて、見出しと合っていなかった" },
+    { word: "この範囲で、年が記録されているもの", kind: "分類", live: 1, next: "済",
+      files: ["index.html"],
+      seat: "フッターの出典欄。⚠ **2026-08-20 に「この範囲にできていたもの」から。**"
+          + "⚠ **開業／設立／完成のどれかを区別できない**ので、「できていた」と言い切らない" },
     // ⚠ **2026-08-20 に言い直した**（#9c）。⚠ **「変化が無かった」と読ませない。**
     //   こちらが持っている記録の話であって、現実に何も起きなかったという意味ではない。
     { word: "この期間に表示できる変化の記録は見つかっていません", kind: "状態", live: 1, next: "済",
@@ -3427,11 +3436,62 @@ head("9. 画面の言葉");
           + "⚠ 2026-08-19 に 7 → 5（peel3d.js の 3 か所を WORD.cantSay へ）。"
           + "⚠ 2026-08-20 に 5 → 3（字の持ち主を words.js へ）。"
           + "⚠ **残る 2 件は語ではなく文**。主語が違うので 1 つにしていない" },
-    { word: "未取得", kind: "状態", live: 7, next: "#9e",
-      files: ["index.html", "peel3d.js", "prov.js"],
-      seat: "取得方法バッジと、/peel の台帳。⚠ 2画面にある。"
-          + "⚠ 台帳の側は 2026-08-18 に prov.js へ寄せた（peel3d.js に残るのはコメントだけ）" },
+    { word: "未取得", kind: "状態", live: 6, next: "⚠ 台帳の語彙",
+      files: ["prov.js"],
+      seat: "⚠ **2026-08-20 に 7 → 6。**取得方法バッジからは消えた（`読み込めませんでした` に）。"
+          + "⚠ **残るのは /peel の台帳だけ**で、⚠ **これは prov.js が持つ 5 語のひとつ**"
+          + "（実測／未取得／欠落／未対応／推定）。⚠ **docs/DOMAIN.md §3 と ADR が固定している語**なので、"
+          + "⚠ **言い換えるなら台帳の語彙ごと決め直す**。#9e の枠では触らない" },
   ];
+  // ⚠ **検査そのものが、画面の字を書き写していないこと。**
+  //   ⚠ **2026-08-20 に 2 回踏んだ。**言葉を言い直すたびに、⚠ **製品ではなく
+  //     `render.mjs` のほうが落ちた**（「根拠あり」と「直読み」を直接書いていた）。
+  //   ⚠ **検査は持ち主（words.js）から取る。**そうすれば、次に言い直しても落ちない。
+  //   ⚠ **コメントは先に落とす**（何を直したかの説明を、この検査が拾わないように）。
+  {
+    const OWNED_BY_WORDS = [
+      ...Object.values(globalThis.KonjakuWords?.TAG ?? {}),
+      ...Object.values(globalThis.KonjakuWords?.METHOD ?? {}),
+      globalThis.KonjakuWords?.EDGE, globalThis.KonjakuWords?.UNREAD,
+      globalThis.KonjakuWords?.S?.noRecord, globalThis.KonjakuWords?.S?.cantTell,
+    ].filter(Boolean);
+    // ⚠ **コメント落としは stripJs を使う。**⚠ 素朴な正規表現で書いたら、
+    //   ⚠ **正規表現リテラルの中の `/*` を拾って、本物のコードを大量に消していた**
+    //   （2026-08-20 に踏んだ。⚠ **わざと壊しても緑のままだった**）。CLAUDE.md §5。
+    const bare = stripJs(await readFile(join(ROOT, "scripts", "render.mjs"), "utf8"), "render.mjs");
+    const copied = [...new Set(OWNED_BY_WORDS.filter((w) => bare.includes(`"${w}"`)))];
+    copied.length
+      ? bad(`render.mjs が words.js の字を書き写している: ${copied.map((w) => `「${w}」`).join("、")}`
+          + `（言い直すと、製品ではなく検査が落ちる。WORDS から取ること）`)
+      : ok(`render.mjs は words.js の字（${OWNED_BY_WORDS.length} 語）を書き写していない`);
+  }
+
+  // ⚠ **画面から消した語が、戻っていないこと。**
+  //   ⚠ 上の表は**いま画面にある語**しか見ない。⚠ **消した語は行ごと落ちるので、
+  //     戻ってきても気づけない。**ここが、その穴を塞ぐ。
+  //   ⚠ **消すたびにここへ足す。**⚠ 足し忘れると、静かに戻せてしまう。
+  //   ⚠ 実際に踏んだ（2026-08-20）: バッジを消したあと、わざと戻しても検査は緑だった。
+  {
+    const GONE_WORDS = [
+      // 2026-08-20（#9c）
+      ["外部↗", "一覧行のタグ。`別のサイト↗` にした"],
+      ["記録のある変化はありません", "`この期間に表示できる変化の記録は見つかっていません` にした"],
+      // 2026-08-20（#9d）
+      ["自前・根拠あり", "根拠パネルのバッジ。⚠ **中身が全部この土地の根拠で、何も分けていなかった**"],
+      ["ベクトル直読み", "取得方法バッジ。`読んだ値` にした"],
+      ["直読み", "同上"],
+      ["データについて", "フッターの見出し。`データ・判定について` にした"],
+      ["この範囲にできていたもの", "フッターの出典欄。`この範囲で、年が記録されているもの` にした"],
+    ];
+    const back = [];
+    for (const [w, why] of GONE_WORDS)
+      for (const f of Object.keys(seen))
+        if ((seen[f] ?? "").includes(w)) back.push(`${f}「${w}」（${why}）`);
+    back.length
+      ? bad(`一度消した語が画面に戻っている: ${back.join("、")}`)
+      : ok(`一度消した語 ${GONE_WORDS.length} 件は、画面に戻っていない`);
+  }
+
   {
     const count = (w, fs) => fs.reduce((a, f) => a + (seen[f] ?? "").split(w).length - 1, 0);
     const off = [];
@@ -3822,11 +3882,18 @@ head("9. 画面の言葉");
       : bad(`HTML コメントにバッククォートがある（文字列がそこで切れる）: ${bad2.join(" ／ ")}`);
   }
   {
+    // ⚠ **verify.js が渡すのは鍵であって、画面に出る字ではない**（2026-08-20）。
+    //   ⚠ **words.js の METHOD に無い鍵を渡すと、バッジが黙って消える。**
+    //     ⚠ 消えても画面は何も言わないので、ここで止める。
     const got = [...(seen["verify.js"] ?? "").matchAll(/method:\s*"([^"]*)"/g)].map((x) => x[1]);
-    const want = ["直読み", "ベクトル直読み", "直読み", "直読み"];
-    got.join("／") === want.join("／")
-      ? ok(`根拠カードの取得方法は棚卸しのとおり（${[...new Set(got)].join("・")}／${got.length} 件）`)
-      : bad(`根拠カードの取得方法が棚卸しと違う: ${got.join("・")}（棚卸しは ${want.join("・")}）`);
+    const want = ["read", "readVector", "read", "read"];
+    const M = globalThis.KonjakuWords?.METHOD ?? {};
+    const unknown = got.filter((k) => !(k in M));
+    unknown.length
+      ? bad(`verify.js が words.js の知らない鍵を渡している: ${unknown.join("・")}（バッジが黙って消える）`)
+      : got.join("／") === want.join("／")
+        ? ok(`根拠カードの取得方法は棚卸しのとおり（${[...new Set(got)].map((k) => `${k}→${M[k]}`).join("・")}／${got.length} 件）`)
+        : bad(`根拠カードの取得方法が棚卸しと違う: ${got.join("・")}（棚卸しは ${want.join("・")}）`);
   }
 }
 
