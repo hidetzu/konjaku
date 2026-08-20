@@ -12,7 +12,10 @@
 //
 // 事実の形:
 //   { key, label, value, method, evidence, caveat, ok, state }
-//     method   : "直読み" | "計算" | "推定"
+//     method   : ⚠ **画面に出る字ではなく、鍵**（"read" | "readVector" | "calc" | "est"）。
+//                ⚠ **字は public/words.js の METHOD が持つ**（2026-08-20 に分けた）。
+//                ⚠ ここに字を書くと、画面と検査の 2 か所で同じ問いに答えることになる。
+//                ⚠ **いま実際に使っているのは "read" と "readVector" だけ**
 //     evidence : 参照したタイル・画素・生の値。**読めたときだけ入る**
 //     caveat   : そのデータ固有の限界（無ければ null）
 //     state    : "ok" | "absent" | "unreachable" | "partial"
@@ -148,7 +151,7 @@
   async function meiji(lon, lat) {
     const z = 16, t = tileOf(lon, lat, z);
     const url = `${GSI}/swale/${z}/${t.x}/${t.y}.png`;
-    const base = { key: "meiji", label: "明治期の地形", method: "直読み",
+    const base = { key: "meiji", label: "明治期の地形", method: "read",
       caveat: "原典は三角点整備前の資料のため位置誤差を含む。街区単位の判断に留めること" };
 
     const res = await loadImage(url);
@@ -319,7 +322,7 @@
   }
 
   async function landform(lon, lat) {
-    const base = { key: "landform", label: "地形分類", method: "ベクトル直読み",
+    const base = { key: "landform", label: "地形分類", method: "readVector",
       caveat: "国土地理院の提供実験（ベクトルタイル）。予告なく止まる可能性がある" };
     let tbl;
     try { tbl = await table(); }
@@ -401,7 +404,7 @@
   }
 
   async function elevation(lon, lat) {
-    const fact = { key: "elevation", label: "標高", method: "直読み", evidence: {}, caveat: null };
+    const fact = { key: "elevation", label: "標高", method: "read", evidence: {}, caveat: null };
     let unreachable = false;
     for (const [src, z, mesh] of [["dem5a", 15, "5mメッシュ"], ["dem", 14, "10mメッシュ"]]) {
       const t = tileOf(lon, lat, z);
@@ -491,7 +494,7 @@
     // 「1本も取れていないのに 7年代を確認」と書いていたのがここ。
     // 確認できた年代の数しか evidence に載せず、読めなかった分は隠さず数える。
     const checked = ERAS.length - unread.length;
-    const fact = { key: "photos", label: "残っている空中写真", method: "直読み",
+    const fact = { key: "photos", label: "残っている空中写真", method: "read",
       value: found, eras, unread: unread.length, caveat: null,
       evidence: checked ? { checked } : {} };
     if (unread.length && !found.length)

@@ -323,7 +323,11 @@ const CASES = [
       const own = await page.locator("#own").textContent();
       must(own.includes("標高"), "標高が事実として出ていない");
       must(/[\d.]+\s*m/.test(own), "標高の数値が出ていない");
-      must(own.includes("直読み"), "取得方法のバッジが出ていない");
+      // ⚠ **取得方法の字は words.js が持つ。**⚠ **ここに書き写さない。**
+      //   ⚠ 2026-08-20 に踏んだ（#9c に続いて 2 回目）: この検査が「直読み」を直接書いていて、
+      //     ⚠ **字を言い直したら、製品ではなく検査が落ちた**（掟: 同じ問いに答える実装を2つ持たない）。
+      must(own.includes(WORDS.METHOD.read),
+        `取得方法のバッジが出ていない（「${WORDS.METHOD.read}」を探した）`);
       const elev = own.match(/(-?[\d.]+)\s*m/)?.[1] ?? "?";
       // 次に調べる語。判定できた地点では出ること、Web検索へ行くこと。
       const sug = await suggestionsOf(page);
@@ -336,16 +340,17 @@ const CASES = [
         `水域かつ低地なのに液状化が出ていない: ${sug.map((s) => s.label).join(" / ")}`);
       // タグは行き先ではなく「なぜここに出ているのか」を書く。
       // 〈ごはん〉と同じ「外部のサイト」のタグを下げていた頃は、判定から出た語だと分からなかった。
-      const badTag = sug.filter((s) => s.tag !== "この土地から");
+      // ⚠ 字は words.js。⚠ **ここに書き写すと、言い直したときに検査が落ちる**
+      const badTag = sug.filter((s) => s.tag !== WORDS.TAG.why);
       must(!badTag.length, `提案のタグが違う: ${badTag.map((s) => `${s.label}=${s.tag}`).join(" / ")}`);
       // 並びの原則は「この場所に固有なものほど上」。ハザードマップ・地理院地図は
       // 座標を渡すだけでどこでも中身が同じなので、判定から出た語より下に来ること。
       const rows = await rowsOf(page);
-      const lastWhy = rows.map((r) => r[0]).lastIndexOf("この土地から");
+      const lastWhy = rows.map((r) => r[0]).lastIndexOf(WORDS.TAG.why);
       const firstFixed = rows.findIndex((r) => /ハザードマップ|地理院地図/.test(r[1]));
       must(lastWhy >= 0 && firstFixed > lastWhy,
         `固定リンクが判定から出た語より上にいる: ${rows.map((r) => r[1]).join(" / ")}`);
-      // 「この土地から」の色は判定バッジと同じであること。ベージュ固定にしていたときは、
+      // この土地の判定から出た行のタグの色は、判定バッジと同じであること。ベージュ固定にしていたときは、
       // ここ（水域＝青い判定）でタグだけベージュになり、色が何を指すのか分からなかった。
       const tagCol = await page.$eval("#list .it.why .tag", (e) => getComputedStyle(e).color);
       const badgeCol = await page.$eval("#verdict .badge", (e) => getComputedStyle(e).color);
