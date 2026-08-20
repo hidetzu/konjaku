@@ -606,7 +606,8 @@ function stepsFrom(ph){
 let areaSeq=0;
 async function setTimeline(lon,lat,seq){
   let ph=null, failed=false;
-  try{ ph=await Konjaku.photos(lon,lat); }catch{ failed=true; }
+  // 取得の層を直接呼ばない。トップで取ってあれば、ここは1本も出ない
+  try{ ph=await KonjakuLand.photos(lon,lat); }catch{ failed=true; }
   if(seq!==areaSeq) return;                 // 別の場所へ移ったあと。触らない
   // ⚠ 判定そのものが落ちたときは、**何も間引かない**。
   //   「確かめられなかった」を「無い」に変えてはいけない
@@ -891,7 +892,8 @@ async function loadArea(lon,lat,title,opt){
 let landform=null;
 async function loadLandform(lon,lat,seq){
   landform=null;
-  try{ landform=await Konjaku.landform(lon,lat); }catch{ landform=null; }
+  // 同上。⚠ **トップ経由なら控えから返る**（実測 2本 → 0本）
+  try{ landform=await KonjakuLand.terrain(lon,lat); }catch{ landform=null; }
   // ⚠ ここも同じ。前の場所の地形分類が、あとから新しい場所の答えに乗らないように
   if(seq!==areaSeq) return;
   showResult();
