@@ -587,7 +587,15 @@
        ⚠ ただし **nowrap だけでは切れる**（実測 2026-08-19: 344 / 320 / 280 幅で
          「1936–42」の右端が欠けた）。読めなくなるのは 2 行になるより悪い。
        ⚠ 字の大きさを幅に合わせて縮める。**箱の幅に収まる範囲でいちばん大きく**する。 */
-    #era .y{font-size:var(--fs-hero-fit)}#hud{padding:0 12px 26px;gap:9px}
+    /* ⚠ **年代の表示と操作を 1 つの器に見せる**（2026-08-22。hidetzu/konjaku#165。Owner 判断）。
+         ⚠ **PC では 2026-08-20 から同じことをしていた。**⚠ 狭い幅にだけ届いていなかった。
+         ⚠ 利用者役 3/3 が「真ん中の板と下の板は 1 つでいい」と答え、⚠ **3 名とも理由は同じ**で
+           「⚠ **同じ『最新の空中写真』が 2 回**、上下に並んでいる」だった（2026-08-21）。
+         ⚠ **DOM の順は変えない**（読み上げとキーボードの順はそのまま）。 */
+    #era .y{font-size:var(--fs-hero-fit)}#hud{padding:0 12px 26px;gap:0}
+    #era,#timePanel{width:min(580px,100%)}
+    #era{border-bottom-left-radius:0;border-bottom-right-radius:0;border-bottom:0}
+    #timePanel{border-top-left-radius:0;border-top-right-radius:0;border-top:0}
     #era{padding:7px 10px 9px}
     /* ⚠ **狭い幅は「ものさし」に差し替える。**ドラムと横棒・▶・見出し行は出さない。
          実測（2026-08-19）: ドラムでは 9 段のうち画面に入るのが 320 幅で **1 個**だけで、
