@@ -1253,7 +1253,10 @@ head("6. 外部リンク");
   ];
   for (const [file, where] of [
     ["public/peel.html", /<title>[\s\S]*?<\/title>|<meta[^>]*(og:|twitter:|name="description")[^>]*>/g],
-    ["public/index.html", /\{id:"peel"[\s\S]{0,200}?\}/g],
+    // ⚠ **2026-08-21 に、⚠ 名乗りの場所が `{id:"peel"…}`（一覧の行）→ `peelLens()` へ移った。**
+    //   ⚠ 「この場所を深掘り」を行動一覧から判定カードの中へ移したため。
+    //   ⚠ **見ているものは同じ**（⚠ 深掘りの名乗りが、実装とずれていないか）。
+    ["public/index.html", /function peelLens\([\s\S]*?\n\}/g],
   ]) {
     const hay = (rfn(file, "utf8").match(where) ?? []).join(" ");
     if (!hay) { bad(`${file}: 名乗りの箇所が読めない`); continue; }
@@ -3812,7 +3815,7 @@ head("9. 画面の言葉");
          + "（3D の帯の断りと、出典の 2 つは残してある）");
   }
 
-  // ⚠ **深掘りの導線は 1 か所**（hidetzu/konjaku#138）。
+  // ⚠ **深掘りの導線は 1 か所**（hidetzu/konjaku#138。⚠ 2026-08-21 に置き場所を変えた）。
   //
   //   ⚠ **実測（2026-08-21・main = 8219774・豊洲・SW 無効）**
   //     根拠を開くと ⚠ **`#own` に 1 個・一覧に 1 個**。⚠ **DOM には常に 2 つあった。**
@@ -3839,9 +3842,18 @@ head("9. 画面の言葉");
       const n = IX.split(w).length - 1;
       if (n !== 1) bad8.push(`「${w.slice(0, 18)}…」が index.html に ${n} 個ある（peelLead の 1 か所だけ）`);
     }
-    // ⚠ **一覧行が peelLead を通っていること**（⚠ 死にコードにしない）
+    // ⚠ **判定カードの CTA が peelLead を通っていること**（⚠ 死にコードにしない）
+    //   ⚠ **2026-08-21 に、⚠ 導線が行動一覧から判定カードの中へ移った。**
+    //     ⚠ 実測（豊洲・375×667・hasTouch・SW 無効）: **y1135 → y651**。
+    //     ⚠ 利用者役 4 名: ⚠ **「次に何をしますか」に答えられたのが 2/4 → 4/4**。
+    //   ⚠ **見ている主張は変えていない**（⚠ 字の持ち主が 1 つであること）。
     if (!/sub\s*:\s*TOPWORD\.peelLead\(/.test(IX))
-      bad8.push("行動一覧が TOPWORD.peelLead を通っていない（字が 2 か所になる）");
+      bad8.push("深掘りの導線が TOPWORD.peelLead を通っていない（字が 2 か所になる）");
+    // ⚠ **導線は判定カードの中に 1 つ**。⚠ 一覧に戻っていないこと
+    if (!/function peelCtaHTML\(/.test(IX))
+      bad8.push("判定カードの深掘り（peelCtaHTML）が無い");
+    if (/\{id:"peel"/.test(IX))
+      bad8.push("行動一覧に深掘りの行が戻っている（導線は判定カードの 1 か所）");
     bad8.length
       ? bad(`深掘りの導線が 1 か所になっていない: ${bad8.join("、")}`)
       : ok("深掘りの導線は行動一覧の 1 か所で、字も TOPWORD.peelLead の 1 か所から出ている");
