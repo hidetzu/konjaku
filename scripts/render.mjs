@@ -63,19 +63,37 @@ const URAYASU = "ll=35.65400,139.90200&q=%E6%B5%A6%E5%AE%89";
 // 地図検索に「液状化」を投げても何も出てこない。
 // 判定から導いた語は .it.why を持つ。副題の文面ではなく印で拾うことで、
 // 「印が付いているか」自体もここで検査していることになる。
-const suggestionsOf = (page) => page.$$eval("#list .it.why", (els) => els
-  .map((e) => ({ label: e.querySelector("b")?.textContent ?? "",
-                 href: e.getAttribute("href") ?? "" })));
+// ⚠ **組は既定で畳んである**（2026-08-21。Owner 判断）。⚠ 中身を見る前に開く。
+//   ⚠ **「畳んでいること」自体は、⚠ 別のケースが見る**（開いてしまうと見られない）。
+//   ⚠ 押すたびに一覧を描き直すので、⚠ **要素の掴み直しが要る**。
+const openGroups = async (page) => {
+  for (let i = 0; i < 6; i++) {
+    const h = await page.$('#list .lh.fold[aria-expanded="false"]');
+    if (!h) break;
+    await h.click();
+    await page.waitForTimeout(150);
+  }
+};
+const suggestionsOf = async (page) => {
+  await openGroups(page);
+  return page.$$eval("#list .it.why", (els) => els
+    .map((e) => ({ label: e.querySelector("b")?.textContent ?? "",
+                   href: e.getAttribute("href") ?? "" })));
+};
 // 一覧を上から [組, 見出し] で読む。
 // ⚠ **2026-08-21 に、行ごとのタグをやめて組の見出しにした。**
 //   ⚠ 組は印（class）で読む。⚠ **字ではなく印で拾うことで、印が付いているかもここで見る。**
-const rowsOf = (page) => page.$$eval("#list .it", (els) => els
-  .map((e) => [e.classList.contains("why") ? "why"
-             : e.classList.contains("own") ? "own" : "ext",
-               e.querySelector("b")?.textContent ?? ""]));
-// 一覧の組の見出しを上から読む
+const rowsOf = async (page) => {
+  await openGroups(page);
+  return page.$$eval("#list .it", (els) => els
+    .map((e) => [e.classList.contains("why") ? "why" : "ext",
+                 e.querySelector("b")?.textContent ?? ""]));
+};
+// 一覧の組の見出しを上から読む。
+// ⚠ **見出しは 3 つの部品でできている**（2026-08-21）: 名前 ／ 件数 ／ ＞∨。
+//   ⚠ **名前だけを読む。**⚠ 件数と記号は別のケースが見る。
 const groupsOf = (page) => page.$$eval("#list .lh", (els) =>
-  els.map((e) => e.textContent.trim()));
+  els.map((e) => (e.querySelector("span")?.textContent ?? e.textContent).trim()));
 const WEB_SEARCH = "https://www.google.com/search?q=";
 
 // 判定が確定するまで待ち、ページを開いてから確定までの ms を返す。
@@ -329,8 +347,14 @@ const CASES = [
       const ms = await waitVerdict(page);
       const v = await page.locator("#verdict").textContent();
       must(v.includes("明治期"), `見出しに判定が出ていない: ${v}`);
+      // ⚠ **組は既定で畳んである**（2026-08-21）。⚠ 数える前に開く
+      await openGroups(page);
       const n = await page.locator("#list .it").count();
       must(n >= 5, `コマンドが少なすぎる: ${n}`);
+      // ⚠ **次の体験（この場所を深掘り）は、⚠ 判定カードの中**（⚠ 一覧ではない）
+      must(await page.locator("#verdict #peelCta").count() === 1, "判定カードに深掘りの導線が無い");
+      must(await page.locator('#list [href^="./peel"]').count() === 0,
+        "一覧にも深掘りの導線が残っている（導線は 1 か所）");
       // バッジは常に見える／詳細な根拠は ? を押した人にだけ見せる。
       const badges = await page.locator("#verdict .badge").count();
       must(badges >= 2, `バッジが出ていない: ${badges}`);
@@ -369,19 +393,25 @@ const CASES = [
       // ⚠ **組の見出しが出ていること**（2026-08-21。行ごとのタグから移した）。
       //   ⚠ 「なぜここに出ているのか」は、⚠ **組の見出しが 1 か所で言う。**
       //   ⚠ 字は words.js。⚠ **ここに書き写すと、言い直したときに検査が落ちる**
+      // ⚠ **組の順は「公的な情報で確認する」→「さらに調べる」**（2026-08-21。Owner 判断）。
+      //   ⚠ **前と逆にした。**⚠ 経緯は index.html の buildActions のコメントに書いてある。
       const groups = await groupsOf(page);
-      must(groups.join("／") === [WORDS.GROUP.why, WORDS.GROUP.ext].join("／"),
+      must(groups.join("／") === [WORDS.GROUP.ext, WORDS.GROUP.why].join("／"),
         `一覧の組の見出しが違う: ${groups.join(" / ")}`);
       // ⚠ **行ごとのタグは、画面から消えていること**（⚠ 見出しと 2 か所にしない）
       must(await page.locator("#list .tag").count() === 0,
         "行ごとのタグが戻っている（組の見出しと 2 か所になる）");
-      // 並びの原則は「この場所に固有なものほど上」。ハザードマップ・地理院地図は
-      // 座標を渡すだけでどこでも中身が同じなので、判定から出た語より下に来ること。
+      // ⚠ **組の順は Owner が決めた**（2026-08-21）: 公的な情報 → さらに調べる。
+      //   ⚠ **以前は逆で、⚠ 「この場所に固有なものほど上」だった。**
+      //     ⚠ その並びは、⚠ **亀戸の標高 -0.57m から出た〈水害の記録〉が、
+      //       ⚠ 亀戸と無関係な〈地理院地図〉の下に埋もれていた**のを直したもの。
+      //   ⚠ **条件が変わった**: ⚠ 両方とも畳んで 1 行の見出しになったので、埋もれない。
+      //   ⚠ **こちらでは決めない。**⚠ 順が変わったら、⚠ Owner の判断を取り直す。
       const rows = await rowsOf(page);
-      const lastWhy = rows.map((r) => r[0]).lastIndexOf("why");
-      const firstFixed = rows.findIndex((r) => /ハザードマップ|地理院地図/.test(r[1]));
-      must(lastWhy >= 0 && firstFixed > lastWhy,
-        `固定リンクが判定から出た語より上にいる: ${rows.map((r) => r[1]).join(" / ")}`);
+      const lastFixed = rows.map((r) => /ハザードマップ|地理院地図/.test(r[1])).lastIndexOf(true);
+      const firstWhy = rows.findIndex((r) => r[0] === "why");
+      must(lastFixed >= 0 && firstWhy > lastFixed,
+        `公的な情報が、この土地から出た語より下にいる: ${rows.map((r) => r[1]).join(" / ")}`);
       // この土地の判定から出た組の見出しの色は、判定バッジと同じであること。
       // ベージュ固定にしていたときは、ここ（水域＝青い判定）でだけベージュになり、
       // 色が何を指すのか分からなかった。
@@ -393,29 +423,26 @@ const CASES = [
       // 地名の例は場所が確定したら役目が終わっている。一覧の全下に居座らせない
       const quick = await page.$eval("#quick", (e) => getComputedStyle(e).display);
       must(quick === "none", `場所が確定したのに地名の例が出たままになっている: display=${quick}`);
-      // 判定カードと、そこから出た行が1枚に見えていること。
-      // 利用者の指摘「深掘りが別ゾーンだと迷う」への対応。要素は動かしていないので、
-      // ここが崩れても ↑↓/Enter は壊れない。崩れたことに気づけないのが問題なので検査する。
-      const weld = await page.evaluate(() => {
-        const v = document.getElementById("verdict").getBoundingClientRect();
-        const fh = [...document.querySelectorAll("#list .it.fh")];
-        const rest = [...document.querySelectorAll("#list .it:not(.fh)")];
-        const f0 = fh[0]?.getBoundingClientRect();
-        return { n: fh.length, gap: f0 ? Math.round(f0.top - v.bottom) : null,
-                 own: fh.filter((e) => e.classList.contains("own")).length,
-                 labels: fh.map((e) => e.querySelector("b")?.textContent ?? ""),
-                 firstRest: rest[0]?.querySelector("b")?.textContent ?? "" };
+      // ⚠ **次の体験は、⚠ 判定カードの中に入っている**（2026-08-21）。
+      //   ⚠ 前は一覧の 1 行目に置き、⚠ **枠と地色だけで判定カードと 1 枚に見せていた**（溶接）。
+      //     ⚠ 利用者の指摘「深掘りのための情報は同一カード内に表示しないと迷う」への対応だった。
+      //   ⚠ **中に入れたので、⚠ 溶接そのものが要らなくなった。**
+      //   ⚠ **守りたいことは同じ: ⚠ 答えを読んだ流れのまま、⚠ 次の体験に届くこと。**
+      //     ⚠ だから「重ねる」のすぐ下にあることを見る。
+      const cta = await page.evaluate(() => {
+        const c = document.getElementById("peelCta"); if (!c) return null;
+        const r = c.getBoundingClientRect();
+        const ov = document.getElementById("ovRow")?.getBoundingClientRect();
+        return { inCard: !!c.closest("#verdict"), t: Math.round(r.top), b: Math.round(r.bottom),
+          gap: ov ? Math.round(r.top - ov.bottom) : null,
+          label: c.querySelector("b")?.textContent ?? "" };
       });
-      // ⚠ **2026-08-21 に、溶接を「この場所を深掘り」だけに狭めた**（一覧を 3 分類にしたとき）。
-      //   ⚠ 前は「深掘り＋この土地から」を丸ごと 1 枚にしていたが、
-      //     ⚠ **「さらに調べる」は別の組**になり、⚠ 判定カードと連続しなくなった。
-      //   ⚠ 残す理由は変えていない: 利用者の指摘「深掘りが別ゾーンだと迷う」。
-      must(weld.n === 1, `判定カードに溶接された行が 1 つでない: ${weld.n}（${weld.labels.join(" / ")}）`);
-      must(weld.gap === 0, `判定カードと溶接した行の間に隙間がある: ${weld.gap}px`);
-      must(weld.own === 1,
-        `溶接しているのが「今昔の中で開くもの」ではない: ${weld.labels.join(" / ")}`);
+      must(cta, "判定カードの中に深掘りの導線が無い");
+      must(cta.inCard, "深掘りの導線が判定カードの外にある");
+      must(cta.gap !== null && cta.gap >= 0 && cta.gap <= 20,
+        `深掘りの導線が「重ねる」から離れている: ${cta.gap}px`);
       return `判定「${v.trim().split("\n")[0]}」／バッジ ${badges} 個／標高 ${elev}m／コマンド ${n} 件`
-        + `／提案 ${sug.map((s) => s.label).join("・")}（${firstFixed}番目より上に固定リンク無し）`
+        + `／提案 ${sug.map((s) => s.label).join("・")}（公的な情報は ${lastFixed} 番目まで）`
         + `／判定確定まで ${ms}ms`;
     },
   },
@@ -472,37 +499,39 @@ const CASES = [
   {
     // 溶接は「この土地の答え」を1枚に見せるためのもの。判定から出た語が無い土地で
     // 囲うと、どこでも同じ2行を囲んだ空箱になり、答えがあるように見える
-    // ⚠ **2026-08-21 に主張を書き直した**（一覧を 3 分類にしたとき）。
-    //   ⚠ 前の主張は「判定から出た語が無いときは溶接しない」だった。
-    //     ⚠ 当時は「深掘り＋この土地から」を丸ごと溶接していたので、⚠ 提案が 0 件の土地では
-    //       ⚠ **どの土地でも同じ 2 行を囲むだけの空箱**になり、
-    //       ⚠ 「この土地の答え」があるように見えていた。
-    //   ⚠ **いまは溶接するのが「この場所を深掘り」の 1 行だけ**なので、その空箱は起きない。
-    //     ⚠ その 1 行は、⚠ **この場所へ行く導線**（座標を渡すだけの固定リンクではない）。
-    //   ⚠ **守りたいことは変わっていない: ⚠ どこで開いても同じものを、
-    //     ⚠ 「この土地の答え」の続きに見せない。**⚠ だから固定リンクは溶接に入れない。
-    name: "提案が 0 件の土地でも、溶接するのは深掘りの 1 行だけ", path: `/?${KARUIZAWA}`,
+    // ⚠ **2026-08-21 に、2 度目の書き直し。**
+    //   ⚠ 1 度目（同日）: 「判定から出た語が無いときは溶接しない」→
+    //     ⚠ 「提案が 0 件の土地でも、溶接するのは深掘りの 1 行だけ」
+    //   ⚠ 2 度目（同日）: ⚠ **深掘りを判定カードの中へ入れたので、⚠ 溶接そのものをやめた。**
+    // ⚠ **守りたいことは 3 回とも同じ**:
+    //   ⚠ **どこで開いても同じものを、⚠ 「この土地の答え」の続きに見せない。**
+    //   ⚠ **提案が 0 件の土地でも、⚠ 次の体験には届くこと。**
+    name: "提案が 0 件の土地でも、次の体験は判定カードの中にある", path: `/?${KARUIZAWA}`,
     async check(page) {
       await waitVerdict(page);
-      await page.waitForSelector("#list .it", { timeout: 30000 });
+      await page.waitForSelector("#list .lh.fold", { timeout: 30000 });
       await settleAfterCondition(page);
       const r = await page.evaluate(() => {
-        const fh = [...document.querySelectorAll("#list .it.fh")];
+        const c = document.getElementById("peelCta");
         return { why: document.querySelectorAll("#list .it.why").length,
-          n: fh.length, own: fh.filter((e) => e.classList.contains("own")).length,
-          labels: fh.map((e) => e.querySelector("b")?.textContent ?? ""),
-          // ⚠ どこで開いても同じ固定リンクが溶接に混ざっていないこと
-          fixed: fh.filter((e) => /ハザードマップ|地理院地図/.test(e.textContent)).length,
-          groups: [...document.querySelectorAll("#list .lh")].map((e) => e.textContent.trim()) };
+          rows: document.querySelectorAll("#list .it").length,
+          cta: !!c, inCard: !!c?.closest("#verdict"),
+          label: c?.querySelector("b")?.textContent ?? "",
+          // ⚠ どこで開いても同じ固定リンクが、判定カードに紛れ込んでいないこと
+          fixedInCard: [...document.querySelectorAll("#verdict a")]
+            .filter((e) => /ハザードマップ|地理院地図/.test(e.textContent)).length,
+          groups: [...document.querySelectorAll("#list .lh.fold span:first-child")]
+            .map((e) => e.textContent.trim()) };
       });
       must(r.why === 0, `軽井沢で提案が出ている（前提が変わった）: ${r.why}`);
-      must(r.n === 1, `溶接が 1 行でない: ${r.n} 行（${r.labels.join(" / ")}）`);
-      must(r.own === 1, `溶接しているのが「今昔の中で開くもの」ではない: ${r.labels.join(" / ")}`);
-      must(r.fixed === 0, `どこで開いても同じ固定リンクを溶接している: ${r.labels.join(" / ")}`);
+      must(r.rows === 0, `既定で畳んでいない（行が ${r.rows} 出ている）`);
+      must(r.cta && r.inCard, "提案が 0 件の土地で、次の体験が判定カードの中に無い");
+      must(r.fixedInCard === 0,
+        `どこで開いても同じ固定リンクが判定カードに入っている: ${r.fixedInCard} 本`);
       // ⚠ 提案が 0 件なので、⚠ 「さらに調べる」の見出しも出ない
       must(!r.groups.includes(WORDS.GROUP.why),
         `提案が 0 件なのに「${WORDS.GROUP.why}」の見出しが出ている: ${r.groups.join(" / ")}`);
-      return `提案 0 件／溶接 1 行（${r.labels.join(" / ")}）／見出し ${r.groups.join("・")}`;
+      return `提案 0 件／次の体験「${r.label}」は判定カードの中／見出し ${r.groups.join("・")}`;
     },
   },
   {
@@ -1697,11 +1726,12 @@ const CASES = [
     // ⚠ **並び順は変えていない**（「この場所に固有なものほど上」）。
     //   ⚠ 以前ここを逆にして、⚠ **亀戸の標高 -0.57m から出た〈水害の記録〉が、
     //     ⚠ 亀戸と無関係な〈地理院地図〉の下に並んでいた**（直した記録が残っている）。
-    name: "行動一覧が、3 つの組に分かれている", path: `/?${TOYOSU}`,
+    name: "行動一覧が、3 つの組に分かれて、既定で畳んである", path: `/?${TOYOSU}`,
     async check(page) {
       const out = [];
       for (const [name, q, want] of [
-        ["豊洲", TOYOSU, [WORDS.GROUP.why, WORDS.GROUP.ext]],
+        // ⚠ **組の順は Owner が決めた**（2026-08-21）: 公的な情報 → さらに調べる
+        ["豊洲", TOYOSU, [WORDS.GROUP.ext, WORDS.GROUP.why]],
         // ⚠ **検索候補が 0 件の土地。**⚠ **空の組に見出しを出さない**
         ["軽井沢", KARUIZAWA, [WORDS.GROUP.ext]],
         ["札幌", SAPPORO, [WORDS.GROUP.ext]],
@@ -1709,30 +1739,49 @@ const CASES = [
         if (page.url() !== BASE + `/?${q}`)
           await page.goto(BASE + `/?${q}`, { waitUntil: "domcontentloaded", timeout: 45000 });
         await waitVerdict(page);
-        await page.waitForSelector("#list .it", { timeout: 30000 });
+        // ⚠ **行ではなく見出しを待つ。**⚠ 既定では行が 1 つも出ていない
+        await page.waitForSelector("#list .lh.fold", { timeout: 30000 });
         await settleAfterCondition(page);
         const groups = await groupsOf(page);
         must(groups.join("／") === want.join("／"),
           `${name}: 組の見出しが違う: 「${groups.join(" / ")}」（欲しいのは「${want.join(" / ")}」）`);
         const r = await page.evaluate(() => ({
           tags: document.querySelectorAll("#list .tag").length,
-          // ⚠ 見出しは行ではない。⚠ **押せる見た目にしない**（押しても何も起きない導線）
-          clickable: [...document.querySelectorAll("#list .lh")]
-            .filter((e) => e.tagName === "A" || e.tagName === "BUTTON" || e.onclick).length,
-          // ⚠ 中身が 0 件の組が無いこと（⚠ 見出しの直後は必ず行）
-          empty: [...document.querySelectorAll("#list .lh")]
-            .filter((e) => !e.nextElementSibling?.classList.contains("it")).length,
-          why: document.querySelectorAll("#list .it.why").length,
-          fixed: [...document.querySelectorAll("#list .it")]
-            .filter((e) => /ハザードマップ|地理院地図/.test(e.textContent)).length,
+          rows: document.querySelectorAll("#list .it").length,
+          // ⚠ **件数を必ず出す。**⚠ 「ある」と分かることが、この畳みの目的
+          counts: [...document.querySelectorAll("#list .lh.fold .n")].map((e) => e.textContent.trim()),
+          // ⚠ 畳んでいる印
+          closed: [...document.querySelectorAll("#list .lh.fold")]
+            .filter((e) => e.getAttribute("aria-expanded") === "false").length,
+          heads: document.querySelectorAll("#list .lh.fold").length,
+          // ⚠ **押せること**（⚠ 見出しは押して開く。⚠ 押せないと中身に届かない）
+          buttons: [...document.querySelectorAll("#list .lh.fold")]
+            .filter((e) => e.tagName === "BUTTON").length,
+          tap: Math.min(...[...document.querySelectorAll("#list .lh.fold")]
+            .map((e) => Math.round(e.getBoundingClientRect().height))),
           over: document.documentElement.scrollWidth - document.documentElement.clientWidth,
         }));
         must(r.tags === 0, `${name}: 行ごとのタグが残っている（${r.tags} 個。見出しと 2 か所になる）`);
-        must(r.clickable === 0, `${name}: 組の見出しが押せる見た目になっている`);
-        must(r.empty === 0, `${name}: 中身が 0 件の組に見出しが出ている`);
-        must(r.fixed === 2, `${name}: 公的な情報が 2 件でない: ${r.fixed}`);
+        must(r.rows === 0, `${name}: 既定で畳んでいない（行が ${r.rows} 出ている）`);
+        must(r.closed === r.heads, `${name}: 畳んでいない見出しがある（${r.closed}/${r.heads}）`);
+        must(r.buttons === r.heads, `${name}: 見出しが押せない（${r.buttons}/${r.heads}）`);
+        must(r.tap >= 44, `${name}: 見出しが指で押せない（${r.tap}px）`);
+        must(r.counts.every((c) => /^\d+件$/.test(c)),
+          `${name}: 件数が出ていない: ${r.counts.join(" / ")}`);
         must(r.over <= 0, `${name}: 横にあふれている（${r.over}px）`);
-        out.push(`${name} 見出し ${groups.join("・") || "無し"}／この土地から ${r.why} 行`);
+        // ⚠ **押したら開く。**⚠ 開いた組の中身が出て、⚠ 印が変わること
+        await page.locator("#list .lh.fold").first().click();
+        await settleAfterClick(page);
+        const a = await page.evaluate(() => ({
+          rows: document.querySelectorAll("#list .it").length,
+          open: document.querySelector("#list .lh.fold")?.getAttribute("aria-expanded"),
+          fixed: [...document.querySelectorAll("#list .it")]
+            .filter((e) => /ハザードマップ|地理院地図/.test(e.textContent)).length,
+        }));
+        must(a.rows === 2, `${name}: 押しても公的な情報が 2 件出ない: ${a.rows}`);
+        must(a.open === "true", `${name}: 押しても開いた印にならない`);
+        must(a.fixed === 2, `${name}: 公的な情報が 2 件でない: ${a.fixed}`);
+        out.push(`${name} 見出し ${groups.join("・")}（${r.counts.join("・")}）→ 押すと ${a.rows} 行`);
       }
       return out.join("／");
     },
@@ -1892,6 +1941,8 @@ const CASES = [
       // 掟: 主題は「成り立ち」。明治期は手法のひとつ の前は、ここで提案が 0 件だった（明治期の区分からしか出していなかったため）。
       // いまは地形分類から出る。ただし理由は必ず、この地点で実測した事実を名指しすること。
       // 「記録なし」を根拠に語を出していたら、それは埋め草なので落ちる。
+      // ⚠ **組は既定で畳んである**（2026-08-21）。⚠ 理由を読む前に開く
+      await openGroups(page);
       const subs = await page.$$eval("#list .it.why small", (els) => els.map((e) => e.textContent.trim()));
       must(subs.length >= 1, "地形分類が出ているのに提案が1件も無い");
       must(!subs.some((t) => /記録なし|明治期/.test(t)),
@@ -2618,9 +2669,15 @@ const CASES = [
             if (!a || !c) return null;
             return !(a.left < c.right && c.left < a.right);
           })(),
-          // ⚠ 溶接（判定の箱と一覧が 1 枚に見えている）
-          weld: lb && lb.checkVisibility()
-            ? Math.round(lb.getBoundingClientRect().top - vd.getBoundingClientRect().bottom) : null,
+          // ⚠ **次の体験（この場所を深掘り）が、⚠ 判定カードの中にあること**（2026-08-21）。
+          //   ⚠ 前はここで「判定の箱と一覧の溶接（隙間 0px）」を見ていた。
+          //     ⚠ **深掘りをカードの中へ入れたので、⚠ 溶接そのものをやめた。**
+          //   ⚠ **守りたいことは同じ**: ⚠ 答えを読んだ流れのまま、次の体験に届くこと。
+          cta: (() => { const c = document.getElementById("peelCta");
+            if (!c) return null;
+            const r = c.getBoundingClientRect();
+            return { inCard: !!c.closest("#verdict"), x: Math.round(r.left),
+              b: Math.round(r.bottom) }; })(),
           // ⚠ DOM の順（読み上げとキーボードの順）
           order: [...vd.children].map((e) => e.id || String(e.className).split(" ")[0] || e.tagName).join(","),
           over: d.scrollWidth - d.clientWidth, vh: innerHeight, pageH: d.scrollHeight,
@@ -2657,8 +2714,12 @@ const CASES = [
         // ⚠ 左に答え、右に写真。⚠ **左右が入れ替わっていないこと**
         must(r.big && r.big.x > r.vhead.x,
           `${w}px: 写真が答えより左にある（写真 x=${r.big?.x} / 答え x=${r.vhead.x}）`);
-        // ⚠ **溶接を壊していないこと**
-        must(r.weld === 0, `${w}px: 判定の箱と一覧の溶接が外れている（隙間 ${r.weld}px）`);
+        // ⚠ **次の体験が判定カードの中にあること**（2026-08-21。溶接から置き換えた）
+        must(r.cta && r.cta.inCard, `${w}px: 深掘りの導線が判定カードの中に無い`);
+        // ⚠ **写真と同じ側（右の列）にいること。**⚠ 流れの中の箱にすると 2 カラムが壊れる
+        //   （⚠ 実測で踏んだ: #verdict が 605 → 1074px・ページが 1546 → 1643px）
+        must(r.cta.x > r.vhead.x,
+          `${w}px: 深掘りの導線が答えと同じ列にいる（2 カラムが壊れている）`);
         // ⚠ **縦のあふれを増やしていないこと。**⚠ この Issue は、それを直すもの。
         //   ⚠ 直す前は 4 幅とも 1879px（2026-08-20 実測）。⚠ **超えたら本末転倒。**
         must(r.pageH <= 1879,
@@ -3000,17 +3061,19 @@ const CASES = [
           await settleAfterCondition(p2);
           const look = () => p2.evaluate(() => ({
             own: document.querySelectorAll('#own a[href*="./peel"]').length,
+            // ⚠ **2026-08-21 に、⚠ 導線が一覧から判定カードの中へ移った**
+            card: document.querySelectorAll('#verdict a[href*="./peel"]').length,
             list: [...document.querySelectorAll('#list a[href*="./peel"], #list .it')]
               .filter((e) => /この場所を深掘り/.test(e.textContent ?? "")).length,
-            listY: (() => { const e = [...document.querySelectorAll("#list .it")]
-              .find((x) => /この場所を深掘り/.test(x.textContent ?? ""));
+            cardY: (() => { const e = document.getElementById("peelCta");
               return e ? Math.round(e.getBoundingClientRect().top) : null; })(),
           }));
-          // ⚠ **初期は一覧に 1 個だけ**
+          // ⚠ **初期は判定カードに 1 個だけ**
           const a = await look();
-          must(a.list === 1, `${w}px: 一覧の深掘り行が ${a.list} 個（1 個のはず）`);
+          must(a.card === 1, `${w}px: 判定カードの深掘りが ${a.card} 個（1 個のはず）`);
+          must(a.list === 0, `${w}px: 一覧にも深掘りが ${a.list} 個ある（1 か所のはず）`);
           must(a.own === 0, `${w}px: 根拠パネルに深掘りの導線が ${a.own} 個ある`);
-          must(a.listY !== null, `${w}px: 一覧の深掘り行が見つからない`);
+          must(a.cardY !== null, `${w}px: 判定カードの深掘りが見つからない`);
           // ⚠ **根拠を開いても増えない**
           await p2.click("#whyBtn");
           await p2.waitForSelector("#own .ev", { timeout: 30000 });
@@ -3018,8 +3081,9 @@ const CASES = [
           const b2 = await look();
           must(b2.own === 0,
             `${w}px: 根拠を開くと深掘りの導線が ${b2.own} 個に増える（1 か所のはず）`);
-          must(b2.list === 1, `${w}px: 根拠を開いたら一覧の行が ${b2.list} 個になった`);
-          out.push(`${w}px 一覧 ${a.list}（y${a.listY}）／根拠 ${a.own}→${b2.own}`);
+          must(b2.card === 1, `${w}px: 根拠を開いたら判定カードの導線が ${b2.card} 個になった`);
+          must(b2.list === 0, `${w}px: 根拠を開いたら一覧にも導線が出た（${b2.list} 個）`);
+          out.push(`${w}px 判定カード ${a.card}（y${a.cardY}）／一覧 ${a.list}／根拠 ${a.own}→${b2.own}`);
         } finally { await ctx.close(); }
       }
       return out.join(" ／ ");
@@ -3956,7 +4020,7 @@ const CASES = [
       //   ⚠ 修飾キー付きの click は使わない。macOS では新しいタブで開いて遷移せず、
       //     Linux では遷移する。**同じ検査が OS で別のものを測っていた**（CI で発覚）。
       //     普通に押して遷移させれば、どちらでも同じものを測れる。
-      await page.locator('#list a[href^="./peel"]').first().click();
+      await page.locator('#verdict a[href^="./peel"]').first().click();
       await page.waitForURL(/\/peel/, { timeout: 15000 });
       await page.waitForTimeout(1200);
       const opened = ticks.filter((t) => t === "open.peel").length;
@@ -4260,19 +4324,27 @@ const CASES = [
       await page.waitForTimeout(400);
 
       // (4) 本命（3D）が、外部リンクと同じ顔で埋もれていないこと
+      // ⚠ **2026-08-21 に、⚠ 深掘りは判定カードの中へ移った**（⚠ 一覧ではない）
       const peel = await page.evaluate(() => {
-        const el = [...document.querySelectorAll("#list .it")]
+        const el = [...document.querySelectorAll("#verdict .peel-cta")]
           // ⚠ 語で探さない。名乗りは実装に合わせて変わる
           //   （「時間をさかのぼる（3D）」→「立体で見る」→「この場所を深掘り」）。
           //   この検査が見たいのは「本命の行が埋もれていないか」なので、行き先で探す
           .find((e) => (e.getAttribute("href") ?? "").startsWith("./peel"));
         if (!el) return null;
         const r = el.getBoundingClientRect();
-        return { y: Math.round(r.y + scrollY), own: el.classList.contains("own"),
-                 h: Math.round(r.height) };
+        // ⚠ **外部へ渡すだけの行と同じ顔にしない。**⚠ 枠と地色を持っていること
+        //   （⚠ 実測: 本命が「ごはん / ラーメン」と同じ見た目のせいで、
+        //     ⚠ **一覧全体が「リンク集」に見え、2 画面下まで気づかれていなかった**）。
+        const cs = getComputedStyle(el);
+        return { y: Math.round(r.y + scrollY), h: Math.round(r.height),
+                 inCard: !!el.closest("#verdict"),
+                 dressed: cs.borderTopWidth !== "0px"
+                   && cs.backgroundColor !== "rgba(0, 0, 0, 0)" };
       });
-      must(peel, "3D への行が見つからない");
-      must(peel.own, "本命が、外部へ渡すだけの行と同じ見た目になっている");
+      must(peel, "深掘りの導線が見つからない");
+      must(peel.inCard, "深掘りの導線が判定カードの外にある");
+      must(peel.dressed, "本命が、外部へ渡すだけの行と同じ見た目になっている（枠も地色も無い）");
       // ⚠ **絶対の px で見ない。** 手元 1040 / CI 1050 と**環境で 10px 動く**
       //   （CI は apt でフォントを入れるので文字の寸法が違う。同じ理由で過去に
       //    「行を押すと寄った結果が画面に入る」が 2 回とも同じ値で落ちている）。
@@ -4297,9 +4369,13 @@ const CASES = [
       //   ⚠ **本当の見張りは上の隔たり（判定の下から 0px）のほう。** ここは背番号。
       //   ⚠ 次にこの数字を上げるときも、何を足したから上げるのかを書くこと。
       //     書けないなら、それは足しすぎ。
-      must(peel.y < 1260, `本命が埋もれている: y=${peel.y}（実測 手元 1186 / CI は約 +10px。上限 1260）`);
+      // ⚠ **2026-08-21 に 1260 → 800 へ下げた。**⚠ 上げっぱなしにしない、の逆をやる。
+      //   ⚠ 深掘りを判定カードの中（重ねるの下）へ移したので、⚠ **実測 y651**（豊洲・375）。
+      //   ⚠ **下げた理由**: ⚠ この上限は「埋もれていないこと」の背番号で、⚠ 実態から離すと
+      //     ⚠ **また埋もれても気づけない。**⚠ 環境差（約 +10px）と土地差を見て 800 にした。
+      must(peel.y < 800, `本命が埋もれている: y=${peel.y}（実測 豊洲 375px で 651。上限 800）`);
       return `☆は y=${mine.y} に開く／バッジ ${badges} 個から根拠へ／店は打つまで出ない／`
-        + `3D への行は y=${peel.y}（判定の下から ${gap}px。環境で 10px 動くので相対で見る）`;
+        + `深掘りは y=${peel.y}（判定の下から ${gap}px。環境で 10px 動くので相対で見る）`;
     },
   },
   // ---- この年代を聞く ----
@@ -7205,19 +7281,27 @@ const CASES = [
       await page.fill("#q", "渋谷");
       await page.waitForTimeout(1000);         // 応答はまだ返っていない
       await page.locator(".quick button").first().click();   // 場所を選ぶ（setMode("action")）
-      await page.waitForFunction(() => document.querySelectorAll("#list .tx b").length > 0,
+      // ⚠ **2026-08-21 に、⚠ 一覧は既定で畳んだ。**⚠ 行ではなく組の見出しを待つ
+      await page.waitForFunction(() => document.querySelectorAll("#list .lh.fold").length > 0,
         null, { timeout: 20000 });
+      // ⚠ **2026-08-21 に、⚠ 深掘りは判定カードへ移った。**⚠ 一覧に出るのは組の見出し
       const acted = (await page.locator("#list").innerText()).trim();
-      must(/この場所を深掘り/.test(acted), `場所を選んでも行動一覧が出ていない: ${JSON.stringify(acted.slice(0, 40))}`);
+      must(/公的な情報で確認する/.test(acted),
+        `場所を選んでも行動一覧が出ていない: ${JSON.stringify(acted.slice(0, 40))}`);
+      must(await page.locator("#verdict #peelCta").count() === 1,
+        "場所を選んでも、判定カードに次の体験が出ていない");
       await settleAfterCondition(page);         // ⚠ ここで古い応答が届く
       const after = (await page.locator("#list").innerText()).trim();
       must(!/渋谷区/.test(after),
         `場所を選んだのに、行動一覧が古い候補で上書きされた: ${JSON.stringify(after.slice(0, 40))}`);
       // ⚠ 「変わらないこと」は見ない。判定が進むと行動一覧は**正当に増える**
       //   （最初そう書いて落ちた）。見たいのは**行動一覧のままであること**。
-      must(/この場所を深掘り/.test(after),
+      // ⚠ **2026-08-21 に、⚠ 深掘りは判定カードへ移った。**⚠ 一覧側の目印は組の見出し
+      must(/公的な情報で確認する/.test(after),
         `行動一覧でなくなっている: ${JSON.stringify(after.slice(0, 40))}`);
-      return `行動一覧のまま（${JSON.stringify(after.slice(0, 18))}）`;
+      must(await page.locator("#verdict #peelCta").count() === 1,
+        "古い応答が届いたあと、判定カードから次の体験が消えている");
+      return `行動一覧のまま（${JSON.stringify(after.slice(0, 18))}）／次の体験は判定カードに 1 つ`;
     },
   },
   {
@@ -7255,9 +7339,11 @@ const CASES = [
           null, { timeout: 45000 });
         await settleAfterCondition(page);
         return page.evaluate(() => ({
-          peel: document.querySelectorAll('#list [href^="./peel"]').length,
+          // ⚠ **2026-08-21 に、⚠ 導線が一覧から判定カードの中へ移った**
+          peel: document.querySelectorAll('#verdict [href^="./peel"]').length,
           ownPeel: document.querySelectorAll('#own a[href^="./peel"]').length,
-          list: (document.getElementById("list")?.innerText ?? "").replace(/\s+/g, " "),
+          // ⚠ **2026-08-21 に、⚠ 深掘りの字は判定カードへ移った。**⚠ CTA の字を読む
+          list: (document.getElementById("peelCta")?.innerText ?? "").replace(/\s+/g, " "),
           own: (document.getElementById("own")?.innerText ?? "").replace(/\s+/g, " "),
         }));
       };
@@ -7268,7 +7354,7 @@ const CASES = [
       //   ⚠ 以前は根拠パネルにも同じカードがあり、⚠ **ここで 2 本あることを求めていた。**
       //   ⚠ 利用者役 4/4 が根拠側を否定した（唐突／2 回出る／根拠の一部に見える）。
       //   ⚠ **見ている主張は変えていない**: 取り込んである場所で導線が出ること。
-      must(yes.peel === 1, `取り込んである場所で導線が出ていない: 一覧 ${yes.peel} 本`);
+      must(yes.peel === 1, `取り込んである場所で導線が出ていない: 判定カード ${yes.peel} 本`);
       must(yes.ownPeel === 0,
         `根拠パネルに導線が戻っている: ${yes.ownPeel} 本（導線は一覧の 1 か所）`);
       must(!/順に増やしています/.test(yes.list),
@@ -7287,7 +7373,7 @@ const CASES = [
       // ⚠ **⚠ の記号を使わない。**すぐ上の「この土地で気をつけること」（災害リスク）と
       //   同じ印になり、利用者役 2/3 が「危ない土地の警告か」と読んだ
       const mark = await page.evaluate(() =>
-        document.querySelector('#list [href^="./peel"]')?.innerText ?? "");
+        document.querySelector('#verdict [href^="./peel"]')?.innerText ?? "");
       must(!mark.includes("⚠"), `在庫の話に ⚠ を使っている（危険の印と紛らわしい）: ${mark.slice(0, 60)}`);
       // ⚠ **根拠パネルに導線を戻さない**（2026-08-21。hidetzu/konjaku#138）。
       //   ⚠ 以前は「一覧と根拠カードで言うことが変わらない」を見ていたが、
