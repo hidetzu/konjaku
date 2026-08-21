@@ -194,38 +194,40 @@
      ⚠ 行ではないので、⚠ 押せる見た目にしない（押しても何も起きない導線を置かない）。 */
   #list .lh{margin:13px 2px 5px;font-size:var(--fs-note);font-weight:600;color:var(--ink-dim)}
   #list .lh:first-child{margin-top:2px}
-  /* ⚠ 自前で根拠を持って見せる画面（3D・重ねて比べる）を、外部へ渡すだけの行と
-     同じ顔で並べない。実測で、本命が「ごはん / ラーメン」と同じ見た目のせいで
-     一覧全体が「リンク集」に見え、2画面下まで気づかれていなかった。 */
-  #list .it.own{min-height:56px;border-color:rgba(126,224,165,.3);background:rgba(126,224,165,.05)}
-  #list .it.own .ic{font-size:var(--fs-sign)}
-  #list .it.own .tx b{font-size:var(--fs-body)}
-  #list.w .it.own{border-color:rgba(91,163,224,.32);background:rgba(91,163,224,.06)}
   /* 判定バッジから導かれた組であることを色で繋ぐ（陸=.badge.land / 水域=.badge.water と同じ）。
      ⚠ **2026-08-21 に、行ごとのタグから組の見出しへ移した。**⚠ 繋ぐ理由は変えていない:
      ベージュ固定にしていたときは、水域（青い判定）でここだけベージュになり、
      色が何を指しているのか分からなかった。 */
-  #list .lh.lh-why{color:var(--why)}
-  /* 判定カードと、そこから出た行を1枚に溶接する。
-     利用者の指摘「深掘りのための情報は同一カード内に表示しないと迷う」への対応。
-     要素は動かさず、枠と地色だけで一続きに見せている（↑↓/Enter・絞り込みを壊さないため） */
-  .verdict.welded{margin-bottom:0;border-bottom-left-radius:0;border-bottom-right-radius:0;
-    border-bottom-color:transparent}
-  #list.welded{margin-top:0}
-  #list .it.fh{margin-bottom:0;border-radius:0;border-top-color:transparent;
-    border-left-color:rgba(126,224,165,.28);border-right-color:rgba(126,224,165,.28);
-    background:rgba(126,224,165,.04)}
-  #list.w .it.fh{border-left-color:rgba(91,163,224,.35);border-right-color:rgba(91,163,224,.35);
-    background:rgba(91,163,224,.05)}
-  #list .it.fh-last{margin-bottom:4px;border-bottom-left-radius:9px;border-bottom-right-radius:9px;
-    border-bottom-color:rgba(126,224,165,.28)}
-  #list.w .it.fh-last{border-bottom-color:rgba(91,163,224,.35)}
-  /* 溶接した中では、選択を枠色で示すと1枚に見せた箱がその行だけ切れて見える。
-     枠は溶接の色のまま置き、選択は左の縦棒と地色で示す */
-  #list .it.fh.sel{box-shadow:inset 3px 0 0 var(--action);background:rgba(111,195,255,.07)}
-  #list .it.fh.sel:not(.fh-last){border-bottom-color:transparent}
-  #list .it.fh{border-bottom-color:transparent}
-  #list .it.fh+.it.fh{border-top-color:var(--line)}
+  /* ⚠ **`.fold` より後か、⚠ 強い書き方にする。**⚠ 同じ強さだと後勝ちで色が消える
+     （⚠ 実測で踏んだ: 見出し rgb(139,150,163) / バッジ rgb(91,163,224)）。 */
+  #list .lh.fold.lh-why{color:var(--why)}
+  /* ⚠ **次の体験（この場所を深掘り）**。⚠ 2026-08-21 に判定カードの中へ入れた。
+     ⚠ 前は一覧の 1 行目に置き、⚠ **枠と地色だけで判定カードと 1 枚に見せていた**
+       （溶接。利用者の指摘「深掘りのための情報は同一カード内に表示しないと迷う」）。
+     ⚠ **中に入れたので、⚠ 溶接そのものが要らなくなった。**⚠ CSS ごと消した。
+     ⚠ 実測（豊洲・375×667・hasTouch・SW 無効）: **y1135 → y655**（⚠ 初期画面に顔を出す）。
+     ⚠ **外部へ渡すだけの行と同じ顔にしない。**⚠ 実測で、本命が「ごはん / ラーメン」と
+       同じ見た目のせいで、⚠ **一覧全体が「リンク集」に見え、2 画面下まで気づかれていなかった。** */
+  .verdict .peel-cta{display:flex;align-items:center;gap:11px;width:100%;min-height:56px;
+    margin:9px 0 0;padding:9px 11px;border:1px solid rgba(126,224,165,.3);border-radius:9px;
+    background:rgba(126,224,165,.05);color:var(--ink);text-decoration:none}
+  .verdict.w .peel-cta{border-color:rgba(91,163,224,.32);background:rgba(91,163,224,.06)}
+  .verdict .peel-cta:hover{border-color:var(--action)}
+  .verdict .peel-cta .ic{flex:none;width:24px;text-align:center;font-size:var(--fs-sign)}
+  .verdict .peel-cta .tx{flex:1;min-width:0}
+  .verdict .peel-cta .tx b{display:block;font-weight:500;font-size:var(--fs-body)}
+  .verdict .peel-cta .tx small{display:block;color:var(--ink-dim);font-size:var(--fs-note)}
+  .verdict .peel-cta .go{flex:none;color:var(--action)}
+  /* ⚠ **畳んだ組の見出し**（2026-08-21）。⚠ 押すと開く。
+     ⚠ 中身が 0 件の組は、⚠ 見出しごと出さない（Owner 判断）。
+     ⚠ **PC でも畳む**（Owner 判断）。 */
+  #list .lh.fold{display:flex;align-items:center;gap:9px;width:100%;min-height:var(--tap);
+    text-align:left;font:inherit;font-size:var(--fs-note);font-weight:600;cursor:pointer;
+    margin:6px 0 0;padding:9px 11px;border:1px solid var(--line);border-radius:9px;
+    background:transparent;color:var(--ink-dim)}
+  #list .lh.fold:hover{border-color:var(--action)}
+  #list .lh.fold .n{margin-left:auto;font-weight:500}
+  #list .lh.fold .cv{flex:none;width:1em;text-align:center;color:var(--ink-dim)}
   /* 災害リスク。断定ではなく引用なので、出典を必ず添える（掟: 根拠のないことは書かない） */
   /* ⚠ 畳むが、消さない。掟: 災害リスクを、根拠の奥ではなく正面に出す で「根拠の奥から正面へ」引き上げた判断は生きている。
      ただし実測で 167px あり、判定カードでいちばん場所を食っていた。
@@ -895,10 +897,10 @@
        読み上げとキーボードの順が変わると、別の不具合になる。
 
      ⚠ **割るのは #verdict の中だけ。**⚠ .wrap では割れない。
-       #verdict は自前の枠（背景・境界・角 10px 10px 0 0）を持ち、
-       ⚠ **下の #list と溶接している**（.verdict.welded）。
-       ⚠ display:contents で平らにすると、その枠と溶接が壊れる。
+       #verdict は自前の枠（背景・境界・角）を持っている。
+       ⚠ display:contents で平らにすると、その枠が壊れる。
        ⚠ **だから #listbox は、いままでどおり枠の下に横いっぱいで残す。**
+     ⚠ **2026-08-21 に、⚠ #list との溶接はやめた**（⚠ 深掘りをカードの中へ入れたため）。
 
      ⚠ **切り替える幅は 68.75rem（＝1100px）。**
        ⚠ 左 28.75rem ＋ 右 38.375rem（いまの写真幅 614px）＝ 67.125rem が下限。
@@ -925,7 +927,12 @@
     .verdict > .strip-ops,
     .verdict > #strip,
     .verdict > #big,
-    .verdict > #ovRow{float:right;clear:right;
+    .verdict > #ovRow,
+    /* ⚠ **次の体験は「見るもの」の列**（2026-08-21）。⚠ 重ねるのすぐ下に置く。
+       ⚠ **流れの中の箱のままにすると、⚠ 2 段組そのものが壊れる**（実測で踏んだ）:
+         ⚠ 幅いっぱいの箱が float の列を分断し、⚠ **1 段組に戻って
+           #verdict が 605 → 1074px・ページが 1546 → 1643px になった**。 */
+    .verdict > .peel-cta{float:right;clear:right;
       width:calc(100% - var(--detail-pane-width) - 20px)}
 
     /* ⚠ **左＝読むもの。**⚠ 幅を決めて、右の float の左に流す。
@@ -1854,7 +1861,13 @@ function loadingHTML(){
         <div id="pins"></div>
       </div>
     </div>
-    <div class="v-head"><span class="tx dim">この土地の成り立ちを判定中…</span></div>`;
+    <div class="v-head"><span class="tx dim">この土地の成り立ちを判定中…</span></div>`
+    // ⚠ **判定を待っているあいだも、⚠ 次の体験は出す**（2026-08-21）。
+    //   ⚠ 前は行動一覧の 1 行目にあり、⚠ **場所を選んだ瞬間から出ていた。**
+    //   ⚠ 判定カードへ移したとき、⚠ **判定が返るまで（実測 約 1.1 秒）消えていた。**
+    //     ⚠ 実描画がそれを捕まえた（「場所を選んでも、判定カードに次の体験が出ていない」）。
+    //   ⚠ **深掘りは明治期の判定に依存しない**（⚠ 行き先は座標と年代だけ）。⚠ 待つ理由が無い。
+    + peelCtaHTML();
 }
 
 // URL で指定された年代を、段が組み上がった直後・**描く前**に当てる。
@@ -1969,6 +1982,8 @@ function timeHTML(f){
       <input type="checkbox" id="ovSwale">
       <span>明治期の土地を重ねる<small class="ov-st" id="ovState"></small></span>
     </label>` : ""}`
+    // ⚠ **次の体験は、⚠ 答えのすぐ下**（2026-08-21。上の peelLens のコメントを読む）
+    + peelCtaHTML()
     + actsHTML()
     // ⚠ 「現在を重ねる」を外した（2026-08-14）。実測 30px。
     //   帯が時間軸なのに、その真下に**2本目の時間の操作**が並んでいた。
@@ -3054,40 +3069,52 @@ const feedbackUrl=(term)=>{
 };
 
 // 自前レンズ。ここだけが「根拠あり」で出せるもの
-function ownLenses(p,facts){
+// ⚠ **「この場所を深掘り」の持ち主**（2026-08-21）。
+//   ⚠ **2026-08-21 に、行動一覧から判定カードの中へ移した。**
+//     ⚠ 実測（豊洲・375×667・hasTouch・SW 無効・`main` = `d3a50b5`）:
+//       ⚠ 一覧に置いていたときは **y1135**（⚠ 1.7 画面ぶん下）。
+//       ⚠ 写真の下へ上げると **y655**（⚠ 初期画面に顔を出す）。
+//     ⚠ 利用者役 4 名に画面だけを見せた（⚠ 実在の利用者ではない）:
+//       ⚠ **「次に何をしますか」に答えられたのが 2/4 → 4/4**。
+//       ⚠ A と D は「半分切れているから、もっとあると分かる」と言った。
+//   ⚠ **一覧から抜けたので、⚠ ↑↓/Enter の輪と打鍵の絞り込みからは外れる。**
+//     ⚠ **CTA は一覧より上にあるので、⚠ 打っているあいだも見えている。**
+//   ⚠ **href に年代（eraParam）も載せる。**載せないと、見ていた年代が落ちる。
+function peelLens(p){
   const ll=`${p.lat.toFixed(5)},${p.lon.toFixed(5)}`;
   const enc=encodeURIComponent(p.title);
+  // ⚠ **下地が無くても出す。押せる。**（2026-08-18。一度「出さない」にして戻した）
+  //   出さないと「**まだ用意していない**」が「**この場所には機能そのものが無い**」に見える。
+  //   利用者役 3/3 が「機能があること自体に気づけない」と答えた。
+  //   ⚠ 「知らないことは回復できないが、がっかりは回復できる」（利用者役の言葉）。
+  //
+  // ⚠ ただし**押す前に**言う。押して、地図が立ち上がって、待たされてから
+  //   「取れなかった」と言われるのが、いちばんがっかりする（利用者役の指摘）。
+  //   ⚠ 判定は ground.js の1か所。ここで数え直さない。
+  //   ⚠ 読めなかった（null）ときは**何も断らない**。索引を取得できなかっただけで、
+  //     用意していないとは限らない（掟: 取得できなかった ≠ 存在しなかった）。
+  // ⚠ **字は TOPWORD.peelLead の 1 か所**（hidetzu/konjaku#138）。
+  return {ic:"🌊",label:"この場所を深掘り",
+    sub:TOPWORD.peelLead(KonjakuGround.hasSync(p.lon,p.lat)),
+    href:`./peel?q=${enc}&ll=${ll}${eraParam()}`};
+}
+
+// ⚠ 判定カードの中に置く CTA。⚠ **画面に出る導線はここ 1 か所**
+function peelCtaHTML(){
+  if(!current) return "";
+  const x=peelLens(current);
+  return `<a class="peel-cta" id="peelCta" href="${esc(x.href)}">
+      <span class="ic">${esc(x.ic)}</span>
+      <span class="tx"><b>${esc(x.label)}</b><small>${esc(x.sub)}</small></span>
+      <span class="go">→</span>
+    </a>`;
+}
+
+// ⚠ **どこで開いても中身が同じ固定リンク。**⚠ 座標を渡すだけ
+function ownLenses(p,facts){
   // id は「次に調べる語」との重複を避けるための目印。
   // 同じ話題を自前で持っているなら、Google 検索の提案はその劣化版になる。
-  // ⚠ href に年代（eraParam）も載せる。載せないと、立体で見にいっただけで見ていた年代が落ちる。
-  //   ⚠ この行を {id:"peel"…} の**中**に書かない。名乗りの検査が
-  //     `{id:"peel"` から 200 字以内で `}` を探すので、間にコメントを挟むと読めなくなる
-  //     （実際に一度落とした。掟: 検査が読む場所には、コメントを割り込ませない）。
   return [
-    // ⚠ **下地が無くても出す。押せる。**（2026-08-18。一度「出さない」にして戻した）
-    //   出さないと「**まだ用意していない**」が「**この場所には機能そのものが無い**」に見える。
-    //   利用者役 3/3 が「機能があること自体に気づけない」と答えた。
-    //   ⚠ 「知らないことは回復できないが、がっかりは回復できる」（利用者役の言葉）。
-    //
-    // ⚠ ただし**押す前に**言う。押して、地図が立ち上がって、待たされてから
-    //   「取れなかった」と言われるのが、いちばんがっかりする（利用者役の指摘）。
-    //   ⚠ 判定は ground.js の1か所。ここで数え直さない。
-    //   ⚠ 読めなかった（null）ときは**何も断らない**。索引を取得できなかっただけで、
-    //     用意していないとは限らない（掟: 取得できなかった ≠ 存在しなかった）。
-    {id:"peel",ic:"🌊",label:"この場所を深掘り",tag:"own",
-     // ⚠ **字は TOPWORD.peelLead の 1 か所**（2026-08-21。hidetzu/konjaku#138）。
-     //   ⚠ 以前はここに同じ字を書き写しており、⚠ **同じ問いに 2 か所が答えていた**（掟）。
-     //   ⚠ 片方だけ直すと、⚠ **一覧と根拠で言うことが変わる。**
-     //   ⚠ **判定も 1 か所**（KonjakuGround.hasSync）。⚠ ここで数え直さない。
-     sub:TOPWORD.peelLead(KonjakuGround.hasSync(p.lon,p.lat)),
-     kw:["3d","さかのぼる","剥がす","埋立","水","動画","戻す","地盤","昔","むかし","歴史","明治","過去","立体","深掘り"],
-     href:`./peel?q=${enc}&ll=${ll}${eraParam()}`},
-    // ⚠ 「1936年〜」を固定で書いていた。バッジは実測した最古の年代を出すので、
-    //   新潟では「1945–50年から見られる」の真下に「1936年〜」が並んでいた。
-    //   根拠を売りにしていて、同じ画面に2つの数字を出していた。
-    // ⚠ **grp は「どの組に入るか」**（2026-08-21）。⚠ tag（色と溶接に使う印）とは別。
-    //   ⚠ 打った語の「周辺で探す」も tag は ext だが、⚠ **組には入れない**
-    //     （⚠ 公的な情報ではない。⚠ 自由検索は今回の 3 分類の外）。
     {id:"hazard",ic:"⚠️",label:"ハザードマップで見る",sub:"洪水・土砂・津波の想定（国交省）",tag:"ext",grp:"ext",
      kw:["ハザード","災害","洪水","浸水","地震","津波","土砂","risk"],
      href:`https://disaportal.gsi.go.jp/maps/index.html?ll=${p.lat},${p.lon}&z=15`},
@@ -3125,22 +3152,21 @@ function buildActions(text,p){
       sub:pre?`Google マップで「${pre.q}」を検索`:"Google マップで検索",tag:"ext",
       href:gmap(pre?pre.q:text.trim(),p.lat,p.lon)});
   }
-  // 並びの原則は「この場所に固有なものほど上」。
-  // 自前レンズのうち ハザードマップ・地理院地図 は座標を渡すだけで、どこで開いても中身が
-  // 同じ固定リンクなので、この地点の判定から出た語より下に置く。
-  // （以前は own を丸ごと先に積んでいたため、亀戸の標高 -0.57m から出た〈水害の記録〉が、
-  //   亀戸と何の関係もない〈地理院地図で開く〉の下に並んでいた。逆だった）
-  const derived=own.filter(o=>o.tag==="own"), fixed=own.filter(o=>o.tag!=="own");
-  out.push(...derived);
-
-  // タグは行き先ではなく「なぜここに出ているのか」を書く。
-  // 〈水害の記録〉と〈ごはん〉が同じ 外部↗ を下げていたので、判定から導いた語だという
-  // 唯一の手がかりが副題のグレー文字しか無く、それは全行が持っているので区別にならない。
+  // ⚠ **組の順は「公的な情報で確認する」→「さらに調べる」**（2026-08-21。Owner 判断）。
+  //
+  // ⚠ **以前と逆にした。**⚠ 前は「この場所に固有なものほど上」で、⚠ **判定から出た語を
+  //   固定リンクより上**に置いていた。⚠ その並びは、⚠ **亀戸の標高 -0.57m から出た
+  //   〈水害の記録〉が、⚠ 亀戸と何の関係もない〈地理院地図で開く〉の下に埋もれていた**
+  //   のを直したものだった。
+  // ⚠ **条件が変わった。**⚠ 2026-08-21 に**両方とも畳んで 1 行の見出し**にしたので、
+  //   ⚠ **どちらも中身は隠れていて、⚠ 見出しの高さも同じ。**⚠ 埋もれる形にはならない。
+  // ⚠ **利用者役では割れた**（⚠ 4 名中: 公的が先 1 / さらに調べるが先 1 / どちらでもいい 2）。
+  //   ⚠ 家を買うか迷っている役は、⚠ **いまの画面では「ハザードマップは無い」と読んでいた。**
+  // ⚠ **実測では決まらないので、⚠ Owner が決めた。**⚠ 勝手に戻さない。
+  out.push(...own);
   for(const s of sug)
     out.push({ic:s.icon,label:`${s.label} を調べる`,sub:s.reason,tag:"why",grp:"why",
       href:gweb([placeName(p.title),s.query].filter(Boolean).join(" "))});
-
-  out.push(...fixed);
 
   // ⚠ 打っていないときは、店のカテゴリを並べない。
   //   実測で、本命（時間をさかのぼる 3D）が「ごはん / ラーメン / カフェ」と
@@ -3157,6 +3183,25 @@ const scopeEl=document.getElementById("scope"), chipName=document.getElementById
 // sel = -1 は「何も選んでいない」。Enter を押しても何も起きない状態を、
 // 表示（.kbd を薄字にする）と挙動（run しない）の両方が同じ変数から生える形にしてある。
 let mode="place", items=[], sel=-1, timer=null;
+// ⚠ **畳んでいる組の開閉**（2026-08-21。Owner 判断で既定は畳む）。
+//   ⚠ **場所を変えたら閉じ直す。**⚠ 前の土地で開いた状態を持ち越さない
+//     （⚠ hidetzu/konjaku#141 の `evOpen` と同じ扱い）。
+const listOpen=new Set();
+// ⚠ **組ごとの件数と出現順。**⚠ **畳んでいても本当の数を出す**（⚠ それがこの畳みの目的）。
+//   ⚠ `items` は畳んだぶんを落とすので、⚠ **件数はここが持つ**。
+let listGroups=[];
+// ⚠ 畳んでいる組の行を落とす。⚠ **`items` は ↑↓ / Enter の輪そのもの**なので、
+//   ⚠ **見えていない行を残すと、⚠ ↑↓ が見えない行を選ぶ。**
+function foldItems(all){
+  listGroups=[];
+  const seen=new Map();
+  for(const it of all){
+    if(!it.grp) continue;
+    if(!seen.has(it.grp)){ seen.set(it.grp,{g:it.grp,n:0}); listGroups.push(seen.get(it.grp)); }
+    seen.get(it.grp).n++;
+  }
+  return all.filter((it)=>!it.grp||listOpen.has(it.grp));
+}
 
 // タグの文言。行き先ではなく「なぜここに出ているのか」を書く
 // ⚠ **一覧行のタグの字は words.js が持つ**（2026-08-20）。ここには写さない。
@@ -3164,45 +3209,56 @@ let mode="place", items=[], sel=-1, timer=null;
 //     どこにも無く、画面に出ようがない語**だった。
 
 function renderList(){
-  // 判定カードと、そこから出た行を1枚に見せる（利用者の指摘: 深掘りが別ゾーンだと迷う）。
-  // 対象は「先頭から続く、この場所の判定から出た行」だけ。自前レンズ（3D・年代比較）も
-  // その場所のデータを描くものなので含める。ハザードマップ・地理院地図のような
-  // どこで開いても同じ固定リンクが来たところで切る。
-  // 要素は動かしていないので、↑↓/Enter の輪も打鍵中の絞り込みもそのまま。
-  // ⚠ **溶接するのは「この場所を深掘り」だけ**（2026-08-21。3 分類にしたとき狭めた）。
-  //   ⚠ 前は「深掘り＋この土地から」を丸ごと 1 枚にしていた。
-  //   ⚠ **「さらに調べる」は別の組になった**ので、⚠ 判定カードと連続しない。
-  //   ⚠ 残す理由は変えていない: 利用者の指摘「深掘りが別ゾーンだと迷う」。
-  //     ⚠ **「分かった → もっと見る」のつながりだけ、1 枚に見せる。**
-  let weld=0;
-  if(mode==="action"&&meiji&&!meiji.loading)
-    while(weld<items.length&&items[weld].tag==="own") weld++;
-  listEl.classList.toggle("welded",weld>0);
-  const vEl=document.getElementById("verdict");
-  if(vEl) vEl.classList.toggle("welded",weld>0);
+  // ⚠ **溶接はやめた**（2026-08-21）。⚠ 「この場所を深掘り」を判定カードの中へ入れたので、
+  //   ⚠ 枠と地色で 1 枚に見せる細工が要らなくなった（上の .peel-cta を読む）。
   // ⚠ 行の見出しと副題には、地理院の応答（地名）と、利用者が打った語がそのまま入る
   //   （「〈打った語〉を周辺で探す」）。描くときに esc を通す。
   //   行き先（href）はこちらが組み立てたものだが、属性の中なので同じ扱いにする。
   // ⚠ **行ごとのタグをやめて、組の見出しにした**（2026-08-21）。
   //   ⚠ 字は words.js の 1 か所（`groupTitle`）。⚠ ここに写さない。
-  //   ⚠ **中身が 0 件の組には、見出しを出さない。**⚠ 空の見出しは「あるのに出ない」に読める
-  //     （⚠ 先例: 判定から出た語が 0 件のときは溶接もしない）。
+  //   ⚠ **中身が 0 件の組には、見出しを出さない**（Owner 判断 2026-08-21）。
+  //     ⚠ 空の見出しは「あるのに出ない」に読める。
   //   ⚠ **見出しは行ではない。**⚠ `.it` を数える検査・↑↓ の輪・data-i は動かない。
-  let grpNow=null;
-  listEl.innerHTML=items.map((it,i)=>{
-    const tag=it.tag, sub=it.sub, ext=it.href&&it.href.startsWith("http");
-    // ⚠ 組が変わったところに 1 本だけ見出しを置く
-    const title=it.grp&&it.grp!==grpNow ? KonjakuWords.groupTitle(it.grp) : "";
-    if(it.grp) grpNow=it.grp;
-    const head=title?`<div class="lh lh-${esc(it.grp)}">${esc(title)}</div>`:"";
+  //
+  // ⚠ **既定で畳む**（2026-08-21。Owner 判断）。⚠ **PC でも畳む。**
+  //   ⚠ 利用者役 4 名に画面だけを見せた（⚠ 実在の利用者ではない）:
+  //     ⚠ 畳む前は、⚠ **家を買うか迷っている役が「ハザードマップは無いのだと思った」**
+  //       と答えた（⚠ 下にあるが気づかれていなかった）。
+  //     ⚠ **件数を出して畳むと、⚠ 4/4 が中身を言い当て、⚠ その役は「押す」に変わった。**
+  //   ⚠ **だから件数を必ず出す。**⚠ 「ある」と分かることが、この畳みの目的。
+  // ⚠ 1 行ぶんの HTML。⚠ `data-i` は `items` の位置（⚠ 畳んだあとの配列）
+  const row=(it,i)=>{
+    const sub=it.sub, ext=it.href&&it.href.startsWith("http");
     const inner=`<span class="ic">${esc(it.ic??"📍")}</span>
       <span class="tx"><b>${esc(it.label)}</b>${sub?`<small>${esc(sub)}</small>`:""}</span>`;
-    const cls=`it${i===sel?" sel":""}${tag==="why"?" why":""}${tag==="own"?" own":""}`
-      +(i<weld?` fh${i===weld-1?" fh-last":""}`:"");
-    return head+(it.href
+    const cls=`it${i===sel?" sel":""}${it.tag==="why"?" why":""}`;
+    return it.href
       ? `<a class="${cls}" data-i="${i}" href="${esc(it.href)}"${ext?' target="_blank" rel="noopener"':""}>${inner}</a>`
-      : `<button class="${cls}" data-i="${i}">${inner}</button>`);
-  }).join("");
+      : `<button class="${cls}" data-i="${i}">${inner}</button>`;
+  };
+  const idx=items.map((it,i)=>[it,i]);
+  listEl.innerHTML=
+    // ⚠ 組に入らない行（⚠ 打った語の「周辺で探す」）。⚠ 自由検索は 3 分類の外
+    idx.filter(([it])=>!it.grp).map(([it,i])=>row(it,i)).join("")
+    // ⚠ 組ごと。⚠ **畳んでいる組も見出しは出す**（⚠ 「ある」と分かることが目的）
+    + listGroups.map((g)=>{
+        const open=listOpen.has(g.g);
+        return `<button class="lh fold lh-${esc(g.g)}" data-g="${esc(g.g)}"
+          aria-expanded="${open}"><span>${esc(KonjakuWords.groupTitle(g.g))}</span>
+          <span class="n">${g.n}件</span>
+          <span class="cv">${open?"∨":"＞"}</span></button>`
+          + idx.filter(([it])=>it.grp===g.g).map(([it,i])=>row(it,i)).join("");
+      }).join("");
+  // ⚠ 見出しを押したら開閉する。⚠ **開いたら sel は外す**（⚠ 見えている輪と食い違わせない）
+  listEl.querySelectorAll(".lh.fold").forEach((el)=>{
+    el.onclick=()=>{
+      const g=el.dataset.g;
+      if(listOpen.has(g)) listOpen.delete(g); else listOpen.add(g);
+      sel=-1;
+      items=foldItems(buildActions(qEl.value,current));
+      renderList();
+    };
+  });
   listEl.querySelectorAll(".it").forEach((el)=>{
     // ⚠ 何も選んでいない間は hover で sel を動かさない。
     // 動かすと、PCでマウスが一覧の上をただ通っただけで Enter が武装し、
@@ -3274,7 +3330,7 @@ function setMode(m){
   // コマンド一覧は場所が決まった後の話で、先頭が「明治期の地形を見る」に固定されている。
   // 別の土地へ飛ばされる事故は起きないので、ここは従来どおり先頭を選んでおく。
   qEl.value=""; sel=m==="action"?0:-1;
-  if(m==="action"){ items=buildActions("",current); renderList(); }
+  if(m==="action"){ items=foldItems(buildActions("",current)); renderList(); }
   else { items=[]; listEl.innerHTML=""; renderKbd(); }
 }
 // 場所を外す（✕）。
@@ -3292,7 +3348,7 @@ document.getElementById("chipX").onclick=()=>{
   // 前の土地の年代・地図・読み上げを持ち越さない
   stopSay(); stopPlay(); dropMap();
   frames=[]; eraIdx=0; wantEra=null; eraMiss=null; eraTicked=false;
-  evState=null; evTile=null; evOpen=false;
+  evState=null; evTile=null; evOpen=false; listOpen.clear();
   document.getElementById("chipName").textContent="";
   document.getElementById("result").style.display="none";
   renderVerdict();
@@ -3354,7 +3410,7 @@ qEl.addEventListener("compositionend",()=>{composing=false; onInput();});
 function onInput(){
   const v=qEl.value.trim();
   // コマンド絞り込みは手元だけの処理なので、変換中でも即座に効かせてよい
-  if(mode==="action"){ items=buildActions(qEl.value,current); sel=0; renderList(); return; }
+  if(mode==="action"){ items=foldItems(buildActions(qEl.value,current)); sel=0; renderList(); return; }
   clearTimeout(timer);
   // ⚠ **打つたびに世代を進める。** 「2文字未満のときだけ」では足りない。
   //   実測（2026-08-16）: 「渋谷」の応答待ちのまま「新宿」へ変えると、
@@ -3445,7 +3501,7 @@ async function openPlace(lon,lat,title,opt){
   //   その問いに写真で即答している状態から始める。現在は1タップ先にある。
   //   ⚠ ただし URL で年代を指定されているなら、そちらが優先（共有された状態から始める）。
   stopSay(); stopPlay();
-  frames=[]; eraIdx=0; eraTicked=false; evState=null; evTile=null; evOpen=false;
+  frames=[]; eraIdx=0; eraTicked=false; evState=null; evTile=null; evOpen=false; listOpen.clear();
   // ⚠ 段を捨てたあとに置く。先に置くと、前の土地の段を見て URL を書くことになる
   wantEra=opt?.era??null; eraMiss=null;
   syncUrl();
@@ -3486,7 +3542,7 @@ async function openPlace(lon,lat,title,opt){
       // 判定が出ると提案が一覧の途中に挿し込まれる。番号で選択を持っていると、
       // 押そうとしていた行が別の行にすり替わる。中身で追い直す。
       const cur=sel>=0?items[sel]:null;
-      items=buildActions(qEl.value,current);
+      items=foldItems(buildActions(qEl.value,current));
       const i=cur?items.findIndex(x=>x.label===cur.label):-1;
       if(i>=0) sel=i;
       renderList();
@@ -3640,7 +3696,7 @@ loadQuickPlaces();
 //   ⚠ 場所を見ていないときは何もしない（組み直す相手がいない）。
 KonjakuGround.load().then(()=>{
   if(!current||mode!=="action") return;
-  items=buildActions(qEl.value,current); renderList();
+  items=foldItems(buildActions(qEl.value,current)); renderList();
 });
 
 // ============ 現在地 ============
