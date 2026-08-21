@@ -116,6 +116,13 @@
     box-shadow:0 9px 30px rgba(0,0,0,.38);backdrop-filter:blur(14px);text-align:left}
   /* 答えが出るまでは何も置かない（空の板を出すと「まだ何も無い」が見えない） */
   #land:empty{display:none}
+  /* ⚠ **開いて増えた層の印**（2026-08-21。Owner 判断 (A)(C)）。
+     ⚠ **字は足さない。**⚠ 区切り（左の線）と余白だけで「ここが増えた」と示す。
+     ⚠ **自動でスクロールしない。**⚠ 第1層・第3層は消さない。
+     ⚠ 要約（#land）を一度でも見たときだけ付く（peel3d.js の landSeen）。
+     ⚠ PC はパネルが開いて始まるので、⚠ **初回は付かない**（要約を見ていないため）。 */
+  .land-added{border-left:2px solid var(--action);padding-left:11px;margin-left:-13px;
+    margin-top:14px;margin-bottom:14px}
   .land-line{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
   .land-num{font-size:var(--fs-hero-sm);font-weight:600;line-height:1.15;color:var(--ink);
     font-variant-numeric:tabular-nums}

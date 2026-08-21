@@ -1060,8 +1060,14 @@ function hudVisible(){
   //   ⚠ ここで見たいのは「パネルが表示責務を持っているか」なので、⚠ **クラスで見る。**
   return panel ? panel.classList.contains("hide") : true;
 }
+// ⚠ **要約（#land）を一度でも見たか**（2026-08-21）。
+//   ⚠ **開いて増えた層に印を付けてよいのは、⚠ 要約を読んだあとだけ。**
+//   ⚠ PC はパネルが開いて始まり、⚠ `#panel:not(.hide) ~ #land{display:none}` なので、
+//     ⚠ **要約を一度も見ていない。**⚠ そこで印を付けると「増えた」が嘘になる。
+let landSeen = false;
 function syncHud(){
   if(!landModel || !hudVisible()) return;
+  landSeen = true;
   paintLand(landEl, landModel, true);
 }
 // ここは組み立てるだけ。⚠ **何と言うか・どの層が立つかは上で決まっている**（WORD と layersOf）。
@@ -1096,11 +1102,24 @@ function paintLand(el, m, only){
   if(!el) return;
   if(!m){ el.innerHTML=""; syncLandH(); return; }   // 場所を切り替えた直後。前の答えを残さない
   const by=new Map(m.missing.map((mi)=>[mi.n,mi]));
-  const keep=only ? (()=>{ const h=hudLayers(m); return new Set([h.first?.n, h.rest?.n].filter(Boolean)); })() : null;
+  const hud=(()=>{ const h=hudLayers(m); return new Set([h.first?.n, h.rest?.n].filter(Boolean)); })();
+  const keep=only ? hud : null;
+  // ⚠ **開いて増えた層に印を付ける**（2026-08-21。Owner 判断 (A)(C)）。
+  //   ⚠ 利用者役 4/4 が「同じことが書いてある」と気づき、⚠ **困るかは 2/2 に割れた。**
+  //     ⚠ 一方は「二度手間」、⚠ **もう一方は「どちらが本物か分からない」。**
+  //     ⚠ 後者は掟に近い（⚠ 同じ問いに 2 つの答えがあるように見える）。
+  //   ⚠ **消さない。**⚠ 第1層・第3層はそのまま出す（Owner 判断）。
+  //   ⚠ **新しい説明文を足さない。**⚠ 区切りと余白だけで示す（Owner 判断 (C)）。
+  //   ⚠ **自動でスクロールしない**（同上）。
+  //   ⚠ **増えた層は、⚠ まん中に来ることがある**（⚠ 豊洲は 要約 1・3 ／ 増えるのは 2）。
+  //     ⚠ だから「ここから下が新しい」ではなく、⚠ **その層自体に印**を付ける。
+  const markNew = !only && landSeen;
   const out=[];
   for(const n of [1,2,3]){
     const L=m.layers.find((x)=>x.n===n);
-    if(L){ if(!keep||keep.has(n)) out.push(paintLayer(only?{...L, hud:true}:L)); continue; }
+    if(L){ if(!keep||keep.has(n))
+             out.push(paintLayer(only?{...L, hud:true}:{...L, added: markNew && !hud.has(n)}));
+           continue; }
     const M=by.get(n);
     // ⚠ 出ない層は、絞っていても**必ず出す**。黙って消すと「その土地に何も無い」に読まれる
     if(M) out.push(`<div class="land-miss"><div class="land-sub">${WORD.layerMissing(n, M.why)}</div>`
@@ -1127,7 +1146,8 @@ function paintLayer(L){
       sb.kind==="art"   ? `<div class="land-sub">${WORD.ground1Art(esc(sb.v))}</div>`
     : sb.kind==="top"   ? `<div class="land-sub">この範囲で最も多い区分: <b>${esc(sb.v.name)}</b>（${sb.v.pct}%）</div>`
     : sb.kind==="wet"   ? `<div class="land-sub">水域だった建物: ${sb.v}%</div>` : "").join("");
-  return `<div class="land-layer"><div class="land-q">${L.title}</div>`
+  // ⚠ `added` は「要約に無く、⚠ 開いて増えた層」。⚠ 字は足さない（区切りと余白だけ）
+  return `<div class="land-layer${L.added?" land-added":""}"><div class="land-q">${L.title}</div>`
     + `<div class="land-line">${head}${what}</div>${den}${subs}</div>`;
 }
 

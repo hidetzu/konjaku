@@ -7652,7 +7652,72 @@ const CASES = [
   // ⚠ 数字は「この画面が名乗る範囲」のもの。取り込み全域の 93.8% を出すと、
   //   99.4% を 40.9% に化けさせたのと同じ事故（範囲と主張のずれ）になる。
   {
-    name: "高さが推定であることを、主張範囲の数字で言う", path: `/peel?${TOYOSU}`,
+    // ⚠ **開いて増えた層に印を付ける**（2026-08-21。Owner 判断 (A)(C)）。
+    //   ⚠ 実測（`main` = `484629c`・豊洲・375×667・hasTouch・SW 無効）:
+    //     ⚠ 閉じている 要約 = 第1層 ＋ 第3層（72 字）
+    //     ⚠ 開いた     答え = 第1層 ＋ **第2層** ＋ 第3層（177 字）
+    //     ⚠ **新しいのは第2層だけで、⚠ 177 字のまん中に埋もれていた。**
+    //   ⚠ 利用者役 4/4 が重なりに気づき、⚠ **困るかは 2/2 に割れた。**
+    //     ⚠ 一方は「二度手間」、⚠ **もう一方は「どちらが本物か分からない」。**
+    //   ⚠ **消さない。**⚠ **字も足さない。**⚠ 区切りと余白だけで示す。
+    //   ⚠ **要約を一度も見ていないなら付けない**（⚠ PC はパネルが開いて始まる）。
+    name: "開いて増えた層にだけ、印が付く", path: `/peel?${TOYOSU}`,
+    async check(page) {
+      const out = [];
+      for (const [w, h, t, seen] of [[375, 667, true, true], [1280, 800, false, false]]) {
+        const ctx = await page.context().browser().newContext({
+          viewport: { width: w, height: h }, hasTouch: t, serviceWorkers: "block" });
+        try {
+          const p2 = await ctx.newPage();
+          await p2.goto(`${BASE}/peel?${TOYOSU}`, { waitUntil: "domcontentloaded", timeout: 45000 });
+          await peelReady(p2);
+          await p2.waitForFunction(
+            () => (document.getElementById("landAll")?.textContent ?? "").includes("この土地は"),
+            null, { timeout: 60000 });
+          await settleAfterCondition(p2);
+          const before = await p2.evaluate(() => ({
+            hide: document.getElementById("panel").classList.contains("hide"),
+            summary: [...document.querySelectorAll("#land .land-q")].map((e) => e.textContent.trim()),
+          }));
+          must(before.hide === seen,
+            `${w}px: パネルの初期状態が想定と違う（閉=${before.hide}）`);
+          if (before.hide) await p2.click("#toggle");
+          await settleAfterClick(p2);
+          const r = await p2.evaluate(() => ({
+            layers: [...document.querySelectorAll("#landAll .land-layer .land-q")]
+              .map((e) => e.textContent.trim()),
+            added: [...document.querySelectorAll("#landAll .land-added .land-q")]
+              .map((e) => e.textContent.trim()),
+            // ⚠ 印は区切りと余白だけ。⚠ **字を足していないこと**
+            addedTx: [...document.querySelectorAll("#landAll .land-added")]
+              .map((e) => (e.innerText || "").replace(/\s+/g, " ").trim()),
+            border: (() => { const e = document.querySelector("#landAll .land-added");
+              return e ? getComputedStyle(e).borderLeftWidth : null; })(),
+          }));
+          // ⚠ **第1層・第3層は消さない**（Owner 判断）
+          must(r.layers.length === 3, `${w}px: 層が 3 つ出ていない: ${r.layers.join(" / ")}`);
+          if (seen) {
+            // ⚠ 要約を見たあと → ⚠ **要約に無かった層にだけ印**
+            must(r.added.length === 1, `${w}px: 印が 1 つでない: ${r.added.join(" / ")}`);
+            must(!before.summary.includes(r.added[0]),
+              `${w}px: 要約に出ていた層に印が付いている: ${r.added[0]}`);
+            must(r.border && r.border !== "0px", `${w}px: 印の区切りが出ていない`);
+            // ⚠ **字を足していない**（⚠ 印のための説明文を作らない）
+            for (const bad of ["新しい", "追加", "ここから", "増えた"])
+              must(!r.addedTx.join(" ").includes(bad), `${w}px: 印に説明文を足している: 「${bad}」`);
+          } else {
+            // ⚠ 要約を一度も見ていない → ⚠ **印を付けない**
+            must(r.added.length === 0,
+              `${w}px: 要約を見ていないのに印が付いている: ${r.added.join(" / ")}`);
+          }
+          out.push(`${w}px 層 ${r.layers.length} 印 ${r.added.length}${r.added.length?`（${r.added.join("・")}）`:""}`);
+        } finally { await ctx.close(); }
+      }
+      return out.join(" ／ ");
+    },
+  },
+  {
+    name: "高さが推定であることを、主張範囲の数字で 1 か所だけ言う", path: `/peel?${TOYOSU}`,
     async check(page) {
       await page.waitForFunction(() => /件を判定しました/.test(document.body.innerText),
         null, { timeout: 60000 });
@@ -7664,20 +7729,36 @@ const CASES = [
       const prov = await page.locator("#prov").textContent();
       must(/高さ/.test(prov), `出所の一覧に高さの行が無い: ${prov.replace(/\s+/g, " ").slice(0, 120)}`);
       must(/既定値/.test(prov), "高さが推定であることが書かれていない");
-      // ⚠ 分母は主張範囲と同じであること
-      const m = prov.match(/OSM に高さが入っているのは (\d+) \/ (\d+) 件/);
-      must(m, `高さの内訳が読めない: ${prov.replace(/\s+/g, " ").slice(0, 160)}`);
+      // ⚠ **数え方は「推定」を主語に統一した**（2026-08-21。Owner 判断）。
+      //   ⚠ 前は台帳が「OSM に高さが入っているのは 40 / 543 件」（⚠ **実測が主語**）で、
+      //     ⚠ #est が「高さも 503 / 543 件が推定です」（⚠ **推定が主語**）だった。
+      //     ⚠ **同じ母数を逆から 2 通りに言っていた**（40 ＋ 503 = 543）。
+      //     ⚠ 利用者役 4 名のうち 2 名が突き合わせられず、⚠ 1 名は「別のことだと思った」。
+      //   ⚠ **母数つきの主張は #est の 1 か所。**⚠ 台帳は内訳（⚠ 同じ数字を持たない）。
+      const est = (await page.locator("#est").textContent() ?? "").replace(/\s+/g, " ");
+      const m = est.match(/(\d+) \/ (\d+) 件が推定/);
+      must(m, `推定の件数が分母つきで出ていない: ${est.slice(0, 120)}`);
       must(Number(m[2]) === total,
         `高さの分母が主張範囲と違う: ${m[2]} / 判定した件数 ${total}`);
-      must(Number(m[1]) < Number(m[2]) * 0.5,
-        `実測が半分以上あるのに「ほとんどが既定値」と書いている: ${m[1]}/${m[2]}`);
+      must(Number(m[1]) > Number(m[2]) * 0.5,
+        `推定が半分以下なのに「ほとんどが既定値」と書いている: ${m[1]}/${m[2]}`);
+      // ⚠ **同じ母数を、⚠ 実測を主語にしてもう一度言っていないこと**
+      must(!/高さが入っているのは \d+ \/ \d+ 件/.test(prov),
+        `同じ母数を実測の側からも言っている: ${prov.replace(/\s+/g, " ").slice(0, 140)}`);
+      must(!/高さが実測の \d+ 件/.test(prov),
+        `同じ母数を実測の側からも言っている（押す先の名前）: ${prov.replace(/\s+/g, " ").slice(0, 140)}`);
+      // ⚠ **内訳は足して推定の件数になること**（⚠ 台帳が持つのは内訳だけ）
+      const mm = prov.match(/階数から換算したものが (\d+) 件、残る (\d+) 件/);
+      must(mm, `高さの内訳が読めない: ${prov.replace(/\s+/g, " ").slice(0, 160)}`);
+      must(Number(mm[1]) + Number(mm[2]) === Number(m[1]),
+        `内訳が推定の件数と合わない: ${mm[1]} ＋ ${mm[2]} ≠ ${m[1]}`);
       // ⚠ 内訳の表には入れない。あの表は足元の判定の**分割**（足すと総数になる）で、
       //   高さや建設年は**素性**なので、混ぜると足し算の合わない表になる。
       must(!/高さが実測の建物/.test(t), "素性（高さ）が、分割の表である内訳に混ざっている");
       // ⚠ 評価語を作らない
       for (const w of ["ほぼ正確", "おおむね", "信頼度", "精度は"])
         must(!t.includes(w), `評価語が入っている: 「${w}」`);
-      return `${m[1]} / ${m[2]} 件が実測（判定した件数と一致）`;
+      return `${m[1]} / ${m[2]} 件が推定（判定した件数と一致）／内訳 ${mm[1]} ＋ ${mm[2]}`;
     },
   },
   // ================= 外部から来た文字列 =================
