@@ -600,6 +600,59 @@ const CASES = [
     },
   },
   {
+    // ⚠ **詳細版が無くて広い区分に落ちたら、⚠ /peel でもそう言う**（2026-08-22。hidetzu/konjaku#128）。
+    //   ⚠ **黙ると、⚠ 広い区分の答えが「この土地の分類」として読まれる**（掟: 推定を実測のように見せない）。
+    //   ⚠ **穴だった。**⚠ トップと共有カードは言っていたのに、⚠ **/peel だけ 0 件**だった。
+    // ⚠ **字は verify.js の note をそのまま出す**（⚠ 3 か所で同じ文。⚠ 写しを作らない）。
+    // ⚠ **出す土地と出さない土地の両方を見る**（下の case）。⚠ 片方だけだと「いつも出す」でも通る。
+    name: "/peel でも、広い区分に落ちたらそう言う", path: `/peel?${KARUIZAWA}`,
+    viewport: { width: 375, height: 667 }, hasTouch: true,
+    async check(page) {
+      await page.waitForFunction(() => /この土地は/.test(document.body.innerText),
+        null, { timeout: 60000 });
+      await settleAfterCondition(page);
+      await page.click("#toggle");
+      await settleAfterClick(page);
+      const r = await page.evaluate(() => {
+        const all = document.getElementById("landAll");
+        const c = all.querySelector(".land-coarse");
+        const first = all.querySelector(".land-layer");
+        const cr = c?.getBoundingClientRect(), fr = first.getBoundingClientRect();
+        return { txt: c?.textContent?.trim() ?? "",
+          inFirst: !!c && first.contains(c),
+          top: cr ? Math.round(cr.top) : -1, firstTop: Math.round(fr.top),
+          times: (document.body.innerText.match(/詳細版が整備されていない/g) ?? []).length };
+      });
+      // ⚠ **第1層の中にあること**（⚠ 「画面のどこかにある」では置き場所を守れない）
+      must(r.inFirst, "粗さの行が第1層の中に無い（置き場所は第1層の直下）");
+      must(/詳細版が整備されていないため、広い区分で答えています/.test(r.txt),
+        `粗さの断りが出ていない: ${r.txt.slice(0, 60)}`);
+      // ⚠ **⚠ の記号を使わない**（この画面の ⚠ は災害リスク。混ぜると「危ない土地」に読まれる）
+      must(!/⚠/.test(r.txt), `粗さの行に ⚠ が混ざっている: ${r.txt.slice(0, 40)}`);
+      must(r.times === 1, `粗さの断りが画面に ${r.times} 回ある`);
+      must(r.top > r.firstTop, `粗さの行が第1層の見出しより上にある（${r.top} / ${r.firstTop}）`);
+      return `軽井沢: 第1層 y=${r.firstTop} の直下 y=${r.top}`;
+    } },
+  {
+    // ⚠ **詳細版がある土地では言わない**（2026-08-22。hidetzu/konjaku#128）。
+    //   ⚠ **これが無いと、⚠ 「いつも出す」実装でも上の検査が通ってしまう。**
+    name: "詳細版がある土地では、粗いとは言わない", path: `/peel?${TOYOSU}`,
+    viewport: { width: 375, height: 667 }, hasTouch: true,
+    async check(page) {
+      await page.waitForFunction(() => /この土地は/.test(document.body.innerText),
+        null, { timeout: 60000 });
+      await settleAfterCondition(page);
+      await page.click("#toggle");
+      await settleAfterClick(page);
+      const r = await page.evaluate(() => ({
+        coarse: !!document.querySelector("#landAll .land-coarse"),
+        times: (document.body.innerText.match(/詳細版/g) ?? []).length,
+      }));
+      must(!r.coarse, "詳細版があるのに粗さの行が出ている");
+      must(r.times === 0, `詳細版があるのに「詳細版」の語が ${r.times} 回出ている`);
+      return "豊洲: 粗さの行 0 ／「詳細版」0 回";
+    } },
+  {
     // 溶接は「この土地の答え」を1枚に見せるためのもの。判定から出た語が無い土地で
     // 囲うと、どこでも同じ2行を囲んだ空箱になり、答えがあるように見える
     // ⚠ **2026-08-21 に、2 度目の書き直し。**
