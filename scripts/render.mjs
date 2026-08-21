@@ -2736,6 +2736,18 @@ const CASES = [
         await p2.waitForFunction(() => /この土地は/.test(document.body.textContent ?? ""),
           null, { timeout: 60000 });
         await settleAfterCondition(p2);
+        // ⚠ **#est が字を持つまで待つ**（2026-08-21。hidetzu/konjaku#141 の CI で落ちて分かった）。
+        //   ⚠ `#est` は「建物が届いたか」「1.2 秒たっても届かないか」を**見てから**字を出す
+        //     （`peel3d.js`。⚠ 実測: 通常回線 69ms ／ 3G 相当 9.5 秒）。
+        //   ⚠ `#est:empty` は `display:none` なので、⚠ **字が入るまでは見えない。**
+        //   ⚠ ここは待たずに読んでいた。⚠ **手元では間に合い、⚠ CI では 2 回とも間に合わなかった。**
+        //   ⚠ **主張は変えていない**（⚠ 出なければ、⚠ 待ったうえで落ちる）。
+        //   ⚠ **時間切れのまま落とさない。**⚠ 何を待って駄目だったかを名乗る
+        //     （⚠ 素の時間切れだと、⚠ どの主張が破れたのか読めない）。
+        const gotEst = await p2.waitForFunction(
+          () => (document.getElementById("est")?.textContent ?? "").trim().length > 0,
+          null, { timeout: 45000 }).then(() => true).catch(() => false);
+        must(gotEst, "PC で限界（#est）が出ていない（45 秒待っても字が入らない）");
         const look = () => p2.evaluate(() => {
           const vis = (s) => { const e = document.querySelector(s);
             return !!(e && e.checkVisibility?.()); };
