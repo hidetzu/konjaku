@@ -3859,15 +3859,16 @@ head("9. 画面の言葉");
       : ok("深掘りの導線は行動一覧の 1 か所で、字も TOPWORD.peelLead の 1 か所から出ている");
   }
 
-  // ⚠ **見えない箱に土地情報を組み立てない**（hidetzu/konjaku#131）。
+  // ⚠ **土地の答えは、⚠ 情報パネルの 1 か所だけで組み立てる**
+  //   （hidetzu/konjaku#152。⚠ 2026-08-21 に Owner 判断で置き場所が変わった）。
   //
-  //   ⚠ **実測（2026-08-20・main = bc8dc46・豊洲・SW 無効）**
-  //     PC 初期  #land は display:none（0×0）⚠ **なのに 72 字が書かれていた**
-  //   ⚠ **PC でもパネルは閉じられる**（✕ と ▶ の 2 つ）。⚠ **閉じたら #land が引き継ぐ。**
-  //     ⚠ だから「PC では一切描かない」にはできない。⚠ **見えているときだけ描く。**
+  //   ⚠ **前の主張**（hidetzu/konjaku#131）: 「⚠ 見えない箱に土地情報を組み立てない」。
+  //     ⚠ 実測（2026-08-20・豊洲）: PC 初期で `#land` は 0×0 なのに 72 字が書かれていた。
+  //     ⚠ そこで「⚠ 見えているときだけ描く（syncHud）」を足した。
+  //   ⚠ **`#land` そのものが無くなったので、⚠ その仕掛けごと要らなくなった。**
+  //     ⚠ **主張は引き継ぐ**: ⚠ **描く先は 1 つ。**⚠ **model も 1 回だけ作る**（ADR 0021）。
   //
-  //   ⚠ **`.hide` を切り替える入口を 1 か所にする。**
-  //     ⚠ 2 つあると（applyPanel と setChrome）、⚠ **片方にだけ描画を足して空の HUD が出る。**
+  //   ⚠ **`.hide` を切り替える入口は、⚠ いまも 1 か所**（⚠ ✕ と ▶ の両方が通る）。
   {
     const bad7 = [];
     const PJ = seen["peel3d.js"] ?? "";
@@ -3877,27 +3878,31 @@ head("9. 画面の言葉");
     if (toggles !== 1)
       bad7.push(`.hide を切り替えている箇所が ${toggles} 個ある（1 か所へまとめる。`
         + `⚠ ✕ と ▶ の両方が通る）`);
-    for (const w of ["setPanelHidden", "syncHud"])
-      if (!new RegExp("\\b" + w + "\\b").test(PJ)) bad7.push(`peel3d.js に ${w} が無い`);
+    if (!/\bsetPanelHidden\b/.test(PJ)) bad7.push("peel3d.js に setPanelHidden が無い");
     // ⚠ **model は 1 回だけ作る。**⚠ layersOf を 2 か所で呼ばない（ADR 0021）
     const calls = (PJ.match(/layersOf\s*\(/g) ?? []).length;
     // ⚠ 定義 1 つ ＋ 呼び出し 1 つ ＝ 2
     if (calls !== 2)
       bad7.push(`layersOf の出現が ${calls} 個（定義 1 ＋ 呼び出し 1 のはず。`
         + `⚠ 2 か所で作ると同じ画面で言うことが食い違う）`);
-    // ⚠ **HUD へ model を渡すのは 1 か所だけ**（syncHud の中）。
-    //   ⚠ **「syncHud を通さない」を字面で書くと、⚠ syncHud 自身の中身を拾ってしまう**
-    //     （2026-08-20 に踏んだ）。⚠ **数で見る。**
-    const hudPaints = (PJ.match(/paintLand\s*\(\s*landEl\s*,\s*landModel/g) ?? []).length;
-    if (hudPaints !== 1)
-      bad7.push(`HUD へ model を渡している箇所が ${hudPaints} 個（syncHud の 1 か所だけ）`);
-    // ⚠ **その 1 か所が syncHud の中にあること**
-    const sync = PJ.match(/function syncHud\s*\(\s*\)\s*\{[\s\S]{0,300}?\n\}/);
-    if (!sync || !/paintLand\s*\(\s*landEl\s*,\s*landModel/.test(sync[0]))
-      bad7.push("syncHud が HUD を描いていない（描いているのは別の場所）");
+    // ⚠ **描く先は 1 つだけ**（⚠ パネル）。⚠ 定義 1 つ ＋ 呼び出し 2 つ（⚠ 空にする回を含む）
+    const paints = (PJ.match(/paintLand\s*\(/g) ?? []).length;
+    if (paints !== 3)
+      bad7.push(`paintLand の出現が ${paints} 個（定義 1 ＋ 呼び出し 2 のはず）`);
+    for (const m of PJ.match(/paintLand\s*\([^)]*\)/g) ?? [])
+      if (!/landAll|el, m/.test(m))
+        bad7.push(`paintLand の描く先がパネルでない: ${m}`);
+    // ⚠ **消した仕掛けが戻っていないこと**（⚠ 戻すと、⚠ 答えが 2 か所になる）
+    for (const w of ["syncHud", "hudLayers", "landSeen", "syncLandH", "landEl"])
+      if (new RegExp("\\b" + w + "\\b\\s*[=(]").test(PJ))
+        bad7.push(`${w} が戻っている（土地の答えはパネルの 1 か所。hidetzu/konjaku#152）`);
+    const PH = seen["peel.html"] ?? "";
+    if (/id="land"/.test(PH))
+      bad7.push('peel.html に <div id="land"> が戻っている（⚠ 空要素でも置かない）');
     bad7.length
-      ? bad(`見えない箱に土地情報を組み立てている: ${bad7.join("、")}`)
-      : ok("HUD（#land）は見えているときだけ描き、.hide の切り替えは 1 か所を通る");
+      ? bad(`土地の答えが 1 か所から出ていない: ${bad7.join("、")}`)
+      : ok("土地の答えは情報パネルの 1 か所で組み立て、model は 1 回だけ作る"
+         + "（.hide の切り替えも 1 か所）");
   }
 
   // ⚠ **land.js の面を動かして確かめる。**⚠ 字面ではなく振る舞いを見る。
