@@ -283,7 +283,20 @@
     }).join("");
   };
 
-  g.KonjakuWords = { S, meiji, meijiBadge, GROUP, groupTitle, METHOD, EDGE, UNREAD, method,
+  // ⚠ **共有された状態を復元できなかったときの 1 行**（2026-08-22。hidetzu/konjaku#169）。
+  //   ⚠ **前はトップと /peel に、⚠ まったく同じ字がべた書きされていた**（掟 6: 同じ問いに 2 実装を持たない）。
+  //   ⚠ **黙って別の年代・別の建物を出さない。**⚠ 共有した人と見た人が違うものを見ていることに、
+  //     ⚠ 誰も気づかなくなる（掟: 取れなかったを「無い」と言わない の同類）。
+  // ⚠ **エスケープはここでしない。**⚠ 受け取る値は **URL 由来**なので、
+  //   ⚠ **呼ぶ側が esc() を通してから渡す**（理由は esc.js。⚠ ここで二重に掛けない）。
+  // ⚠ **この文は「読めた ＋ その年代がこの土地に無い」ときだけ。**
+  //   ⚠ 取れなかったとき（通信・取得失敗）に言わない。⚠ 「残っていません」は断定なので。
+  const shareMiss = {
+    era: (label) => `⚠ 共有された年代（${label}）は、この土地には残っていません`,
+    bld: () => "⚠ 共有された建物は、この範囲では見つかりませんでした",
+  };
+
+  g.KonjakuWords = { S, meiji, meijiBadge, GROUP, groupTitle, METHOD, EDGE, UNREAD, method, shareMiss,
                      PRIVACY_SHORT, photoSay,
                      LAYER_TITLE, layerTitle, ground1Lines, ground1Names, ground1Text,
                      GROUND_GLOSS, groundGloss, ground1Speech };

@@ -922,6 +922,27 @@ for (const f of htmlFiles) {
         + "（1 段でも落ちると、いちばん強い約束だけが残って「通信していない」と読める）");
     else ok("プライバシーの「載る → 届く → 残らない」は words.js の 1 か所で、2 画面が同じ文を出す");
   }
+  // ⚠ **共有された状態を復元できなかったときの 1 行は、⚠ words.js の 1 か所**
+  //   （2026-08-22。hidetzu/konjaku#169。掟 6: 同じ問いに答える実装を 2 つ持たない）。
+  //   ⚠ **前はトップと /peel に、⚠ まったく同じ字がべた書きされていた。**
+  //   ⚠ **見た目も別々に持っていて、⚠ すでに値がずれていた**（`.era-miss` と `#stateMiss`）。
+  //     ⚠ 見た目のほうは hidetzu/konjaku#94・hidetzu/konjaku#95 の管轄。⚠ ここは字だけ見る。
+  {
+    const w = await readFile(join(PUB, "words.js"), "utf8");
+    const pj = await readFile(join(PUB, "peel3d.js"), "utf8");
+    const inWords = (w.match(/この土地には残っていません/g) ?? []).length;
+    // ⚠ **画面側にべた書きが無いこと**（⚠ コメントは先に落とす。CLAUDE.md §5）
+    const strip = (t) => (t ?? "").replace(/<!--[\s\S]*?-->/g, "").replace(/\/\/[^\n]*/g, "");
+    const leaked = [["index.html", strip(idx)], ["peel3d.js", strip(pj)]]
+      .filter(([, t]) => /この土地には残っていません/.test(t))
+      .map(([f]) => f);
+    if (inWords !== 1)
+      bad(`共有された年代の 1 行が words.js に ${inWords} 個ある（1 か所にする）`);
+    else if (leaked.length)
+      bad(`共有された年代の 1 行が画面側にべた書きされている: ${leaked.join("、")}`
+        + "（words.js の 1 か所から借りる）");
+    else ok("共有された年代の 1 行は words.js の 1 か所で、2 画面が借りている");
+  }
   // ⚠ **サイト全体の情報を、この画面へ戻さない**（2026-08-18）。
   //   戻すなら、この検査を「何を守っていたか」を読んでから外すこと。
   //   ⚠ 「データについて」は、外した時点で**2 か所が事実と違っていた**
