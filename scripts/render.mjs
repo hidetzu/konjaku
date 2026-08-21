@@ -299,6 +299,26 @@ const effOpacity = (page, sel) => page.evaluate((s) => {
   return +o.toFixed(3);
 }, sel);
 
+// ⚠ **淡くなる／濃くなる途中を読まない**（2026-08-21。hidetzu/konjaku#152 の CI で落ちて分かった）。
+//   ⚠ パネルは `opacity` の遷移で開閉する。⚠ **押した直後に読むと途中の値が返る。**
+//     ⚠ 実測: 手元では閉じた直後 0.02 だが、⚠ **CI では 0.058**（⚠ 0.05 の境目をまたいだ）。
+//     ⚠ 別のケースでは、⚠ 開いた直後に 0 を読んで「読めない」と落ちた。
+//   ⚠ **時間で待たない**（⚠ 機械の速さで変わる）。⚠ **落ち着くまで待つ。**
+//   ⚠ **主張は弱めない**: ⚠ 落ち着いた値が条件を満たさなければ、⚠ そのまま落ちる。
+//   ⚠ **待ちは長めに取る**（20 秒）。⚠ 札幌は地形分類が遅れて届き、⚠ **8 秒では 0 のままだった**
+//     （⚠ 実測 2026-08-21: 14 秒後には 1）。⚠ **待つだけで、⚠ 主張は弱めていない。**
+const waitOpacity = async (page, sel, ok, timeout = 20000) => {
+  const t0 = Date.now();
+  let prev = null, v = null;
+  while (Date.now() - t0 < timeout) {
+    v = await effOpacity(page, sel);
+    if (v !== null && v === prev && ok(v)) return v;
+    prev = v;
+    await page.waitForTimeout(120);
+  }
+  return v;
+};
+
 const peelReady = (page) => page.waitForFunction(
   () => /件|ありません|読み込めませんでした/.test(document.getElementById("status")?.textContent ?? ""),
   null, { timeout: 60000 });
@@ -588,18 +608,29 @@ const CASES = [
         must(r.there, `${w}×${h}: 地図の帰属表示が無い（出典明示は利用の条件）`);
         must(r.inView, `${w}×${h}: 帰属表示が画面の外にある`);
         // ⚠ HUD の板が、帰属表示の枠に重なっていないこと
+        // ⚠ **切られている分は数えない**（2026-08-21。hidetzu/konjaku#152）。
+        //   ⚠ `#hud` は `overflow-y:auto` の箱で、⚠ **中身が入りきらないときは中でスクロールする。**
+        //     ⚠ そのとき子の矩形は箱の外まで伸びるが、⚠ **画面には出ていない**（切られている）。
+        //   ⚠ 実測（375×667）: `#timePanel` の矩形が y518–643 で、⚠ 帰属（y643）と当たったが、
+        //     ⚠ **箱は y354–641 で、⚠ 641 より下は描かれていない。**
+        //   ⚠ **見たいのは「⚠ 実際に上に塗っているか」**なので、⚠ 箱で切ってから比べる。
         const over = await page.evaluate(() => {
           const at = document.querySelector(".maplibregl-ctrl-attrib").getBoundingClientRect();
+          const hud = document.getElementById("hud").getBoundingClientRect();
           const hits = [];
           for (const e of document.querySelectorAll("#hud *")) {
-            const r = e.getBoundingClientRect();
-            if (r.width < 2 || r.height < 2) continue;
+            const b = e.getBoundingClientRect();
+            if (b.width < 2 || b.height < 2) continue;
             const cs = getComputedStyle(e);
             // 地色も枠線も無いものは、上に塗らないので数えない
             if (cs.backgroundColor === "rgba(0, 0, 0, 0)" && cs.borderTopWidth === "0px") continue;
+            // ⚠ **箱で切る**（⚠ 見えている分だけを相手にする）
+            const r = { left: Math.max(b.left, hud.left), right: Math.min(b.right, hud.right),
+              top: Math.max(b.top, hud.top), bottom: Math.min(b.bottom, hud.bottom) };
+            if (r.right - r.left < 2 || r.bottom - r.top < 2) continue;
             if (r.left < at.right && at.left < r.right && r.top < at.bottom && at.top < r.bottom)
               hits.push(`<${e.tagName.toLowerCase()}${e.id ? "#" + e.id : "." + String(e.className).split(" ")[0]}>`
-                + ` y=${Math.round(r.top)}..${Math.round(r.bottom)}`);
+                + ` 見えている分 y=${Math.round(r.top)}..${Math.round(r.bottom)}`);
           }
           return hits;
         });
@@ -627,15 +658,17 @@ const CASES = [
     },
   },
   {
-    // ⚠ **下から伸びる箱が、答えの板を押しのけてはいけない。**
-    //   実測（2026-08-19・320×480・過去の段）: #hud が #land に **92px** 食い込み、
-    //   「99.6%」の 4 文字しか読めず、答えの下端を受け取るのは #over だった。
-    //   ⚠ **画面が低いほど、いちばん強い実測（当時 533 / 533 件すべてを判定）が消える**作りだった。
-    // ⚠ CLAUDE.md §9「隣り合うものは同じ積み上げに入れる。固定値で避けない」を再び踏んだ。
-    //   #land は top:62px の固定、#hud は bottom:0 から上へ伸びる。別々に置くと必ずぶつかる。
-    // ⚠ **潰すのも駄目。**上限だけ掛けたら 129px の中身が 27px になった（隠れていたのが
-    //   潰れただけで、読めないのは同じ）。答えには下限を切り、下の箱が譲る。
-    name: "画面が低くても、答えの板が下の箱に食われない", path: `/peel?${TOYOSU}`,
+    // ⚠ **下から伸びる箱が、⚠ 調べている地点を覆ってはいけない。**
+    //
+    // ⚠ **2026-08-21 に、⚠ 答えの板（#land）が無くなった**（hidetzu/konjaku#152。Owner 判断）。
+    //   ⚠ 前の主張は「⚠ 下から伸びる箱（#hud）が、⚠ 答えの板を押しのけない」だった。
+    //     ⚠ 実測（2026-08-19・320×480・過去の段）: #hud が #land に **92px** 食い込み、
+    //       ⚠ 「99.6%」の 4 文字しか読めなかった。⚠ **画面が低いほど強い実測が消える**作りだった。
+    //     ⚠ CLAUDE.md §9「隣り合うものは同じ積み上げに入れる。固定値で避けない」を踏んだ記録。
+    //   ⚠ **押しのける相手が無くなった。**⚠ **主張は引き継ぐ**:
+    //     ⚠ **画面が低くても、⚠ 下の箱が調べている地点（画面中央）を覆わない。**
+    //     ⚠ **潰さない**（⚠ 上限だけ掛けて中身が 27px になった記録がある）。
+    name: "画面が低くても、下の箱が調べている地点を覆わない", path: `/peel?${TOYOSU}`,
     viewport: { width: 320, height: 480 }, hasTouch: true,
     async check(page) {
       await page.waitForFunction(() => /件を判定しました/.test(document.body.innerText),
@@ -646,28 +679,36 @@ const CASES = [
         s.value = "500"; s.dispatchEvent(new Event("input", { bubbles: true })); });
       await page.waitForTimeout(700);
       const r = await page.evaluate(() => {
-        const land = document.getElementById("land"), lr = land.getBoundingClientRect();
         const hud = document.getElementById("hud"), hr = hud.getBoundingClientRect();
-        const first = land.querySelector("*");
-        const fr = first ? first.getBoundingClientRect() : null;
-        const who = fr ? document.elementFromPoint(
-          Math.round(fr.x + fr.width / 2), Math.round(fr.y + 6)) : null;
-        return { landH: Math.round(lr.height), landScroll: land.scrollHeight,
-          hudTop: Math.round(hr.top), landBottom: Math.round(lr.bottom),
-          lap: Math.round(Math.max(0, lr.bottom - hr.top)),
-          hit: who ? (who.id || who.closest("[id]")?.id || String(who.className).split(" ")[0]) : "無い",
-          text: land.innerText.replace(/\s+/g, " ").trim() };
+        return { hudTop: Math.round(hr.top), hudH: Math.round(hr.height),
+          scroll: hud.scrollHeight, mid: Math.round(innerHeight / 2),
+          land: document.querySelectorAll("#land").length,
+          text: hud.innerText.replace(/\s+/g, " ").trim() };
       });
-      must(r.lap === 0, `下の箱が答えに ${r.lap}px 食い込んでいる（答えの下端 ${r.landBottom} / 箱の上端 ${r.hudTop}）`);
-      // ⚠ 「重ならない」だけでは足りない。**潰れていない**ことまで見る
-      must(r.landH >= 100, `答えの板が ${r.landH}px まで潰れている（読めない）`);
-      // ⚠ 答えの 1 行目を、答え自身が受け取っていること（何かが上に乗っていない）
-      must(r.hit === "land" || /land/.test(r.hit),
-        `答えの 1 行目を「${r.hit}」が受け取っている（上に何か乗っている）`);
-      // ⚠ 中身が入りきらないときは、消さずに中でスクロールさせる
-      must(/99\.6%|件の足元を判定/.test(r.text), `答えが消えている: ${r.text.slice(0, 40)}`);
-      return `320×480・過去の段で 重なり ${r.lap}px ／ 答え ${r.landH}px（中身 ${r.landScroll}px）`
-        + ` ／ 1 行目を受け取るのは ${r.hit}`;
+      // ⚠ **調べている地点（画面中央）を覆わない**
+      must(r.hudTop > r.mid,
+        `下の箱が調べている地点を覆っている: 箱の上端 ${r.hudTop} / 中央 ${r.mid}`);
+      // ⚠ **潰していない**（⚠ 中身が入りきらないなら、⚠ 消さずに中でスクロール）
+      must(r.hudH >= 100, `下の箱が ${r.hudH}px まで潰れている（読めない）`);
+      // ⚠ **中身を縮めていないこと。**⚠ 上限に当たったら、⚠ **スクロールで見せる。**
+      //   ⚠ 実測で踏んだ（2026-08-21・320×640）: 上限だけ掛けたら flex の子が縮み、
+      //     ⚠ **中身 381 → 300px に潰れ、⚠ スクロールもできず**
+      //     ⚠ 「空中写真 8 段 ／ 明治期は地図」が読めなくなった（⚠ scrollHeight == height）。
+      must(r.scroll > r.hudH,
+        `上限に当たったのに中身を縮めている（スクロールできない）: 中身 ${r.scroll} / 箱 ${r.hudH}`);
+      // ⚠ **板の中でも潰れていないこと**（⚠ 縮められると、⚠ 板の内側があふれる）
+      const crushed = await page.evaluate(() =>
+        [...document.querySelectorAll("#hud > *")]
+          .filter((e) => e.scrollHeight > Math.ceil(e.getBoundingClientRect().height) + 1)
+          .map((e) => `${e.id || e.className}: 中身 ${e.scrollHeight} / 箱 ${
+            Math.round(e.getBoundingClientRect().height)}`));
+      must(!crushed.length, `下の箱の中で、板が潰れている: ${crushed.join(" ／ ")}`);
+      // ⚠ **答えの板は戻っていない**（⚠ 戻ると、⚠ また答えが 2 か所になる）
+      must(r.land === 0, "答えの板（#land）が戻っている（土地の答えはパネルの 1 か所）");
+      // ⚠ **断りは残っている**（⚠ 消さずに減らした、が守れているか）
+      must(/推定/.test(r.text), `下の箱から断りが消えている: ${r.text.slice(0, 60)}`);
+      return `320×480・過去の段で 箱の上端 ${r.hudTop} > 中央 ${r.mid}`
+        + ` ／ 箱 ${r.hudH}px（中身 ${r.scroll}px）／答えの板は無い`;
     },
   },
   {
@@ -1277,7 +1318,9 @@ const CASES = [
         return { open,
           cover: open ? Math.round(pr.width * pr.height / (W * H) * 100) : 0,
           center: who(Math.round(W / 2), Math.round(H / 2)),
-          land: box("#land"), close: box("#closePanel"), back: box("#back"),
+          // ⚠ **2026-08-21 に、⚠ 答えの板（#land）が無くなった**（hidetzu/konjaku#152）
+          land: document.querySelectorAll("#land").length,
+          close: box("#closePanel"), back: box("#back"),
           zoom: box(".maplibregl-ctrl-group"),
           // ⚠ **箱があるだけでは「見えている」ではない。**その座標を自分が受け取るかまで見る
           //   （矩形は覆われていても返る。このリポジトリが何度も踏んでいる）
@@ -1289,7 +1332,12 @@ const CASES = [
       // (1) 閉じている初期状態: 答えは地図の上に出ていて、地図の中心は地図が受け取る
       const shut = await look();
       must(!shut.open, "スマホでパネルが開いて始まっている（地図が見えない）");
-      must(shut.land && shut.land.h > 0, "閉じているのに、答えの板が出ていない");
+      // ⚠ **前の主張**: 「⚠ 閉じている初期状態でも、⚠ 答えの板が地図の上に出ている」。
+      //   ⚠ 2026-08-21 に Owner が「⚠ 土地の答えは HUD では見せない」と決めた
+      //     （hidetzu/konjaku#152）。⚠ **板そのものが無くなった。**
+      //   ⚠ **主張は引き継ぐ**: ⚠ **閉じているあいだ、⚠ 地図の中心は地図が受け取る**
+      //     （⚠ 調べている地点が見える）。⚠ **板が戻っていないこと**も見る。
+      must(shut.land === 0, "答えの板（#land）が戻っている（土地の答えはパネルの 1 か所）");
       must(shut.center.inMap,
         `閉じているのに、画面の中心（＝調べている地点）を地図が受け取っていない: ${shut.center.name}`);
       // (2) 開いたら**全画面**。中途半端に覆わない
@@ -1358,7 +1406,7 @@ const CASES = [
           "「光らせる」を押しても全画面のままで、光る先の地図が見えない"
           + `（パネル開=${held.open} / 中心は地図=${held.inMap}）`);
       }
-      return `閉じ: 答えの板 ${shut.land.w}×${shut.land.h}px・中心は地図 ／`
+      return `閉じ: 答えの板は無い・中心は地図 ／`
         + ` 開き: 画面の ${open.cover}%・「${label.close}」${open.close.w}×${open.close.h}px・`
         + `「${label.back}」${open.back.w}×${open.back.h}px ／`
         + ` 光らせると地図が出る ／ 閉じ直し: 中心は地図・ズーム ${again.zoom.h}px`;
@@ -3008,7 +3056,7 @@ const CASES = [
     //     ⚠ **✕ だけに描画を足すと、⚠ ▶ で空の HUD が出る。**
     //
     //   ⚠ **待たずに読む。**⚠ 待つと、⚠ **遅れて埋まっても緑になる**（契約 4「空白を見せない」）。
-    name: "PC では、見えない箱に土地情報を組み立てない", path: "/", group: "core",
+    name: "PC でパネルを閉じても、HUD に答えが戻らない", path: "/", group: "core",
     async check(page) {
       const ctx = await page.context().browser().newContext({
         viewport: { width: 1280, height: 800 }, serviceWorkers: "block" });
@@ -3020,26 +3068,32 @@ const CASES = [
         await p2.waitForFunction(() => /この土地は/.test(document.body.textContent ?? ""),
           null, { timeout: 60000 });
         await settleAfterCondition(p2);
+        // ⚠ **2026-08-21 に、⚠ HUD の答え（#land）ごと無くなった**（hidetzu/konjaku#152）。
+        //   ⚠ 前の主張: 「⚠ PC の初期表示で、⚠ 見えない箱に 72 字が書かれていた」を止める。
+        //     ⚠ そのために「⚠ 見えているときだけ描く（syncHud）」を足していた。
+        //   ⚠ **書く箱が無くなったので、⚠ 引き継ぎも空白も起きない。**
+        //   ⚠ **主張は引き継ぐ**: ⚠ **箱が戻っていないこと**と、⚠ **✕ で例外が出ないこと。**
         const read = () => p2.evaluate(() => ({
           cls: document.getElementById("panel")?.className ?? "",
-          n: (document.getElementById("land")?.innerText ?? "").replace(/\s+/g, " ").trim().length,
+          land: document.querySelectorAll("#land").length,
+          all: (document.getElementById("landAll")?.innerText ?? "").replace(/\s+/g, " ").trim().length,
         }));
-        // ⚠ **初期は書いていない**
         const a = await read();
         must(!a.cls.includes("hide"), `PC でパネルが閉じて始まっている（${a.cls}）`);
-        must(a.n === 0, `PC の初期表示で、見えない箱に ${a.n} 字が書かれている`);
-        // ⚠ **✕ の直後、⚠ 待たずに読む**
+        must(a.land === 0, "HUD の答え（#land）が戻っている（土地の答えはパネルの 1 か所）");
+        must(a.all > 0, "PC の初期表示で、パネルに答えが書かれていない");
+        // ⚠ **✕ の直後、⚠ 待たずに読む**（⚠ 例外や空白が出ないこと）
         await p2.click("#closePanel");
         const b = await read();
         must(b.cls.includes("hide"), `✕ でパネルが閉じていない（${b.cls}）`);
-        must(b.n > 0, "✕ の直後、HUD が空のまま（空白を見せている）");
+        must(b.land === 0, "✕ で HUD の答えが復活している");
         must(errs.length === 0, `例外が出た: ${errs.slice(0, 2).join(" / ")}`);
         await p2.close();
 
-        // ⚠ **▶ の経路は、⚠ まっさらな画面から見る。**
-        //   ⚠ **✕ を先に押すと、⚠ 開き直しても中身が残る**（契約 5）ので、
-        //     ⚠ **▶ に描画が無くても中身があるように見える**（2026-08-20 に踏んだ。
-        //     ⚠ わざと壊しても落ちなかった）。
+        // ⚠ **入口は 2 つ**（✕ と ▶）。⚠ **どちらも同じ 1 か所を通ること。**
+        //   ⚠ 前は「⚠ ▶ の直後に HUD が空でないこと」で見ていた（⚠ 引き継ぎの空白）。
+        //   ⚠ **2026-08-21 に引き継ぎが無くなった**ので、⚠ **見るのは
+        //     ⚠ 「▶ でも閉じること」と「⚠ 例外が出ないこと」。**
         const p3 = await ctx.newPage();
         const errs3 = [];
         p3.on("pageerror", (e) => errs3.push(e.message));
@@ -3049,28 +3103,29 @@ const CASES = [
         await settleAfterCondition(p3);
         const read3 = () => p3.evaluate(() => ({
           cls: document.getElementById("panel")?.className ?? "",
-          n: (document.getElementById("land")?.innerText ?? "").replace(/\s+/g, " ").trim().length,
+          land: document.querySelectorAll("#land").length,
         }));
-        const c0 = await read3();
-        must(c0.n === 0, `▶ を押す前から HUD に ${c0.n} 字ある（この検査が何も見ていない）`);
         // ⚠ **▶ の直後、⚠ 待たずに読む**（⚠ 2 つめの入口）
         await p3.click("#play");
         const c = await read3();
         must(c.cls.includes("hide"), `▶ でパネルが閉じていない（${c.cls}）`);
-        must(c.n > 0, "▶ の直後、HUD が空のまま（2 つめの入口に描画が無い）");
+        must(c.land === 0, "▶ で HUD の答えが復活している");
         await p3.click("#play");
         await settleAfterClick(p3);
         must(errs3.length === 0, `例外が出た: ${errs3.slice(0, 2).join(" / ")}`);
-        return `初期 ${a.n} 字／✕ 直後 ${b.n} 字／⚠ 別の画面で ▶ 直後 ${c.n} 字（例外 0 件）`;
+        return `PC 初期はパネルに ${a.all} 字／✕ で閉じる／▶ でも閉じる／`
+          + `HUD の答えは 0 個（例外 0 件）`;
       } finally { await ctx.close(); }
     },
   },
 
   {
-    // ⚠ **HUD が表示中に model が更新されたら、#land も更新される**（契約 6）。
-    //   ⚠ 地形分類をわざと遅らせ、⚠ **先にパネルを閉じてから**届かせる。
-    //   ⚠ **遅れて届いたものが HUD に乗らないと、⚠ 古い答えが残る。**
-    name: "HUD が出ているあいだに答えが変わったら、HUD も変わる", path: "/", group: "core",
+    // ⚠ **遅れて届いた答えが、⚠ 画面に乗ること**（契約 6）。
+    //   ⚠ 地形分類をわざと 12 秒遅らせる。⚠ **乗らないと、⚠ 古い答えが残る。**
+    // ⚠ **2026-08-21 に、⚠ 見る先が HUD からパネルへ移った**（hidetzu/konjaku#152）。
+    //   ⚠ 前は「⚠ パネルを閉じてから届かせ、⚠ HUD が更新されるか」を見ていた。
+    //   ⚠ **HUD に答えを出さなくなったので、⚠ 閉じる必要も無い。**⚠ 主張は同じ。
+    name: "遅れて届いた答えが、画面に乗る", path: "/", group: "core",
     async check(page) {
       const ctx = await page.context().browser().newContext({
         viewport: { width: 1280, height: 800 }, serviceWorkers: "block" });
@@ -3083,19 +3138,18 @@ const CASES = [
         });
         await p2.goto(`${BASE}/peel?${TOYOSU}`, { waitUntil: "domcontentloaded", timeout: 45000 });
         await p2.waitForTimeout(4000);
-        await p2.click("#closePanel");
-        await settleAfterClick(p2);
         const before = await p2.evaluate(() =>
-          (document.getElementById("land")?.innerText ?? "").replace(/\s+/g, " ").trim());
-        must(before.length > 0, "パネルを閉じたのに HUD が空（地形分類より先に閉じた場合）");
+          (document.getElementById("landAll")?.innerText ?? "").replace(/\s+/g, " ").trim());
+        // ⚠ **地形分類が届く前でも、⚠ パネルには何か出ている**（⚠ 空を見せない）
+        must(before.length > 0, "地形分類が届く前に、パネルが空のまま");
         // ⚠ 遅れて届くのを待つ。⚠ **時間切れで落とさない**（⚠ 何を主張していたのか読めなくなる）
         const moved = await p2.waitForFunction((b) =>
-          (document.getElementById("land")?.innerText ?? "").replace(/\s+/g, " ").trim() !== b,
+          (document.getElementById("landAll")?.innerText ?? "").replace(/\s+/g, " ").trim() !== b,
           before, { timeout: 45000 }).then(() => true).catch(() => false);
         const after = await p2.evaluate(() =>
-          (document.getElementById("land")?.innerText ?? "").replace(/\s+/g, " ").trim());
+          (document.getElementById("landAll")?.innerText ?? "").replace(/\s+/g, " ").trim());
         must(moved && after !== before,
-          `遅れて届いた答えが HUD に乗っていない（古い答えが残る）: 「${before.slice(0, 40)}」`);
+          `遅れて届いた答えが画面に乗っていない（古い答えが残る）: 「${before.slice(0, 40)}」`);
         return `閉じた直後「${before.slice(0, 30)}」→ 届いたあと「${after.slice(0, 30)}」`;
       } finally { await ctx.close(); }
     },
@@ -5320,8 +5374,10 @@ const CASES = [
           return +o.toFixed(3); };
         const t = (id) => { const e = document.getElementById(id);
           return eff(e) > 0 ? (e.innerText ?? "") : ""; };
-        return { seen: t("landAll") + "\n" + t("land"),
-          qs: [...document.querySelectorAll("#landAll .land-q,#land .land-q")]
+        return { seen: t("landAll"),
+          // ⚠ **2026-08-21 に、⚠ 土地の答えはパネルの 1 か所だけになった**
+          //   （hidetzu/konjaku#152）。⚠ 前は HUD（#land）からも集めていた。
+          qs: [...document.querySelectorAll("#landAll .land-q")]
                 .filter((e) => eff(e) > 0).map((e) => e.textContent.trim()),
           hero: document.querySelectorAll("#heroNum,#heroCap").length };
       });
@@ -5338,11 +5394,17 @@ const CASES = [
       await page.setViewportSize({ width: 375, height: 667 });
       await page.reload({ waitUntil: "domcontentloaded" });
       await peelReady(page);
-      await page.waitForFunction(() => document.querySelectorAll("#land .land-q").length > 0
+      await page.waitForFunction(() => document.querySelectorAll("#landAll .land-q").length > 0
         && typeof landform !== "undefined" && landform !== null, null, { timeout: 60000 });
       await settleAfterCondition(page);
+      // ⚠ **2026-08-21 に、⚠ スマホでも層はパネルの 3 つ**（hidetzu/konjaku#152）。
+      //   ⚠ 前は HUD が「第1層＋もう 1 つ」に絞って出していた。⚠ **HUD に答えを出さなくなった。**
+      //   ⚠ **見ている主張は同じ**: ⚠ **同じ数字を 2 回出さない。**
+      //   ⚠ パネルは閉じて始まるので、⚠ **開いてから読む。**
+      await page.click("#toggle");
+      await settleAfterClick(page);
       const sp = await look();
-      must(sp.qs.length === 2, `スマホの HUD が第1層＋1 つでない: ${sp.qs.join(" / ")}`);
+      must(sp.qs.length === 3, `スマホのパネルに 3 層そろっていない: ${sp.qs.join(" / ")}`);
       must((sp.seen.match(/99\.6/g) || []).length === 1,
         `スマホで 99.6% が ${(sp.seen.match(/99\.6/g) || []).length} 回出ている`);
       return `PC ${pc.qs.length} 層（${pc.qs.map((x) => x.slice(0, 6)).join("→")}）／`
@@ -5350,29 +5412,29 @@ const CASES = [
     },
   },
   {
-    // ⚠ **常時見える HUD が、確実性の高い順に層を出すこと**（ADR 0030）。
+    // ⚠ **土地の答えが、確実性の高い順に出ること**（ADR 0030）。
     //   実測（2026-08-19・main = d7dce05）: 層という値が無かったので、4 地点とも順番が違った。
     //     豊洲 第3層→第2層（⚠ 第1層が無い） ／ 札幌・那覇 ⚠ 出せない断りから始まった。
-    //   ⚠ **HUD は第1層＋1 つに絞る。**3 層とも出すと 375×667 で 320px になり、
-    //     下端 y=382 が**調べている地点（画面中央 y=333）を覆った**。
+    // ⚠ **2026-08-21 に、⚠ 出す先が HUD からパネルへ移った**（hidetzu/konjaku#152）。
+    //   ⚠ 前は「⚠ HUD は第1層＋1 つに絞る」だった。⚠ 3 層とも出すと 375×667 で 320px になり、
+    //     ⚠ 下端 y=382 が**調べている地点（画面中央 y=333）を覆った**ため。
+    //   ⚠ **パネルは地図の上に重なる板ではない**ので、⚠ **絞る理由が無くなった。**
+    //   ⚠ **順序の主張は変えていない**（⚠ 第1層 → 第2層 → 第3層）。
     name: "土地の答えが、確実性の高い順に出る", path: `/peel?${TOYOSU}`, group: "core",
-    // ⚠ **#land は狭い幅の道具。**既定の 1200×780 では display:none で、
-    //   getBoundingClientRect() が 0 を返す。⚠ **隠れたものを測って「覆わない」と言わない**
-    //   （実測 2026-08-19: 下端 0 < 中央 390 で、何も見ずに通っていた）。
     viewport: { width: 375, height: 667 }, hasTouch: true,
     async check(page) {
       await peelReady(page);
       // ⚠ **答えが出そろってから読む。**建物と地形分類は別々に返るので、
       //   途中を読むと層が 1 つだけの瞬間を捕まえる（実測 2026-08-19: 2 回に 1 回落ちた）。
-      await page.waitForFunction(() => (document.querySelectorAll("#land .land-q").length > 0)
+      await page.waitForFunction(() => (document.querySelectorAll("#landAll .land-q").length > 0)
         && typeof landform !== "undefined" && landform !== null, null, { timeout: 60000 });
       await settleAfterCondition(page);
+      // ⚠ **パネルは閉じて始まる。**⚠ 開いてから読む（⚠ ☰ を 1 回）
+      await page.click("#toggle");
+      await settleAfterClick(page);
       const r = await page.evaluate(() => {
-        const el = document.getElementById("land");
-        const q = el.getBoundingClientRect();
+        const el = document.getElementById("landAll");
         return { qs: [...el.querySelectorAll(".land-q")].map((x) => x.textContent.trim()),
-          bottom: Math.round(q.bottom), mid: Math.round(window.innerHeight / 2),
-          // ⚠ 隠れていたら、覆うかどうかは測れない。**測れないと言う**
           seen: el.checkVisibility(),
           nums: [...el.querySelectorAll(".land-num")].length,
           dens: [...el.querySelectorAll(".land-den")].length,
@@ -5384,10 +5446,11 @@ const CASES = [
       must(!/第[123]層/.test(r.txt), `内部の呼び名が画面に出ている: ${r.txt.slice(0, 60)}`);
       // ⚠ 数字を出すなら分母も出る（掟: 数字は主張範囲の分母で書く）
       must(r.nums === 0 || r.dens >= r.nums, `数字 ${r.nums} 個に対して分母が ${r.dens} 個`);
-      // ⚠ **調べている地点を覆わない。**⚠ 見えていなければ、この主張は測れていない
-      must(r.seen, "HUD が見えていない（覆うかどうかを測れていない）");
-      must(r.bottom < r.mid, `HUD が調べている地点を覆っている: 下端 ${r.bottom} / 中央 ${r.mid}`);
-      return `${r.qs.length} 層（${r.qs.join(" → ")}）／下端 ${r.bottom} < 中央 ${r.mid}`;
+      // ⚠ **見えていること。**⚠ 見えていなければ、順序の主張も測れていない
+      must(r.seen, "パネルの答えが見えていない（順序を測れていない）");
+      // ⚠ **3 層とも出る**（⚠ 絞らない）。⚠ 順は第1層 → 第2層 → 第3層
+      must(r.qs.length === 3, `3 層そろっていない: ${r.qs.join(" / ")}`);
+      return `${r.qs.length} 層（${r.qs.join(" → ")}）`;
     },
   },
   {
@@ -5398,11 +5461,15 @@ const CASES = [
     viewport: { width: 375, height: 667 }, hasTouch: true,
     async check(page) {
       await peelReady(page);
-      await page.waitForFunction(() => (document.querySelectorAll("#land .land-q").length > 0)
+      await page.waitForFunction(() => (document.querySelectorAll("#landAll .land-q").length > 0)
         && typeof landform !== "undefined" && landform !== null, null, { timeout: 60000 });
       await settleAfterCondition(page);
+      // ⚠ **2026-08-21 に、⚠ 答えはパネルの 1 か所になった**（hidetzu/konjaku#152）。
+      //   ⚠ **主張は同じ**: ⚠ 出ない層を黙って消さず、⚠ その層の位置に理由を出す。
+      await page.click("#toggle");
+      await settleAfterClick(page);
       const r = await page.evaluate(() => {
-        const el = document.getElementById("land");
+        const el = document.getElementById("landAll");
         return { qs: [...el.querySelectorAll(".land-q")].map((x) => x.textContent.trim()),
           miss: [...el.querySelectorAll(".land-miss")].map((x) => x.innerText.replace(/\s+/g, " ").trim()),
           txt: (el.innerText ?? "").replace(/\s+/g, " ").trim() };
@@ -6349,7 +6416,13 @@ const CASES = [
     //   **答えより先に注意書きが読める**状態だった。
     //   ⚠ 数字だけでは足りない。**何の割合か**と**分母**が同じ画面にあることまで見る
     //     （掟: 数字は主張範囲の分母で書く）。
-    name: "スマホの初期画面で、土地の答えと分母が読める",
+    // ⚠ **2026-08-21 に、⚠ 主張が変わった**（hidetzu/konjaku#152。Owner 判断）。
+    //   ⚠ 前は「⚠ **初期画面**で、土地の答えと分母が読める」だった。
+    //     ⚠ 2026-08-16 の実測（スマホはパネルが閉じて始まる）を根拠に、⚠ HUD に要約を置いていた。
+    //   ⚠ **Owner が「土地の答えは HUD では見せない」と決めた**（2026-08-21）。
+    //   ⚠ **守りたいことは同じ**: ⚠ **答えと分母が、⚠ 読める形でそろっていること。**
+    //     ⚠ 変わったのは**何手で届くか**。⚠ 測り直し: ⚠ **☰ を 1 回押すだけ**（⚠ スクロール 0）。
+    name: "スマホで ☰ を 1 回押すと、土地の答えと分母が読める",
     path: `/peel?${TOYOSU}`, viewport: { width: 375, height: 667 }, hasTouch: true,
     async check(page) {
       // ⚠ **内陸を入れておく。** 下の hasCategory（区分名が主見出し）の分岐は
@@ -6377,25 +6450,46 @@ const CASES = [
         // ⚠ 「%」を待たない。⚠ **割合が出ない土地がある**（札幌・那覇）。
         //   ⚠ 層になって、答えの 1 行目が第1層（区分名）になったので、% は後ろに来る。
         await page.waitForFunction(() => /件の足元を判定|%/.test(
-          document.getElementById("land")?.textContent ?? ""),
+          document.getElementById("landAll")?.textContent ?? ""),
           null, { timeout: 60000 });
-        // ⚠ パネルは閉じたまま（掟の外へ出ない: スマホで既定表示にはしない）
+        // ⚠ **パネルは閉じて始まる**（掟の外へ出ない: スマホで既定表示にはしない）
         must(await page.locator("#panel.hide").count() === 1, `${name}: パネルが閉じて始まっていない`);
-        const o = await effOpacity(page, "#land .land-g1, #land .land-alt, #land .land-num");
-        const od = await effOpacity(page, "#land .land-den");
+        // ⚠ **☰ を 1 回。**⚠ それだけで答えが読めること（⚠ スクロールしない）
+        await page.click("#toggle");
+        await settleAfterClick(page);
+        must(await page.evaluate(() => document.getElementById("panel").scrollTop === 0),
+          `${name}: 開いた直後にスクロールしている`);
+        const o = await effOpacity(page, "#landAll .land-g1, #landAll .land-alt, #landAll .land-num");
+        const od = await effOpacity(page, "#landAll .land-den");
         must(o > 0, `${name}: 答えの実効 opacity が ${o}（読めない）`);
         must(od > 0, `${name}: 分母の実効 opacity が ${od}（読めない）`);
+        // ⚠ **第1層の見出しが画面の中にあること**（⚠ 開いただけで届く）
+        const q1 = await page.evaluate(() => {
+          const e = document.querySelector("#landAll .land-q");
+          if (!e) return null;
+          const r = e.getBoundingClientRect();
+          return { top: Math.round(r.top), vh: innerHeight };
+        });
+        must(q1, `${name}: 開いても第1層の見出しが無い（パネル ${
+          await page.evaluate(() => document.getElementById("panel").className)}）`);
+        must(q1.top < q1.vh,
+          `${name}: 開いても第1層の見出しが画面の外（${JSON.stringify(q1)}）`);
         const r = await page.evaluate(() => ({
-          num: document.querySelector("#land .land-num")?.textContent.trim() ?? "",
-          what: document.querySelector("#land .land-what")?.textContent.trim() ?? "",
-          den: document.querySelector("#land .land-den")?.textContent.trim() ?? "",
+          // ⚠ **主役の層から取る**（2026-08-21）。⚠ HUD のときは層が 2 つに絞られていたので
+          //   ⚠ `.land-num` が 1 つしか無かった。⚠ **パネルは 3 層あるので、⚠ 最初を取ると
+          //   ⚠ 第2層（面の割合）を拾う。**⚠ hero と同じ層＝いちばん確実な層から取る。
+          ...(() => { const ls = [...document.querySelectorAll("#landAll .land-layer")];
+            const L = ls[ls.length - 1];
+            return { num: L?.querySelector(".land-num")?.textContent.trim() ?? "",
+              what: L?.querySelector(".land-what")?.textContent.trim() ?? "",
+              den: L?.querySelector(".land-den")?.textContent.trim() ?? "" }; })(),
           // ⚠ 答えの主役は**いちばん確実な層**（層は確実性の高い順に並ぶので、最後）。
           //   ⚠ 最初を取ると第1層（地形分類）を拾い、分岐を間違える（実測 2026-08-19）。
           hero: (() => { const ls = [...document.querySelectorAll("#landAll .land-layer")];
             const L = ls[ls.length - 1];
             return L?.querySelector(".land-num,.land-alt,.land-g1 b")?.textContent.trim() ?? ""; })(),
           heroCap: (document.getElementById("landAll")?.textContent ?? "").replace(/\s+/g, " ").trim(),
-          landAll: (document.getElementById("land")?.textContent ?? "").replace(/\s+/g, " ").trim(),
+          landAll: (document.getElementById("landAll")?.textContent ?? "").replace(/\s+/g, " ").trim(),
         }));
         const hasCategory = !!r.hero && !/[\d.]+/.test(r.hero);
         if(hasCategory){
@@ -6439,31 +6533,18 @@ const CASES = [
           `${name}: HUD とパネルで分母が違う: HUD「${r.den}」/ パネル「${r.heroCap.slice(0, 60)}」`);
         out.push(`${name} ${hasCategory ? r.hero : r.num}（${r.den}）`);
       }
-      // ⚠ 3D と操作を覆わない。答えの板が、上の導線・年代・操作パネルと重ならないこと
-      const geo = await page.evaluate(() => {
-        const box = (s) => { const e = document.querySelector(s); if (!e) return null;
-          const b = e.getBoundingClientRect();
-          return { top: b.top, bottom: b.bottom, left: b.left, right: b.right }; };
-        return { land: box("#land"), chrome: box("#chrome"), era: box("#era"),
-          time: box("#timePanel"), zoom: box(".maplibregl-ctrl-top-right"),
-          vw: document.documentElement.clientWidth, vh: document.documentElement.clientHeight };
-      });
-      const hits = (a, b) => a && b && a.left < b.right && b.left < a.right
-        && a.top < b.bottom && b.top < a.bottom;
-      for (const [k, other] of [["戻る・☰", geo.chrome], ["年代表示", geo.era],
-        ["操作パネル", geo.time], ["拡大縮小", geo.zoom]])
-        must(!hits(geo.land, other), `答えの板が${k}と重なっている`);
-      must(geo.land.top >= 0 && geo.land.bottom <= geo.vh,
-        `答えの板が初期ビューポートの外にある: ${Math.round(geo.land.top)}〜${Math.round(geo.land.bottom)}px`);
-      // ⚠ 320px でも横にあふれない
+      // ⚠ **2026-08-21 に、⚠ 答えの板（#land）が無くなった**（hidetzu/konjaku#152）。
+      //   ⚠ ここは「⚠ 板が 3D と操作を覆わないこと」を見ていた。⚠ **覆う板が無い。**
+      //   ⚠ **主張は引き継ぐ**: ⚠ **開いたパネルが、⚠ 横にあふれないこと。**
+      //     ⚠ 320px は、⚠ いちばん狭い幅（⚠ ui-ux-review の 4 幅の 1 つ）。
       await page.setViewportSize({ width: 320, height: 667 });
       await page.waitForTimeout(400);
       const w = await page.evaluate(() => ({ sw: document.documentElement.scrollWidth,
         cw: document.documentElement.clientWidth,
-        land: document.getElementById("land").getBoundingClientRect() }));
+        p: document.getElementById("panel").getBoundingClientRect() }));
       must(w.sw <= w.cw, `320px で横にあふれる: scrollWidth=${w.sw} / ${w.cw}`);
-      must(w.land.left >= 0 && w.land.right <= w.cw,
-        `320px で答えの板がはみ出す: ${Math.round(w.land.left)}〜${Math.round(w.land.right)}px`);
+      must(w.p.left >= 0 && w.p.right <= w.cw,
+        `320px でパネルがはみ出す: ${Math.round(w.p.left)}〜${Math.round(w.p.right)}px`);
       return `${out.join(" ／ ")}／320px あふれなし`;
     },
   },
@@ -6471,7 +6552,10 @@ const CASES = [
     // ⚠ 判定できない土地で**割合を作らない**（掟: 取れなかったを「無い」と言わない）。
     //   札幌は明治期の低湿地データが整備対象外。建物は出ているので、
     //   「建物ごとには出せません」と、その理由と、建物の件数を出す。0% は出さない。
-    name: "判定できない土地では、初期画面に割合を出さない（札幌）",
+    // ⚠ **2026-08-21 に名前を直した**（hidetzu/konjaku#152）。
+    //   ⚠ 前は「初期画面に割合を出さない」。⚠ **答えが初期画面から無くなった**ので、
+    //     ⚠ 名前が実態と合わなくなった。⚠ **主張は同じ**: ⚠ 判定できないのに割合を出さない。
+    name: "判定できない土地では、開いても割合を出さない（札幌）",
     path: "/peel?ll=43.06800,141.35070&q=%E6%9C%AD%E5%B9%8C%E9%A7%85",
     viewport: { width: 375, height: 667 }, hasTouch: true,
     async check(page) {
@@ -6482,13 +6566,21 @@ const CASES = [
       // ⚠ **答えの板が描かれてから読む。**#status が先に埋まるので、
       //   ⚠ これだけだと板が空のまま opacity を測って null になる（実測 2026-08-19）。
       await page.waitForFunction(() => /件を判定しました/.test(document.body.innerText)
-        && document.querySelector("#land .land-g1, #land .land-alt") !== null,
+        && document.querySelector("#landAll .land-g1, #landAll .land-alt") !== null,
         null, { timeout: 60000 });
-      const t = (await page.locator("#land").textContent()).replace(/\s+/g, " ").trim();
+      // ⚠ **2026-08-21 に、⚠ 土地の答えはパネルの 1 か所になった**（hidetzu/konjaku#152）。
+      //   ⚠ **見ている主張は同じ**: ⚠ 判定できないのに割合を出さない。
+      //   ⚠ **ここはスマホ幅（375）なので、⚠ パネルは閉じて始まる。**
+      //     ⚠ 閉じたまま測ると、⚠ **実効 opacity は 0**（⚠ 読めないのは当たり前）。
+      //     ⚠ **☰ を 1 回押してから読む**（⚠ 答えへの到達は 1 手、という新しい前提）。
+      await page.click("#toggle");
+      await settleAfterClick(page);
+      const t = (await page.locator("#landAll").textContent()).replace(/\s+/g, " ").trim();
       must(!/\d+\.\d+\s*%/.test(t), `判定できないのに割合を出している: ${t.slice(0, 60)}`);
       must(t.includes("整備対象外"), `理由（整備対象外）が書かれていない: ${t.slice(0, 60)}`);
       must(/建物 \d+ 件/.test(t), `建物の件数が書かれていない: ${t.slice(0, 60)}`);
-      const o = await effOpacity(page, "#land .land-g1, #land .land-alt");
+      // ⚠ **濃くなり切るまで待つ**（⚠ 開いた直後は 0 を返す）
+      const o = await waitOpacity(page, "#landAll .land-g1, #landAll .land-alt", (v) => v > 0);
       must(o > 0, `答えの実効 opacity が ${o}（読めない）`);
       // ⚠ 地形分類は**別経路で遅れて届く**。届く前は「判定できません」、届いたら
       //   「建物ごとには出せません」＋その土地の区分に変わる。
@@ -6503,7 +6595,7 @@ const CASES = [
       const gotLf = await page.waitForFunction(
         () => (document.getElementById("land")?.textContent ?? "").includes("扇状地"),
         null, { timeout: 20000 }).then(() => true).catch(() => false);
-      const t2 = (await page.locator("#land").textContent()).replace(/\s+/g, " ").trim();
+      const t2 = (await page.locator("#landAll").textContent()).replace(/\s+/g, " ").trim();
         // ⚠ 地形分類が届いたら、**全部が出せないわけではない**と分かること。
         //   ⚠ 層になって、その言い方が変わった（「建物ごとには出せません」→
         //     第1層が立ち、出せないのは建物の層だけ、と位置で示す）。
@@ -6526,23 +6618,28 @@ const CASES = [
     setup: (page) => page.route(GSI_ROUTE, (r) => r.abort()),
     async check(page) {
       await peelReady(page);
-      await page.waitForFunction(() => (document.getElementById("land")?.textContent ?? "").length > 0,
+      await page.waitForFunction(() => (document.getElementById("landAll")?.textContent ?? "").length > 0,
         null, { timeout: 60000 });
-      const t = (await page.locator("#land").textContent()).replace(/\s+/g, " ").trim();
+      // ⚠ **2026-08-21 に、⚠ 答えはパネルの 1 か所になった**（hidetzu/konjaku#152）
+      const t = (await page.locator("#landAll").textContent()).replace(/\s+/g, " ").trim();
       const lie = LIES.find((w) => t.includes(w));
       must(!lie, `通信断なのに「${lie}」と断定している: ${t.slice(0, 60)}`);
       // 取り込み済みの地点は、実行時のGSI通信が落ちても静的な判定値を表示できる。
       // 未取り込みの地点だけ、従来どおり「読み込めない」状態を確認する。
       const hasStatic = /\d+\.\d+\s*%/.test(t);
       if (!hasStatic) must(/読み込め/.test(t), `読み込めなかったことが書かれていない: ${t.slice(0, 60)}`);
-      must(await effOpacity(page, "#land") > 0, "答えの板が読めない");
+      must(await effOpacity(page, "#landAll") > 0, "答えが読めない");
       return t.slice(0, 60);
     },
   },
   {
     // ⚠ PC では情報パネルが開いて始まる。同じ答えを同じ画面で2度言わない
     //   （☰ ボタンと同じ手）。パネルを閉じたら、HUD 側が答えを引き受ける。
-    name: "PC ではパネルが答えを持ち、閉じると HUD が引き継ぐ", path: `/peel?${TOYOSU}`,
+    // ⚠ **2026-08-21 に、⚠ 引き継ぎが無くなった**（hidetzu/konjaku#152。Owner 判断）。
+    //   ⚠ 前は「⚠ PC はパネルが答えを持ち、⚠ 閉じると HUD が引き継ぐ」だった。
+    //   ⚠ **土地の答えはパネルの 1 か所だけ。**⚠ 閉じたら、⚠ **答えは画面から退く**
+    //     （⚠ 読みたければ ☰ で開き直す。⚠ 実測: ☰ 1 回・スクロール 0）。
+    name: "PC ではパネルが答えを持ち、閉じたら答えは退く", path: `/peel?${TOYOSU}`,
     async check(page) {
       await peelReady(page);
       // ⚠ **待つのはパネル側**（2026-08-20。hidetzu/konjaku#131）。
@@ -6552,18 +6649,28 @@ const CASES = [
         null, { timeout: 60000 });
       must(await page.locator("#panel.hide").count() === 0, "PC でパネルが閉じて始まっている");
       // ⚠ **開いているあいだ、HUD には何も書かれていない**（hidetzu/konjaku#131 の要点）
-      must((await page.$eval("#land", (e) => e.innerText.trim())).length === 0,
-        "パネルを開いているのに、見えない HUD に土地情報が書かれている");
+      // ⚠ **2026-08-21 に、⚠ HUD の答え（#land）ごと無くなった**（hidetzu/konjaku#152）。
+      //   ⚠ 前の主張は「⚠ 見えない HUD に土地情報を書かない」。
+      //   ⚠ **書く箱が無いので、⚠ 主張は「箱が戻っていないこと」に引き継ぐ。**
+      must((await page.$$eval("#land", (els) => els.length)) === 0,
+        "HUD の答え（#land）が戻っている（土地の答えはパネルの 1 か所）");
       const heroOpen = await effOpacity(page, "#landAll");
       must(heroOpen > 0, `パネルの答えが読めない: 実効 opacity ${heroOpen}`);
-      must(await effOpacity(page, "#land") === 0, "パネルを開いているのに HUD にも同じ答えが出ている");
-      // 閉じたら HUD が引き継ぐ
+      const num = (await page.locator("#landAll .land-num").first().textContent()).trim();
+      // ⚠ **閉じたら、⚠ 答えは画面から退く**（⚠ 別の場所に写らない）
       await page.click("#closePanel");
-      await page.waitForTimeout(400);
-      const after = await effOpacity(page, "#land .land-num");
-      must(after > 0, `パネルを閉じても HUD に答えが出ない: 実効 opacity ${after}`);
-      const num = (await page.locator("#land .land-num").textContent()).trim();
-      return `パネル 開=答えはパネルだけ／閉=HUD が ${num}`;
+      await settleAfterClick(page);
+      // ⚠ **淡くなり切るまで待つ**（⚠ 途中を読むと、⚠ 機械の速さで結果が変わる）。
+      //   ⚠ 実測: 手元 0.02 ／ ⚠ **CI 0.058**（2026-08-21 に CI で落ちた）。
+      const after = await waitOpacity(page, "#landAll", (v) => v < 0.05);
+      must(after < 0.05, `閉じても答えが読める場所が残っている: 実効 opacity ${after}`);
+      must((await page.$$eval("#land", (els) => els.length)) === 0,
+        "閉じたら HUD に答えが出た（答えはパネルの 1 か所）");
+      // ⚠ **☰ で開き直せる**（⚠ 読めなくなったままにしない）
+      await page.click("#toggle");
+      await settleAfterClick(page);
+      must(await effOpacity(page, "#landAll") > 0, "☰ で開き直しても答えが読めない");
+      return `パネル 開=${num}／閉=答えは退く／☰ で開き直せる`;
     },
   },
   {
@@ -6869,9 +6976,13 @@ const CASES = [
       // ⚠ **パネルに板そのものが無いこと**（⚠ 空の箱も置かない）
       must(await page.locator("#pick").count() === 0,
         "パネルに押した建物の板（#pick）が戻っている（結果は押した場所の 1 か所）");
-      const before = await effOpacity(page, "#land");
-      must(before > 0.9, `押す前に要約が読めない: 実効 opacity ${before}`);
-      const h0 = await page.$eval("#land", (e) => Math.round(e.getBoundingClientRect().height));
+      // ⚠ **2026-08-21 に、⚠ 要約カード（#land）が無くなった**（hidetzu/konjaku#152）。
+      //   ⚠ hidetzu/konjaku#155 でここは「⚠ 押しているあいだ要約を退かせる」を見ていた。
+      //     ⚠ 実測（375×667・豊洲）: 吹き出しの 39% が要約に隠れていたため。
+      //   ⚠ **隠す相手が無くなったので、⚠ 退かせる仕掛けごと消した。**
+      //   ⚠ **主張は引き継ぐ**: ⚠ **押した結果が、⚠ 押した場所で読めること**（⚠ 上端が最前面）。
+      must(await page.$$eval("#land", (els) => els.length) === 0,
+        "要約カード（#land）が戻っている（土地の答えはパネルの 1 か所）");
 
       await page.mouse.click(187, 333);
       await settleAfterClick(page);
@@ -6882,22 +6993,17 @@ const CASES = [
         // ⚠ **上端が本当に最前面にいること。**⚠ z-index を信じない
         const top = document.elementFromPoint(Math.round(a.left + a.width / 2), Math.round(a.top + 8));
         return { inPop: !!top?.closest(".pick-pop"),
-          landH: Math.round(document.getElementById("land").getBoundingClientRect().height) };
+          text: (pop.innerText || "").replace(/\s+/g, " ").trim() };
       });
       must(r, "建物を押しても吹き出しが出ない");
-      must(r.inPop, "吹き出しの上端が、要約カードの下に隠れている");
-      const dim = await effOpacity(page, "#land");
-      must(dim < 0.05, `押しているのに要約が退いていない: 実効 opacity ${dim}`);
-      // ⚠ **高さは残す**（⚠ 下の HUD を飛び跳ねさせない）
-      must(r.landH === h0, `退かせるときに高さが変わっている: ${h0} → ${r.landH}`);
+      must(r.inPop, "吹き出しの上端が、何かの下に隠れている");
       must(await page.locator("#pick").count() === 0, "押したらパネルにも板が出た");
 
-      // ⚠ **閉じたら戻る**
+      // ⚠ **閉じたら、⚠ 吹き出しだけが消える**
       await page.click(".pick-pop .maplibregl-popup-close-button");
       await settleAfterClick(page);
-      const back = await effOpacity(page, "#land");
-      must(back > 0.9, `閉じても要約が戻らない: 実効 opacity ${back}`);
-      return `吹き出し 1 か所（上端が最前面）／押すと要約は opacity ${dim}・高さ ${r.landH} のまま／閉じると ${back}`;
+      must(await page.locator(".pick-pop").count() === 0, "✕ で吹き出しが閉じない");
+      return `吹き出し 1 か所（上端が最前面）「${r.text.slice(0, 40)}」／✕ で閉じる`;
     },
   },
   {
@@ -7778,68 +7884,111 @@ const CASES = [
   // ⚠ 数字は「この画面が名乗る範囲」のもの。取り込み全域の 93.8% を出すと、
   //   99.4% を 40.9% に化けさせたのと同じ事故（範囲と主張のずれ）になる。
   {
-    // ⚠ **開いて増えた層に印を付ける**（2026-08-21。Owner 判断 (A)(C)）。
-    //   ⚠ 実測（`main` = `484629c`・豊洲・375×667・hasTouch・SW 無効）:
-    //     ⚠ 閉じている 要約 = 第1層 ＋ 第3層（72 字）
-    //     ⚠ 開いた     答え = 第1層 ＋ **第2層** ＋ 第3層（177 字）
-    //     ⚠ **新しいのは第2層だけで、⚠ 177 字のまん中に埋もれていた。**
-    //   ⚠ 利用者役 4/4 が重なりに気づき、⚠ **困るかは 2/2 に割れた。**
-    //     ⚠ 一方は「二度手間」、⚠ **もう一方は「どちらが本物か分からない」。**
-    //   ⚠ **消さない。**⚠ **字も足さない。**⚠ 区切りと余白だけで示す。
-    //   ⚠ **要約を一度も見ていないなら付けない**（⚠ PC はパネルが開いて始まる）。
-    name: "開いて増えた層にだけ、印が付く", path: `/peel?${TOYOSU}`,
+    // ⚠ **土地の答えは、⚠ 情報パネルの 1 か所だけ**（2026-08-21。hidetzu/konjaku#152。Owner 判断）。
+    //   ⚠ 「土地の答えはここ（HUD）では見せない」。
+    //   ⚠ **層の中身と順序は変えていない**（ADR 0030）。⚠ 変えたのは**置き場所**だけ。
+    //
+    // ⚠ **この決定が覆した前提**（⚠ 消さずに残す）:
+    //   ⚠ `#land` は 2026-08-16 の実測を根拠に置かれた
+    //     （⚠ スマホはパネルが閉じて始まるので、⚠ ここに無いと初期画面から答えが読めない）。
+    //   ⚠ **測り直し**（Issue・375×667 / 320×640・豊洲と渋谷）:
+    //     ⚠ **☰ を 1 回押すだけで、⚠ 第1層が画面内**（⚠ スクロール 0）。
+    name: "土地の答えは、初期画面に出ず、☰ 1 回で読める", path: `/peel?${TOYOSU}`, group: "core",
     async check(page) {
       const out = [];
-      for (const [w, h, t, seen] of [[375, 667, true, true], [1280, 800, false, false]]) {
-        const ctx = await page.context().browser().newContext({
-          viewport: { width: w, height: h }, hasTouch: t, serviceWorkers: "block" });
-        try {
-          const p2 = await ctx.newPage();
-          await p2.goto(`${BASE}/peel?${TOYOSU}`, { waitUntil: "domcontentloaded", timeout: 45000 });
-          await peelReady(p2);
-          await p2.waitForFunction(
-            () => (document.getElementById("landAll")?.textContent ?? "").includes("この土地は"),
-            null, { timeout: 60000 });
-          await settleAfterCondition(p2);
-          const before = await p2.evaluate(() => ({
-            hide: document.getElementById("panel").classList.contains("hide"),
-            summary: [...document.querySelectorAll("#land .land-q")].map((e) => e.textContent.trim()),
-          }));
-          must(before.hide === seen,
-            `${w}px: パネルの初期状態が想定と違う（閉=${before.hide}）`);
-          if (before.hide) await p2.click("#toggle");
-          await settleAfterClick(p2);
-          const r = await p2.evaluate(() => ({
-            layers: [...document.querySelectorAll("#landAll .land-layer .land-q")]
-              .map((e) => e.textContent.trim()),
-            added: [...document.querySelectorAll("#landAll .land-added .land-q")]
-              .map((e) => e.textContent.trim()),
-            // ⚠ 印は区切りと余白だけ。⚠ **字を足していないこと**
-            addedTx: [...document.querySelectorAll("#landAll .land-added")]
-              .map((e) => (e.innerText || "").replace(/\s+/g, " ").trim()),
-            border: (() => { const e = document.querySelector("#landAll .land-added");
-              return e ? getComputedStyle(e).borderLeftWidth : null; })(),
-          }));
-          // ⚠ **第1層・第3層は消さない**（Owner 判断）
-          must(r.layers.length === 3, `${w}px: 層が 3 つ出ていない: ${r.layers.join(" / ")}`);
-          if (seen) {
-            // ⚠ 要約を見たあと → ⚠ **要約に無かった層にだけ印**
-            must(r.added.length === 1, `${w}px: 印が 1 つでない: ${r.added.join(" / ")}`);
-            must(!before.summary.includes(r.added[0]),
-              `${w}px: 要約に出ていた層に印が付いている: ${r.added[0]}`);
-            must(r.border && r.border !== "0px", `${w}px: 印の区切りが出ていない`);
-            // ⚠ **字を足していない**（⚠ 印のための説明文を作らない）
-            for (const bad of ["新しい", "追加", "ここから", "増えた"])
-              must(!r.addedTx.join(" ").includes(bad), `${w}px: 印に説明文を足している: 「${bad}」`);
-          } else {
-            // ⚠ 要約を一度も見ていない → ⚠ **印を付けない**
-            must(r.added.length === 0,
-              `${w}px: 要約を見ていないのに印が付いている: ${r.added.join(" / ")}`);
-          }
-          out.push(`${w}px 層 ${r.layers.length} 印 ${r.added.length}${r.added.length?`（${r.added.join("・")}）`:""}`);
-        } finally { await ctx.close(); }
+      for (const [w, h, t] of [[375, 667, true], [320, 640, true], [1280, 800, false]]) {
+        for (const [nm, q] of [["豊洲", TOYOSU], ["渋谷", "ll=35.65860,139.70160&q=%E6%B8%8B%E8%B0%B7"]]) {
+          const ctx = await page.context().browser().newContext({
+            viewport: { width: w, height: h }, hasTouch: t, serviceWorkers: "block" });
+          try {
+            const p2 = await ctx.newPage();
+            await p2.goto(`${BASE}/peel?${q}`, { waitUntil: "domcontentloaded", timeout: 45000 });
+            await peelReady(p2);
+            await p2.waitForFunction(
+              () => (document.getElementById("landAll")?.textContent ?? "").includes("この土地は"),
+              null, { timeout: 60000 });
+            await settleAfterCondition(p2);
+            // ⚠ AC1: `#land` が DOM に無い（⚠ 空要素でも残さない）
+            must(await p2.$$eval("#land", (els) => els.length) === 0,
+              `${nm} ${w}px: #land が DOM に残っている`);
+            const shut = await p2.evaluate(() => ({
+              hide: document.getElementById("panel").classList.contains("hide"),
+              // ⚠ **実効 opacity まで見る**（⚠ 閉じたパネルは textContent が読める）
+              txt: (() => { const seen = [];
+                for (const e of document.querySelectorAll("body *")) {
+                  if (!e.checkVisibility?.()) continue;
+                  let o = 1;
+                  for (let n = e; n && n !== document.documentElement; n = n.parentElement)
+                    o *= Number(getComputedStyle(n).opacity);
+                  if (o > 0.05 && e.children.length === 0) seen.push(e.textContent ?? "");
+                }
+                return seen.join(" ").replace(/\s+/g, " "); })(),
+            }));
+            // ⚠ **開閉の既定は幅で決まる**（⚠ 狭い＝閉じる ／ PC＝開く）。
+            //   ⚠ ここを見ないと、⚠ **PC でも閉じて始まる不具合が通る**
+            //     （⚠ ☰ を押して開くので、⚠ 下の AC3 は満たしてしまう。2026-08-21 に踏んだ）。
+            must(shut.hide === (w < 1100),
+              `${nm} ${w}px: パネルの初期状態が幅と合っていない（閉=${shut.hide}）`);
+            if (shut.hide) {
+              // ⚠ AC2: 閉じた初期画面に、⚠ 土地の答えの字が 0 か所
+              for (const word of ["ここは、どういう土地？", "いま建っている建物は、何の上？",
+                                  "件の足元を判定"])
+                must(!shut.txt.includes(word),
+                  `${nm} ${w}px: 閉じた初期画面に土地の答えが出ている（「${word}」）`);
+            }
+            // ⚠ AC3: ☰ 1 回で、⚠ スクロール 0 のまま第1層が画面内
+            if (shut.hide) { await p2.click("#toggle"); await settleAfterClick(p2); }
+            const open = await p2.evaluate(() => {
+              const e = document.querySelector("#landAll .land-q");
+              const r = e?.getBoundingClientRect();
+              return { top: r ? Math.round(r.top) : null, vh: innerHeight,
+                scroll: document.getElementById("panel").scrollTop,
+                // ⚠ AC4: 描く先は 1 つ（⚠ パネル）
+                qs: document.querySelectorAll("#landAll .land-q").length };
+            });
+            must(open.top !== null, `${nm} ${w}px: 開いても第1層の見出しが無い`);
+            must(open.scroll === 0, `${nm} ${w}px: 開いた直後にスクロールしている（${open.scroll}）`);
+            must(open.top < open.vh,
+              `${nm} ${w}px: 開いても第1層が画面の外（y${open.top} / 画面 ${open.vh}）`);
+            out.push(`${nm} ${w}px y${open.top}`);
+          } finally { await ctx.close(); }
+        }
       }
       return out.join(" ／ ");
+    },
+  },
+  {
+    // ⚠ **「開いて増えた層に印」は、⚠ 2026-08-21 に消えた**（hidetzu/konjaku#152）。
+    //   ⚠ hidetzu/konjaku#150 で足したもの。⚠ **HUD の要約を先に読んでいることが前提**だった。
+    //     ⚠ 実測（2026-08-21）: ⚠ 要約（第1層＋第3層・72 字）を読んでからパネルを開くと、
+    //       ⚠ **同じ層をもう一度読む**。⚠ 利用者役 4/4 が気づき、⚠ 困るかは 2/2 に割れた。
+    //     ⚠ そこで「⚠ 増えた層（第2層）だけに区切りと余白の印」を付けた。
+    //   ⚠ **Owner 判断（2026-08-21）で HUD の要約そのものが無くなった**ので、
+    //     ⚠ **「増えた」と言える前提が消えた。**⚠ 残すと嘘になる。
+    //   ⚠ **引き継ぐ主張**: ⚠ **土地の答えは 1 か所だけ**（⚠ 二度読みが起きない）。
+    //     ⚠ それは「PC でパネルを閉じても、HUD に答えが戻らない」などが見ている。
+    //   ⚠ **印そのものが戻っていないこと**は、ここで見る。
+    name: "開いて増えた層の印は、もう付かない", path: `/peel?${TOYOSU}`,
+    viewport: { width: 375, height: 667 }, hasTouch: true,
+    async check(page) {
+      await peelReady(page);
+      await page.waitForFunction(
+        () => (document.getElementById("landAll")?.textContent ?? "").includes("この土地は"),
+        null, { timeout: 60000 });
+      await settleAfterCondition(page);
+      await page.click("#toggle");
+      await settleAfterClick(page);
+      const r = await page.evaluate(() => ({
+        added: document.querySelectorAll(".land-added").length,
+        layers: [...document.querySelectorAll("#landAll .land-layer .land-q")]
+          .map((e) => e.textContent.trim()),
+        land: document.querySelectorAll("#land").length,
+      }));
+      must(r.land === 0, "HUD の要約（#land）が戻っている");
+      must(r.added === 0,
+        `「増えた層」の印が付いている（要約が無いので「増えた」と言えない）: ${r.added} 個`);
+      must(r.layers.length === 3, `層が 3 つ出ていない: ${r.layers.join(" / ")}`);
+      return `印 0 個／層 ${r.layers.length}（${r.layers.map((x) => x.slice(0, 5)).join("→")}）`;
     },
   },
   {

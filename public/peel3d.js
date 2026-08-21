@@ -503,9 +503,6 @@ function showPick(p,lngLat){
   //     ⚠ 「どっちが最新か分からない」。⚠ **割れなかった。**
   //   ⚠ **掟: 同じ問いに答える表示を 2 つ持たない。**
   if(pickPop) pickPop.remove();
-  // ⚠ **押しているあいだ、⚠ 要約カードを退かせる**（2026-08-21。上の CSS を読む）。
-  //   ⚠ z-index では解けない（⚠ `#map` の `filter` が積み重ねの文脈を作る）。
-  document.body.classList.add("picking");
   pickPop=new maplibregl.Popup({closeButton:true,closeOnClick:true,maxWidth:"280px",
       className:"pick-pop",offset:12})
     .setLngLat(lngLat)
@@ -514,9 +511,9 @@ function showPick(p,lngLat){
     .addTo(map);
   // 吹き出しを閉じたら、URL からも建物を外す。
   // ⚠ 外さないと、閉じたあとに共有した人の URL が、閉じたはずの建物を開く
-  // ⚠ 閉じたら、⚠ 要約カードを戻す
-  pickPop.on("close",()=>{ document.body.classList.remove("picking");
-    if(pickBld===p.k){ pickBld=null; syncUrl(); } });
+  // ⚠ **2026-08-21 に、⚠ 「押しているあいだ要約を退かせる」をやめた**（hidetzu/konjaku#152）。
+  //   ⚠ hidetzu/konjaku#155 で足したもの。⚠ **退かせる相手（`#land`）が無くなった。**
+  pickPop.on("close",()=>{ if(pickBld===p.k){ pickBld=null; syncUrl(); } });
   const say=document.getElementById("pickSay");
   if(say) say.onclick=()=>{
     try{
@@ -661,7 +658,7 @@ async function loadArea(lon,lat,title,opt){
   resultEl.style.display="none";
   // ⚠ 前の場所の答えを残さない。地図はもう新しい場所へ跳んでいるので、
   //   ここに古い割合が残ると「この土地の答え」として読まれる
-  paintLand(landEl, null);
+  paintLand(document.getElementById("landAll"), null);
   statusEl.innerHTML=`<span class="go">明治期の低湿地データを読んでいます…</span>`;
 
   // --- 1. 水域 ---
@@ -1050,94 +1047,41 @@ function layersOf(area, lf){
   return { layers, missing };
 }
 
-const landEl=document.getElementById("land");
-
-// ⚠ **HUD（#land）は、⚠ 見えているときだけ描く**（2026-08-20。hidetzu/konjaku#131）。
+// ⚠ **土地の答えは、⚠ 情報パネルの 1 か所だけ**（2026-08-21。hidetzu/konjaku#152。Owner 判断）。
 //
-//   ⚠ **実測（2026-08-20・main = bc8dc46・豊洲・SW 無効）**
-//     PC 初期        #land 0×0     ⚠ **display:none。⚠ なのに 72 字が書かれていた**
-//     PC ✕ で閉じた   #land 520×130 ⚠ ここで初めて要る
-//     スマホ 初期     #land 285×156 ⚠ こちらは最初から要る
+// ⚠ **前は HUD（`#land`）にも要約を出していた。**⚠ 2026-08-16 の実測が根拠だった:
+//   ⚠ 「スマホはパネルが閉じて始まるので、⚠ ここに無いと**初期画面から答えが読めない**」。
+// ⚠ **その前提を Owner が変えた**（2026-08-21）。⚠ 「土地の答えはここでは見せない」。
+//   ⚠ 実測（Issue の測り直し。375×667 / 320×640・豊洲と渋谷）:
+//     ⚠ **☰ を 1 回押すだけで、⚠ パネルの第1層が画面内に出る**（⚠ スクロール 0）。
+//   ⚠ **経緯を消さない。**⚠ いつ・誰が・なぜ変えたかを、⚠ ここと ADR 0030 に残す。
 //
-//   ⚠ **model は作り直さない。**⚠ `layersOf` を 2 回呼ぶと、
-//     ⚠ **同じ画面で言うことが食い違う**（ADR 0021。⚠ 実測 2026-08-19 で豊洲の 99.6% が 2 回）。
-//   ⚠ **`.hide` を切り替える 1 か所（setPanelHidden）から呼ぶ。**
-//     ⚠ 同じ同期処理の中で描くので、⚠ **空白の瞬間を見せない。**
-//   ⚠ **開き直したときに空へ戻さない。**⚠ Owner がそこまで求めていない（契約 5）。
-//     ⚠ 見えていないので、⚠ 消す意味も無い。
+// ⚠ **一緒に要らなくなったもの**（⚠ 死にコードを残さない）:
+//   ⚠ `hudLayers`（HUD 用に層を 2 つへ絞る）／`syncHud`／`hudVisible`／`landSeen`
+//   ⚠ `syncLandH`（⚠ HUD の高さを CSS へ渡す。⚠ 測る相手が無くなった）
+//   ⚠ `body.picking`（⚠ 押しているあいだ要約を退かせる。hidetzu/konjaku#155。
+//      ⚠ **退かせる相手が無くなった**）
+//   ⚠ 「開いて増えた層に印」（hidetzu/konjaku#150。⚠ **要約を見ることが前提**だった）
 let landModel = null;
-function hudVisible(){
-  // ⚠ **`checkVisibility()` は opacity を見ない**（2026-08-20 に踏んだ）。
-  //   ⚠ ここで見たいのは「パネルが表示責務を持っているか」なので、⚠ **クラスで見る。**
-  return panel ? panel.classList.contains("hide") : true;
-}
-// ⚠ **要約（#land）を一度でも見たか**（2026-08-21）。
-//   ⚠ **開いて増えた層に印を付けてよいのは、⚠ 要約を読んだあとだけ。**
-//   ⚠ PC はパネルが開いて始まり、⚠ `#panel:not(.hide) ~ #land{display:none}` なので、
-//     ⚠ **要約を一度も見ていない。**⚠ そこで印を付けると「増えた」が嘘になる。
-let landSeen = false;
-function syncHud(){
-  if(!landModel || !hudVisible()) return;
-  landSeen = true;
-  paintLand(landEl, landModel, true);
-}
-// ここは組み立てるだけ。⚠ **何と言うか・どの層が立つかは上で決まっている**（WORD と layersOf）。
-// ⚠ **出ない層も、その層の位置に置く。**黙って消すと「その土地に何も無い」に読まれる
-//   （ADR 0001）。
-// ⚠ **常時見える HUD には、第1層＋もう 1 層だけ。**
-//   実測（2026-08-19・375×667・豊洲）: 3 層を全部出すと #land が **320px** になり、
-//   下端 y=382 が**調べている地点（画面中央 y=333）を覆った**。
-//   ⚠ 補足を畳んでも 291px で足りない。**嵩は層そのもの。**
-// ⚠ **層の順序は変えない。**出す数を絞るだけ（ADR 0030）。
-// ⚠ **もう 1 層は「いちばん確実に立っているもの」。**
-//   第3層（建物ごと・1 件ずつ判定した実測）＞ 第2層（面）。
-//   ⚠ 立っている層が 1 つも無ければ、出せない理由を**その層の位置**に出す。
-function hudLayers(m){
-  const first=m.layers.find((L)=>L.n===1);
-  const rest=m.layers.filter((L)=>L.n!==1).sort((a,b)=>b.n-a.n)[0]??null;
-  return { first, rest };
-}
-// ⚠ **下から伸びる箱に、答えの板の高さを教える。**
-//   ⚠ CSS だけでは、別の要素の高さを読めない。だから JS が測って渡す。
-//   ⚠ **決め打ちにしない。**実測（2026-08-19）: 112px の決め打ちで、
-//     層を出して 152px になった瞬間に 320×480 で 20px 食い込んだ。
-// ⚠ **測るのは HUD（#land）だけ。**パネル（#landAll）は下の箱と重ならない場所にある。
-//   ⚠ 実測（2026-08-19）: 両方から呼んでいて、**パネルの高さ（276px）で上書き**していた。
-//     #land は 152px なのに 276px を空けさせ、320×640 で下の板が帰属表示に 24px 食い込んだ。
-function syncLandH(){
-  const el=document.getElementById("land");
-  const h=el && el.innerHTML ? Math.ceil(el.getBoundingClientRect().height) : 0;
-  document.documentElement.style.setProperty("--land-h", `${h}px`);
-}
-function paintLand(el, m, only){
+// ⚠ **出す先は情報パネルだけ**（2026-08-21。hidetzu/konjaku#152）。
+//   ⚠ 前は HUD 用に「層を 2 つへ絞る」引数（`only`）を持っていた。⚠ **絞る相手が無くなった。**
+function paintLand(el, m){
   if(!el) return;
-  if(!m){ el.innerHTML=""; syncLandH(); return; }   // 場所を切り替えた直後。前の答えを残さない
+  if(!m){ el.innerHTML=""; return; }   // 場所を切り替えた直後。前の答えを残さない
   const by=new Map(m.missing.map((mi)=>[mi.n,mi]));
-  const hud=(()=>{ const h=hudLayers(m); return new Set([h.first?.n, h.rest?.n].filter(Boolean)); })();
-  const keep=only ? hud : null;
-  // ⚠ **開いて増えた層に印を付ける**（2026-08-21。Owner 判断 (A)(C)）。
-  //   ⚠ 利用者役 4/4 が「同じことが書いてある」と気づき、⚠ **困るかは 2/2 に割れた。**
-  //     ⚠ 一方は「二度手間」、⚠ **もう一方は「どちらが本物か分からない」。**
-  //     ⚠ 後者は掟に近い（⚠ 同じ問いに 2 つの答えがあるように見える）。
-  //   ⚠ **消さない。**⚠ 第1層・第3層はそのまま出す（Owner 判断）。
-  //   ⚠ **新しい説明文を足さない。**⚠ 区切りと余白だけで示す（Owner 判断 (C)）。
-  //   ⚠ **自動でスクロールしない**（同上）。
-  //   ⚠ **増えた層は、⚠ まん中に来ることがある**（⚠ 豊洲は 要約 1・3 ／ 増えるのは 2）。
-  //     ⚠ だから「ここから下が新しい」ではなく、⚠ **その層自体に印**を付ける。
-  const markNew = !only && landSeen;
+  // ⚠ **「開いて増えた層に印」は消した**（2026-08-21。hidetzu/konjaku#152）。
+  //   ⚠ hidetzu/konjaku#150 で足したもので、⚠ **要約を先に読んでいることが前提**だった。
+  //   ⚠ **要約が無くなったので、⚠ 「増えた」が言えない。**⚠ 残すと嘘になる。
   const out=[];
   for(const n of [1,2,3]){
     const L=m.layers.find((x)=>x.n===n);
-    if(L){ if(!keep||keep.has(n))
-             out.push(paintLayer(only?{...L, hud:true}:{...L, added: markNew && !hud.has(n)}));
-           continue; }
+    if(L){ out.push(paintLayer(L)); continue; }
     const M=by.get(n);
     // ⚠ 出ない層は、絞っていても**必ず出す**。黙って消すと「その土地に何も無い」に読まれる
     if(M) out.push(`<div class="land-miss"><div class="land-sub">${WORD.layerMissing(n, M.why)}</div>`
       + (M.note?`<div class="land-sub">${M.note}</div>`:"")+`</div>`);
   }
   el.innerHTML=out.join("");
-  syncLandH();
 }
 function paintLayer(L){
   // ⚠ 数字を出すなら、分母を同じ板に出す（掟: 数字は主張範囲の分母で書く）
@@ -1151,14 +1095,15 @@ function paintLayer(L){
   const den=L.den?`<div class="land-den">${L.den}</div>`:"";
   // ⚠ 受け皿の名前に x を使わない。**x は「外部から来た文字列」に予約**されていて、
   //   静的検査がそこを esc() の対象として見る（ここは自前の値だが、名前で判別している）。
-  // ⚠ HUD では補足を出さない。実測（2026-08-19・320×640・名古屋）: 出すと y=333 まで伸び、
-  //   調べている地点（中央 y=320）を **13px** 覆った。⚠ パネル側では出す。
-  const subs=(L.hud?[]:(L.subs??[])).map((sb)=>
+  // ⚠ **補足は常に出す**（2026-08-21。hidetzu/konjaku#152）。
+  //   ⚠ 前は HUD では出さなかった。⚠ 実測（2026-08-19・320×640・名古屋）: 出すと y=333 まで伸び、
+  //     調べている地点（中央 y=320）を **13px** 覆ったため。
+  //   ⚠ **HUD に土地の答えを出さなくなったので、⚠ 出し分ける相手が無くなった。**
+  const subs=(L.subs??[]).map((sb)=>
       sb.kind==="art"   ? `<div class="land-sub">${WORD.ground1Art(esc(sb.v))}</div>`
     : sb.kind==="top"   ? `<div class="land-sub">この範囲で最も多い区分: <b>${esc(sb.v.name)}</b>（${sb.v.pct}%）</div>`
     : sb.kind==="wet"   ? `<div class="land-sub">水域だった建物: ${sb.v}%</div>` : "").join("");
-  // ⚠ `added` は「要約に無く、⚠ 開いて増えた層」。⚠ 字は足さない（区切りと余白だけ）
-  return `<div class="land-layer${L.added?" land-added":""}"><div class="land-q">${L.title}</div>`
+  return `<div class="land-layer"><div class="land-q">${L.title}</div>`
     + `<div class="land-line">${head}${what}</div>${den}${subs}</div>`;
 }
 
@@ -1178,13 +1123,8 @@ function showResult(){
   //   ⚠ **layersOf を 2 回呼ばない。**⚠ 2 か所で作ると、同じ画面で言うことが食い違う（ADR 0021）。
   //   ⚠ HUD は、⚠ **パネルが閉じて表示責務を引き継ぐときに、この model から描く。**
   landModel = layersOf(area, landform);
-  // ⚠ **パネルは常に描く**（PC の初期表示はこちらが答えを持つ）
-  paintLand(document.getElementById("landAll"), landModel, false);    // ⚠ パネルは全部
-  // ⚠ **HUD は、⚠ 見えているときだけ描く。**
-  //   ⚠ 以前は常に描いていたが、⚠ **PC ではパネルが開いていて `#land` は display:none**。
-  //     ⚠ 実測（2026-08-20・1280×800・豊洲）: ⚠ **見えない箱に 72 字を書いていた。**
-  //   ⚠ **中身が要る瞬間は、⚠ パネルが閉じるとき**（下の syncHud）。
-  syncHud();
+  // ⚠ **描くのはパネルの 1 か所だけ**（2026-08-21。hidetzu/konjaku#152）
+  paintLand(document.getElementById("landAll"), landModel);
 
   paintBreakdown(document.getElementById("breakdown"), breakdown(area.counts, area.total), area.bldState);
 }
@@ -2036,12 +1976,11 @@ let panelOpen = !isNarrow;              // スマホでは主役（3Dの絵）�
 //       `#land` が 520×130 で出る。**⚠ ✕ だけに描画を足すと、⚠ **▶ で空の HUD が出る。**
 //   ⚠ **`.hide` を外すのと `#land` を描くのを、⚠ 同じ同期処理の中でやる。**
 //     ⚠ requestAnimationFrame や setTimeout を挟まない（⚠ 空白を見せない）。
-const setPanelHidden = (hidden) => {
-  panel.classList.toggle("hide", hidden);
-  // ⚠ **HUD が表示責務を引き継ぐ瞬間に、⚠ その場で描く。**
-  //   ⚠ **model は作り直さない**（landModel を使う。⚠ layersOf を 2 回呼ばない）。
-  syncHud();
-};
+// ⚠ **2026-08-21 に、⚠ 描き直しが要らなくなった**（hidetzu/konjaku#152）。
+//   ⚠ 前は「⚠ `.hide` を外すのと `#land` を描くのを同じ同期処理でやる」必要があった
+//     （⚠ HUD が表示責務を引き継ぐ瞬間に空白を見せないため）。
+//   ⚠ **土地の答えはパネルの 1 か所だけになったので、⚠ 引き継ぎそのものが無い。**
+const setPanelHidden = (hidden) => { panel.classList.toggle("hide", hidden); };
 const applyPanel = () => { setPanelHidden(!panelOpen);
   // ⚠ 全画面で読むあいだ、地図側の操作を閉じる／戻す
   if(typeof sealOldControls==="function") sealOldControls(); };
