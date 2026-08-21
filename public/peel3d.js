@@ -1398,7 +1398,13 @@ function syncRuler(){
   rlKnob.style.left=`${Math.max(0,Math.min(1,steps.length<2?0:pos/(steps.length-1)))*100}%`;
   const k=Math.round(pos);
   const s=steps[Math.max(0,Math.min(steps.length-1,k))];
-  if(s){ rlYear.textContent=s.label; rlSub.textContent=s.meiji?"":(s.sub??""); }
+  // ⚠ **撮影種別は、年代の箱（`#era .s`）の 1 か所だけ**（2026-08-22。hidetzu/konjaku#165。Owner 判断 A）。
+  //   ⚠ **狭い幅の分担は、もともとそう決まっていた**（`peel.html`: ⚠ 年を 2 か所に出さない。
+  //     ものさしが年を答えるので、⚠ **年代の箱に残すのは「いま何の写真か」と、届かないときの名乗り**）。
+  //   ⚠ ここが分担を破って、⚠ **撮影種別を 2 回目に出していた**
+  //     （実測 2026-08-21・375×667: `#era .s` y=379 と ものさしの中 y=518 が、どちらも「最新の空中写真」）。
+  //   ⚠ **空にすれば箱ごと消える**（`#rlSub:empty{display:none}`）。⚠ 年は今までどおり出す。
+  if(s){ rlYear.textContent=s.label; rlSub.textContent=""; }
   rlPrev.disabled=pos<=0.001;
   rlNext.disabled=pos>=steps.length-1-0.001;
 }
