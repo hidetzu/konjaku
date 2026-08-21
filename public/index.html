@@ -362,7 +362,19 @@
     margin:7px 0 2px;line-height:1.4}
   .verdict .gq:first-child{margin-top:0}
   /* ⚠ **2 行になる**（成因と人工改変。ADR 0030 §4-4）。⚠ 横並びにしない */
-  .verdict .v-head{display:flex;flex-direction:column;align-items:flex-start;gap:2px}
+  /* ⚠ **行の間を 2 → 6px にした**（2026-08-22。hidetzu/konjaku#148）。
+     ⚠ 補助説明は**上の区分名のもの**なので、⚠ **上との間が下との間より狭い**こと。
+     ⚠ 2px のままだと、区分名との間 1px ／ 次の行との間 2px で、⚠ **ほぼ等間隔**だった
+       （どちらの行の説明か、置き方から読めない）。 */
+  .verdict .v-head{display:flex;flex-direction:column;align-items:flex-start;gap:6px}
+  /* ⚠ **区分名の下の、平易な補助説明**（2026-08-22。hidetzu/konjaku#148）。
+     ⚠ **答えより弱く。**⚠ 同じ格で置くと、どちらが答えか分からなくなる
+       （区分名は <b>＝ --ink、ここは --ink-dim の 12px）。
+     ⚠ **1 行に収める**（18 字まで。字数は check.mjs が数える）。
+     ⚠ **行間を詰める。**⚠ 本文と同じ 1.65 にすると 1 行 20px になり、
+       ⚠ 2 行ぶんで 40px（実測 320×640 の余白は 0px しかない）。1.35 で 16px。 */
+  .verdict .v-head .gl{display:block;margin-top:0;
+    font-size:var(--fs-note);line-height:1.35;color:var(--ink-dim);font-weight:400}
   /* ⚠ **縦が短い画面では、写真に上限を置く**（2026-08-20。hidetzu/konjaku#122）。
      ⚠ 答えを先頭へ動かしたぶん（103px）、⚠ **「重ねる」が初期画面から出た**
        （実測 375×667: y=628〜672 / 画面 667。320×640: 612〜656 / 画面 640）。
@@ -371,8 +383,15 @@
      ⚠ **29rem は、見出し・答え・年代のコマ・重ねる の合計から出した実測値**で、
        ⚠ 縦に余裕がある画面（375×720 以上）では 1px も効かない。
      ⚠ 実測（29rem あり）: 375×667 で写真 391–586・重ねる 591–635。
-                          320×640 で写真 416–584・重ねる 589–633。 */
-  .verdict > #big{max-height:calc(100dvh - 29rem)}
+                          320×640 で写真 416–584・重ねる 589–633。
+     ⚠ **29rem → 31.5rem にした**（2026-08-22。hidetzu/konjaku#148）。
+       ⚠ 区分名の下に補助説明を 1 行ずつ足したぶん、⚠ **答えが 48 → 83px（+35px）**になった。
+       ⚠ 実測（2026-08-22・豊洲・hasTouch・SW 無効）: 29rem のままだと「重ねる」が
+         ⚠ **375×667 で 676（画面 667）／320×640 で 675（画面 640）**と、外へ出る。
+       ⚠ **足したぶんは写真から出す。**⚠ 320×640 の余白は **0px** だった
+         （足す前の実測: 重ねるの下端 640 ／ 画面 640）。⚠ 他に出どころが無い。
+       ⚠ 写真は 320×640 で 176 → 140px、375×667 で 203 → 167px になる。 */
+  .verdict > #big{max-height:calc(100dvh - 31.5rem)}
   /* ⚠ **次の段と接させない**（2026-08-20）。⚠ 接すると、44×44 の下端 1px を隣の見出しが拾い、
      ⚠ **指で押せる大きさが実質 43px になる**（実測: .v-acts の下端 349 と #yrBig の上端 349）。
      ⚠ computed style は 44 のままなので、⚠ **座標を押して確かめないと気づけない。** */
@@ -972,8 +991,11 @@
        ⚠ **28rem → 33rem にした**（2026-08-20。hidetzu/konjaku#122）。
          ⚠ 答えを先頭へ動かしたので、⚠ **右の段が答えの下からしか始まれない**
            （float は、前の float の上端より上に出られない）。⚠ その差だけ写真を詰める。
-         ⚠ 実測（1280×800）: 28rem のままだと「重ねる」が **865**（画面 800）で外へ出る。 */
-    .verdict > #big{max-height:min(30rem, calc(100dvh - 33rem))}
+         ⚠ 実測（1280×800）: 28rem のままだと「重ねる」が **865**（画面 800）で外へ出る。
+       ⚠ **33rem → 35.5rem にした**（2026-08-22。hidetzu/konjaku#148）。
+         ⚠ 補助説明の 1 行ずつで答えが +35px。⚠ 左が伸びれば、右の段も同じだけ下がる。
+         ⚠ 実測（1280×800）: 33rem のままだと「重ねる」が **811**（画面 800）で外へ出る。 */
+    .verdict > #big{max-height:min(30rem, calc(100dvh - 35.5rem))}
   }
 
 </style>
@@ -1656,6 +1678,9 @@ function headHTML(){
   //
   // ⚠ **ここに入れてよいのは 103px まで**（実測 2026-08-20・375×667・hasTouch）。
   //   ⚠ この下に年代のコマ（132px）が積まれ、⚠ **その下の写真が画面から出る**。
+  // ⚠ **2026-08-22 に 83px 使っている**（答え 2 行 48px ＋ 補助説明 2 行 35px。ADR 0031）。
+  //   ⚠ **足したぶんは写真の上限から出した**（下の #big の 31.5rem）。
+  //   ⚠ **ここを増やすたびに写真が縮む。**⚠ 320×640 の余白は、足す前で **0px** だった。
   //   ⚠ 実際にやってしまった: 共有・なぜ（54px）と 2 行の限界を入れたら
   //     ⚠ **写真の下端が 723 になり（画面 667）、画素を数える検査が落ちた。**
   //   ⚠ **共有・なぜは写真の下（actsHTML）。**⚠ ここへ持ってこない。
@@ -1664,9 +1689,21 @@ function headHTML(){
     ? KonjakuWords.ground1Lines(esc(lf.value), lf.artificial ? esc(lf.artificial) : null,
         (v) => `<b>${v}</b>`)
     : [esc(meiji.text ?? "")];
+  // ⚠ **区分名の意味を、押さずに読めるようにする**（2026-08-22。hidetzu/konjaku#148）。
+  //   ⚠ **字は words.js の 1 か所**（GROUND_GLOSS）。⚠ **ここへ書き写さない。**
+  //   ⚠ **原典ではない。**⚠ 原典（landform.json の why）は根拠パネルが出典つきで出す。
+  //     ⚠ **そちらを消さない**（掟: 限界と出どころは残す）。
+  //   ⚠ **何行目がどの区分名か**は words.js が持つ（ground1Names）。⚠ ここで数えない。
+  //   ⚠ 判定できなかったときは区分名が無いので、⚠ **説明の行も置かない**（作らない）。
+  const names = (lf && lf.ok)
+    ? KonjakuWords.ground1Names(lf.value, lf.artificial ?? null) : [];
+  const gloss = (i) => {
+    const g = KonjakuWords.groundGloss(names[i] ?? "");
+    return g ? `<small class="gl">${esc(g)}</small>` : "";
+  };
   return `<div class="gq">${esc(KonjakuWords.layerTitle(1))}</div>
     <div class="v-head">
-      ${lines.map((t) => `<span class="tx">${t}</span>`).join("")}
+      ${lines.map((t, i) => `<span class="tx">${t}${gloss(i)}</span>`).join("")}
     </div>
     <!-- ⚠ **ここに「いつの姿かは資料に書かれていません」を置いていた**（2026-08-20 の途中）。
          ⚠ **根拠カード（地形分類）へ移した。**⚠ 出どころの話は、出どころの欄に置く。
@@ -2944,7 +2981,14 @@ function sayText(){
   // 明治期の水域も同じ。⚠ 押しただけでなく、実際に地図へ重なっているときだけ言う
   if(document.getElementById("ovSwale")?.checked&&mapObj?.getLayer("swale"))
     parts.push("いまは明治期の土地を重ねています。");
-  parts.push(meiji.text);
+  // ⚠ **第1層は、画面と同じ順で読む**（区分名 → その意味。2026-08-22。ADR 0031）。
+  //   ⚠ **字も順も words.js の 1 か所**（ground1Speech）。⚠ **ここで組み立てない。**
+  //   ⚠ **画面に出したものを、声だけ読まない、にしない**（見える人と聞く人で内容が変わる）。
+  //   ⚠ 判定できなかったときは、いままでどおり判定文をそのまま読む。
+  const sayLf = meiji.facts?.byKey?.landform;
+  parts.push(sayLf?.ok
+    ? KonjakuWords.ground1Speech(sayLf.value, sayLf.artificial ?? null)
+    : meiji.text);
   // 差分。画面に出ている行と同じものだけを、同じ順で読む。
   // ⚠ **畳んでいるかで変わる**（2026-08-21。hidetzu/konjaku#141）。
   //   ⚠ 前はいつも先頭 3 件だったが、⚠ **画面には上限まで（8 行）出ていた**ので、
