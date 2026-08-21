@@ -49,6 +49,8 @@ const YUMENOSHIMA = "ll=35.64830,139.82650&q=%E5%A4%A2%E3%81%AE%E5%B3%B6";
 const KIYOSUMI = "ll=35.68170,139.80000&q=%E6%B8%85%E6%BE%84%E7%99%BD%E6%B2%B3";
 // 地形分類の詳細版（z14〜16）が整備されていない土地。広域版に落ちる。
 const KARUIZAWA = "ll=36.34280,138.63500&q=%E8%BB%BD%E4%BA%95%E6%B2%A2";
+// ⚠ 出来事の記録が多い場所（hidetzu/konjaku#141）。⚠ 実測 2026-08-21: 16 件・一覧 8 行
+const UENO = "ll=35.71480,139.77450&q=%E4%B8%8A%E9%87%8E";
 // 明治期の低湿地は整備対象外だが、地形分類は「旧河道」と答えられる土地。
 const NIIGATA = "ll=37.91220,139.06110&q=%E6%96%B0%E6%BD%9F";
 // ⚠ 建物を取り込んでいない土地。ただし明治期の低湿地データはある土地を選ぶ
@@ -1693,6 +1695,110 @@ const CASES = [
     },
   },
   {
+    // ⚠ **この範囲にあったものは、既定 3 行に畳む**（2026-08-21。hidetzu/konjaku#141）。
+    //   ⚠ 実測（375×667・hasTouch・SW 無効・`main` = `9982680`）: `ev` の高さが
+    //     ⚠ **豊洲 54px / 軽井沢 327px / 札幌 524px / 上野 671px** と、⚠ **12.4 倍**開いていた。
+    //     ⚠ 上野では判定領域 1340px の **50%** を 1 段が占めていた。
+    // ⚠ **字は 1 つも消さない。**⚠ 出典も案内も残す（Owner 判断）。
+    // ⚠ **開く操作に新しい字を足さない。**⚠ 「ほかに N 件」の行そのものを押せるようにした。
+    name: "この範囲にあったものは、既定で 3 行に畳む", path: `/?${UENO}`,
+    async check(page) {
+      const read = () => page.evaluate(() => {
+        const q = (s) => document.querySelector(s);
+        const h = (s) => { const e = q(s); return e ? Math.round(e.getBoundingClientRect().height) : 0; };
+        const mb = document.getElementById("evMore");
+        const r = mb ? mb.getBoundingClientRect() : null;
+        // ⚠ 実効 opacity まで見る（checkVisibility() は opacity を見ない）
+        const eff = (sel) => { let e = q(sel), o = 1;
+          if (!e) return 0;
+          const vis = e.checkVisibility();
+          for (let x = e; x && x !== document.documentElement; x = x.parentElement)
+            o *= parseFloat(getComputedStyle(x).opacity || "1");
+          return vis ? Number(o.toFixed(2)) : 0; };
+        return { ev: h("#verdict .ev"), rows: document.querySelectorAll("#verdict .ev-row").length,
+          more: (q("#verdict .ev-more")?.textContent ?? "").replace(/\s+/g, " ").trim(),
+          pressable: !!mb, tap: r ? Math.round(Math.min(r.width, r.height)) : 0,
+          // ⚠ **44px は指の端末の話**（ui-ux-review）。⚠ この走者は指を持っていないことがある
+          touch: matchMedia("(hover: none)").matches,
+          srcOpacity: eff("#verdict .ev-src"),
+          srcInDetails: !!q("#verdict .ev-src")?.closest("details"),
+          tip: h("#verdict .ev-tip"),
+          mapPins: [...document.querySelectorAll(".big .pin")].filter((e) => !e.closest("#pins")).length,
+          photoPins: [...document.querySelectorAll("#pins .pin")].length };
+      });
+      await waitVerdict(page);
+      await page.waitForSelector("#verdict .ev-row", { timeout: 30000 });
+      await settleAfterCondition(page);
+      const a = await read();
+      must(a.rows === 3, `既定で 3 行になっていない: ${a.rows} 行`);
+      must(a.pressable, "「ほかに N 件」が押せない（開く手段が無い）");
+      // ⚠ 指の端末でだけ 44px を要求する。⚠ **指を持たない走者に指の基準を当てない**
+      //   （⚠ 別途、指の端末での実測は ui-ux-review が見ている）
+      if (a.touch) must(a.tap >= 44, `開く行が指で押せない: ${a.tap}px`);
+      else must(a.tap >= 30, `開く行が小さすぎる: ${a.tap}px`);
+      must(/ほかに 13 件/.test(a.more), `隠している件数が違う: 「${a.more}」`);
+      must(/3 件だけ出しています/.test(a.more), `出している件数が違う: 「${a.more}」`);
+      // ⚠ **出典は畳まない**（Owner 判断 2026-08-21）
+      must(a.srcOpacity > 0, `出典が読めない: 実効 opacity ${a.srcOpacity}`);
+      must(!a.srcInDetails, "出典が details の中に入っている（畳まないと決めた）");
+      must(a.tip > 0, "「行を押すと…」の案内が消えている");
+      // ⚠ **写真の印は畳まない。**⚠ 一覧 3 行でも、⚠ 上限ぶん打っている
+      must(a.photoPins === 8, `写真の印が一覧に合わせて減っている: ${a.photoPins} 本`);
+
+      // ⚠ 開く
+      await page.click("#evMore");
+      await settleAfterClick(page);
+      const b = await read();
+      must(b.rows === 8, `押しても 8 行にならない: ${b.rows} 行`);
+      must(!b.pressable, "上限まで開いたのに、まだ押せる見た目のまま（ADR 0026）");
+      must(/ほかに 8 件/.test(b.more), `開いた後の件数が違う: 「${b.more}」`);
+      must(b.ev > a.ev, `開いても高さが増えていない: ${a.ev} → ${b.ev}`);
+      return `既定 ${a.rows} 行 ${a.ev}px（写真の印 ${a.photoPins} 本・押す的 ${a.tap}px${
+        a.touch ? "・指" : "・指なし"}）`
+        + `／押すと ${b.rows} 行 ${b.ev}px ／「${b.more}」／出典は畳まない`;
+    },
+  },
+  {
+    // ⚠ **隠れている行の印を押したら、先に開く**（2026-08-21。hidetzu/konjaku#141）。
+    //   ⚠ 地図の印は上限ぶん（8 本）打っているのに、⚠ 一覧は既定 3 行しか出していない。
+    //   ⚠ 開かずに強調すると、⚠ **一覧側が一度も見つからない**。
+    //   ⚠ この取りこぼしは過去に 1 度やっている（実測: 印 9 個に対し強調 0 個）。
+    name: "隠れている行の印を押したら、一覧が開いてその行が光る", path: `/?${UENO}`,
+    async check(page) {
+      await waitVerdict(page);
+      await page.waitForSelector("#verdict .ev-row", { timeout: 30000 });
+      await settleAfterCondition(page);
+      must(await page.locator("#verdict .ev-row").count() === 3, "既定が 3 行でない");
+      // ⚠ 地図を出す。⚠ 1 行目を押す（⚠ ここは隠れていないので、まだ開かない）
+      await page.locator("#verdict .ev-it").first().click();
+      await page.waitForFunction(
+        () => [...document.querySelectorAll(".big .pin")].some((e) => !e.closest("#pins")),
+        null, { timeout: 45000 });
+      await settleAfterClick(page);
+      must(await page.locator("#verdict .ev-row").count() === 3,
+        "隠れていない行を押しただけで開いてしまった");
+      // ⚠ **全体に戻す。**⚠ 寄せたままだと、⚠ 他の印は地図の外にいて押せない
+      //   （⚠ 実測: 寄せた状態で押そうとして 30 秒待ち、⚠ 印は動き続けていた）
+      await page.click("#unzoom");
+      await settleAfterClick(page);
+      // ⚠ 隠れている行（6 番目 = data-i 5）の地図の印を押す
+      const hit = await page.evaluateHandle(() => [...document.querySelectorAll(".big .pin")]
+        .find((e) => !e.closest("#pins") && e.dataset.i === "5"));
+      const el = hit.asElement();
+      must(!!el, "隠れている行に対応する地図の印が無い");
+      await el.click({ timeout: 20000 });
+      await settleAfterClick(page);
+      const r = await page.evaluate(() => ({
+        rows: document.querySelectorAll("#verdict .ev-row").length,
+        on: [...document.querySelectorAll("#verdict .ev-it")].findIndex((e) => e.classList.contains("on")),
+        fx: document.getElementById("fx")?.innerText.trim() ?? "" }));
+      must(r.rows === 8, `印を押しても一覧が開いていない: ${r.rows} 行`);
+      must(r.on === 5, `押した印に対応する行が光っていない: 光っているのは ${r.on} 番目`);
+      must(r.fx.length > 0, "寄せた先の名前が出ていない");
+      return `印を押したら ${r.rows} 行に開いて、${r.on} 番目が光った／「${r.fx}」`;
+    },
+  },
+  {
     name: "ランチャー（記録なし・低地）", path: `/?${KIYOSUMI}`,
     async check(page) {
       await waitVerdict(page);
@@ -2630,6 +2736,18 @@ const CASES = [
         await p2.waitForFunction(() => /この土地は/.test(document.body.textContent ?? ""),
           null, { timeout: 60000 });
         await settleAfterCondition(p2);
+        // ⚠ **#est が字を持つまで待つ**（2026-08-21。hidetzu/konjaku#141 の CI で落ちて分かった）。
+        //   ⚠ `#est` は「建物が届いたか」「1.2 秒たっても届かないか」を**見てから**字を出す
+        //     （`peel3d.js`。⚠ 実測: 通常回線 69ms ／ 3G 相当 9.5 秒）。
+        //   ⚠ `#est:empty` は `display:none` なので、⚠ **字が入るまでは見えない。**
+        //   ⚠ ここは待たずに読んでいた。⚠ **手元では間に合い、⚠ CI では 2 回とも間に合わなかった。**
+        //   ⚠ **主張は変えていない**（⚠ 出なければ、⚠ 待ったうえで落ちる）。
+        //   ⚠ **時間切れのまま落とさない。**⚠ 何を待って駄目だったかを名乗る
+        //     （⚠ 素の時間切れだと、⚠ どの主張が破れたのか読めない）。
+        const gotEst = await p2.waitForFunction(
+          () => (document.getElementById("est")?.textContent ?? "").trim().length > 0,
+          null, { timeout: 45000 }).then(() => true).catch(() => false);
+        must(gotEst, "PC で限界（#est）が出ていない（45 秒待っても字が入らない）");
         const look = () => p2.evaluate(() => {
           const vis = (s) => { const e = document.querySelector(s);
             return !!(e && e.checkVisibility?.()); };
