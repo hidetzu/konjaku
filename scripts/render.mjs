@@ -6844,6 +6844,58 @@ const CASES = [
     },
   },
   {
+    // ⚠ **押した結果は、⚠ 押した場所の吹き出しだけ**（2026-08-21。Owner 判断）。
+    //   ⚠ 前はパネルの `#pick` にも同じ `pickCard(p)` を入れており、
+    //     ⚠ **同じ字が同時に 2 か所**に出ていた（⚠ 実測: 4 幅とも一致）。
+    //   ⚠ 利用者役 4 名に画面だけを見せた（⚠ 実在の利用者ではない）: ⚠ **4/4 が「要らない」。**
+    //
+    // ⚠ **押しているあいだ、⚠ 要約カードは退く。**
+    //   ⚠ 実測（375×667・豊洲）: 吹き出し y147–312 に対し #land y62–218 で、
+    //     ⚠ **吹き出しの 39% が隠れていた。**⚠ 利用者役 4/4 が「上が隠れている」と答えた。
+    //   ⚠ **z-index では解けない**（⚠ `#map` の `filter` が積み重ねの文脈を作る。
+    //     ⚠ 実測: 吹き出し z=15 でも #land（z=11）の下だった）。
+    //   ⚠ **高さは残す**（⚠ 消すと下の HUD が飛び跳ねる）。⚠ **閉じたら戻る。**
+    name: "押した結果は、押した場所の 1 か所だけに出る", path: `/peel?${TOYOSU}`,
+    viewport: { width: 375, height: 667 }, hasTouch: true,
+    async check(page) {
+      await page.waitForFunction(() => /件を判定しました/.test(document.body.innerText),
+        null, { timeout: 60000 });
+      await settleAfterCondition(page);
+      // ⚠ **パネルに板そのものが無いこと**（⚠ 空の箱も置かない）
+      must(await page.locator("#pick").count() === 0,
+        "パネルに押した建物の板（#pick）が戻っている（結果は押した場所の 1 か所）");
+      const before = await effOpacity(page, "#land");
+      must(before > 0.9, `押す前に要約が読めない: 実効 opacity ${before}`);
+      const h0 = await page.$eval("#land", (e) => Math.round(e.getBoundingClientRect().height));
+
+      await page.mouse.click(187, 333);
+      await settleAfterClick(page);
+      const r = await page.evaluate(() => {
+        const pop = document.querySelector(".pick-pop .maplibregl-popup-content");
+        if (!pop) return null;
+        const a = pop.getBoundingClientRect();
+        // ⚠ **上端が本当に最前面にいること。**⚠ z-index を信じない
+        const top = document.elementFromPoint(Math.round(a.left + a.width / 2), Math.round(a.top + 8));
+        return { inPop: !!top?.closest(".pick-pop"),
+          landH: Math.round(document.getElementById("land").getBoundingClientRect().height) };
+      });
+      must(r, "建物を押しても吹き出しが出ない");
+      must(r.inPop, "吹き出しの上端が、要約カードの下に隠れている");
+      const dim = await effOpacity(page, "#land");
+      must(dim < 0.05, `押しているのに要約が退いていない: 実効 opacity ${dim}`);
+      // ⚠ **高さは残す**（⚠ 下の HUD を飛び跳ねさせない）
+      must(r.landH === h0, `退かせるときに高さが変わっている: ${h0} → ${r.landH}`);
+      must(await page.locator("#pick").count() === 0, "押したらパネルにも板が出た");
+
+      // ⚠ **閉じたら戻る**
+      await page.click(".pick-pop .maplibregl-popup-close-button");
+      await settleAfterClick(page);
+      const back = await effOpacity(page, "#land");
+      must(back > 0.9, `閉じても要約が戻らない: 実効 opacity ${back}`);
+      return `吹き出し 1 か所（上端が最前面）／押すと要約は opacity ${dim}・高さ ${r.landH} のまま／閉じると ${back}`;
+    },
+  },
+  {
     // ⚠ 建物を押した結果は、**押した場所の近く**に出ること。
     //   以前は左パネルの中だけに書いていて、実測で y=672（スマホ・パネルは閉じている）／
     //   y=721（PC・パネルの内スクロールの外）と、**両方の端末で画面の外**だった。
@@ -7156,9 +7208,15 @@ const CASES = [
         await peelReady(p2);
         await p2.waitForTimeout(2500);
         pop = await p2.locator(".pick-pop").count();
-        card = (await p2.locator("#pick").textContent()).replace(/\s+/g, " ").trim();
+        // ⚠ **2026-08-21 に、⚠ 押した結果は吹き出しの 1 か所だけになった**
+        //   （⚠ パネルの `#pick` を消した。⚠ 利用者役 4/4 が「要らない」）。
+        //   ⚠ **見ている主張は同じ**: 共有された鍵から、⚠ 建物の中身が復元されること。
+        card = (await p2.locator(".pick-pop .maplibregl-popup-content").textContent())
+          .replace(/\s+/g, " ").trim();
         must(pop >= 1, "共有された建物の吹き出しが出ていない");
-        must(card.length > 0, "共有された建物のカードが出ていない");
+        must(card.length > 0, "共有された建物の中身が出ていない");
+        must(await p2.locator("#pick").count() === 0,
+          "パネルにも建物の板が戻っている（結果は押した場所の 1 か所）");
         // --- 見つからない鍵 ---
         const p3 = await ctx.newPage();
         await p3.goto(`${BASE}/peel?${TOYOSU}&b=1.000000,1.000000`,
@@ -7865,12 +7923,14 @@ const CASES = [
       });
       must(pt, "建物が1棟も描かれていない（押す先が無い）");
       await page.mouse.click(pt.x, pt.y);
-      await page.waitForFunction(() => (document.getElementById("pick")?.textContent ?? "").length > 0,
+      // ⚠ **2026-08-21 に、⚠ 建物の中身は吹き出しの 1 か所だけになった**
+      //   （⚠ パネルの `#pick` を消した）。⚠ **見ている主張は同じ**:
+      //   ⚠ 外から来た文字列（OSM の名前・種別）が、⚠ **実行されず、字のまま出ること。**
+      await page.waitForFunction(
+        () => (document.querySelector(".pick-pop .maplibregl-popup-content")?.textContent ?? "").length > 0,
         null, { timeout: 20000 });
-      await notRun(page, "#pick", "建物カード");
-      await shownAsText(page, "#pick", "建物カードの種別と建設年");
-      // 押した場所に出す吹き出しも同じ文字列を描いている
       await notRun(page, ".pick-pop", "建物の吹き出し");
+      await shownAsText(page, ".pick-pop", "建物の吹き出しの種別と建設年");
       // ---- 共有された URL の地名（?q=）----
       // ⚠ パネルを開かないと出ない場所も見る。開かない人には見えないが、DOM には入る
       await page.evaluate(() => document.getElementById("panel")?.classList.remove("hide"));

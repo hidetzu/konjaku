@@ -110,6 +110,21 @@
          ここに上限を足す案も試したが、⚠ **1px も効かなかった**ので入れていない
          （実測 2026-08-19: #land 側だけでは 75px 食い込む。#hud 側だけで 0px）。
        ⚠ 効かないコードを残さない。 */
+  /* ⚠ **建物を押しているあいだ、⚠ 要約カードは退く**（2026-08-21。Owner 判断）。
+     ⚠ 実測（375×667・豊洲）: 吹き出し y147–312 に対し #land y62–218 で、
+       ⚠ **吹き出しの 39% が隠れていた**（⚠ 上半分が読めない）。
+     ⚠ 利用者役 4 名に画面だけを見せたところ、⚠ **4/4 が「上が隠れている」と答えた。**
+     ⚠ 「押した結果は、⚠ 押した場所に見える」を破っていた。
+
+     ⚠ **z-index では解けない**（⚠ 実測で確かめた）。
+       ⚠ `#map` に `filter` がかかっていて、⚠ **そこが積み重ねの文脈を作る。**
+       ⚠ 吹き出しは `#map` の中なので、⚠ **いくつにしても外へ出られない**
+         （⚠ 実測: 吹き出し z=15 でも #land（z=11）の下）。
+
+     ⚠ **高さは残す**（`opacity` で退かせる）。⚠ 消すと `syncLandH` が測る高さが変わり、
+       ⚠ **下の HUD が飛び跳ねる。**
+     ⚠ **閉じたら戻る。**⚠ 押した人にだけ、⚠ 押しているあいだだけ退く。 */
+  body.picking #land{opacity:0;pointer-events:none;transition:opacity .18s linear}
   #land{position:absolute;z-index:11;left:14px;right:76px;top:62px;max-width:520px;
     pointer-events:auto;padding:8px 12px 9px;border-radius:13px;
     border:1px solid rgba(255,255,255,.18);background:rgba(8,12,18,.86);
@@ -472,13 +487,12 @@
     padding:0 12px;border:1px solid var(--line);border-radius:999px;background:transparent;
     color:var(--action);font:inherit;font-size:var(--fs-note);cursor:pointer}
   .pick-say:hover{border-color:var(--action)}
-  #pick .card{padding:9px 10px;border-radius:6px;background:rgba(255,255,255,.05);
-    border:1px solid var(--line);line-height:1.6;font-size:var(--fs-note)}
-  #pick .name,.pick-pop .name{font-weight:700;font-size:var(--fs-body);line-height:1.35;margin-bottom:5px}
-  #pick .v{font-size:var(--fs-lead)}#pick .v.w{color:var(--water)}
-  #pick .meta{color:var(--ink-dim);font-size:var(--fs-evidence);margin-top:8px}
-  #pick .meta>div+div{margin-top:3px}
-  .pick-pop .meta{margin-top:8px}.pick-pop .meta>div+div{margin-top:3px}
+  /* ⚠ **`#pick` の見た目は消した**（2026-08-21）。⚠ パネルの板そのものを消したため。
+     ⚠ **吹き出し側だけ残す。**⚠ 使われない見た目を残すと、⚠ 戻せてしまう。 */
+  .pick-pop .name{font-weight:700;font-size:var(--fs-body);line-height:1.35;margin-bottom:5px}
+  .pick-pop .v{font-size:var(--fs-lead)}.pick-pop .v.w{color:var(--water)}
+  .pick-pop .meta{color:var(--ink-dim);font-size:var(--fs-evidence);margin-top:8px}
+  .pick-pop .meta>div+div{margin-top:3px}
   .hint{font-size:var(--fs-note);color:var(--ink-dim);line-height:1.55}
   /* パネルは主役（3Dの絵）を隠すので、いつでも畳めるようにする。
      スマホでは画面の4割を占めるため、既定で閉じる。 */
@@ -844,10 +858,13 @@
     </div>
     <div class="sec s-prov"><div class="label">いま画面に出ているもの</div><div id="prov"></div></div>
     <div class="sec"><div class="label">内訳</div><div id="breakdown"></div></div>
-    <div class="sec">
-      <!-- ⚠ 「建物をクリックすると〜」は HUD の #tip にある（常時見える・押したら消える）。
-           ここに置くと、パネルを開いた人にだけ二度言うことになる。 -->
-      <div id="pick"></div></div>
+    <!-- ⚠ **押した建物の板（#pick）は消した**（2026-08-21。Owner 判断）。
+         ⚠ **押した結果は、⚠ 押した場所の吹き出しだけ**にする。
+           ⚠ 前は同じ `pickCard(p)` が吹き出しとここに同時に出ていた（実測 4 幅とも一致）。
+           ⚠ 利用者役 4/4 が「要らない」と答えた（⚠ 割れなかった）。
+         ⚠ **空の箱ごと消す。**⚠ 未選択のあいだ `.sec` が h12 の余白だけになっていた。
+         ⚠ 「建物を押すと〜」は、⚠ **いままでどおり HUD の #tip の 1 か所**
+           （⚠ 利用者役 4/4 が見つけ、⚠ **パネルにも欲しいと言った人は 0/4**）。 -->
   </div>
 
   <div class="sec">
