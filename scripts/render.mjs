@@ -2698,9 +2698,21 @@ const CASES = [
     name: "PC では答えが画面の中に入り、狭い幅は変わらない",
     path: "/?q=%E8%B1%8A%E6%B4%B2&ll=35.6548,139.7975",
     async check(page) {
-      await page.waitForFunction(
-        () => /旧水部|土地/.test(document.getElementById("verdict")?.textContent ?? ""),
-        null, { timeout: 60000 });
+      // ⚠ **判定中に素通りしていた**（2026-08-21 に main で落ちて分かった）。
+      //   ⚠ 前は `/旧水部|土地/` で待っていたが、⚠ **「この土地の成り立ちを判定中…」にも
+      //     ⚠ 「土地」が入っている。**⚠ 判定中の段の並びは、判定後と違う。
+      //   ⚠ 実際に落ちた: ⚠ **375 を判定中に読み、⚠ 1100 を判定後に読んで、
+      //     ⚠ 「DOM の順が狭い幅と違う」**。⚠ **製品ではなく検査の不具合。**
+      await waitVerdict(page);
+      // ⚠ **出来事は後から届いて、⚠ #verdict に段が増える。**⚠ 並びが落ち着くまで待つ。
+      //   ⚠ 2 回続けて同じ並びなら落ち着いたとみなす。
+      await page.waitForFunction(() => {
+        const o = [...document.getElementById("verdict").children]
+          .map((e) => e.id || String(e.className).split(" ")[0] || e.tagName).join(",");
+        const prev = window.__ordSeen;
+        window.__ordSeen = o;
+        return prev === o;
+      }, null, { timeout: 45000, polling: 700 });
       const read = () => page.evaluate(() => {
         const d = document.documentElement;
         const g = (s) => { const e = document.querySelector(s);
