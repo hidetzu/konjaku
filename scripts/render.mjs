@@ -3067,6 +3067,47 @@ const CASES = [
   },
 
   {
+    // ⚠ **狭い幅でも 1 つの器に見せる**（2026-08-22。hidetzu/konjaku#165。Owner 判断）。
+    //   ⚠ **PC では 2026-08-20 から同じことをしていた。**⚠ 狭い幅にだけ届いていなかった。
+    //   ⚠ 利用者役 3/3 が「真ん中の板と下の板は 1 つでいい」と答え、⚠ **3 名とも理由は同じ**で
+    //     「⚠ **同じ『最新の空中写真』が 2 回**、上下に並んでいる」だった（2026-08-21）。
+    // ⚠ **見た目だけの検査にしない。**⚠ 撮影種別が 1 か所であること（Owner 判断: `#era .s` に残す）と、
+    //   ⚠ **押せる的が 44×44 を割らない**ことまで見る。
+    name: "狭い幅でも、年代の表示と操作が 1 つの器になっている", path: `/peel?${TOYOSU}`,
+    viewport: { width: 375, height: 667 }, hasTouch: true,
+    async check(page) {
+      await page.waitForFunction(() => document.getElementById("ruler")?.checkVisibility?.(),
+        null, { timeout: 45000 });
+      await settleAfterCondition(page);
+      const out = [];
+      for (const [w, h] of [[375, 667], [344, 882], [320, 640]]) {
+        await page.setViewportSize({ width: w, height: h });
+        await page.waitForTimeout(700);
+        const r = await page.evaluate(() => {
+          const box = (id) => { const b = document.getElementById(id).getBoundingClientRect();
+            return { t: Math.round(b.top), b: Math.round(b.bottom), w: Math.round(b.width) }; };
+          const era = box("era"), tp = box("timePanel");
+          const rlSub = document.getElementById("rlSub");
+          const small = [...document.querySelectorAll("#rlPrev,#rlNext,#eraToggle")]
+            .filter((e) => e.checkVisibility())
+            .filter((e) => { const b = e.getBoundingClientRect(); return b.width < 44 || b.height < 44; })
+            .map((e) => e.id);
+          return { gap: tp.t - era.b, sameWidth: era.w === tp.w,
+            kinds: (document.body.innerText.match(/最新の空中写真/g) ?? []).length,
+            subOn: !!rlSub && rlSub.checkVisibility(), small,
+            overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth };
+        });
+        must(r.gap === 0, `${w}px: 年代の表示と操作のあいだに ${r.gap}px の隙間がある`);
+        must(r.sameWidth, `${w}px: 器の幅が違う（1 つに見えない）`);
+        must(r.kinds === 1, `${w}px: 撮影種別が画面に ${r.kinds} 回ある（1 か所にする）`);
+        must(!r.subOn, `${w}px: ものさしの下に撮影種別が出ている（#era .s に残すと決めた）`);
+        must(!r.small.length, `${w}px: 44×44 を割った的がある: ${r.small.join("、")}`);
+        must(!r.overflow, `${w}px: 横あふれしている`);
+        out.push(`${w}: 隙間${r.gap} 撮影種別${r.kinds}回`);
+      }
+      return out.join(" ／ ");
+    } },
+  {
     // ⚠ **PC では、年代の表示と年代の操作が 1 つの器**（hidetzu/konjaku#132）。
     //
     //   ⚠ **実測（2026-08-20・main = 5210c9e・豊洲・1280×800・SW 無効）**
