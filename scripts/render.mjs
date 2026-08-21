@@ -1718,6 +1718,57 @@ const CASES = [
     },
   },
   {
+    // ⚠ **押しても店が出てこない語で、⚠ 周辺検索を出さない**（2026-08-21）。
+    //   ⚠ コードに前からある判断: 「『昔』『揺れ』を Google マップに投げても店は出てこない。
+    //     ⚠ **無意味なので出さない**」。
+    //   ⚠ **深掘りを判定カードへ移したとき、⚠ この判定から抜け落ちた**（⚠ 同日に踏んだ）。
+    //     ⚠ 実測（豊洲・375×667・hasTouch・SW 無効）: 「3d」「昔」「立体」「深掘り」の
+    //       ⚠ **4 語すべてで「『3d』を周辺で探す」が出ていた。**
+    //   ⚠ **一覧が空になるのは、⚠ Owner がそれでよいと判断した**（2026-08-21）。
+    //     ⚠ **CTA は一覧の上にあり、⚠ 打っているあいだも画面に見えている。**
+    name: "押しても店が出てこない語では、周辺検索を出さない", path: `/?${TOYOSU}`,
+    viewport: { width: 375, height: 667 }, hasTouch: true,
+    async check(page) {
+      await waitVerdict(page);
+      await page.waitForSelector("#list .lh.fold", { timeout: 30000 });
+      await settleAfterCondition(page);
+      const out = [];
+      // ⚠ 深掘りの語。⚠ **周辺検索を出さない**
+      for (const w of ["3d", "昔", "立体", "深掘り"]) {
+        await page.fill("#q", "");
+        await page.waitForTimeout(200);
+        await page.fill("#q", w);
+        await settleAfterCondition(page);
+        const r = await page.evaluate(() => ({
+          maps: [...document.querySelectorAll("#list .it")]
+            .filter((e) => /周辺で探す/.test(e.textContent ?? "")).length,
+          // ⚠ **導線は増やさない。**⚠ 一覧に深掘りが戻っていないこと
+          peel: document.querySelectorAll('#list [href^="./peel"]').length,
+          // ⚠ **CTA は打っているあいだも画面に見えていること**（⚠ 空でも詰まない理由）
+          ctaVis: (() => { const e = document.getElementById("peelCta");
+            if (!e) return false;
+            const b = e.getBoundingClientRect();
+            return b.top < innerHeight && b.bottom > 0; })(),
+        }));
+        must(r.maps === 0, `「${w}」で、押しても店が出てこない周辺検索が出ている`);
+        must(r.peel === 0, `「${w}」で、一覧にも深掘りが出ている（導線は 1 か所）`);
+        must(r.ctaVis, `「${w}」を打つと、次の体験が画面から消える`);
+        out.push(w);
+      }
+      // ⚠ **店の語では、いままでどおり出ること**（⚠ 消しすぎていない）
+      for (const w of ["ラーメン", "カフェ"]) {
+        await page.fill("#q", "");
+        await page.waitForTimeout(200);
+        await page.fill("#q", w);
+        await settleAfterCondition(page);
+        const n = await page.evaluate(() => [...document.querySelectorAll("#list .it")]
+          .filter((e) => /周辺で探す/.test(e.textContent ?? "")).length);
+        must(n === 1, `「${w}」で周辺検索が出ていない（消しすぎている）: ${n}`);
+      }
+      return `深掘りの語 ${out.join("・")} は周辺検索なし（CTA は画面内）／店の語は今までどおり`;
+    },
+  },
+  {
     // ⚠ **行動一覧を 3 つの組に分ける**（2026-08-21）。
     //   ⚠ 前は「深掘り」「この土地から出た語」「公的な情報」が、⚠ **同じ形の行**で
     //     ⚠ **同じ列**に並んでいた。⚠ 分かれていたのは行ごとのタグだけだった。
