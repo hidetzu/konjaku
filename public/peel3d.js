@@ -495,8 +495,17 @@ function pickSpeech(p){
 function showPick(p,lngLat){
   // 一度でも押したら、案内は役目を終える
   if(!picked){ picked=true; const t=document.getElementById("tip"); if(t) t.textContent=""; }
-  document.getElementById("pick").innerHTML=pickCard(p);
+  // ⚠ **押した結果は、⚠ 押した場所の吹き出しだけ**（2026-08-21。Owner 判断）。
+  //   ⚠ 前はここでパネルの `#pick` にも同じ `pickCard(p)` を入れていた。
+  //     ⚠ **同じ字が同時に 2 か所**に出ていた（⚠ 実測: 4 幅とも一致）。
+  //   ⚠ 利用者役 4 名に画面だけを見せた（⚠ 実在の利用者ではない）:
+  //     ⚠ **4/4 が「要らない」**。⚠ 「吹き出しのほうが場所が分かる」
+  //     ⚠ 「どっちが最新か分からない」。⚠ **割れなかった。**
+  //   ⚠ **掟: 同じ問いに答える表示を 2 つ持たない。**
   if(pickPop) pickPop.remove();
+  // ⚠ **押しているあいだ、⚠ 要約カードを退かせる**（2026-08-21。上の CSS を読む）。
+  //   ⚠ z-index では解けない（⚠ `#map` の `filter` が積み重ねの文脈を作る）。
+  document.body.classList.add("picking");
   pickPop=new maplibregl.Popup({closeButton:true,closeOnClick:true,maxWidth:"280px",
       className:"pick-pop",offset:12})
     .setLngLat(lngLat)
@@ -505,7 +514,9 @@ function showPick(p,lngLat){
     .addTo(map);
   // 吹き出しを閉じたら、URL からも建物を外す。
   // ⚠ 外さないと、閉じたあとに共有した人の URL が、閉じたはずの建物を開く
-  pickPop.on("close",()=>{ if(pickBld===p.k){ pickBld=null; syncUrl(); } });
+  // ⚠ 閉じたら、⚠ 要約カードを戻す
+  pickPop.on("close",()=>{ document.body.classList.remove("picking");
+    if(pickBld===p.k){ pickBld=null; syncUrl(); } });
   const say=document.getElementById("pickSay");
   if(say) say.onclick=()=>{
     try{
