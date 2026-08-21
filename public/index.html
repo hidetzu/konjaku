@@ -669,6 +669,17 @@
   .ev-note.warn b{color:var(--estimate);font-weight:500}
   /* ⚠ 出典と、何を言っていないかを必ず添える。ここを削ると、ただの断定になる */
   .ev-more{margin-top:4px;font-size:var(--fs-note);color:var(--ink-dim)}
+  /* ⚠ **この行そのものを押せるようにする**（2026-08-21。hidetzu/konjaku#141）。
+     ⚠ 別のボタンを足すと高さが増える。⚠ 上の .ev-note.step と同じ手。
+     ⚠ 見た目は注記のまま、⚠ **当たり判定だけ全面**。 */
+  .ev-more.step{display:block;width:100%;text-align:left;font:inherit;
+    font-size:var(--fs-note);line-height:1.6;cursor:pointer;padding:7px 10px;
+    border-radius:8px;background:rgba(255,255,255,.04);
+    border:1px solid var(--line);border-left:2px solid var(--action);color:var(--ink-dim)}
+  .ev-more.step:hover{border-color:var(--action)}
+  /* ⚠ 指で押す端末では var(--tap) を割らない */
+  @media (hover:none){ .ev-more.step{min-height:var(--tap)} }
+  .ev-more.step .go{color:var(--action);margin-left:6px}
   .ev-src{margin-top:6px;font-size:var(--fs-evidence);line-height:1.65;color:var(--ink-faint)}
   .ev-src b{color:var(--ink-dim);font-weight:500}
 
@@ -2328,6 +2339,22 @@ let evState=null;          // null=未取得 / {loading} / {state, items}
 //   別々に絞って並べていたため、一覧は新しい順・印は古い順になり、
 //   「一覧の1行目」と「印の1つ目」が別のものを指していた（実測で中心がずれた）。
 let evShown=[];
+// ⚠ **一覧を畳んでいるか**（2026-08-21。hidetzu/konjaku#141）。
+//   ⚠ 実測（375×667・hasTouch・SW 無効・`main` = `9982680`）: 一覧の高さは
+//     ⚠ **豊洲 0 行 / 軽井沢 2 行 / 札幌 6 行 / 上野 8 行**で、
+//     ⚠ `ev` 全体が **54px と 671px**（12.4 倍）になっていた。
+//   ⚠ **減らすのではなく畳む。**⚠ 字は 1 つも消さない（Owner 判断 2026-08-21）。
+//   ⚠ **地図の印は畳まない**（`evShown` は今までどおり上限ぶん）。
+//     ⚠ 印を減らすと地図の見え方が変わる。⚠ かわりに、⚠ **隠れている行の印を
+//       押したら先に開く**（下の focusOn）。⚠ これをやらないと、
+//       ⚠ **印を押しても一覧が光らない**（同じ取りこぼしを 2 回やっている）。
+let evOpen=false;
+// ⚠ 畳んでいるときに出す行数。⚠ **上限（RANK）とは別のもの**
+const EV_MIN=3;
+// ⚠ **いま一覧に出している行**。⚠ **ここが唯一の持ち主**。
+//   ⚠ 一覧の描画と読み上げの両方が呼ぶ。⚠ **式を 2 か所に書くと、片方だけ古くなる**
+//   （掟: 同じ問いに答える実装を 2 つ持たない）。
+const evVis=()=>evOpen?evShown:evShown.slice(0,EV_MIN);
 let evTile=null, zoomOn=false;
 
 async function loadEvents(){
@@ -2448,7 +2475,12 @@ function renderEvents(){
     return (b.kind==="無くなった"?b.until:b.year)-(a.kind==="無くなった"?a.until:a.year);
   });
   evShown=hit.slice(0,RANK);
-  const rest=hit.length-evShown.length;
+  // ⚠ **一覧に出すぶん**。⚠ 畳んでいるときは先頭 EV_MIN 行だけ。
+  //   ⚠ `evShown` はそのまま（地図の印・読み上げの持ち主）。
+  const vis=evVis();
+  // ⚠ 「ほかに N 件」の N は、⚠ **いま出していない件数**。
+  //   ⚠ 畳んでいるあいだは、⚠ **上限で切ったぶんと、畳んで隠したぶんの両方**が入る。
+  const rest=hit.length-vis.length;
   // 見出しは「いつからいつまでの話か」。差分なので、期間を名乗らないと意味が決まらない
   const span=base ? `${nowSel?"いま":`${year}年`}まで`
     : `${frames[eraIdx-1].label} → ${nowSel?"いま":frames[eraIdx].label}`;
@@ -2467,7 +2499,7 @@ function renderEvents(){
     //   実測（同じラベルが 8 行並んだ状態）では、ここが 8 回発火していた。
     //   出典URLは scheme も見る。esc だけでは href="javascript:…" は塞げない。
     //   http/https でなければリンクそのものを出さない（掟: 押しても何も起きない導線を置かない）。
-    + evShown.map((x,i)=>{
+    + vis.map((x,i)=>{
         const label=yearLabel(x);
         const d=evDesc(x.note,x.label);
         const gone=x.kind==="無くなった";
@@ -2480,7 +2512,15 @@ function renderEvents(){
           ${src?`<a class="ev-u" href="${src}" target="_blank" rel="noopener"
             title="この項目の出典">↗</a>`:""}</div>`;
       }).join("")
-    + (rest>0 ? `<div class="ev-more">ほかに ${rest} 件（新しいものから ${RANK} 件だけ出しています）</div>` : "")
+    // ⚠ **開く操作に、新しい字を足さない**（2026-08-21。hidetzu/konjaku#141）。
+    //   ⚠ この行そのものを押せるようにする。⚠ **要素を足すと高さが増える**
+    //     （⚠ この画面は同じ理由で、⚠ 注記そのものを押せるようにしたことがある。
+    //       ⚠ 実測: ボタンを足したら 51px → 95px になった）。
+    //   ⚠ **上限まで開いたら、押せる見た目をやめる**（ADR 0026）。
+    + (rest>0 ? (evShown.length>vis.length
+        ? `<button class="ev-more step" id="evMore">ほかに ${rest} 件（新しいものから ${
+            vis.length} 件だけ出しています）<span class="go">→</span></button>`
+        : `<div class="ev-more">ほかに ${rest} 件（新しいものから ${vis.length} 件だけ出しています）</div>`) : "")
     + (evState.truncated ? `<div class="ev-note warn" style="margin-top:6px">
         <b>この範囲は記録が多く、取りきれていない可能性があります。</b>
         ここに出ていないものがあるかもしれません。</div>` : "")
@@ -2495,6 +2535,9 @@ function renderEvents(){
         evState.at?`この範囲を調べたのは <b>${evState.at}</b> です。`:""}年代に幅があるとき（1936–42 など）は
       <b>先頭の年</b>で区切っているので、記録があっても出ない年があります。
       写真に写っているかどうかまでは確かめていません。</div>`;
+  // ⚠ 押したら開く。⚠ **開いたあとは押せる見た目をやめる**（上の分岐で div になる）
+  const more=document.getElementById("evMore");
+  if(more) more.onclick=()=>{ evOpen=true; renderEvents(); };
   const shown=evShown;
   el.querySelectorAll(".ev-it").forEach((b)=>{
     b.onclick=()=>focusOn(shown[+b.dataset.i],+b.dataset.i);
@@ -2594,6 +2637,12 @@ function markFocus(x,i){
 // ⚠ 実装と検査で同じ数字を使う（検査はこの値を読む）。別々に持つと静かにずれる。
 const SEEN_ENOUGH=0.8;
 function focusOn(x,i){
+  // ⚠ **隠れている行の印を押したら、先に開く**（2026-08-21。hidetzu/konjaku#141）。
+  //   ⚠ 地図の印は上限ぶん（8 本）打っているが、⚠ 一覧は既定 3 行しか出していない。
+  //   ⚠ 開かずに強調すると、⚠ **一覧側が一度も見つからない**
+  //     （⚠ 実測の記録あり: markerCount 9 に対し onCount 0。
+  //       ⚠ 利用者役のエージェント3体とも「どの点？」と答えた）。
+  if(!evOpen&&i>=EV_MIN){ evOpen=true; renderEvents(); }
   markFocus(x,i);
   // ⚠ 押したときは地図で寄せる。静止した写真のままだと、枠の端にあるものが
   //   端に貼り付いたままになり、押しても見えない（実測: 水神小学校・富岡小学校）。
@@ -2877,8 +2926,11 @@ function sayText(){
   if(document.getElementById("ovSwale")?.checked&&mapObj?.getLayer("swale"))
     parts.push("いまは明治期の土地を重ねています。");
   parts.push(meiji.text);
-  // 差分。画面に出ている行と同じものだけを、同じ順で読む
-  for(const x of evShown.slice(0,3))
+  // 差分。画面に出ている行と同じものだけを、同じ順で読む。
+  // ⚠ **畳んでいるかで変わる**（2026-08-21。hidetzu/konjaku#141）。
+  //   ⚠ 前はいつも先頭 3 件だったが、⚠ **画面には上限まで（8 行）出ていた**ので、
+  //     ⚠ このコメントが言っていることと、⚠ 実際の振る舞いが食い違っていた。
+  for(const x of evVis())
     parts.push(x.kind==="無くなった"
       ? `${x.until}年に、${x.label}が無くなりました。`
       : `${x.year}年、${x.label}。`);
@@ -3223,7 +3275,7 @@ document.getElementById("chipX").onclick=()=>{
   // 前の土地の年代・地図・読み上げを持ち越さない
   stopSay(); stopPlay(); dropMap();
   frames=[]; eraIdx=0; wantEra=null; eraMiss=null; eraTicked=false;
-  evState=null; evTile=null;
+  evState=null; evTile=null; evOpen=false;
   document.getElementById("chipName").textContent="";
   document.getElementById("result").style.display="none";
   renderVerdict();
@@ -3376,7 +3428,7 @@ async function openPlace(lon,lat,title,opt){
   //   その問いに写真で即答している状態から始める。現在は1タップ先にある。
   //   ⚠ ただし URL で年代を指定されているなら、そちらが優先（共有された状態から始める）。
   stopSay(); stopPlay();
-  frames=[]; eraIdx=0; eraTicked=false; evState=null; evTile=null;
+  frames=[]; eraIdx=0; eraTicked=false; evState=null; evTile=null; evOpen=false;
   // ⚠ 段を捨てたあとに置く。先に置くと、前の土地の段を見て URL を書くことになる
   wantEra=opt?.era??null; eraMiss=null;
   syncUrl();
