@@ -59,9 +59,19 @@
   //
   // ⚠ **`priv`（自分）は 2026-08-20 に消した。**付ける場所がどこにも無く、
   //   ⚠ **画面に出ようがない語**だった（掟: 押しても何も起きない導線を置かない の同類）。
-  const TAG = { own: "今昔で見る", why: "この土地から", ext: "別のサイト↗" };
-  // ⚠ **知らない tag は ext 扱い**。⚠ ここが唯一の既定値（呼ぶ側に写さない）
-  const tag = (t) => TAG[t] ?? TAG.ext;
+  // ⚠ **2026-08-21 に、⚠ 行ごとのタグをやめて「組の見出し」にした。**
+  //   ⚠ タグは「なぜここに出ているのか」を **1 行ずつ** 言っていた。
+  //   ⚠ 同じことを組の見出しでも言うと、⚠ **同じ問いに 2 か所が答える**（掟）。
+  //   ⚠ 実測（375×667・hasTouch・SW 無効・`main` = `87ed6ce`）: 4 地点のうち
+  //     ⚠ **3 地点は一覧が 3 行**しかなく、⚠ そこへタグと見出しを両方置くと重い。
+  //   ⚠ 消した語は `scripts/check.mjs` の GONE_WORDS が見張る（戻せないように）。
+  //
+  // ⚠ **`own`（この場所を深掘り）には見出しを付けない。**
+  //   ⚠ その行の見出しそのものが「この場所を深掘り」で、⚠ **組の名前と同じ字**になる。
+  //   ⚠ 1 行しかない組に、⚠ 同じ字の見出しを重ねない。
+  const GROUP = { why: "さらに調べる", ext: "公的な情報で確認する" };
+  // ⚠ **見出しを持たない組がある**（own・打った語の周辺検索）。⚠ 既定は空
+  const groupTitle = (g) => GROUP[g] ?? "";
 
   // ============================================================
   // 根拠カードの、取得方法のバッジ
@@ -181,7 +191,7 @@
   const ground1Text = (name, artificial) =>
     ground1Lines(name, artificial).join("。") + "。";
 
-  g.KonjakuWords = { S, meiji, meijiBadge, TAG, tag, METHOD, EDGE, UNREAD, method,
+  g.KonjakuWords = { S, meiji, meijiBadge, GROUP, groupTitle, METHOD, EDGE, UNREAD, method,
                      PRIVACY_SHORT, photoSay,
                      LAYER_TITLE, layerTitle, ground1Lines, ground1Text };
 })(typeof window === "undefined" ? globalThis : window);
