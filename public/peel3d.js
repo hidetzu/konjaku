@@ -1253,8 +1253,10 @@ function showMiss(){
   const el=document.getElementById("stateMiss");
   if(!el) return;
   const lines=[];
-  if(missEra) lines.push(`⚠ 共有された年代（${esc(missEra)}）は、この土地には残っていません`);
-  if(missBld) lines.push("⚠ 共有された建物は、この範囲では見つかりませんでした");
+  // ⚠ **字は words.js の 1 か所**（2026-08-22。hidetzu/konjaku#169）。⚠ ここで書かない。
+  //   ⚠ **esc() はここで通す**（URL 由来の文字列。⚠ words.js は受け取るだけ）。
+  if(missEra) lines.push(KonjakuWords.shareMiss.era(esc(missEra)));
+  if(missBld) lines.push(KonjakuWords.shareMiss.bld());
   el.innerHTML=lines.join("<br>");
   el.hidden=!lines.length;
 }

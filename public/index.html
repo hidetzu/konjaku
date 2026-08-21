@@ -1937,8 +1937,10 @@ function timeHTML(f){
   // ⚠ 復元できなかったことは、**年代を選ぶ場所のすぐ上**で言う。
   //   黙って別の年代を出すと、共有した人と見た人が違うものを見ていることに誰も気づかない。
   //   文言に入るのは URL 由来の文字列なので、必ず esc を通す（理由は esc.js）。
-  return (eraMiss?`<div class="era-miss" id="eraMiss">⚠ 共有された年代（${
-      esc(eraMiss)}）は、この土地には残っていません</div>`:"")
+  // ⚠ **字は words.js の 1 か所**（2026-08-22。hidetzu/konjaku#169）。⚠ ここで書かない。
+  //   ⚠ **esc() はここで通す**（URL 由来の文字列。⚠ words.js は受け取るだけ）。
+  return (eraMiss?`<div class="era-miss" id="eraMiss">${
+      KonjakuWords.shareMiss.era(esc(eraMiss))}</div>`:"")
     // ⚠ **▶ は帯の中に置く。** 動かす相手は帯（年代）なのに、実測で
     //   **帯の下端から 487px（375px 幅）／650px（PC）**離れたところにあった。
     //   押すものと動くものが離れていると、押しても何が起きたか分からない。
