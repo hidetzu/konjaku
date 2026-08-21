@@ -2310,6 +2310,108 @@ head("6. 外部リンク");
     : ok(`words.js が持つ字（${OWNED.length} 語）は、呼ぶ側に写しが無い`);
 }
 
+// ⚠ **答えに出る区分名の、平易な補助説明**（2026-08-22。hidetzu/konjaku#148）。
+//
+// ⚠ **これは原典ではない。**⚠ 原典（landform.json の why）は根拠パネルが出典つきで出す。
+//   ⚠ **こちらが持つのは意味だけ**で、⚠ **定義・成因・災害リスクは持たない。**
+//   ⚠ だから「丸写しでないこと」を機械で見る。⚠ 写した瞬間、同じ字の持ち主が 2 つになる。
+//
+// ⚠ **例外を作らない。**⚠ 答えに出うる区分が 1 つでも欠けると、
+//   ⚠ **利用者から見て「説明がある区分」と「無い区分」の差が意味を持ってしまう**
+//   （「説明が無いほうが普通の土地なのだろう」と読める）。
+// ⚠ **数えるのは landform.json。**⚠ **ここに区分の一覧を書き写さない。**
+{
+  const W = globalThis.KonjakuWords;
+  const LF = JSON.parse(await readFile(join(PUB, "data/landform.json"), "utf8"));
+  const G = W?.GROUND_GLOSS ?? {};
+  const cls = LF.classes ?? {};
+  const fails = [];
+  const LIMIT = 18;   // ⚠ Owner 決定 3（2026-08-22）。⚠ 1 行に収める上限
+
+  if (!W?.groundGloss) fails.push("words.js が groundGloss を持っていない（この検査が何も見ていない）");
+  if (!Object.keys(cls).length) fails.push("landform.json の区分を読めていない（この検査が何も見ていない）");
+
+  // ⚠ **答えに出うる区分は、全部持つ**
+  const missing = Object.keys(cls).filter((n) => !G[n]);
+  if (missing.length) fails.push(`補助説明の無い区分が ${missing.length} 件: ${missing.slice(0, 5).join("、")}`);
+  // ⚠ **無い区分の説明を持たない。**⚠ 画面に出ようがない字は、古くなっても誰も気づけない
+  const extra = Object.keys(G).filter((n) => !cls[n]);
+  if (extra.length) fails.push(`landform.json に無い区分の補助説明がある: ${extra.join("、")}`);
+
+  for (const [name, g] of Object.entries(G)) {
+    // ⚠ **1 行・18 字まで**。⚠ 2 行になると、答えより説明のほうが長くなる
+    if ([...g].length > LIMIT) fails.push(`${name}: ${[...g].length} 字（上限 ${LIMIT}）`);
+    if (/[\n\r]/.test(g)) fails.push(`${name}: 改行が入っている（1 行に収める）`);
+    // ⚠ **原典の丸写しでない。**⚠ 写すと、同じ字の持ち主が landform.json と 2 つになる
+    if ((cls[name]?.why ?? "").includes(g)) fails.push(`${name}: 原典（why）をそのまま写している`);
+    // ⚠ **数字を出さない**（掟3: 出すのは実測値そのものと、その取り方だけ）。
+    //   ⚠ 原典には「0.5〜数メートル」のような数がある。⚠ **要約した 18 字に数だけ残すと、
+    //     どの範囲の数字か分からなくなる**（掟4: 数字は必ず主張範囲の分母で書く）
+    if (/[0-9０-９]/.test(g)) fails.push(`${name}: 補助説明に数字が入っている（${g}）`);
+    // ⚠ **⚠ の印を使わない。**⚠ この製品では災害リスク専用（CLAUDE.md §4-1）
+    if (g.includes("⚠")) fails.push(`${name}: 補助説明に ⚠ が入っている（災害リスクの印と紛れる）`);
+  }
+  // ⚠ **互いに違う。**⚠ 2 つの区分に同じ説明が付くと、⚠ **説明が区分を見分けられていない**
+  const dup = Object.values(G).length - new Set(Object.values(G)).size;
+  if (dup) fails.push(`同じ補助説明が ${dup} 組の区分に付いている（説明が区分を見分けていない）`);
+
+  // ⚠ **知らない名前には何も返さない。**⚠ こちらで作らない（掟の一行目）
+  if (W?.groundGloss?.("この区分は存在しない") !== "") fails.push("知らない区分名に説明を返している");
+
+  // ⚠ **行と区分名の対応は words.js が持つ。**⚠ 画面に数えさせない
+  if (W?.ground1Names) {
+    const n2 = W.ground1Names("旧水部", "盛土地･埋立地"), l2 = W.ground1Lines("旧水部", "盛土地･埋立地");
+    const n1 = W.ground1Names("低地", null), l1 = W.ground1Lines("低地", null);
+    if (n2.length !== l2.length || n1.length !== l1.length)
+      fails.push("ground1Names と ground1Lines の行数が合っていない（説明が別の区分に付く）");
+    if (n2[0] !== "旧水部" || n2[1] !== "盛土地･埋立地") fails.push("ground1Names の順が答えの行と違う");
+  } else fails.push("words.js が ground1Names を持っていない");
+
+  // ⚠ **読み上げも、画面と同じものを同じ順で言う**（2026-08-22）。
+  //   ⚠ **見える人だけが意味を受け取り、聞く人は区分名だけ、にしない。**
+  //   ⚠ 実描画がここを捕まえた（画面へ足したのに、声が古いままだった）。
+  if (W?.ground1Speech) {
+    const sp = W.ground1Speech("旧水部", "盛土地･埋立地");
+    const ls = W.ground1Lines("旧水部", "盛土地･埋立地"), ns = W.ground1Names("旧水部", "盛土地･埋立地");
+    let at = -1;
+    for (let i = 0; i < ls.length; i++) {
+      // ⚠ **順を見る。**⚠ 含んでいるだけでは、区分名と意味が入れ替わっていても通る
+      for (const part of [ls[i], W.groundGloss(ns[i])]) {
+        if (!part) continue;
+        const j = sp.indexOf(part);
+        if (j <= at) fails.push(`読み上げの第1層で「${part}」の順が画面と違う`);
+        at = Math.max(at, j);
+      }
+    }
+    // ⚠ **共有カードの文は変えていないこと**（1 枚の絵に焼く文。入る量が違う）
+    if (W.ground1Text("旧水部", "盛土地･埋立地").includes(W.groundGloss("旧水部")))
+      fails.push("共有カードの文にも補助説明が入っている（焼く文と読む文を同じにしない）");
+  } else fails.push("words.js が ground1Speech を持っていない（画面に足した字を声が読まない）");
+  // ⚠ **画面が読み上げも words.js から取っていること**
+  if (!(src["index.html"] ?? "").includes("KonjakuWords.ground1Speech"))
+    fails.push("index.html が KonjakuWords.ground1Speech を通っていない（声だけ古くなる）");
+
+  // ⚠ **呼ぶ側が書き写していないこと。**⚠ コメントは先に落とす（CLAUDE.md §5）
+  const bare = (f) => (src[f] ?? "")
+    .replace(/<!--[\s\S]*?-->/g, " ").replace(/\/\*[\s\S]*?\*\//g, " ").replace(/^\s*\/\/.*$/gm, "");
+  const spilled = [];
+  for (const f of Object.keys(src)) {
+    if (f === "words.js" || !/\.(js|html)$/.test(f)) continue;
+    const b = bare(f);
+    for (const g of Object.values(G)) if (b.includes(g)) spilled.push(`${f}「${g}」`);
+  }
+  if (spilled.length) fails.push(`補助説明を書き写している: ${spilled.slice(0, 3).join("、")}`);
+  // ⚠ **画面が words.js を通っていること**（写しが無いだけでは、出していない場合と区別できない）
+  if (!(src["index.html"] ?? "").includes("KonjakuWords.groundGloss"))
+    fails.push("index.html が KonjakuWords.groundGloss を通っていない（説明が画面に出ていない）");
+
+  fails.length
+    ? bad(`区分名の補助説明が掟どおりでない（${fails.length} 件）: ${fails.slice(0, 6).join(" / ")}`)
+    : ok(`区分名の補助説明は ${Object.keys(G).length} 区分ぶん揃っている`
+       + `（landform.json の ${Object.keys(cls).length} 区分と一致／${LIMIT} 字以内／`
+       + `原典の丸写しなし／互いに違う／呼ぶ側に写しなし）`);
+}
+
 // 「いま画面に出ているもの」（台帳）は **public/prov.js の1か所**。
 // ⚠ ここが掟の一行目（取れなかった ≠ 無い）を、いちばん広い面で守っている。
 //   以前は peel3d.js の render() の中で組んでいたので、
