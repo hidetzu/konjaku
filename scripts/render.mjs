@@ -3220,9 +3220,12 @@ const CASES = [
         must(r.raw.length >= 1, "510 / 543 が画面から消えている（内訳が受け皿になっていない）");
         must(/河川・湖沼・海面/.test(r.breakdownTop),
           `内訳の 1 行目が区分名で始まっていない: ${r.breakdownTop}`);
-        // ⚠ **この Issue で触らないと決めたもの**（②）
-        must(/建物が消える年代は演出/.test(r.est) && /503 \/ 543/.test(r.est),
-          `3D の帯を触っている: ${r.est.slice(0, 80)}`);
+        // ⚠ **3D の帯は 1 行**（2026-08-21。hidetzu/konjaku#151。Owner 判断）。
+        //   ⚠ 前は「建物が消える年代は演出です」＋分数 2 つだった。
+        //   ⚠ **分数はパネルへ移した**（⚠ 消していない）。⚠ **言い方も「推定」へ統一。**
+        must(/建物が消える年代は推定/.test(r.est),
+          `3D の帯の断りが消えている: ${r.est.slice(0, 80)}`);
+        must(!/\d/.test(r.est), `3D の帯に数字が残っている: ${r.est.slice(0, 80)}`);
         return `1 位の組 ${r.pair.length} か所（${r.pair[0]}）／内訳の頭「${r.breakdownTop}」`
           + `／板の中身 ${r.panelH}px`;
       } finally { await ctx.close(); }
@@ -6675,7 +6678,9 @@ const CASES = [
       // 建物が立っている年代では、話をすること
       await set(0);
       const now = await read();
-      must(/件が推定/.test(now.est), `建物が立っているのに但し書きが無い: ${now.est}`);
+      // ⚠ **2026-08-21 に、⚠ 帯は 1 行になった**（hidetzu/konjaku#151。⚠ 分数はパネルへ）。
+      //   ⚠ **見ている主張は同じ**: ⚠ 建物が立っているあいだ、⚠ 断りが帯に出ていること。
+      must(/建物が消える年代は推定/.test(now.est), `建物が立っているのに但し書きが無い: ${now.est}`);
       must((await taps()) > 0, "建物が立っているのに押せない");
 
       // 明治期では、建物の話をしないこと
@@ -7013,9 +7018,16 @@ const CASES = [
       must(look.yearFs / look.fs <= 5.2,
         `年の見出しと但し書きの差が開きすぎ: ${look.yearFs}px 対 ${look.fs}px`);
       // ⚠ 「推定」の語だけでは足りない。**主張範囲の分母つき**で言うこと
-      must(/\d+ \/ \d+ 件が推定/.test(r.text), `高さの推定を分母つきで言っていない: ${r.text}`);
-      must(/年が分かるのは \d+ \/ \d+ 件/.test(r.text), `建設年を分母つきで言っていない: ${r.text}`);
-      const m = r.text.match(/(\d+) \/ (\d+) 件が推定/);
+      // ⚠ **2026-08-21 に、⚠ 帯から分数を外した**（hidetzu/konjaku#151。⚠ パネルへ移した）。
+      //   ⚠ **帯に残す主張は「推定である」こと**。⚠ 分母つきは画面のどこかに 1 回だけ
+      //     （⚠ それは別のケースが数える）。⚠ **ここは帯の役目だけを見る。**
+      must(/建物が消える年代は推定/.test(r.text), `帯の但し書きが消えている: ${r.text}`);
+      must(!/\d/.test(r.text), `帯に数字が残っている（分数はパネルへ移した）: ${r.text}`);
+      // ⚠ **分母つきは、⚠ 同じ画面のパネルから読めること**（⚠ 消していない証拠）
+      const provTx = (await page.locator("#prov").innerText()).replace(/\s+/g, " ");
+      must(/\d+ \/ \d+ 件が推定/.test(provTx), `高さの推定を分母つきで言っていない: ${provTx.slice(0, 120)}`);
+      must(/年が分かるのは \d+ \/ \d+ 件/.test(provTx), `建設年を分母つきで言っていない: ${provTx.slice(0, 120)}`);
+      const m = provTx.match(/(\d+) \/ (\d+) 件が推定/);
       must(+m[1] > 0 && +m[1] <= +m[2], `推定の件数がおかしい: ${m[0]}`);
       for (const w of ["再現", "当時の街並み", "この年に建った"])
         must(!r.text.includes(w), `断定・再現を名乗る語がある: 「${w}」`);
@@ -7043,6 +7055,58 @@ const CASES = [
     },
   },
   {
+    // ⚠ **3D の帯の補足は 1 行だけ**（2026-08-21。hidetzu/konjaku#151。Owner 判断）。
+    //   ⚠ 前は `#est` が 1 要素で**分数を 2 つ**持っていた
+    //     （⚠ 建てられた年 N / M ／ 高さ N / M）。
+    //   ⚠ 実測（2026-08-21・`main` = `484629c`・375×667・渋谷・SW 無効・hasTouch）:
+    //     ⚠ `#est` だけで **329×69px の 2 行**。⚠ HUD 全体で常時 **18 行 / 200 字・数字 8 個**、
+    //     ⚠ `#land` と合わせて **画面の 66%** を覆っていた。
+    //   ⚠ **分母つきの主張は消していない。**⚠ パネル（`prov.js` の建物 2 行）へ移した
+    //     （⚠ 掟 §1・§6。⚠ **消すのではなく、⚠ 読める場所を変えた**）。
+    //   ⚠ **「演出」→「推定」**（Owner 判断）。⚠ **半分だけ残さない。**
+    name: "3D の帯は 1 行で、数字はパネルで分母つきに読める", path: `/peel?${TOYOSU}`,
+    async check(page) {
+      const out = [];
+      for (const [w, h, t] of [[375, 667, true], [1280, 800, false]]) {
+        const ctx = await page.context().browser().newContext({
+          viewport: { width: w, height: h }, hasTouch: t, serviceWorkers: "block" });
+        try {
+          const p2 = await ctx.newPage();
+          await p2.goto(`${BASE}/peel?${TOYOSU}`, { waitUntil: "domcontentloaded", timeout: 45000 });
+          await peelReady(p2);
+          await p2.waitForFunction(
+            () => (document.getElementById("est")?.textContent ?? "").trim().length > 0,
+            null, { timeout: 60000 });
+          await settleAfterCondition(p2);
+          const r = await p2.evaluate(() => ({
+            est: (document.getElementById("est").innerText || "").replace(/\s+/g, " ").trim(),
+            hud: (document.getElementById("hud").innerText || "").replace(/\s+/g, " ").trim(),
+            all: (document.body.innerText || "").replace(/\s+/g, " ").trim(),
+            prov: (document.getElementById("prov")?.innerText ?? "").replace(/\s+/g, " ").trim(),
+          }));
+          // ⚠ AC1: 帯は 1 行。⚠ **数字を 1 つも含まない**
+          must(r.est === "建物が消える年代は推定です。",
+            `${w}px: 帯が 1 行になっていない: 「${r.est}」`);
+          must(!/[0-9]/.test(r.est), `${w}px: 帯に数字が残っている: 「${r.est}」`);
+          // ⚠ AC2: HUD に分数が 0 個
+          const hudFrac = (r.hud.match(/\d+ \/ \d+ 件/g) ?? []);
+          must(hudFrac.length === 0, `${w}px: HUD に分数が残っている: ${hudFrac.join(" / ")}`);
+          // ⚠ AC3: パネル側に、⚠ 建設年と高さが **それぞれ 1 回だけ** 分母つきで
+          const dated = (r.all.match(/建てられた年が分かるのは \d+ \/ \d+ 件/g) ?? []);
+          const hgt = (r.all.match(/\d+ \/ \d+ 件が推定/g) ?? []);
+          must(dated.length === 1, `${w}px: 建設年の分母つきが ${dated.length} 回`);
+          must(hgt.length === 1, `${w}px: 高さの分母つきが ${hgt.length} 回`);
+          must(/建てられた年が分かるのは/.test(r.prov), `${w}px: 建設年がパネルに無い`);
+          must(/件が推定/.test(r.prov), `${w}px: 高さがパネルに無い`);
+          // ⚠ AC4: 画面のどこにも「演出」が無い
+          must(!/演出/.test(r.all), `${w}px: 「演出」が残っている（言い換えが半分だけ）`);
+          out.push(`${w}px 帯「${r.est}」／HUD の分数 0／パネル ${dated[0]}・${hgt[0]}`);
+        } finally { await ctx.close(); }
+      }
+      return out.join(" ／ ");
+    },
+  },
+  {
     // ⚠ 建設年が分かる建物と、こちらが決めた建物を、同じ顔で出さない。
     //   exact は「建設年が分かっている」印だが、**集計にしか使われておらず
     //   描画に一度も効いていなかった**。豊洲では 8 件と 525 件が
@@ -7053,17 +7117,21 @@ const CASES = [
         null, { timeout: 60000 });
       await settleAfterCondition(page);
       const t = (await page.evaluate(() => document.body.innerText)).replace(/\s+/g, " ");
-      must(/建物が消える年代は演出/.test(t), "「消える年代は演出」の断りが消えている");
+      // ⚠ **2026-08-21 に「演出」→「推定」へ統一**（hidetzu/konjaku#151。Owner 判断）
+      must(/建物が消える年代は推定/.test(t), "「消える年代は推定」の断りが消えている");
+      must(!/演出/.test(t), `画面に「演出」が残っている（言い換えが半分だけ）: ${t.slice(0, 120)}`);
       // ⚠ 言い方も1つにする。#est が「建てられた年」、#prov が「建設年」と、
       //   同じことを別の語で2回言っていた（数字が3か所にあったのと同じ話）。
       must(/建てられた年が分かるのは \d+ \/ \d+ 件/.test(t), `分母つきで言っていない: ${t.slice(0, 120)}`);
       // ⚠ この断りは、**パネルを開かなくても読める場所**に無いと意味がない。
-      //   実測（2026-08-15）: 「演出」は #prov にしか無く、スマホでは
+      //   実測（2026-08-15）: 断りは #prov にしか無く、スマホでは
       //   ☰ を押して 254px スクロールしないと届かなかった。
       //   #est は建物が見えているあいだ 0 アクションで読める。
+      // ⚠ **2026-08-21 に、⚠ 帯は 1 行に減った**（分数はパネルへ）。⚠ 断り自体は帯に残る。
       const est = (await page.locator("#est").innerText()).replace(/\s+/g, " ");
-      must(/建物が消える年代は演出/.test(est),
-        `常時見える場所に「演出」が無い: ${est.slice(0, 90)}`);
+      must(/建物が消える年代は推定/.test(est),
+        `常時見える場所に断りが無い: ${est.slice(0, 90)}`);
+      must(!/\d/.test(est), `帯に数字が残っている（分数はパネルへ移した）: ${est.slice(0, 90)}`);
       // ⚠ 同じ数字を2か所に置かない（掟: 同じ問いに答える実装を2つ持たない）。
       //   実測（2026-08-15）: 8 / 533 が #est・#prov・内訳 の 3 か所にあった（当時の分母）。
       const dated = (t.match(/建てられた年が分かるのは (\d+) \/ (\d+) 件/) ?? [])[0];
@@ -7793,9 +7861,10 @@ const CASES = [
       //     ⚠ **同じ母数を逆から 2 通りに言っていた**（40 ＋ 503 = 543）。
       //     ⚠ 利用者役 4 名のうち 2 名が突き合わせられず、⚠ 1 名は「別のことだと思った」。
       //   ⚠ **母数つきの主張は #est の 1 か所。**⚠ 台帳は内訳（⚠ 同じ数字を持たない）。
-      const est = (await page.locator("#est").textContent() ?? "").replace(/\s+/g, " ");
-      const m = est.match(/(\d+) \/ (\d+) 件が推定/);
-      must(m, `推定の件数が分母つきで出ていない: ${est.slice(0, 120)}`);
+      // ⚠ **2026-08-21 に、⚠ 分母つきは帯からパネルへ移った**（hidetzu/konjaku#151）。
+      //   ⚠ **見ている主張は同じ**: ⚠ 推定を主語に、⚠ 主張範囲の分母つきで、⚠ 1 か所だけ。
+      const m = prov.replace(/\s+/g, " ").match(/(\d+) \/ (\d+) 件が推定/);
+      must(m, `推定の件数が分母つきで出ていない: ${prov.replace(/\s+/g, " ").slice(0, 120)}`);
       must(Number(m[2]) === total,
         `高さの分母が主張範囲と違う: ${m[2]} / 判定した件数 ${total}`);
       must(Number(m[1]) > Number(m[2]) * 0.5,
