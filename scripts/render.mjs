@@ -2182,9 +2182,13 @@ const CASES = [
       // 本番で 504／無応答が常態のものを、作品の成立条件に置かない（掟: 取れなかったを「無い」と言わない）
       const op = reqs.filter((u) => u.includes("overpass"));
       must(!op.length, `事前計算データがあるのに Overpass を叩いている: ${op[0]}`);
+      // ⚠ **水面の面数は「表示データについて」へ移った**（2026-08-22。hidetzu/konjaku#153）。
+      //   ⚠ **主張は変えていない**（⚠ 水域ポリゴンが実際に起こされたこと）。⚠ 読む場所だけ変えた。
+      // ⚠ **判定の結果（#status）と、由来（#prov）は別の節**になった。⚠ **両方を読む。**
       const status = (await page.locator("#status").textContent()).trim();
-      const water = Number(status.match(/水域\s*(\d+)\s*面/)?.[1] ?? 0);
-      must(water > 0, `水域ポリゴンが生成されていない（${status.slice(0, 60)}）`);
+      const provTxt = (await page.locator("#prov").textContent()).trim();
+      const water = Number(provTxt.match(/(\d+)\s*面を起こしたもの/)?.[1] ?? 0);
+      must(water > 0, `水域ポリゴンが生成されていない（${provTxt.slice(0, 80)}）`);
       const bld = Number(status.match(/建物\s*(\d+)\s*件/)?.[1] ?? 0);
       must(bld > 0, `建物が出ていない（${status.slice(0, 80)}）`);
       must(/事前に取り込んだデータ|事前計算データ/.test(status),
@@ -6230,7 +6234,9 @@ const CASES = [
       const pct = Number((t.match(/(\d+\.\d)\s*%/) ?? [])[1]);
       must(pct >= 95, `集計範囲が広がっている（豊洲で ${pct}%。隣の街区が混ざっている）`);
       // いつ取り込んだ結果かを言うこと
-      must(/建物を取り込んだのは \d{4}-\d{2}-\d{2}/.test(t),
+      // ⚠ **場所が「表示データについて」へ移った**（2026-08-22。hidetzu/konjaku#153）。
+      //   ⚠ **主張は変えていない**（⚠ いつ取り込んだ結果かが画面にあること）。
+      must(/建物のデータは \d{4}-\d{2}-\d{2} に取り込んだもの/.test(t),
         `いつ取り込んだ結果か書かれていない: ${t.slice(0, 200)}`);
       must(/事前に取り込んだデータ/.test(t), "取り込み済みだと書かれていない");
       return `Overpass 0 件／${pct}%／取り込み日あり`;
@@ -8067,7 +8073,9 @@ const CASES = [
       // 詰めた形を読めていること。戻せていなければ建物は1つも建たない
       const n = Number((t.match(/([\d,]+)\s*件を判定しました/) ?? [])[1]?.replace(/,/g, ""));
       must(n > 0, `建物が1件も建っていない（詰めた形を戻せていない）: ${t.slice(0, 200)}`);
-      must(/建物を取り込んだのは \d{4}-\d{2}-\d{2}/.test(t),
+      // ⚠ **場所が「表示データについて」へ移った**（2026-08-22。hidetzu/konjaku#153）。
+      //   ⚠ **主張は変えていない**（⚠ いつ取り込んだ結果かが画面にあること）。
+      must(/建物のデータは \d{4}-\d{2}-\d{2} に取り込んだもの/.test(t),
         `いつ取り込んだ結果か書かれていない: ${t.slice(0, 200)}`);
       return `Overpass 0 件／タイル ${tiles.length} 枚／${n.toLocaleString()} 件を判定`;
     },
