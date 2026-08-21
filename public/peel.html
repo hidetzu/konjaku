@@ -505,7 +505,25 @@
        PC      y=737・18px・11px            → 最下端の細い行
      しかも「←今昔」はロゴに見えて、戻る操作に読めない。
      ⚠ var(--tap)（ピンと同じ理由）。地図の ＋−/コンパスも var(--tap) にそろえてある。 */
-  #chrome{position:absolute;top:14px;left:14px;z-index:13;display:flex;gap:8px}
+  /* ⚠ **上の積み上げ**（2026-08-22）。押せる行（← ☰ ✕）と、⚠ **押せない補足**（#notice）を
+       ⚠ **同じ縦の流れ**に入れる。⚠ **固定値（top:96px など）で避けない**
+       （CLAUDE.md §9。実測: 別々に置いた #hud が #land に 92px 食い込んだ）。
+     ⚠ **右端も持つ。**持たないと、補足の幅が中身しだいで画面外へ伸びる。 */
+  #chrome{position:absolute;top:14px;left:14px;right:14px;z-index:13;
+    display:flex;flex-direction:column;align-items:flex-start;gap:9px;
+    /* ⚠ **箱そのものは押せない。**押せるのは中のボタンだけ（地図のドラッグを食わない） */
+    pointer-events:none}
+  .chrome-row{display:flex;gap:8px;pointer-events:auto}
+  /* ⚠ **補足の層。**⚠ 敷きは自前で持つ（航空写真の上で字が沈まないように）。
+     ⚠ 検査は敷きを**祖先まで辿って**見る（render.mjs）。⚠ 敷きを外すと落ちる。
+     ⚠ **押せない。**⚠ **幅は HUD と同じ上限に合わせる**（同じものが 2 つの幅で並ばない）。 */
+  #notice{max-width:min(580px,100%);pointer-events:none;
+    padding:8px 10px;border-radius:11px;
+    background:color-mix(in srgb, var(--bg) 82%, transparent);
+    border:1px solid var(--line);backdrop-filter:blur(14px);
+    box-shadow:0 10px 30px rgba(0,0,0,.34)}
+  /* ⚠ 中身が 1 つも無いときは、⚠ **箱ごと消す**（空の枠を置かない） */
+  #notice:not(:has(> :not(:empty))){display:none}
   #chrome a,#chrome button{height:var(--tap);padding:0 12px;border-radius:9px;
     border:1px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer;
     backdrop-filter:blur(16px);font:inherit;font-size:var(--fs-note);text-decoration:none;
@@ -702,9 +720,14 @@
     #panel:not(.hide) ~ #chrome #toggle{display:none}
     #panel:not(.hide) ~ #chrome{
       top:0;left:0;right:0;padding:10px 12px;
-      justify-content:space-between;align-items:center;
+      align-items:stretch;gap:0;
       background:color-mix(in srgb, var(--bg) 92%, transparent);
       backdrop-filter:blur(18px);border-bottom:1px solid var(--line)}
+    /* ⚠ 帯になったときは、押せる行が幅いっぱいに広がって両端へ寄る */
+    #panel:not(.hide) ~ #chrome .chrome-row{width:100%;justify-content:space-between;align-items:center}
+    /* ⚠ **全画面で根拠を読んでいるあいだ、補足は出さない。**
+         ⚠ 地図が見えていないので、地図の上の断りは意味を持たない（#hud も同じ扱い）。 */
+    #panel:not(.hide) ~ #chrome #notice{display:none}
     /* ⚠ 帯のぶん、中身の頭を空ける。空けないと 1 行目が下敷きになる。 */
     #panel:not(.hide){padding-top:76px}
 
@@ -728,12 +751,24 @@
     #panel.hide{transform:translateX(-14px)}
     /* ⚠ **PC では、板を開いていても HUD を出す。**⚠ 狭い幅は 3D を隠さないために消している */
     #panel:not(.hide) ~ #hud{display:flex}
-    #chrome{position:absolute;top:14px;left:14px;right:auto;z-index:13;
-      display:flex;gap:8px;padding:0;background:none;border-bottom:0;backdrop-filter:none;
-      justify-content:flex-start;align-items:stretch}
-    #panel:not(.hide) ~ #chrome{position:absolute;top:14px;left:14px;right:auto;
+    /* ⚠ **補足も同じ。**⚠ 狭い幅は全画面で根拠を読むので消すが、⚠ **PC は地図が見えている。**
+       ⚠ 実測（2026-08-22・1280×800・豊洲）: これを書かずに出したら、⚠ **補足が 0×0 になった**
+         （狭い幅の規則が既定なので、PC でも効いていた）。
+       ⚠ **推定の高さで建物が立った絵を、断りなしに見せることになる**（掟 §1）。 */
+    #panel:not(.hide) ~ #chrome #notice{display:block}
+    /* ⚠ **PC でも縦の積み上げのまま**（押せる行 → 補足）。
+         ⚠ 横並びに戻すと、⚠ **補足がボタンの隣に並んで帯が伸びる。** */
+    #chrome{position:absolute;top:14px;left:14px;right:14px;z-index:13;
+      display:flex;flex-direction:column;align-items:flex-start;gap:9px;
+      padding:0;background:none;border-bottom:0;backdrop-filter:none}
+    #panel:not(.hide) ~ #chrome{position:absolute;top:14px;right:14px;
       padding:0;background:none;border-bottom:0;backdrop-filter:none;
-      justify-content:flex-start;align-items:stretch}
+      flex-direction:column;align-items:flex-start}
+    /* ⚠ **PC では板が左に居るので、その右へ寄せる**（板と重ねない）。
+         ⚠ 実測（2026-08-22・1280×800）: 板は左端から 300px。 */
+    #panel:not(.hide) ~ #chrome{left:320px}
+    #chrome .chrome-row,#panel:not(.hide) ~ #chrome .chrome-row{
+      justify-content:flex-start;align-items:stretch;width:auto}
     /* ⚠ **PC では ☰ を出す。**⚠ 狭い幅は、⚠ **板を開いているあいだ ☰ を隠している**
        （全画面で読むので、開く導線が要らない）。⚠ 広い画面では板と地図が並ぶので出す。
        ⚠ 実測（2026-08-21）: これを書き忘れて、⚠ **#chrome が 269 → 123px になった。** */
@@ -907,6 +942,7 @@
 </div>
 
 <div id="chrome">
+  <div class="chrome-row">
   <!-- ⚠ href は loadArea が場所つきに書き換える（./?q=…&ll=…）。
        ここを "./" のままにすると、戻ったときに調べていた場所が消える -->
   <!-- ⚠ **「← 」と「✕」の行き先を、押す前に分かるようにする**（2026-08-18）。
@@ -923,6 +959,23 @@
        ⚠ 直し方は「位置を固定値で足す」ではなく、**同じ積み上げに入れる**
          （CLAUDE.md §9「隣り合うものは同じ積み上げに入れる。固定値で避けない」）。 -->
   <button id="closePanel" title="根拠を閉じて地図へもどる">✕<span>地図へ</span></button>
+  </div>
+  <!-- ⚠ **補足の層**（2026-08-22。Owner 判断: HUD は年代と年代操作だけ）。
+       ⚠ **地図の上に浮かせない。**⚠ 押せる帯と**同じ積み上げ**に入れて、上から縦に並べる
+         （CLAUDE.md §9「隣り合うものは同じ積み上げに入れる。⚠ **固定値で避けない**」。
+          実測: 別々に置いた #hud が #land に 92px 食い込んだことがある）。
+       ⚠ **畳めるようにしない。**⚠ #est が消えると、⚠ **推定の高さで建物が立った絵を
+         断りなしに見せる**（掟 §1）。⚠ 畳んだ中身は innerText に出ない＝検査からも消える。
+       ⚠ **押せる的にしない**（pointer-events:none）。地図のドラッグを食わない。 -->
+  <div id="notice">
+    <!-- ⚠ 過去の年代では、**年と同じ強さで**「重ねている」と言う。
+         実測（2026-08-14 利用者役のエージェントによる検証）: 広島 1945–50（原爆直後の焼け野原）の上に
+         現在の3,555棟が立ち、広島の利用者は最初の3秒「1945年の広島」だと読んだ。
+         判別できた人の根拠は画面ではなく**自分の歴史知識**だった。 -->
+    <div id="over"></div>
+    <!-- ⚠ 空のまま置かない。建物が立っていないときは何も書かない（無いものを説明しない） -->
+    <div id="est"></div><div id="tip"></div>
+  </div>
 </div>
 <!-- ⚠ この画面の中心の答え（建物の何%が明治期には水の上だったか）と、その分母。
      **情報パネルを開かなくても読める場所**に置く。スマホはパネルが閉じて始まるので、
@@ -958,16 +1011,11 @@
         <span id="eraToggleText" class="sr">閉じる</span><span class="chevron" aria-hidden="true">⌄</span></button>
     </div>
     <div id="eraDetails">
-    <!-- ⚠ 過去の年代では、**年と同じ強さで**「重ねている」と言う。
-         実測（2026-08-14 利用者役のエージェントによる検証）: 広島 1945–50（原爆直後の焼け野原）の上に
-         現在の3,555棟が立ち、広島の利用者は最初の3秒「1945年の広島」だと読んだ。
-         判別できた人の根拠は画面ではなく**自分の歴史知識**だった。
-         「建物はいまの形です」は 12px で、年は 60px。比は5倍。しかもその一文は
-         直後に「高さは…件が推定」と続くので、**データ品質の但し書きとして読まれる**。
-         → 年のすぐ下に、独立した文として置く。 -->
-    <div id="over"></div>
-    <!-- ⚠ 空のまま置かない。建物が立っていないときは何も書かない（無いものを説明しない） -->
-    <div id="est"></div><div id="tip"></div></div></div>
+    <!-- ⚠ **補足（#over / #est / #tip）はここから出した**（2026-08-22。Owner 判断）。
+         ⚠ **HUD が扱うのは「いまの年代」と「年代操作」だけ。**
+         ⚠ 「HUD」という名前のままだと、⚠ **また注意書き・建物情報・エラーが入ってくる。**
+         ⚠ 行き先は上の #notice（⚠ **土地の答えが抜けた跡**）。⚠ **消したのではない。** -->
+    </div></div>
   <section id="timePanel" aria-labelledby="timePanelTitle">
     <div class="time-panel-head">
       <div class="time-panel-name"><span id="timePanelTitle">年代を動かす</span>
