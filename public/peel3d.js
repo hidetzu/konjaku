@@ -997,8 +997,16 @@ function layersOf(area, lf){
   const layers=[], missing=[];
   // ---- 第1層: ここは、どういう土地？ ⚠ **常に見る**（全国 24 地点で 24/24）----
   if(lf && lf.ok)
+    // ⚠ **詳細版が無くて広い区分に落ちたら、⚠ それを言う**（2026-08-22。hidetzu/konjaku#128。Owner 判断: 案 B・第1層の直下）。
+    //   ⚠ **黙ると、⚠ 広い区分の答えが「この土地の分類」として読まれる**（掟: 推定を実測のように見せない）。
+    //   ⚠ **字は作らない。**⚠ `verify.js` の `landform()` が返す `note` をそのまま置く
+    //     （⚠ トップと共有カードも同じ `note` を出している。⚠ **写しを作ると 3 か所で食い違う**）。
+    //   ⚠ **`fine` が false のときだけ `note` が入る。**⚠ こちらで条件を作り直さない。
     layers.push({ n:1, title:WORD.layerTitle(1), head:{kind:"name", v:lf.value},
-      subs: lf.artificial ? [{kind:"art", v:lf.artificial}] : [] });
+      subs: [
+        ...(lf.artificial ? [{kind:"art", v:lf.artificial}] : []),
+        ...(lf.fine === false && lf.note ? [{kind:"coarse", v:lf.note}] : []),
+      ] });
   else if(lf && lf.state==="unreachable") missing.push({ n:1, why:"unread" });
   if(!area) return { layers, missing };
 
@@ -1104,7 +1112,10 @@ function paintLayer(L){
   const subs=(L.subs??[]).map((sb)=>
       sb.kind==="art"   ? `<div class="land-sub">${WORD.ground1Art(esc(sb.v))}</div>`
     : sb.kind==="top"   ? `<div class="land-sub">この範囲で最も多い区分: <b>${esc(sb.v.name)}</b>（${sb.v.pct}%）</div>`
-    : sb.kind==="wet"   ? `<div class="land-sub">水域だった建物: ${sb.v}%</div>` : "").join("");
+    : sb.kind==="wet"   ? `<div class="land-sub">水域だった建物: ${sb.v}%</div>`
+    // ⚠ **粗さ**（2026-08-22。hidetzu/konjaku#128）。⚠ **⚠ の記号は使わない**
+    //   （この画面では ⚠ を災害リスクに使っている。⚠ 精度の話に同じ印を出すと「危ない土地」に読まれる）。
+    : sb.kind==="coarse" ? `<div class="land-sub land-coarse">${esc(sb.v)}</div>` : "").join("");
   return `<div class="land-layer"><div class="land-q">${L.title}</div>`
     + `<div class="land-line">${head}${what}</div>${den}${subs}</div>`;
 }
