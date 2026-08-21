@@ -139,9 +139,13 @@ const win = {};
 new Function("window", "module", src)(win, undefined);
 const { places, createSearch } = win.KonjakuPlaces;
 
-let failed = 0;
+let failed = 0, unverified = 0;
 const ok   = (m) => console.log(`  \x1b[32m✓\x1b[0m ${m}`);
 const bad  = (m) => { failed++; console.log(`  \x1b[31m✗\x1b[0m ${m}`); };
+// ⚠ **相手が返さなかったことを、こちらの不具合として落とさない**（CLAUDE.md §9）。
+//   ⚠ 「並びが悪い」と「その場所を返してこなかった」は別のこと。
+//   ⚠ **黙って通さない。**保留として数え、最後に必ず件数を出す。
+const skip = (m) => { unverified++; console.log(`  \x1b[33m?\x1b[0m ${m}`); };
 const head = (m) => console.log(`\n\x1b[1m${m}\x1b[0m`);
 
 async function fetchWord(w) {
@@ -157,12 +161,27 @@ async function fetchWord(w) {
 
 head(`検索の並び（${WORDS.length}語${OFFLINE ? " / キャッシュ" : ""}）`);
 const rows = [];
+// ⚠ 応答そのものが取れなかった語。⚠ **相手の側の話**なので、rows とは別に持つ
+const unfetched = [];
+// ⚠ 応答は返ったが 0 件だった語。⚠ **これも相手の側**（こちらは並べ替える材料が無い）
+const empty = [];
 for (const [w, expect, opt] of WORDS) {
   let list;
   try { list = await fetchWord(w); }
   catch (e) {
-    // 取れなかったことを「並びが悪い」と言い換えない（掟: 取れなかったを「無い」と言わない）。検査は保留にして落とす
-    bad(`${w}: 応答を取得できませんでした（${e.message}）。判定を保留します`);
+    // 取れなかったことを「並びが悪い」と言い換えない（掟: 取れなかったを「無い」と言わない）。
+    // ⚠ **落とさない。**⚠ こちらの並べ替えは、この語について何も主張していない。
+    unfetched.push({ w, why: e.message });
+    skip(`${w}: 応答を取得できませんでした（${e.message}）。⚠ 判定できません`);
+    if (!OFFLINE) await new Promise((s) => setTimeout(s, GAP_MS));
+    continue;
+  }
+  // ⚠ **0 件の応答で落ちない。**⚠ 実測（2026-08-21）: ここを素通りさせると
+  //   `shown.all[0].area` で TypeError になり、⚠ **保留にする前に検査ごと死ぬ**。
+  //   ⚠ 相手が何も返さなかったことを、⚠ こちらの異常終了として見せない。
+  if (!Array.isArray(list) || !list.length) {
+    empty.push(w);
+    skip(`${w}: 応答が 0 件でした。⚠ 判定できません`);
     if (!OFFLINE) await new Promise((s) => setTimeout(s, GAP_MS));
     continue;
   }
@@ -178,8 +197,15 @@ for (const [w, expect, opt] of WORDS) {
   if (!OFFLINE) await new Promise((s) => setTimeout(s, GAP_MS));
 }
 
-if (rows.length !== WORDS.length) {
-  console.log(`\n\x1b[31m${WORDS.length - rows.length} 語ぶん測れませんでした\x1b[0m`);
+// ⚠ **1 語も測れていないときだけ落とす。**
+//   ⚠ 「何語か測れなかった」で落とすのは、⚠ **相手がいま何を返すかを主張している**のと同じ
+//   （CLAUDE.md §9）。⚠ ただし **0 件で緑にはしない**（1 語も確かめていない）。
+if (!rows.length) {
+  bad(`${WORDS.length} 語とも判定できませんでした`
+    + `（取得できず ${unfetched.length} 語 ／ 応答が 0 件 ${empty.length} 語）`
+    + `。⚠ 1 語も確かめていないので緑にしない`);
+  console.log(`\n${"─".repeat(52)}`);
+  console.log(`\x1b[31m${failed} 件の問題\x1b[0m`);
   process.exit(1);
 }
 
@@ -189,8 +215,12 @@ for (const r of rows)
     + ` ${r.pick >= 0 ? "選ぶ" : "    "} ${r.w.padEnd(7)} ${r.top}`);
 
 const hit = (list, i) => list.filter(([w]) => rows.find((r) => r.w === w)?.at === i).length;
-const total = (k) => k === "city" ? CITY_WORDS.length
-  : k === "landfill" ? LANDFILL_WORDS.length : WORDS.length;
+// ⚠ **分母は「主張できる語」だけ**（CLAUDE.md §6: 主張範囲の分母で書く）。
+//   ⚠ `at < 0` は「応答のどこにも期待地が入っていなかった」＝ ⚠ **相手が返さなかった**。
+//   ⚠ `places()` の `all` は畳みも打ち切りもしない全件なので、⚠ **こちらが落としたのではない。**
+const GROUP = { city: CITY_WORDS, landfill: LANDFILL_WORDS };
+const wordsOf = (k) => GROUP[k] ?? WORDS;
+const seenIn = (k) => wordsOf(k).filter(([w]) => (rows.find((r) => r.w === w)?.at ?? -1) >= 0).length;
 const got = {
   first: rows.filter((r) => r.at === 0).length,
   top3: rows.filter((r) => r.at >= 0 && r.at < 3).length,
@@ -199,15 +229,27 @@ const got = {
 };
 
 head("指標");
+// ⚠ **こちらの正しさだけを主張する。**
+//   ⚠ 届かなかったときに、⚠ **欠けた語が全部当たっていたとしても届かない**なら、
+//     それは並べ替えの問題＝ ⚠ **こちらの不具合**なので落とす。
+//   ⚠ 欠けた語しだいで届きうるなら、⚠ **判定できない**（相手の返事に依存する）。
 for (const [k, v] of Object.entries(LINE)) {
-  const n = got[k];
-  const m = `${v.label}: ${n}/${total(k)}（合格 ${v.min} 以上・修正前 ${v.base}）`;
-  n >= v.min ? ok(m) : bad(m);
+  const n = got[k], d = seenIn(k), miss = wordsOf(k).length - d;
+  const m = `${v.label}: ${n}/${d}（合格 ${v.min} 以上・修正前 ${v.base}）`;
+  if (n >= v.min) ok(m + (miss ? `。⚠ 応答に無かった ${miss} 語は分母から外した` : ""));
+  else if (n + miss >= v.min)
+    skip(`${m}。⚠ 応答に無かった ${miss} 語しだいで届きうるので、⚠ **判定できません**`);
+  else
+    bad(`${m}。⚠ 応答に無かった ${miss} 語が全部 1 位でも届かない＝並べ替えの問題`);
 }
 {
-  const out = rows.filter((r) => r.at < 0 || r.at >= 10);
+  // ⚠ **応答に入っているのに 10 件目までに出せない**のは、⚠ こちらの並べ替えの責任。
+  //   ⚠ 応答に入っていない語（`at < 0`）は、⚠ **ここでは数えない。**
+  const out = rows.filter((r) => r.at >= 10);
+  const miss = rows.filter((r) => r.at < 0);
   out.length ? bad(`上位10件に出ない語: ${out.map((r) => r.w).join("、")}（合格 0・修正前 5）`)
-             : ok("上位10件に出ない語: 0（合格 0・修正前 5）");
+             : ok("上位10件に出ない語: 0（合格 0・修正前 5）"
+                 + (miss.length ? `。⚠ 応答に無かった ${miss.length} 語は数えていない` : ""));
 }
 {
   // ⚠ 1検索1リクエストを守る。これは**地理院への負荷の約束**で、緩めてはいけない。
@@ -299,14 +341,45 @@ head("自動選択");
     : ok("選んだ区域はすべて、語を含む駅の数で他の区域に負けていない");
 
   // 利用者役のエージェントによる検証で3回とも別の土地に着いた3語。Enter だけで着けることを名指しで守る
+  // ⚠ **応答に入っていない語では、Enter で着けるかを主張できない。**
+  //   ⚠ ただし 3 語とも判定できないなら、⚠ **この節は何も見ていない**ので、そう言う。
+  let named = 0;
   for (const w of ["渋谷", "新宿", "川崎"]) {
     const r = rows.find((x) => x.w === w);
+    if (!r || r.at < 0) { skip(`${w}: 応答に期待した場所が入っていない。⚠ 判定できません`); continue; }
+    named++;
     r.pick >= 0 && r.expect.test(r.top)
       ? ok(`${w}: Enter だけで ${r.top}`)
       : bad(`${w}: Enter だけでは着かない（選択=${r.pick >= 0 ? r.top : "なし"}）`);
   }
+  if (!named) bad("名指しの 3 語（渋谷・新宿・川崎）を 1 語も確かめていない");
+}
+
+// ---- ⚠ 判定できなかったぶんを、必ず出す ----
+// ⚠ **黙って減らさない。**⚠ 保留が増えていることに気づけないと、
+//   ⚠ **「落ちない検査」になったのに緑で通る**（掟: 検査が測っていないことを確認済みと言わない）。
+head("判定できなかったぶん");
+{
+  const miss = rows.filter((r) => r.at < 0);
+  const all = unfetched.length + empty.length + miss.length;
+  if (unfetched.length)
+    console.log(`  応答を取得できなかった: ${unfetched.length} 語（${unfetched.map((u) => u.w).join("、")}）`);
+  if (empty.length)
+    console.log(`  応答が 0 件だった: ${empty.length} 語（${empty.join("、")}）`);
+  if (miss.length)
+    console.log(`  応答に期待した場所が入っていなかった: ${miss.length} 語（${miss.map((r) => r.w).join("、")}）`);
+  if (!all) console.log(`  0 語（${WORDS.length} 語すべて判定できた）`);
+  // ⚠ **全語が判定できないなら落とす。**⚠ 1 語も確かめていないのに緑にしない
+  //   （既存の「0 件で緑にしない」と同じ考え）。
+  if (all >= WORDS.length)
+    bad(`${WORDS.length} 語すべてを判定できていない（⚠ 1 語も確かめていないので緑にしない）`);
 }
 
 console.log(`\n${"─".repeat(52)}`);
-if (failed) { console.log(`\x1b[31m${failed} 件の問題\x1b[0m`); process.exit(1); }
-console.log("\x1b[32m問題なし\x1b[0m");
+if (failed) {
+  console.log(`\x1b[31m${failed} 件の問題\x1b[0m`
+    + (unverified ? `\x1b[33m ／ 判定できなかった主張 ${unverified} 件\x1b[0m` : ""));
+  process.exit(1);
+}
+console.log("\x1b[32m問題なし\x1b[0m"
+  + (unverified ? `\x1b[33m（⚠ ただし判定できなかった主張が ${unverified} 件ある）\x1b[0m` : ""));
