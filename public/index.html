@@ -3096,6 +3096,11 @@ function peelLens(p){
   // ⚠ **字は TOPWORD.peelLead の 1 か所**（hidetzu/konjaku#138）。
   return {ic:"🌊",label:"この場所を深掘り",
     sub:TOPWORD.peelLead(KonjakuGround.hasSync(p.lon,p.lat)),
+    // ⚠ **打った語がこれに当たったら、⚠ Google マップの行を出さない**（下の buildActions）。
+    //   ⚠ **一覧に深掘りの行はもう無い**（2026-08-21 に判定カードへ移した）が、
+    //     ⚠ **語は残す。**⚠ 消したら「昔」「3d」に対して
+    //     ⚠ **「『昔』を周辺で探す」という無意味な行**が出た（⚠ 実測。⚠ 同日に踏んだ）。
+    kw:["3d","さかのぼる","剥がす","埋立","水","動画","戻す","地盤","昔","むかし","歴史","明治","過去","立体","深掘り"],
     href:`./peel?q=${enc}&ll=${ll}${eraParam()}`};
 }
 
@@ -3147,7 +3152,15 @@ function buildActions(text,p){
   //   当たらないが自前レンズ・次に調べる語に当たれば → そちらを優先
   //     （「昔」「揺れ」を Google マップに投げても店は出てこない。無意味なので出さない）
   //   どれにも当たらなければ → 素直にその語で周辺検索
-  if(t && (pre || (!own.length && !sug.length))){
+  // ⚠ **深掘りの語に当たったら、⚠ 周辺検索は出さない**（2026-08-21 に直した）。
+  //   ⚠ 深掘りが一覧から判定カードへ移ったとき、⚠ **この判定から抜け落ちた。**
+  //   ⚠ 実測（豊洲・375×667）: 「3d」「昔」「立体」「深掘り」の 4 語すべてで
+  //     ⚠ **「『3d』を周辺で探す」という、⚠ 押しても店が出てこない行**が出ていた。
+  //   ⚠ **導線は増やさない。**⚠ CTA は一覧より上にあり、⚠ 打っているあいだも画面に見えている
+  //     （⚠ 実測: 4 語とも `#peelCta` が画面内）。
+  const pk=peelLens(p).kw;
+  const peelHit=!!t&&(pk.some((k)=>k.includes(t)||t.includes(k))||"この場所を深掘り".includes(t));
+  if(t && (pre || (!own.length && !sug.length && !peelHit))){
     out.push({ic:pre?pre.ic:"🔍",label:`「${text.trim()}」を周辺で探す`,
       sub:pre?`Google マップで「${pre.q}」を検索`:"Google マップで検索",tag:"ext",
       href:gmap(pre?pre.q:text.trim(),p.lat,p.lon)});
