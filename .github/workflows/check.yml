@@ -145,8 +145,59 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
+          # ⚠ 下の「画面に届きうるか」が、比べる相手（base）を要る
+          fetch-depth: 0
           persist-credentials: false
+
+      # ⚠ **この変更が画面に届きうるときだけ、実描画を回す。**
+      #   実測（2026-08-18・成功した 11 回）: 実描画は 5分54秒 〜 6分46秒。
+      #   ⚠ さらにブラウザの用意が上限に張り付く試行が約 40% あり、取り直しを 3 回にしても
+      #     6.4% は落ちる。⚠ **画面に届かない変更で、この待ちと揺れを引き受けない。**
+      #
+      # ⚠ **`paths-ignore` を使わない。** あれは Workflow ごと走らせないので、
+      #   ⚠ **必須チェックにしていると、報告が来ないまま永久に待ちになる。**
+      #   ここはジョブを起こしたうえで中で決めるので、**「実描画」は必ず結果を返す**。
+      #
+      # ⚠ **除くのは `.claude/` だけ。**理由は、そこだけが**どちらの走者も読まない**から。
+      #     `docs/` … ⚠ render.mjs が `docs/SPEC.md` の件数と突き合わせている
+      #     `.github/` … ⚠ この Workflow 自身を変えたときは、走らせて確かめたい
+      #     `README` ほか … 静的検査が読む（そちらは**いつも回る**ので、ここでは考えない）
+      #   ⚠ `.claude/` の中身（Skill・Hook・settings）も、⚠ **静的検査は全追跡ファイルを
+      #     走査している**（Issue 番号・Slack の秘密）。⚠ **見張りが外れるわけではない。**
+      #
+      # ⚠ **既定は「回す」。**差分が取れなかったときも回す（取れなかった ≠ 変更が無い）。
+      #   ⚠ 定期実行・手動実行には比べる相手が無いので、必ず回る。
+      - name: この変更が画面に届きうるか
+        id: scope
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.ref }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          set -u
+          files=""
+          if [ "$EVENT" = "pull_request" ]; then
+            files=$(git diff --name-only "origin/$BASE...HEAD" 2>/dev/null || true)
+          elif [ "$EVENT" = "push" ]; then
+            files=$(git diff --name-only "$BEFORE" HEAD 2>/dev/null || true)
+          fi
+          if [ -z "$files" ]; then
+            echo "run=yes" >> "$GITHUB_OUTPUT"
+            echo "⚠ 変更の一覧を取れなかった（または比べる相手が無い）。回す"
+            exit 0
+          fi
+          echo "変更 $(echo "$files" | wc -l | tr -d ' ') ファイル:"
+          echo "$files" | sed 's/^/  /'
+          if echo "$files" | grep -qv '^\.claude/'; then
+            echo "run=yes" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=no" >> "$GITHUB_OUTPUT"
+            echo "⚠ この実行では実描画を回していない（変更が .claude/ の中だけ。画面には届かない）"
+            echo "⚠ 静的検査は回っている（全追跡ファイルを走査している）"
+          fi
+
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
+        if: steps.scope.outputs.run == 'yes'
         with:
           node-version: "22"
       # デプロイ側の npm ci を重くしたくないので、CIでだけ入れる。
@@ -157,9 +208,11 @@ jobs:
       #   入れる版とキャッシュのキーを別々に決めると、
       #   「別の版のブラウザを、この版のキーで拾う」がいつか起きる。
       - run: npm i --no-save playwright@${{ env.PLAYWRIGHT_VERSION }}
+        if: steps.scope.outputs.run == 'yes'
       # ⚠ ブラウザの用意に 36 秒かかっていた（実測 2026-08-15）。ジョブ全体 284 秒のうち
       #   これが 13%。中身は変わらないので、版が同じなら取り直す必要がない。
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
+        if: steps.scope.outputs.run == 'yes'
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ env.PLAYWRIGHT_VERSION }}
@@ -177,6 +230,7 @@ jobs:
       #   ⚠ **取り直した回数は必ず出す**（黙って直ると、頻度が分からなくなる）。
       #   ⚠ ジョブの timeout（32 分）より内側に収める。3 回 × 6 分 ＋ 実描画 7〜9 分 ＋ 余裕。
       - name: ブラウザと、その依存（フォント含む）
+        if: steps.scope.outputs.run == 'yes'
         run: |
           set -u
           for i in 1 2 3; do
@@ -201,8 +255,10 @@ jobs:
       #     core が落ちたら、それは外部のせいにできない＝こちらの不具合。
       #   ⚠ search 群は render.mjs が **1 回だけ**やり直す。やり直した回数は必ず出る。
       - name: ページが実際に描画されるか（外へ出ない分）
+        if: steps.scope.outputs.run == 'yes'
         run: node scripts/render.mjs --group=core
       - name: ページが実際に描画されるか（住所検索に寄りかかる分）
+        if: steps.scope.outputs.run == 'yes'
         run: node scripts/render.mjs --group=search
       # ⚠ 成果物は**落ちたときだけ**残す（render.mjs が失敗時のみ撮る）。
       #   以前は 75 件すべて撮っていたのに、`.artifacts/` が隠しディレクトリで
