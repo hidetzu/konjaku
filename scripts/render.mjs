@@ -361,6 +361,89 @@ const forbid = (page, route) => page.route(route, (r) => r.fulfill({
 
 const CASES = [
   {
+    // ⚠ **HUD は「いまの年代」と「年代操作」だけを扱う**（2026-08-22。hidetzu/konjaku#168。Owner 判断）。
+    //   ⚠ 補足（推定の断り・操作ヒント・重ねている断り）は、⚠ **HUD の外の層**（`#notice`）に出す。
+    //   ⚠ **消したのではない。**⚠ 消えると、⚠ **推定の高さで建物が立った絵を断りなしに見せる**（掟 §1）。
+    // ⚠ **4 幅すべてで見る。**⚠ 実測（2026-08-22・1280×800・豊洲）: 狭い幅の規則がこの画面の既定なので、
+    //   ⚠ **PC で打ち消し忘れて `#notice` が 0×0 になった**（字は入っているのに display:none）。
+    //   ⚠ **幅を 1 つでも抜くと、この落ち方を見逃す。**
+    name: "補足は HUD の外に出ており、どの幅でも読める", path: `/peel?${TOYOSU}`,
+    viewport: { width: 375, height: 667 }, hasTouch: true,
+    async check(page) {
+      await page.waitForFunction(
+        () => (document.getElementById("est")?.textContent ?? "").trim().length > 0,
+        null, { timeout: 45000 });
+      await settleAfterCondition(page);
+      const out = [];
+      // ⚠ **幅を変えるだけでは足りない。**⚠ **その幅で開き直す。**
+      //   ⚠ 実測（2026-08-22）: 375 で開いてから 1280 へ広げても、⚠ **パネルは閉じたまま**なので
+      //     `#panel:not(.hide)` の規則が効かず、⚠ **PC の初期状態（パネルが開いている）を見ていなかった。**
+      //   ⚠ わざと壊しても通ってしまい、⚠ **検査が測っていないことを「確認済み」と言う形**になっていた。
+      for (const [w, h] of [[1280, 800], [375, 667], [344, 882], [320, 640]]) {
+        await page.setViewportSize({ width: w, height: h });
+        await page.reload({ waitUntil: "domcontentloaded" });
+        await page.waitForFunction(
+          () => (document.getElementById("est")?.textContent ?? "").trim().length > 0,
+          null, { timeout: 45000 });
+        await settleAfterCondition(page);
+        const r = await page.evaluate(() => {
+          const rect = (id) => document.getElementById(id).getBoundingClientRect();
+          const est = document.getElementById("est"), hud = document.getElementById("hud");
+          const nb = rect("notice"), hb = rect("hud");
+          const row = document.querySelector("#chrome .chrome-row").getBoundingClientRect();
+          // ⚠ **敷きは祖先を辿って探す。**⚠ 地図そのものは敷きに数えない
+          //   （body は不透明だが、その上に地図が乗っている）。
+          const mapEl = document.getElementById("map");
+          let bgA = 0;
+          for (let n = est; n && n !== document.body; n = n.parentElement) {
+            if (n === mapEl) break;
+            const bg = getComputedStyle(n).backgroundColor;
+            if (bg === "rgba(0, 0, 0, 0)" || bg === "transparent") continue;
+            const v = bg.startsWith("rgba") ? (Number((bg.match(/[\d.]+/g) ?? [])[3]) || 0) : 1;
+            if (v > bgA) bgA = v;
+            if (bgA >= 1) break;
+          }
+          return {
+            inHud: hud.contains(est),
+            hudTxt: (hud.innerText ?? "").replace(/\s+/g, " ").trim(),
+            noticeOn: document.getElementById("notice").checkVisibility(),
+            estOn: est.checkVisibility(), estH: Math.round(rect("est").height),
+            tipOn: document.getElementById("tip").checkVisibility(),
+            top: Math.round(nb.top), bottom: Math.round(nb.bottom),
+            center: Math.round(innerHeight / 2), bgA,
+            overRow: Math.round(Math.min(nb.bottom, row.bottom) - Math.max(nb.top, row.top)),
+            overHud: Math.round(Math.min(nb.bottom, hb.bottom) - Math.max(nb.top, hb.top)),
+            times: (document.body.innerText.match(/建物が消える年代は推定/g) ?? []).length,
+            // ⚠ **前提が崩れていたら、この検査は何も確かめていない**
+            panelOpen: !document.getElementById("panel").classList.contains("hide"),
+          };
+        });
+        // ⚠ **その幅の初期状態になっているか**（PC は開いて始まる／狭い幅は閉じて始まる）
+        must(r.panelOpen === (w > 680),
+          `${w}px: パネルの初期状態が違う（open=${r.panelOpen}）。この検査の前提が消えた`);
+        // ⚠ **構造で見る。**字だけで見ると、同じ字が別の場所にあっても通る
+        must(!r.inHud, `${w}px: 補足がまだ HUD の中にある`);
+        must(!/建物が消える年代は推定/.test(r.hudTxt), `${w}px: HUD に推定の断りが残っている`);
+        must(!/建物を押すと/.test(r.hudTxt), `${w}px: HUD に操作ヒントが残っている`);
+        // ⚠ **0×0 で「ある」ことにしない**（⚠ 2026-08-22 に PC でこれを踏んだ）
+        must(r.noticeOn && r.estOn && r.tipOn && r.estH > 0,
+          `${w}px: 補足が見えていない（notice=${r.noticeOn} est=${r.estOn} tip=${r.tipOn} 高さ=${r.estH}）`);
+        // ⚠ **移したのであって、増やしたのではない**
+        must(r.times === 1, `${w}px: 「建物が消える年代は推定」が画面に ${r.times} 回ある`);
+        // ⚠ **航空写真の上で字が沈まない**
+        must(r.bgA >= 0.5, `${w}px: 補足に敷きが無い（不透明度 ${r.bgA}）`);
+        // ⚠ **押せるものを塞がない／HUD とぶつからない**
+        //   （実測: 別々に置いた箱が 92px 食い込んだことがある）
+        must(r.overRow <= 0, `${w}px: 補足が「もどる」の行に ${r.overRow}px 重なっている`);
+        must(r.overHud <= 0, `${w}px: 補足が HUD に ${r.overHud}px 重なっている`);
+        // ⚠ **調べている地点（画面中央）を覆わない**
+        must(r.bottom < r.center,
+          `${w}px: 補足が画面中央の印を覆っている（下端 ${r.bottom} / 中央 ${r.center}）`);
+        out.push(`${w}: y=${r.top}〜${r.bottom}／敷き${r.bgA}`);
+      }
+      return out.join(" ／ ");
+    } },
+  {
     name: "ランチャー（水域）", path: `/?${TOYOSU}`,
     async check(page) {
       // 「判定中…」のまま読むと素通りしてしまうので、確定するまで待つ
@@ -680,10 +763,17 @@ const CASES = [
       await page.waitForTimeout(700);
       const r = await page.evaluate(() => {
         const hud = document.getElementById("hud"), hr = hud.getBoundingClientRect();
+        // ⚠ **断りは HUD の外（`#notice`）へ出した**（2026-08-22。hidetzu/konjaku#168）。
+        //   ⚠ **主張は変えていない**（⚠ 画面のどこかで、⚠ **読める形で**出ていること）。
+        const nt = document.getElementById("notice");
+        const nb = nt.getBoundingClientRect();
         return { hudTop: Math.round(hr.top), hudH: Math.round(hr.height),
           scroll: hud.scrollHeight, mid: Math.round(innerHeight / 2),
           land: document.querySelectorAll("#land").length,
-          text: hud.innerText.replace(/\s+/g, " ").trim() };
+          text: hud.innerText.replace(/\s+/g, " ").trim(),
+          notice: nt.innerText.replace(/\s+/g, " ").trim(),
+          noticeOn: nt.checkVisibility(), noticeBottom: Math.round(nb.bottom),
+          overlap: Math.round(Math.min(nb.bottom, hr.bottom) - Math.max(nb.top, hr.top)) };
       });
       // ⚠ **調べている地点（画面中央）を覆わない**
       must(r.hudTop > r.mid,
@@ -705,8 +795,15 @@ const CASES = [
       must(!crushed.length, `下の箱の中で、板が潰れている: ${crushed.join(" ／ ")}`);
       // ⚠ **答えの板は戻っていない**（⚠ 戻ると、⚠ また答えが 2 か所になる）
       must(r.land === 0, "答えの板（#land）が戻っている（土地の答えはパネルの 1 か所）");
-      // ⚠ **断りは残っている**（⚠ 消さずに減らした、が守れているか）
-      must(/推定/.test(r.text), `下の箱から断りが消えている: ${r.text.slice(0, 60)}`);
+      // ⚠ **断りは残っている**（⚠ 消さずに移した、が守れているか）。
+      //   ⚠ **場所は HUD の外**だが、⚠ **画面から消えたら同じこと**なので、ここで見る。
+      must(r.noticeOn && /推定/.test(r.notice),
+        `補足の層から断りが消えている: 見える=${r.noticeOn} ／ ${r.notice.slice(0, 60)}`);
+      // ⚠ **いちばん低い画面（480）で、⚠ 補足と下の箱がぶつからない**
+      must(r.overlap <= 0, `補足と下の箱が ${r.overlap}px 重なっている`);
+      // ⚠ **補足も、調べている地点を覆わない**
+      must(r.noticeBottom < r.mid,
+        `補足が調べている地点を覆っている: 下端 ${r.noticeBottom} / 中央 ${r.mid}`);
       return `320×480・過去の段で 箱の上端 ${r.hudTop} > 中央 ${r.mid}`
         + ` ／ 箱 ${r.hudH}px（中身 ${r.scroll}px）／答えの板は無い`;
     },
@@ -3035,6 +3132,9 @@ const CASES = [
         await settleAfterClick(p2);
         const b2 = await look();
         must(!b2.play && !b2.track, "畳んだのに ▶ か横棒が残っている（畳む意味が無い）");
+        // ⚠ **2026-08-22 以降、`#est` は HUD の外**（`#notice`）にある（hidetzu/konjaku#168）。
+        //   ⚠ **畳みの影響を受けない場所へ動かした**ので、ここは以前より通りやすい。
+        //   ⚠ **それでも見る。**⚠ 場所が変わっても、⚠ **畳んで消えないこと**が主張の中身。
         must(b2.est, "⚠ 畳むと限界（#est）が消える（推定の絵を断りなしに見せることになる）");
         must(b2.years.length === 1,
           `畳んだら「いま何年代か」が ${b2.years.length} か所になった: ${b2.years.join(" / ")}`);
