@@ -190,7 +190,10 @@
   #list{--why:#d8cfa8;--why-bg:rgba(216,207,168,.12);--why-sub:#c4bda0}
   #list.w{--why:var(--water);--why-bg:rgba(91,163,224,.14);--why-sub:#93b4cd}
   #list .it.why .tx small{color:var(--why-sub)}
-  #list .tag{flex:none;font-size:var(--fs-label);letter-spacing:.06em;padding:1.5px 7px;border-radius:999px}
+  /* ⚠ **組の見出し**（2026-08-21）。⚠ 行ごとのタグをここへ移した。
+     ⚠ 行ではないので、⚠ 押せる見た目にしない（押しても何も起きない導線を置かない）。 */
+  #list .lh{margin:13px 2px 5px;font-size:var(--fs-note);font-weight:600;color:var(--ink-dim)}
+  #list .lh:first-child{margin-top:2px}
   /* ⚠ 自前で根拠を持って見せる画面（3D・重ねて比べる）を、外部へ渡すだけの行と
      同じ顔で並べない。実測で、本命が「ごはん / ラーメン」と同じ見た目のせいで
      一覧全体が「リンク集」に見え、2画面下まで気づかれていなかった。 */
@@ -198,10 +201,11 @@
   #list .it.own .ic{font-size:var(--fs-sign)}
   #list .it.own .tx b{font-size:var(--fs-body)}
   #list.w .it.own{border-color:rgba(91,163,224,.32);background:rgba(91,163,224,.06)}
-  .tag.own{background:rgba(126,224,165,.14);color:var(--evidence)}
-  .tag.ext{background:rgba(255,255,255,.07);color:var(--ink-dim)}
-  /* 判定バッジから導かれた行であることを色で繋ぐ（陸=.badge.land / 水域=.badge.water と同じ） */
-  .tag.why{background:var(--why-bg);color:var(--why)}
+  /* 判定バッジから導かれた組であることを色で繋ぐ（陸=.badge.land / 水域=.badge.water と同じ）。
+     ⚠ **2026-08-21 に、行ごとのタグから組の見出しへ移した。**⚠ 繋ぐ理由は変えていない:
+     ベージュ固定にしていたときは、水域（青い判定）でここだけベージュになり、
+     色が何を指しているのか分からなかった。 */
+  #list .lh.lh-why{color:var(--why)}
   /* 判定カードと、そこから出た行を1枚に溶接する。
      利用者の指摘「深掘りのための情報は同一カード内に表示しないと迷う」への対応。
      要素は動かさず、枠と地色だけで一続きに見せている（↑↓/Enter・絞り込みを壊さないため） */
@@ -3081,10 +3085,13 @@ function ownLenses(p,facts){
     // ⚠ 「1936年〜」を固定で書いていた。バッジは実測した最古の年代を出すので、
     //   新潟では「1945–50年から見られる」の真下に「1936年〜」が並んでいた。
     //   根拠を売りにしていて、同じ画面に2つの数字を出していた。
-    {id:"hazard",ic:"⚠️",label:"ハザードマップで見る",sub:"洪水・土砂・津波の想定（国交省）",tag:"ext",
+    // ⚠ **grp は「どの組に入るか」**（2026-08-21）。⚠ tag（色と溶接に使う印）とは別。
+    //   ⚠ 打った語の「周辺で探す」も tag は ext だが、⚠ **組には入れない**
+    //     （⚠ 公的な情報ではない。⚠ 自由検索は今回の 3 分類の外）。
+    {id:"hazard",ic:"⚠️",label:"ハザードマップで見る",sub:"洪水・土砂・津波の想定（国交省）",tag:"ext",grp:"ext",
      kw:["ハザード","災害","洪水","浸水","地震","津波","土砂","risk"],
      href:`https://disaportal.gsi.go.jp/maps/index.html?ll=${p.lat},${p.lon}&z=15`},
-    {id:"gsi",ic:"🗺",label:"地理院地図で開く",sub:"標高・土地条件図など",tag:"ext",
+    {id:"gsi",ic:"🗺",label:"地理院地図で開く",sub:"標高・土地条件図など",tag:"ext",grp:"ext",
      kw:["地理院","標高","土地条件","地図"],href:`https://maps.gsi.go.jp/#16/${p.lat}/${p.lon}/`},
   ];
 }
@@ -3130,7 +3137,7 @@ function buildActions(text,p){
   // 〈水害の記録〉と〈ごはん〉が同じ 外部↗ を下げていたので、判定から導いた語だという
   // 唯一の手がかりが副題のグレー文字しか無く、それは全行が持っているので区別にならない。
   for(const s of sug)
-    out.push({ic:s.icon,label:`${s.label} を調べる`,sub:s.reason,tag:"why",
+    out.push({ic:s.icon,label:`${s.label} を調べる`,sub:s.reason,tag:"why",grp:"why",
       href:gweb([placeName(p.title),s.query].filter(Boolean).join(" "))});
 
   out.push(...fixed);
@@ -3162,29 +3169,39 @@ function renderList(){
   // その場所のデータを描くものなので含める。ハザードマップ・地理院地図のような
   // どこで開いても同じ固定リンクが来たところで切る。
   // 要素は動かしていないので、↑↓/Enter の輪も打鍵中の絞り込みもそのまま。
+  // ⚠ **溶接するのは「この場所を深掘り」だけ**（2026-08-21。3 分類にしたとき狭めた）。
+  //   ⚠ 前は「深掘り＋この土地から」を丸ごと 1 枚にしていた。
+  //   ⚠ **「さらに調べる」は別の組になった**ので、⚠ 判定カードと連続しない。
+  //   ⚠ 残す理由は変えていない: 利用者の指摘「深掘りが別ゾーンだと迷う」。
+  //     ⚠ **「分かった → もっと見る」のつながりだけ、1 枚に見せる。**
   let weld=0;
   if(mode==="action"&&meiji&&!meiji.loading)
-    while(weld<items.length&&(items[weld].tag==="own"||items[weld].tag==="why")) weld++;
-  // ⚠ 判定から出た語が1つも無いときは溶接しない。
-  //   軽井沢のように提案が0件だと、どの土地でも同じ2行（3D・年代比較）を囲むだけの
-  //   空箱になり、「この土地の答え」があるように見えてしまう。
-  if(!items.slice(0,weld).some((it)=>it.tag==="why")) weld=0;
+    while(weld<items.length&&items[weld].tag==="own") weld++;
   listEl.classList.toggle("welded",weld>0);
   const vEl=document.getElementById("verdict");
   if(vEl) vEl.classList.toggle("welded",weld>0);
   // ⚠ 行の見出しと副題には、地理院の応答（地名）と、利用者が打った語がそのまま入る
   //   （「〈打った語〉を周辺で探す」）。描くときに esc を通す。
   //   行き先（href）はこちらが組み立てたものだが、属性の中なので同じ扱いにする。
+  // ⚠ **行ごとのタグをやめて、組の見出しにした**（2026-08-21）。
+  //   ⚠ 字は words.js の 1 か所（`groupTitle`）。⚠ ここに写さない。
+  //   ⚠ **中身が 0 件の組には、見出しを出さない。**⚠ 空の見出しは「あるのに出ない」に読める
+  //     （⚠ 先例: 判定から出た語が 0 件のときは溶接もしない）。
+  //   ⚠ **見出しは行ではない。**⚠ `.it` を数える検査・↑↓ の輪・data-i は動かない。
+  let grpNow=null;
   listEl.innerHTML=items.map((it,i)=>{
     const tag=it.tag, sub=it.sub, ext=it.href&&it.href.startsWith("http");
+    // ⚠ 組が変わったところに 1 本だけ見出しを置く
+    const title=it.grp&&it.grp!==grpNow ? KonjakuWords.groupTitle(it.grp) : "";
+    if(it.grp) grpNow=it.grp;
+    const head=title?`<div class="lh lh-${esc(it.grp)}">${esc(title)}</div>`:"";
     const inner=`<span class="ic">${esc(it.ic??"📍")}</span>
-      <span class="tx"><b>${esc(it.label)}</b>${sub?`<small>${esc(sub)}</small>`:""}</span>
-      ${tag?`<span class="tag ${esc(tag)}">${KonjakuWords.tag(tag)}</span>`:""}`;
+      <span class="tx"><b>${esc(it.label)}</b>${sub?`<small>${esc(sub)}</small>`:""}</span>`;
     const cls=`it${i===sel?" sel":""}${tag==="why"?" why":""}${tag==="own"?" own":""}`
       +(i<weld?` fh${i===weld-1?" fh-last":""}`:"");
-    return it.href
+    return head+(it.href
       ? `<a class="${cls}" data-i="${i}" href="${esc(it.href)}"${ext?' target="_blank" rel="noopener"':""}>${inner}</a>`
-      : `<button class="${cls}" data-i="${i}">${inner}</button>`;
+      : `<button class="${cls}" data-i="${i}">${inner}</button>`);
   }).join("");
   listEl.querySelectorAll(".it").forEach((el)=>{
     // ⚠ 何も選んでいない間は hover で sel を動かさない。

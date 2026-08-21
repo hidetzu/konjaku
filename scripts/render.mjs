@@ -65,12 +65,17 @@ const URAYASU = "ll=35.65400,139.90200&q=%E6%B5%A6%E5%AE%89";
 // 「印が付いているか」自体もここで検査していることになる。
 const suggestionsOf = (page) => page.$$eval("#list .it.why", (els) => els
   .map((e) => ({ label: e.querySelector("b")?.textContent ?? "",
-                 href: e.getAttribute("href") ?? "",
-                 tag: e.querySelector(".tag")?.textContent ?? "" })));
-// 一覧を上から [タグ, 見出し] で読む
+                 href: e.getAttribute("href") ?? "" })));
+// 一覧を上から [組, 見出し] で読む。
+// ⚠ **2026-08-21 に、行ごとのタグをやめて組の見出しにした。**
+//   ⚠ 組は印（class）で読む。⚠ **字ではなく印で拾うことで、印が付いているかもここで見る。**
 const rowsOf = (page) => page.$$eval("#list .it", (els) => els
-  .map((e) => [e.querySelector(".tag")?.textContent ?? "",
+  .map((e) => [e.classList.contains("why") ? "why"
+             : e.classList.contains("own") ? "own" : "ext",
                e.querySelector("b")?.textContent ?? ""]));
+// 一覧の組の見出しを上から読む
+const groupsOf = (page) => page.$$eval("#list .lh", (els) =>
+  els.map((e) => e.textContent.trim()));
 const WEB_SEARCH = "https://www.google.com/search?q=";
 
 // 判定が確定するまで待ち、ページを開いてから確定までの ms を返す。
@@ -361,23 +366,30 @@ const CASES = [
       // 固定枠で区分から先に埋めていた頃は、ここで落ちていた。
       must(sug.some((s) => s.label.includes("液状化")),
         `水域かつ低地なのに液状化が出ていない: ${sug.map((s) => s.label).join(" / ")}`);
-      // タグは行き先ではなく「なぜここに出ているのか」を書く。
-      // 〈ごはん〉と同じ「外部のサイト」のタグを下げていた頃は、判定から出た語だと分からなかった。
-      // ⚠ 字は words.js。⚠ **ここに書き写すと、言い直したときに検査が落ちる**
-      const badTag = sug.filter((s) => s.tag !== WORDS.TAG.why);
-      must(!badTag.length, `提案のタグが違う: ${badTag.map((s) => `${s.label}=${s.tag}`).join(" / ")}`);
+      // ⚠ **組の見出しが出ていること**（2026-08-21。行ごとのタグから移した）。
+      //   ⚠ 「なぜここに出ているのか」は、⚠ **組の見出しが 1 か所で言う。**
+      //   ⚠ 字は words.js。⚠ **ここに書き写すと、言い直したときに検査が落ちる**
+      const groups = await groupsOf(page);
+      must(groups.join("／") === [WORDS.GROUP.why, WORDS.GROUP.ext].join("／"),
+        `一覧の組の見出しが違う: ${groups.join(" / ")}`);
+      // ⚠ **行ごとのタグは、画面から消えていること**（⚠ 見出しと 2 か所にしない）
+      must(await page.locator("#list .tag").count() === 0,
+        "行ごとのタグが戻っている（組の見出しと 2 か所になる）");
       // 並びの原則は「この場所に固有なものほど上」。ハザードマップ・地理院地図は
       // 座標を渡すだけでどこでも中身が同じなので、判定から出た語より下に来ること。
       const rows = await rowsOf(page);
-      const lastWhy = rows.map((r) => r[0]).lastIndexOf(WORDS.TAG.why);
+      const lastWhy = rows.map((r) => r[0]).lastIndexOf("why");
       const firstFixed = rows.findIndex((r) => /ハザードマップ|地理院地図/.test(r[1]));
       must(lastWhy >= 0 && firstFixed > lastWhy,
         `固定リンクが判定から出た語より上にいる: ${rows.map((r) => r[1]).join(" / ")}`);
-      // この土地の判定から出た行のタグの色は、判定バッジと同じであること。ベージュ固定にしていたときは、
-      // ここ（水域＝青い判定）でタグだけベージュになり、色が何を指すのか分からなかった。
-      const tagCol = await page.$eval("#list .it.why .tag", (e) => getComputedStyle(e).color);
+      // この土地の判定から出た組の見出しの色は、判定バッジと同じであること。
+      // ベージュ固定にしていたときは、ここ（水域＝青い判定）でだけベージュになり、
+      // 色が何を指すのか分からなかった。
+      // ⚠ **2026-08-21 に、行ごとのタグから組の見出しへ移した。**⚠ 繋ぐ理由は同じ。
+      const tagCol = await page.$eval("#list .lh.lh-why", (e) => getComputedStyle(e).color);
       const badgeCol = await page.$eval("#verdict .badge", (e) => getComputedStyle(e).color);
-      must(tagCol === badgeCol, `タグの色が判定バッジと違う: タグ ${tagCol} / バッジ ${badgeCol}`);
+      must(tagCol === badgeCol,
+        `「さらに調べる」の色が判定バッジと違う: 見出し ${tagCol} / バッジ ${badgeCol}`);
       // 地名の例は場所が確定したら役目が終わっている。一覧の全下に居座らせない
       const quick = await page.$eval("#quick", (e) => getComputedStyle(e).display);
       must(quick === "none", `場所が確定したのに地名の例が出たままになっている: display=${quick}`);
@@ -390,19 +402,18 @@ const CASES = [
         const rest = [...document.querySelectorAll("#list .it:not(.fh)")];
         const f0 = fh[0]?.getBoundingClientRect();
         return { n: fh.length, gap: f0 ? Math.round(f0.top - v.bottom) : null,
-                 tags: fh.map((e) => e.querySelector(".tag")?.textContent ?? ""),
+                 own: fh.filter((e) => e.classList.contains("own")).length,
+                 labels: fh.map((e) => e.querySelector("b")?.textContent ?? ""),
                  firstRest: rest[0]?.querySelector("b")?.textContent ?? "" };
       });
-      must(weld.n >= 3, `判定カードに溶接された行が少なすぎる: ${weld.n}`);
+      // ⚠ **2026-08-21 に、溶接を「この場所を深掘り」だけに狭めた**（一覧を 3 分類にしたとき）。
+      //   ⚠ 前は「深掘り＋この土地から」を丸ごと 1 枚にしていたが、
+      //     ⚠ **「さらに調べる」は別の組**になり、⚠ 判定カードと連続しなくなった。
+      //   ⚠ 残す理由は変えていない: 利用者の指摘「深掘りが別ゾーンだと迷う」。
+      must(weld.n === 1, `判定カードに溶接された行が 1 つでない: ${weld.n}（${weld.labels.join(" / ")}）`);
       must(weld.gap === 0, `判定カードと溶接した行の間に隙間がある: ${weld.gap}px`);
-      // ⚠ 溶接してよいのは「今昔の中で開くもの」と「この土地の判定から出たもの」だけ。
-      //   ⚠ **字は words.js から取る。**ここに書き写すと、言い直したときに検査が落ちる
-      const weldable = [WORDS.TAG.own, WORDS.TAG.why];
-      must(weld.tags.every((t) => weldable.includes(t)),
-        `この場所の判定から出ていない行まで溶接している: ${weld.tags.join(" / ")}`
-          + `（溶接してよいのは ${weldable.join(" / ")}）`);
-      must(/ハザードマップ|地理院地図|ごはん/.test(weld.firstRest),
-        `固定リンクまで溶接に含まれている: 溶接の外の先頭が「${weld.firstRest}」`);
+      must(weld.own === 1,
+        `溶接しているのが「今昔の中で開くもの」ではない: ${weld.labels.join(" / ")}`);
       return `判定「${v.trim().split("\n")[0]}」／バッジ ${badges} 個／標高 ${elev}m／コマンド ${n} 件`
         + `／提案 ${sug.map((s) => s.label).join("・")}（${firstFixed}番目より上に固定リンク無し）`
         + `／判定確定まで ${ms}ms`;
@@ -461,15 +472,37 @@ const CASES = [
   {
     // 溶接は「この土地の答え」を1枚に見せるためのもの。判定から出た語が無い土地で
     // 囲うと、どこでも同じ2行を囲んだ空箱になり、答えがあるように見える
-    name: "判定から出た語が無いときは溶接しない", path: `/?${KARUIZAWA}`,
+    // ⚠ **2026-08-21 に主張を書き直した**（一覧を 3 分類にしたとき）。
+    //   ⚠ 前の主張は「判定から出た語が無いときは溶接しない」だった。
+    //     ⚠ 当時は「深掘り＋この土地から」を丸ごと溶接していたので、⚠ 提案が 0 件の土地では
+    //       ⚠ **どの土地でも同じ 2 行を囲むだけの空箱**になり、
+    //       ⚠ 「この土地の答え」があるように見えていた。
+    //   ⚠ **いまは溶接するのが「この場所を深掘り」の 1 行だけ**なので、その空箱は起きない。
+    //     ⚠ その 1 行は、⚠ **この場所へ行く導線**（座標を渡すだけの固定リンクではない）。
+    //   ⚠ **守りたいことは変わっていない: ⚠ どこで開いても同じものを、
+    //     ⚠ 「この土地の答え」の続きに見せない。**⚠ だから固定リンクは溶接に入れない。
+    name: "提案が 0 件の土地でも、溶接するのは深掘りの 1 行だけ", path: `/?${KARUIZAWA}`,
     async check(page) {
       await waitVerdict(page);
-      await page.waitForTimeout(400);
-      const why = await page.locator("#list .it.why").count();
-      const fh = await page.locator("#list .it.fh").count();
-      must(why === 0, `軽井沢で提案が出ている（前提が変わった）: ${why}`);
-      must(fh === 0, `判定から出た語が無いのに溶接している: ${fh} 行`);
-      return `提案 0 件／溶接 0 行`;
+      await page.waitForSelector("#list .it", { timeout: 30000 });
+      await settleAfterCondition(page);
+      const r = await page.evaluate(() => {
+        const fh = [...document.querySelectorAll("#list .it.fh")];
+        return { why: document.querySelectorAll("#list .it.why").length,
+          n: fh.length, own: fh.filter((e) => e.classList.contains("own")).length,
+          labels: fh.map((e) => e.querySelector("b")?.textContent ?? ""),
+          // ⚠ どこで開いても同じ固定リンクが溶接に混ざっていないこと
+          fixed: fh.filter((e) => /ハザードマップ|地理院地図/.test(e.textContent)).length,
+          groups: [...document.querySelectorAll("#list .lh")].map((e) => e.textContent.trim()) };
+      });
+      must(r.why === 0, `軽井沢で提案が出ている（前提が変わった）: ${r.why}`);
+      must(r.n === 1, `溶接が 1 行でない: ${r.n} 行（${r.labels.join(" / ")}）`);
+      must(r.own === 1, `溶接しているのが「今昔の中で開くもの」ではない: ${r.labels.join(" / ")}`);
+      must(r.fixed === 0, `どこで開いても同じ固定リンクを溶接している: ${r.labels.join(" / ")}`);
+      // ⚠ 提案が 0 件なので、⚠ 「さらに調べる」の見出しも出ない
+      must(!r.groups.includes(WORDS.GROUP.why),
+        `提案が 0 件なのに「${WORDS.GROUP.why}」の見出しが出ている: ${r.groups.join(" / ")}`);
+      return `提案 0 件／溶接 1 行（${r.labels.join(" / ")}）／見出し ${r.groups.join("・")}`;
     },
   },
   {
@@ -1653,6 +1686,55 @@ const CASES = [
       const sug = await suggestionsOf(page);
       must(!sug.length, `広い区分しか分かっていないのに提案が出ている: ${sug.map((s) => s.label).join(" / ")}`);
       return `${v.trim().split("\n")[0]}／バッジ ${badge.join(" / ")}`;
+    },
+  },
+  {
+    // ⚠ **行動一覧を 3 つの組に分ける**（2026-08-21）。
+    //   ⚠ 前は「深掘り」「この土地から出た語」「公的な情報」が、⚠ **同じ形の行**で
+    //     ⚠ **同じ列**に並んでいた。⚠ 分かれていたのは行ごとのタグだけだった。
+    //   ⚠ 実測（375×667・hasTouch・SW 無効・`main` = `87ed6ce`）: 4 地点のうち
+    //     ⚠ **3 地点は一覧が 3 行**で、⚠ **検索候補が 0 件**だった。
+    // ⚠ **並び順は変えていない**（「この場所に固有なものほど上」）。
+    //   ⚠ 以前ここを逆にして、⚠ **亀戸の標高 -0.57m から出た〈水害の記録〉が、
+    //     ⚠ 亀戸と無関係な〈地理院地図〉の下に並んでいた**（直した記録が残っている）。
+    name: "行動一覧が、3 つの組に分かれている", path: `/?${TOYOSU}`,
+    async check(page) {
+      const out = [];
+      for (const [name, q, want] of [
+        ["豊洲", TOYOSU, [WORDS.GROUP.why, WORDS.GROUP.ext]],
+        // ⚠ **検索候補が 0 件の土地。**⚠ **空の組に見出しを出さない**
+        ["軽井沢", KARUIZAWA, [WORDS.GROUP.ext]],
+        ["札幌", SAPPORO, [WORDS.GROUP.ext]],
+      ]) {
+        if (page.url() !== BASE + `/?${q}`)
+          await page.goto(BASE + `/?${q}`, { waitUntil: "domcontentloaded", timeout: 45000 });
+        await waitVerdict(page);
+        await page.waitForSelector("#list .it", { timeout: 30000 });
+        await settleAfterCondition(page);
+        const groups = await groupsOf(page);
+        must(groups.join("／") === want.join("／"),
+          `${name}: 組の見出しが違う: 「${groups.join(" / ")}」（欲しいのは「${want.join(" / ")}」）`);
+        const r = await page.evaluate(() => ({
+          tags: document.querySelectorAll("#list .tag").length,
+          // ⚠ 見出しは行ではない。⚠ **押せる見た目にしない**（押しても何も起きない導線）
+          clickable: [...document.querySelectorAll("#list .lh")]
+            .filter((e) => e.tagName === "A" || e.tagName === "BUTTON" || e.onclick).length,
+          // ⚠ 中身が 0 件の組が無いこと（⚠ 見出しの直後は必ず行）
+          empty: [...document.querySelectorAll("#list .lh")]
+            .filter((e) => !e.nextElementSibling?.classList.contains("it")).length,
+          why: document.querySelectorAll("#list .it.why").length,
+          fixed: [...document.querySelectorAll("#list .it")]
+            .filter((e) => /ハザードマップ|地理院地図/.test(e.textContent)).length,
+          over: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+        }));
+        must(r.tags === 0, `${name}: 行ごとのタグが残っている（${r.tags} 個。見出しと 2 か所になる）`);
+        must(r.clickable === 0, `${name}: 組の見出しが押せる見た目になっている`);
+        must(r.empty === 0, `${name}: 中身が 0 件の組に見出しが出ている`);
+        must(r.fixed === 2, `${name}: 公的な情報が 2 件でない: ${r.fixed}`);
+        must(r.over <= 0, `${name}: 横にあふれている（${r.over}px）`);
+        out.push(`${name} 見出し ${groups.join("・") || "無し"}／この土地から ${r.why} 行`);
+      }
+      return out.join("／");
     },
   },
   {
