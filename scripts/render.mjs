@@ -299,6 +299,26 @@ const effOpacity = (page, sel) => page.evaluate((s) => {
   return +o.toFixed(3);
 }, sel);
 
+// ⚠ **淡くなる／濃くなる途中を読まない**（2026-08-21。hidetzu/konjaku#152 の CI で落ちて分かった）。
+//   ⚠ パネルは `opacity` の遷移で開閉する。⚠ **押した直後に読むと途中の値が返る。**
+//     ⚠ 実測: 手元では閉じた直後 0.02 だが、⚠ **CI では 0.058**（⚠ 0.05 の境目をまたいだ）。
+//     ⚠ 別のケースでは、⚠ 開いた直後に 0 を読んで「読めない」と落ちた。
+//   ⚠ **時間で待たない**（⚠ 機械の速さで変わる）。⚠ **落ち着くまで待つ。**
+//   ⚠ **主張は弱めない**: ⚠ 落ち着いた値が条件を満たさなければ、⚠ そのまま落ちる。
+//   ⚠ **待ちは長めに取る**（20 秒）。⚠ 札幌は地形分類が遅れて届き、⚠ **8 秒では 0 のままだった**
+//     （⚠ 実測 2026-08-21: 14 秒後には 1）。⚠ **待つだけで、⚠ 主張は弱めていない。**
+const waitOpacity = async (page, sel, ok, timeout = 20000) => {
+  const t0 = Date.now();
+  let prev = null, v = null;
+  while (Date.now() - t0 < timeout) {
+    v = await effOpacity(page, sel);
+    if (v !== null && v === prev && ok(v)) return v;
+    prev = v;
+    await page.waitForTimeout(120);
+  }
+  return v;
+};
+
 const peelReady = (page) => page.waitForFunction(
   () => /件|ありません|読み込めませんでした/.test(document.getElementById("status")?.textContent ?? ""),
   null, { timeout: 60000 });
@@ -6529,7 +6549,10 @@ const CASES = [
     // ⚠ 判定できない土地で**割合を作らない**（掟: 取れなかったを「無い」と言わない）。
     //   札幌は明治期の低湿地データが整備対象外。建物は出ているので、
     //   「建物ごとには出せません」と、その理由と、建物の件数を出す。0% は出さない。
-    name: "判定できない土地では、初期画面に割合を出さない（札幌）",
+    // ⚠ **2026-08-21 に名前を直した**（hidetzu/konjaku#152）。
+    //   ⚠ 前は「初期画面に割合を出さない」。⚠ **答えが初期画面から無くなった**ので、
+    //     ⚠ 名前が実態と合わなくなった。⚠ **主張は同じ**: ⚠ 判定できないのに割合を出さない。
+    name: "判定できない土地では、開いても割合を出さない（札幌）",
     path: "/peel?ll=43.06800,141.35070&q=%E6%9C%AD%E5%B9%8C%E9%A7%85",
     viewport: { width: 375, height: 667 }, hasTouch: true,
     async check(page) {
@@ -6544,11 +6567,17 @@ const CASES = [
         null, { timeout: 60000 });
       // ⚠ **2026-08-21 に、⚠ 土地の答えはパネルの 1 か所になった**（hidetzu/konjaku#152）。
       //   ⚠ **見ている主張は同じ**: ⚠ 判定できないのに割合を出さない。
+      //   ⚠ **ここはスマホ幅（375）なので、⚠ パネルは閉じて始まる。**
+      //     ⚠ 閉じたまま測ると、⚠ **実効 opacity は 0**（⚠ 読めないのは当たり前）。
+      //     ⚠ **☰ を 1 回押してから読む**（⚠ 答えへの到達は 1 手、という新しい前提）。
+      await page.click("#toggle");
+      await settleAfterClick(page);
       const t = (await page.locator("#landAll").textContent()).replace(/\s+/g, " ").trim();
       must(!/\d+\.\d+\s*%/.test(t), `判定できないのに割合を出している: ${t.slice(0, 60)}`);
       must(t.includes("整備対象外"), `理由（整備対象外）が書かれていない: ${t.slice(0, 60)}`);
       must(/建物 \d+ 件/.test(t), `建物の件数が書かれていない: ${t.slice(0, 60)}`);
-      const o = await effOpacity(page, "#landAll .land-g1, #landAll .land-alt");
+      // ⚠ **濃くなり切るまで待つ**（⚠ 開いた直後は 0 を返す）
+      const o = await waitOpacity(page, "#landAll .land-g1, #landAll .land-alt", (v) => v > 0);
       must(o > 0, `答えの実効 opacity が ${o}（読めない）`);
       // ⚠ 地形分類は**別経路で遅れて届く**。届く前は「判定できません」、届いたら
       //   「建物ごとには出せません」＋その土地の区分に変わる。
@@ -6628,9 +6657,9 @@ const CASES = [
       // ⚠ **閉じたら、⚠ 答えは画面から退く**（⚠ 別の場所に写らない）
       await page.click("#closePanel");
       await settleAfterClick(page);
-      const after = await effOpacity(page, "#landAll");
-      // ⚠ **読めない、の基準は 0.05 未満**（⚠ このリポジトリの他の検査と揃える）。
-      //   ⚠ パネルは opacity で退くので、⚠ 完全な 0 にならないことがある（実測 0.02）。
+      // ⚠ **淡くなり切るまで待つ**（⚠ 途中を読むと、⚠ 機械の速さで結果が変わる）。
+      //   ⚠ 実測: 手元 0.02 ／ ⚠ **CI 0.058**（2026-08-21 に CI で落ちた）。
+      const after = await waitOpacity(page, "#landAll", (v) => v < 0.05);
       must(after < 0.05, `閉じても答えが読める場所が残っている: 実効 opacity ${after}`);
       must((await page.$$eval("#land", (els) => els.length)) === 0,
         "閉じたら HUD に答えが出た（答えはパネルの 1 か所）");
