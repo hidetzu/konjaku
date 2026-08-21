@@ -117,12 +117,31 @@
          note: "読み込めなかっただけで、明治期のデータが無いとは限らない" }]
     : [];
 
+  // ⚠ **由来（いつ取り込んだか・何面を起こしたか）**（2026-08-22。hidetzu/konjaku#153。Owner 判断 3）。
+  //   ⚠ **前は判定結果の行（`#status`）に混ざっていた。**
+  //     ⚠ あちらは「⚠ **いま判定できたか**」を言う場所で、⚠ **こちらは「その材料がどこから来たか」。**
+  //   ⚠ **取り込んだ日は「いつの現実か」ではない。**⚠ **こちらがいつ取り込んだか**でしかないので、
+  //     ⚠ **そう読めるようにだけ書く**（掟: 推定を実測のように見せない）。
+  //   ⚠ 取り込んだ日が分からないときは、⚠ **行を出さない**（⚠ 「不明」と書かない）。
+  const sourceRow = (s) => {
+    const out = [];
+    if (s.blAt)
+      out.push({ level: OK, tag: "実測", body: `建物のデータは <b>${s.blAt}</b> に取り込んだもの`,
+        note: "⚠ そのあとに建った・消えた建物は入っていない" });
+    if (s.area && s.area.waterRead && typeof s.waterRects === "number")
+      out.push({ level: OK, tag: "実測",
+        body: `水面は、明治期の低湿地データから <b>${s.waterRects} 面</b>を起こしたもの`,
+        note: "面の数は、この範囲で読めた区画の数" });
+    return out;
+  };
+
   // 出ているものだけを説明する。出ていないものの出所は書かない
   const rows = (s) => [
     groundRow(s.groundArrived, s.era),
     waterRow(s.area),
     ...buildingRows(s.area),
     ...unreadRow(s.area),
+    ...sourceRow(s),
   ];
 
   // 行 → HTML。⚠ **HTML を作るのはここだけ。**
@@ -142,7 +161,7 @@
   //   **無いと断定する文を持ってはいけない**（検査がこの表を使う）
   const TAGS = { OK: "実測", ABSENT: "欠落", UNREAD: "未取得", NOTYET: "未対応", EST: "推定" };
 
-  g.KonjakuProv = { rows, html, groundRow, waterRow, buildingRows, unreadRow, TAGS,
+  g.KonjakuProv = { rows, html, groundRow, waterRow, buildingRows, unreadRow, sourceRow, TAGS,
     // ⚠ 画面のほかの場所も、この文を借りる（書き写さない）
     NOTYET, NOTYET_WHY };
 })(typeof globalThis !== "undefined" ? globalThis : this);

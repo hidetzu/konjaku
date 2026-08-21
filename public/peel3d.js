@@ -691,7 +691,7 @@ async function loadArea(lon,lat,title,opt){
   // 「–%」が残り、Overpass が返った瞬間に「0.0% ── 実測値」へ化けていた（掟: 取れなかったを「無い」と言わない）。
   area={ title, bldState:"loading",
     total:0, wet:0, classified:0, unread:0, counts:{}, dated:0,
-    waterRatio:w.ratio, waterRead, waterUnread,
+    waterRatio:w.ratio, waterRead, waterUnread, waterRects:w.rects,
     landSummary:summarizeLand(w.classCounts,w.classifiedPixels), buildingLand:null };
   showResult(); render(); buildRuler();
 
@@ -763,7 +763,7 @@ async function loadArea(lon,lat,title,opt){
     //   言わない（利用者役 3/3 が後者を「自分の通信のせい」と読んだ）。
     const notYet=blWhy===BL_ABSENT;
     area={ title, total:0, wet:0, classified:0, unread:0, counts:{}, dated:0,
-      waterRatio:w.ratio, waterRead, waterUnread, bldState:notYet?"notyet":"fail",
+      waterRatio:w.ratio, waterRead, waterUnread, waterRects:w.rects, bldState:notYet?"notyet":"fail",
       landSummary:summarizeLand(w.classCounts,w.classifiedPixels), buildingLand:null };
     statusEl.innerHTML=(notYet
       // ⚠ **⚠ の記号を使わない。**この画面の外（トップ）では ⚠ を「この土地で
@@ -839,7 +839,7 @@ async function loadArea(lon,lat,title,opt){
       }
       return c;
     })(),
-    waterRatio:w.ratio, waterRead, waterUnread,
+    waterRatio:w.ratio, waterRead, waterUnread, waterRects:w.rects,
     landSummary:summarizeLand(w.classCounts,w.classifiedPixels),
     buildingLand:summarizeBuildingLand(counts,classified) };
 
@@ -847,12 +847,14 @@ async function loadArea(lon,lat,title,opt){
   // ⚠ 0 件のときは「判定しました」で終わらせない。**何が 0 件なのか**を書く。
   //   「建物 0 件」だけだと「この場所に建物は無い」と読める。
   //   言えるのは **OSM に登録された建物が 0 件**であることまで（掟: データにない ≠ 現実にない）。
-  statusEl.innerHTML=`<span style="color:var(--ink-dim)">${waterRead?`水域 ${w.rects} 面 ／ `:""}${
+  // ⚠ **由来（水域の面数・取り込んだ日）は、ここでは言わない**（2026-08-22。hidetzu/konjaku#153）。
+  //   ⚠ **ここは「いま判定できたか」を言う場所**で、⚠ **材料がどこから来たかは「表示データについて」が持つ**
+  //     （`prov.js` の `sourceRow`）。⚠ **消したのではない。**⚠ 同じ画面の別の節にある。
+  statusEl.innerHTML=`<span style="color:var(--ink-dim)">${
     area.total===0
       ? `この範囲に、<b>OSM に登録された建物は 0 件</b>です${WORD.bldPre(bldSource==="tiles")}。`
         + `水域と空中写真で表示しています。`
       : `建物 ${area.total} 件を判定しました${WORD.bldPre(bldSource==="tiles")}。`}</span>${
-      blAt?`<span style="color:var(--ink-dim)"> 建物を取り込んだのは ${blAt}。</span>`:""}${
       blTrunc?`<span class="err"> この範囲は建物が多く、取りきれていない可能性があります。</span>`:""}`;
   if(!waterRead) statusEl.innerHTML = (waterUnread
     ? `<span class="err">明治期の低湿地データを<b>いま読み込めませんでした</b>。</span> `
@@ -1828,7 +1830,10 @@ function describe(v){
   //   ここでは組み立てない。行を足したくなったら prov.js に足す。
   //   分けた理由: あちらは DOM も地図も見ないので、検査がブラウザ抜きで
   //   全組み合わせを回せる（掟: 取れなかったを「無い」と言わない、を字面ではなく tag で見る）。
-  provEl.innerHTML=KonjakuProv.html(KonjakuProv.rows({ groundArrived:arrived, era:near, area }));
+  // ⚠ **由来（取り込んだ日・水面の面数）も、この台帳が持つ**（2026-08-22。hidetzu/konjaku#153）。
+  //   ⚠ **値の出どころは 1 か所のまま**（`blAt` は取り込み、`waterRects` は水域の生成）。
+  provEl.innerHTML=KonjakuProv.html(KonjakuProv.rows({ groundArrived:arrived, era:near, area,
+    blAt, waterRects: area && area.waterRead ? area.waterRects : null }));
   wireProvPeek();
 }
 
