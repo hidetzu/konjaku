@@ -885,20 +885,30 @@ export const CASES = [
     // ⚠ glob の `(a|b)` は選択にならない。URL 述語で書く（過去に一度踏んでいる）
     setup: (page) => page.route((u) => /overpass/.test(u.href), async (r) => {
       await new Promise((k) => setTimeout(k, 6000));
+      // ⚠ **印は、⚠ 返す前に立てる**（2026-08-23）。
+      //   ⚠ **移ったあとの要求は、⚠ ページ側が捨てているので `fulfill` が失敗する。**
+      //   ⚠ **後ろに置くと、⚠ 例外で印まで到達しない**（⚠ 実測: 30 秒待っても立たなかった）。
+      //   ⚠ **前はページの中へ `evaluate` で書いていた。**⚠ **ルートハンドラの中で
+      //     ⚠ `evaluate` を待つのは壊れやすい。**⚠ **Node 側で持つ。**
+      page.__staleReplied = true;
       await r.fulfill({ status: 200, contentType: "application/json",
-        body: JSON.stringify({ elements: [] }) });
-      // ⚠ **返したことを、ページ側に印として残す。**
-      //   ⚠ 下で「何秒たったか」ではなく「**古い返事が実際に返ったか**」を待つため。
-      //   ⚠ 移動中は evaluate が落ちる。落ちても検査の主張は変わらない（下で待ち切れる）
-      await page.evaluate(() => { window.__staleReplied = true; }).catch(() => {});
+        body: JSON.stringify({ elements: [] }) }).catch(() => {});
     }),
-    async check(page) {
-      // ① 札幌が、建物の問い合わせで待ち始めるまで待つ
+    async check(page, reqs) {
+      // ① 名古屋が、建物の問い合わせで待ち始めるまで待つ
       // ⚠ **`#status` はもう喋らない**（2026-08-22。Owner 判断）。⚠ **問いの側で待つ。**
+      // ⚠ **「建物を取得しています」だけでは早すぎる**（2026-08-23 に踏んだ）。
+      //   ⚠ **その字は、⚠ Overpass へ出る前から立つ。**⚠ **移すのが早すぎて、
+      //     ⚠ 古い要求が 1 本も出ないまま**だった（⚠ 実測: Overpass 要求 0 本）。
+      //   ⚠ **要求が実際に出たことを待つ**（⚠ そうでないと、⚠ この検査は何も見ていない）。
       await page.waitForFunction(
         () => /建物を取得しています|建物を取得中/.test(
           document.getElementById("landAll")?.textContent ?? ""),
         null, { timeout: 30000 });
+      for (let i = 0; i < 300 && !(reqs ?? []).some((u) => /overpass/i.test(u)); i++)
+        await page.waitForTimeout(100);
+      must((reqs ?? []).some((u) => /overpass/i.test(u)),
+        "名古屋が Overpass へ出ていない（古い要求が作れないので、この検査は何も見ていない）");
       // ② 待っている最中に、別の場所へ移る（＝再試行を押したのと同じ形）
       await page.evaluate(() => { loadArea(139.7975, 35.6548, "東京都江東区豊洲"); });
       await page.waitForFunction(
@@ -918,8 +928,11 @@ export const CASES = [
       // ③ ⚠ **古い呼び出しの返事が、実際に返ってくるまで待つ。**
       //   ⚠ 決め打ちの秒数ではなく、返ったことを見る（上の印）。
       //   ⚠ **返る前に読むと、この検査は何も見ていないことになる**
-      await page.waitForFunction(() => window.__staleReplied === true,
-        null, { timeout: 30000 });
+      for (let i = 0; i < 300 && !page.__staleReplied; i++) await page.waitForTimeout(100);
+      if (!page.__staleReplied) {
+        const op = (reqs ?? []).filter((u) => /overpass/i.test(u));
+        must(false, `古い呼び出しの返事が返ってこない（Overpass 要求 ${op.length} 本: ${op.slice(0, 2).join(" / ")}）`);
+      }
       // ⚠ **ここは 300ms では足りない。**印が立つのは「返した」時点で、
       //   ⚠ **上書きするかもしれない側の処理は、そのあとに走る**。
       //   ⚠ 早く読むと「上書きされなかった」ではなく「まだ上書きしていない」を見てしまう
@@ -990,21 +1003,29 @@ export const CASES = [
       // ⚠ 動いていないから組み直していない、では意味がない。**絵は毎回動いている**
       must(a.knob !== "" && a.knob !== "0%", `つまみが動いていない（${a.knob}）。絵まで止めている`);
 
-      // ---- ② 隣の段へ移る。言葉が変わるので、必ず組み直す ----
+      // ---- ② 隣の段へ移る ----
+      // ⚠ **「段が変われば必ず組み直す」は、⚠ もう成り立たない**（2026-08-23 に確かめた）。
+      //   ⚠ **台帳の字が段に依らなくなった**（⚠ `groundRow` は、⚠ 写真が届いていれば
+      //     ⚠ 「地表はその年代の空中写真そのもの。加工なし」で、⚠ 年代を含まない）。
+      //   ⚠ **`describe()` は段が変わるたびに走るが、⚠ 字が同じなので書き直さない。**
+      //     ⚠ **これは正しい振る舞い**（⚠ 開いていた「詳しく見る」を閉じない）。
+      // ⚠ **落とした主張を、⚠ 黙って落とさない**（掟: ⚠ 測っていないことを「確認済み」と書かない）:
+      //   ⚠ **「字が変わったときに、⚠ 本当に書き直すか」は、⚠ ここでは見ていない。**
+      //   ⚠ **見ているのは別のケース**（「さかのぼる（地表タイルだけ落とす）」が、
+      //     ⚠ 写真を落として「届いていない」に変わることを見る）。
       const before = a.label;
       await watch();
       const b = await scrub(40, 100, 12);
       must(b.label !== before, `段を移ったのに年代の表示が ${before} のまま`);
-      must(b.hits >= 1, `段が変わったのに根拠を組み直していない（${b.hits} 回）`
-        + `。⚠ 出所が古いまま残る`);
-      // ⚠ 段を 1 つ移っただけで 12 回組み直していたら、分けた意味が無い
+      // ⚠ **段を移っても、⚠ 字が同じなら組み直さない**（⚠ 12 回も組み直していたら分けた意味が無い）
       must(b.hits <= 4, `段を 1 つ移るのに根拠を ${b.hits} 回組み直している`);
 
       // ---- ③ 組み直したあとも、押せるボタンが生きている ----
       //   ⚠ 台帳の中のボタンは組み直すたびに**新しい要素**になる。張り直しを忘れると、
       //     押しても何も起きないボタンになる（掟: 押しても何も起きない導線を置かない）。
-      const peek = await page.$("#panel .prov-q .peek");
-      must(peek, "台帳に「光らせる」ボタンが無い");
+      // ⚠ **「光らせる」は内訳が持つ**（2026-08-22。⚠ 台帳から移った）
+      const peek = await page.$("#breakdown .peek");
+      must(peek, "内訳に「光らせる」ボタンが無い");
       const colorBefore = await page.evaluate(() =>
         JSON.stringify(map.getPaintProperty("bld", "fill-extrusion-color")));
         // ⚠ **先に見える位置へ送る。**パネルが層で高くなり、このボタンが
@@ -1359,14 +1380,18 @@ export const CASES = [
       // ⚠ **水面の面数は「表示データについて」へ移った**（2026-08-22。hidetzu/konjaku#153）。
       //   ⚠ **主張は変えていない**（⚠ 水域ポリゴンが実際に起こされたこと）。⚠ 読む場所だけ変えた。
       // ⚠ **判定の結果（#status）と、由来（#prov）は別の節**になった。⚠ **両方を読む。**
-      const status = (await page.locator("#status").textContent()).trim();
+      // ⚠ **`#status` はもう喋らない**（2026-08-22。Owner 判断）。⚠ **問いの側と台帳を読む。**
       const provTxt = await provText(page);
+      const landTxt = await page.evaluate(() =>
+        (document.getElementById("landAll")?.textContent ?? "").replace(/\s+/g, " "));
       const water = Number(provTxt.match(/(\d+)\s*面を起こしたもの/)?.[1] ?? 0);
       must(water > 0, `水域ポリゴンが生成されていない（${provTxt.slice(0, 80)}）`);
-      const bld = Number(status.match(/建物\s*(\d+)\s*件/)?.[1] ?? 0);
-      must(bld > 0, `建物が出ていない（${status.slice(0, 80)}）`);
-      must(/事前に取り込んだデータ|事前計算データ/.test(status),
-        `事前に取り込んだデータを使っていない（${status.slice(0, 80)}）`);
+      const bld = Number(landTxt.match(/(\d+)\s*件\s*の建物が/)?.[1] ?? 0);
+      must(bld > 0, `建物が出ていない（${landTxt.slice(0, 80)}）`);
+      // ⚠ **「事前に取り込んだ」は、⚠ 取り込んだ日が言う**（2026-08-22。`sourceRow`）。
+      //   ⚠ **主張は同じ**（⚠ 実行時に外へ出て集めたものではないこと）。
+      must(/建物のデータは \d{4}-\d{2}-\d{2} に取り込んだもの/.test(provTxt),
+        `事前に取り込んだデータを使っていない（${provTxt.slice(0, 100)}）`);
       // ⚠ パネルの答えは #landAll（層）へ移った。⚠ 見ている主張は変えていない
       const hero = await page.locator("#landAll").textContent({ timeout: 45000 });
       const cap = hero;
@@ -1686,23 +1711,31 @@ export const CASES = [
     name: "資料の範囲外に、陸の色を塗らない", path: `/peel?${SAPPORO}`, group: "core",
     async check(page) {
       // 建物が出そろうまで待つ（件数が動いている途中を読まない）
+      // ⚠ **札幌は足元を 1 件も判定できない**（⚠ 明治期の低湿地データが整備対象外）。
+      //   ⚠ **層 3 は `missing` になるので、⚠ `#breakdown` は作られない**（2026-08-22 の作り替え）。
+      //   ⚠ **主張は変えていない**: ⚠ **明治期の区分の行を出さない**／⚠ **件数は落とさない**／
+      //     ⚠ **範囲の外だと言う**／⚠ **こちらの都合に読める言い方をしない**／⚠ **「無い」と言い切らない。**
       await page.waitForFunction(() => {
-        const t = document.getElementById("breakdown")?.textContent ?? "";
-        return /件/.test(t) && !/取得中/.test(t);
+        const t = document.getElementById("landAll")?.textContent ?? "";
+        return /建物/.test(t) && !/取得しています|取得中/.test(t);
       }, null, { timeout: 90000 });
       const r = await page.evaluate(() => ({
-        rows: [...document.querySelectorAll("#breakdown .stat")].map((e) => ({
-          t: e.innerText.replace(/\s+/g, " ").trim(),
-          bg: getComputedStyle(e.querySelector(".swatch")).backgroundColor })),
-        hint: [...document.querySelectorAll("#breakdown .hint")]
-          .map((e) => e.innerText.replace(/\s+/g, " ").trim()).join(" ／ "),
+        // ⚠ **内訳に区分の行が生えていないこと**（⚠ 器ごと無いのが正）
+        rows: [...document.querySelectorAll("#breakdown .stat")]
+          .map((e) => e.innerText.replace(/\s+/g, " ").trim())
+          .filter((t) => /旧水部|河川|干潟|茅|湿地|田/.test(t)),
+        hint: (document.querySelector("#landAll .land-layer:last-child")?.innerText ?? "")
+          .replace(/\s+/g, " ").trim(),
+        all: (document.getElementById("landAll")?.textContent ?? "").replace(/\s+/g, " "),
       }));
       // ⚠ 分類の行が 1 本もないこと。1 本でもあれば「明治期は○○だった」と読める
       must(r.rows.length === 0,
-        `資料の範囲外を分類の行にしている: ${r.rows.map((x) => `${x.t}[${x.bg}]`).join(" / ")}`);
+        `資料の範囲外を分類の行にしている: ${r.rows.join(" / ")}`);
       // ⚠ 件数は落とさない。落とすと「建物が無い」に読める
-      must(/1364|\d{3,}/.test(r.hint), `件数を落としている: ${r.hint}`);
-      must(/範囲の外|整備している範囲/.test(r.hint), `範囲の外であることを言っていない: ${r.hint}`);
+      must(/\d{3,}/.test(r.hint), `件数を落としている: ${r.hint}`);
+      // ⚠ **範囲の外であることを、⚠ 同じ画面で言っている**（⚠ 第2層が言う）
+      must(/整備対象外|範囲の外|判定できていません/.test(r.all),
+        `範囲の外であることを言っていない: ${r.all.slice(0, 120)}`);
       // ⚠ こちらの都合（読み込めない）に読める言い方をしない
       must(!/読み込め|取得中|取得できません/.test(r.hint),
         `範囲の外なのに、こちらの都合に読める言い方をしている: ${r.hint}`);
