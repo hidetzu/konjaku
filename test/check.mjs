@@ -3512,6 +3512,109 @@ head("6. 外部リンク");
 //   **404 は拾えない**（MapLibre は 404 を異常と見なさない）。だから 404 は前者に留まる。
 // ⚠ ブラウザでは「まだ来ていない」状態を狙って作りにくい。関数を取り出して直に回す。
 //   ⚠ **取り出せなくなったら落とす**（黙って素通りさせない）。
+  // ============================================================
+  // 段の作り方は 1 か所（public/eras.js）
+  // ============================================================
+  // ⚠ **同じ問い（この地点で選べる段はどれか）に、⚠ 2 つの実装が答えていた**
+  //   （hidetzu/konjaku#170。⚠ トップの `buildFrames` と `/peel` の `stepsFrom`）。
+  // ⚠ **すでに 1 か所ずれていた**（実測 2026-08-23・`main` = `9b6e83b`）:
+  //   ⚠ **トップは明治期を「判定できたときだけ」足し、⚠ `/peel` は無条件に足していた。**
+  head("2.6. 段の作り方は 1 か所");
+  {
+    const fails = [];
+    const yes = (c, what) => { if (!c) fails.push(what); };
+
+    // ⚠ AC 1: DOM も地図も持たない（⚠ Node から呼べる条件）
+    const src2 = src["eras.js"];
+    if (src2 == null) fails.push("public/eras.js を読めない（この検査が何も見ていない）");
+    else {
+      // ⚠ **コメントを先に落とす。**⚠ 落とさないと、⚠ 説明に書いた字を自分で拾う（掟）
+      const code = src2.replace(/\/\*[\s\S]*?\*\//g, "").split("\n")
+        .filter((l) => !l.trim().startsWith("//")).join("\n");
+      // ⚠ **末尾の IIFE 引数だけは除く**（`photos.js` ほか 7 つと同じ形。
+      //   ⚠ `(typeof window === "undefined" ? globalThis : window)`）。
+      //   ⚠ **ここを数えると、⚠ この repo の作法そのものが落ちる。**
+      const body = code.replace(/\(typeof window[^)]*\);?\s*$/, "");
+      for (const w of ["document", "window", "maplibregl", "map.", "querySelector", "getElementById"])
+        yes(!body.includes(w), `public/eras.js が ${w} を触っている（Node から呼べなくなる）`);
+    }
+
+    // ⚠ AC 2: Node から呼べて、⚠ 全組み合わせを回せる
+    await import(`file://${join(PUB, "eras.js")}`);
+    const E = globalThis.KonjakuEras;
+    if (!E) fails.push("public/eras.js を読み込めない（この検査が何も見ていない）");
+    else {
+      const LATEST = { id: "now", label: "現在" };
+      const MEIJI = { id: "swale", label: "明治期", meiji: true };
+      const era = (id, state, blank = false) => ({ id, label: id, state, blank });
+
+      // ⚠ **落とし方**（⚠ 2 画面で一致していたものを、⚠ そのまま 1 か所に持つ）
+      yes(E.keepEra(era("a", "unreachable")), "読めなかった年代を落としている（取れなかった ≠ 無い）");
+      yes(E.keepEra(era("a", "ok")), "読めた年代を落としている");
+      yes(!E.keepEra(era("a", "ok", true)), "白紙（撮影範囲の外）を段に出している");
+      yes(!E.keepEra(era("a", "absent")), "404（写真が無い）を段に出している");
+
+      // ⚠ **明治期は、⚠ 判定できたときだけ**（⚠ ADR 0012: 無いものを並べない）
+      const photos = { eras: [era("x", "ok"), era("y", "unreachable"), era("z", "ok", true)] };
+      const withM = E.stepsOf({ photos, latest: LATEST, meiji: MEIJI, hasMeiji: true });
+      const noM = E.stepsOf({ photos, latest: LATEST, meiji: MEIJI, hasMeiji: false });
+      yes(withM[0]?.id === "swale", `明治期が先頭に無い: ${withM.map((e) => e.id).join()}`);
+      yes(!noM.some((e) => e.id === "swale"),
+        `明治期のデータが無いのに段に出している: ${noM.map((e) => e.id).join()}`);
+      yes(noM.length === withM.length - 1, "明治期を外したのに段の数が変わっていない");
+
+      // ⚠ **並びは古い順**（⚠ 向きは呼ぶ側が決める）。⚠ 現在は最後
+      yes(withM.at(-1)?.id === "now", `「現在」が最後に無い: ${withM.map((e) => e.id).join()}`);
+      yes(withM.filter((e) => e.id === "z").length === 0, "白紙が段に混ざっている");
+      yes(withM.filter((e) => e.id === "y").length === 1, "読めなかった年代が段から消えている");
+
+      // ⚠ **写真そのものが取れなかったときは、⚠ 何も間引かない**（掟）
+      const all = [era("x", "ok"), era("y", "ok")];
+      yes(E.stepsOf({ all, latest: LATEST, meiji: MEIJI, hasMeiji: true }).length === 4,
+        "判定が落ちたときに段を間引いている（確かめられなかったを「無い」にしている）");
+
+      // ⚠ **いま何段目か**（⚠ 見つからないときは -1。⚠ 0 に丸めない）
+      yes(E.indexOf(withM, "x") > 0, "段の位置を返していない");
+      yes(E.indexOf(withM, "無い") === -1, "知らない段を 0 段目にしている");
+
+      // ⚠ **前後は端で止まる**（⚠ 回り込まない）
+      yes(E.step(withM, 0, -1) === 0, "左端で回り込んでいる");
+      yes(E.step(withM, withM.length - 1, 1) === withM.length - 1, "右端で回り込んでいる");
+
+      // ⚠ **復元は種類で返す**（⚠ 字はここで作らない。`words.js` が持つ）
+      yes(E.resolve(withM, null).kind === "none", "復元するものが無いのに答えている");
+      yes(E.resolve(withM, "x").kind === "ok", "在る年代を復元できていない");
+      yes(E.resolve(withM, "無い").kind === "gone", "無い年代を「復元できた」と答えている");
+      const gone = E.resolve(withM, "無い");
+      yes(!/[ぁ-んァ-ン一-龥]{4,}/.test(JSON.stringify(gone).replace(/無い/g, "")),
+        `復元の答えが字を持っている（字は words.js の担当）: ${JSON.stringify(gone)}`);
+    }
+
+    // ⚠ AC 3・AC 6: 両画面が同じ 1 か所を呼び、⚠ 段を作り直すコードが残っていない
+    for (const [f, code] of [["public/index.html", src["index.html"]],
+                             ["public/peel3d.js", src["peel3d.js"]]]) {
+      if (code == null) { fails.push(`${f} を読めない`); continue; }
+      yes(code.includes("KonjakuEras.stepsOf"), `${f} が段の作り方を 1 か所から借りていない`);
+      // ⚠ **コメントを先に落とす**（⚠ 説明に書いた字を拾わない）
+      const bare = code.replace(/\/\*[\s\S]*?\*\//g, "").split("\n")
+        .filter((l) => !l.trim().startsWith("//")).join("\n");
+      // ⚠ **落とし方をもう一度書いていないこと**（⚠ ずれの再発）。
+      //   ⚠ **`unreachable` は段以外にも出る**（⚠ `peel3d.js` の地形分類）。
+      //   ⚠ **段の話かどうかで見る**（⚠ 白紙の判定は段にしか無い）。
+      yes(!/\.blank/.test(bare), `${f} が白紙の判定を持っている（段の作り方は 1 か所）`);
+      yes(!/eras\s*\?\?\s*\[\]/.test(bare) && !/photos\?\.eras/.test(bare),
+        `${f} が写真の年代から段を組み直している（段の作り方は 1 か所）`);
+    }
+
+    // ⚠ **読み込み忘れを捕まえる**（⚠ 入れ忘れると、⚠ オフラインで段が作れない）
+    yes((src["sw.js"] ?? "").includes('"/eras.js"'), "sw.js の SHELL に /eras.js が無い");
+    for (const f of ["peel.html", "index.html"])
+      yes((src[f] ?? "").includes("eras.js"), `${f} が eras.js を読み込んでいない`);
+
+    if (fails.length) bad(`段の作り方が 1 か所になっていない（${fails.length} 件）: ${fails.join(" / ")}`);
+    else ok(`段の作り方は public/eras.js の 1 か所（DOM 0 件・Node から全組み合わせ・両画面が同じ口）`);
+  }
+
   // ⚠ **2026-08-20 に、状態を決めるのは public/photos.js の 1 か所へ移した。**
   //   ⚠ **見ている主張は変えていない。**取り出す先だけ変えた。
   //   ⚠ **字を決めるのは words.js。**⚠ **状態と字を分けてある。**
