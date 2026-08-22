@@ -26,12 +26,55 @@ if (SUITE && !SUITES[SUITE]) {
 }
 const CASES = SUITE ? SUITES[SUITE] : [...TOP_CASES, ...PEEL_CASES];
 
+// ⚠ **1件だけ回せるようにする。**
+//   79 件を全部回すと 5 分近くかかる。検査を1つ足すたび、あるいは
+//   「わざと壊して落ちることを確かめる」たびに全件を回していては、確認が高くつき、
+//   **確かめずに済ませる誘惑が生まれる**（実際、確認1つに 5 分かけていた）。
+//   ⚠ **CI と main では必ず全件を回す。** ここは手元で1件を見るためだけのもの。
+const ONLY = process.argv.find((a) => a.startsWith("--only="))?.slice(7);
+// ⚠ **外部に寄りかかるケースだけを切り出せるようにする。**
+//   `dep:"search"` は、地理院の住所検索（msearch）の応答が返ってこないと成立しない検査。
+//   実測（2026-08-17）で、住所検索は速いとき 0.4 秒・遅いとき 8.2 秒だった。
+//   アプリは 8 秒で中断する（掟のタイムアウト）ので、遅い回はアプリが正しく中断し、
+//   候補が出ないまま検査だけが落ちる。**アプリの不具合ではなく、検査の前提が外部にある。**
+//   → `--group=core` は外へ出ない（＝落ちても外部のせいにできない）ぶんだけを回す。
+//     `--group=search` はその逆。CI は両方を回すが、切り分けができる。
+const GROUP = process.argv.find((a) => a.startsWith("--group="))?.slice(8);
+if (GROUP && !["core", "search"].includes(GROUP)) {
+  console.log(`\x1b[31m--group は core か search（来たのは ${GROUP}）\x1b[0m`); process.exit(1);
+}
+// ⚠ **同じ群を、⚠ 何本かに分けて同時に回すための口**（2026-08-22。hidetzu/konjaku#190）。
+//   ⚠ **`--shard=1/2` のように書く**（1 本目 / 全部で 2 本）。
+// ⚠ **交互に配る**（`i % n`）。⚠ **前半・後半で切らない。**
+//   ⚠ **実測（2026-08-22・手元）**: peel の 67 件は 0.9〜20.6 秒とばらつきが大きい。
+//     ⚠ 前半・後半で切ると偏るが、⚠ 交互なら 87s / 101s に収まる。
+// ⚠ **並び順に依存する。**⚠ ケースを足すと、⚠ どちらへ行くかは変わる。
+//   ⚠ **それでよい。**⚠ ケースどうしは独立していて、⚠ 順番に意味は無い
+//     （⚠ 意味があるなら、⚠ それは 1 つのケースにまとめるべきもの）。
+const SHARD = process.argv.find((a) => a.startsWith("--shard="))?.slice(8);
+let shardAt = 0, shardOf = 1;
+if (SHARD) {
+  const m = /^(\d+)\/(\d+)$/.exec(SHARD);
+  if (!m) {
+    console.log(`\x1b[31m--shard は 1/2 のように書く（来たのは ${SHARD}）\x1b[0m`); process.exit(1);
+  }
+  shardAt = Number(m[1]) - 1; shardOf = Number(m[2]);
+  if (shardAt < 0 || shardOf < 1 || shardAt >= shardOf) {
+    console.log(`\x1b[31m--shard=${SHARD} は範囲の外（1/${shardOf} 〜 ${shardOf}/${shardOf}）\x1b[0m`);
+    process.exit(1);
+  }
+}
+const RUN = CASES
+  .filter((c) => !ONLY || c.name.includes(ONLY))
+  .filter((c) => !GROUP || (GROUP === "search" ? c.dep === "search" : c.dep !== "search"))
+  .filter((c, i) => i % shardOf === shardAt);
+
 // ⚠ **走らせずに数だけ見る口**（`--count`）。⚠ **配線を確かめるために要る。**
 //   ⚠ **数えるのは「本当に回るもの」**（⚠ 別の数え方を持たない）。
+//   ⚠ **2026-08-22 まで、⚠ ここだけ別に数えていた**（`--shard` を見ておらず、
+//     ⚠ **1/2 でも 67 と名乗った**）。⚠ **いまは `RUN` をそのまま数える。**
 if (process.argv.includes("--count")) {
-  const g = (process.argv.find((a) => a.startsWith("--group=")) ?? "").split("=")[1] || null;
-  const n = CASES.filter((c) => !g || (g === "search" ? c.dep === "search" : c.dep !== "search")).length;
-  console.log(`${SUITE ?? "全部"} ${g ?? "全部"} ${n}`);
+  console.log(`${SUITE ?? "全部"} ${GROUP ?? "全部"}${SHARD ? ` ${SHARD}` : ""} ${RUN.length}`);
   process.exit(0);
 }
 // ---- ローカルサーバ ----
@@ -72,29 +115,10 @@ await mkdir(OUT, { recursive: true });
 const browser = await chromium.launch();
 let failed = 0;
 
-// ⚠ **1件だけ回せるようにする。**
-//   79 件を全部回すと 5 分近くかかる。検査を1つ足すたび、あるいは
-//   「わざと壊して落ちることを確かめる」たびに全件を回していては、確認が高くつき、
-//   **確かめずに済ませる誘惑が生まれる**（実際、確認1つに 5 分かけていた）。
-//   ⚠ **CI と main では必ず全件を回す。** ここは手元で1件を見るためだけのもの。
-const ONLY = process.argv.find((a) => a.startsWith("--only="))?.slice(7);
-// ⚠ **外部に寄りかかるケースだけを切り出せるようにする。**
-//   `dep:"search"` は、地理院の住所検索（msearch）の応答が返ってこないと成立しない検査。
-//   実測（2026-08-17）で、住所検索は速いとき 0.4 秒・遅いとき 8.2 秒だった。
-//   アプリは 8 秒で中断する（掟のタイムアウト）ので、遅い回はアプリが正しく中断し、
-//   候補が出ないまま検査だけが落ちる。**アプリの不具合ではなく、検査の前提が外部にある。**
-//   → `--group=core` は外へ出ない（＝落ちても外部のせいにできない）ぶんだけを回す。
-//     `--group=search` はその逆。CI は両方を回すが、切り分けができる。
-const GROUP = process.argv.find((a) => a.startsWith("--group="))?.slice(8);
-if (GROUP && !["core", "search"].includes(GROUP)) {
-  console.log(`\x1b[31m--group は core か search（来たのは ${GROUP}）\x1b[0m`); process.exit(1);
-}
-const RUN = CASES
-  .filter((c) => !ONLY || c.name.includes(ONLY))
-  .filter((c) => !GROUP || (GROUP === "search" ? c.dep === "search" : c.dep !== "search"));
 if (SUITE) console.log(`\x1b[33m⚠ --suite=${SUITE}: ${CASES.length} 件だけ回す（全部ではない）\x1b[0m`);
-if (ONLY || GROUP) {
-  const how = [ONLY && `--only=${ONLY}`, GROUP && `--group=${GROUP}`].filter(Boolean).join(" ");
+if (ONLY || GROUP || SHARD) {
+  const how = [ONLY && `--only=${ONLY}`, GROUP && `--group=${GROUP}`,
+    SHARD && `--shard=${SHARD}`].filter(Boolean).join(" ");
   if (!RUN.length) { console.log(`\x1b[31m${how} に当てはまるケースが無い\x1b[0m`); process.exit(1); }
   console.log(`\x1b[33m⚠ ${how}: ${RUN.length} / ${CASES.length} 件だけ回す（全件ではない）\x1b[0m\n`);
 }

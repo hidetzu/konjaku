@@ -20,6 +20,7 @@ import { readFile, readdir } from "node:fs/promises";
 import { existsSync, readFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { join, extname, basename, dirname } from "node:path";
+import { pathToFileURL } from "node:url";
 import { VERSION_RE, hashOf, readSw } from "../scripts/sw-hash.mjs";
 import { VERSION as BL_VERSION, unpack as blUnpack } from "../scripts/bl-format.mjs";
 
@@ -5205,6 +5206,48 @@ head("9. 画面の言葉");
   }
 }
 
+
+// ── 分けて回しても、⚠ 1 件も落ちないか ──────────────────────────
+// ⚠ **2026-08-22 に足した**（hidetzu/konjaku#190）。
+// ⚠ **`--shard=1/2` で分けたとき、⚠ 足して元に戻ることを見る。**
+//   ⚠ **落ちるのではなく、⚠ 静かに減るのが怖い**（⚠ 減ったぶんは誰も検査しないまま緑になる）。
+// ⚠ **走者に数えさせる**（`--count`）。⚠ **ここで別に数え直さない**（掟 §3）。
+{
+  const runner = join(ROOT, "test/render.mjs");
+  const count = (args) => Number(execFileSync(process.execPath, [runner, "--count", ...args],
+    { encoding: "utf8" }).trim().split(/\s+/).pop());
+  const bad3 = [];
+  let seen = 0;
+  for (const [suite, group] of [["top", "core"], ["top", "search"], ["peel", "core"]]) {
+    const whole = count([`--suite=${suite}`, `--group=${group}`]);
+    seen += whole;
+    for (const n of [2, 3]) {
+      let sum = 0;
+      for (let i = 1; i <= n; i++)
+        sum += count([`--suite=${suite}`, `--group=${group}`, `--shard=${i}/${n}`]);
+      if (sum !== whole) bad3.push(`${suite}/${group} を ${n} 分割: ${sum} 件（全部で ${whole} 件）`);
+    }
+  }
+  // ⚠ **足し算だけでは足りない**（2026-08-22 に踏んだ）。
+  //   ⚠ **全体も同じ走者が数えているので、⚠ 全体からも同じだけ減ると気づけない。**
+  //   ⚠ わざと 1 件落としてみたら、⚠ **この検査は緑のままだった。**
+  // ⚠ **だから、⚠ ケースの一覧そのものと突き合わせる**（⚠ 走者を通さない道）。
+  //   ⚠ **掟 §3 は「2 つ持つなら機械で突き合わせろ」。**⚠ これがその突き合わせ。
+  const { CASES: TOP } = await import(pathToFileURL(join(ROOT, "test/render/top.mjs")).href);
+  const { CASES: PEEL } = await import(pathToFileURL(join(ROOT, "test/render/peel.mjs")).href);
+  const declared = TOP.length + PEEL.length;
+  if (seen !== declared) {
+    bad3.push(`走者が回すのは ${seen} 件だが、⚠ 書いてあるのは ${declared} 件`);
+  }
+  if (!seen) {
+    bad("実描画のケースを 1 件も数えられなかった（⚠ この検査が何も見ていない）");
+  } else if (bad3.length) {
+    bad(`分けて回すと件数が合わない（${bad3.length} 件）: ${bad3.join(" ／ ")}`
+      + "（⚠ **落ちるのではなく、⚠ 静かに減る。**⚠ 減ったぶんは誰も検査しない）");
+  } else {
+    ok(`分けて回しても 1 件も落ちない（3 つの群 × 2 分割・3 分割 ／ 書いてある ${declared} 件と一致）`);
+  }
+}
 
 console.log(`\n${"─".repeat(52)}`);
 if (failed) { console.log(`\x1b[31m${failed} 件の問題\x1b[0m${warned ? ` / ${warned} 件の警告` : ""}`); process.exit(1); }

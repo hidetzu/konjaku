@@ -42,13 +42,30 @@ const TO_SUITE = [
 // ⚠ **全部回すときの一覧。**⚠ **ここ 1 か所で持つ**（2026-08-22。hidetzu/konjaku#190）。
 const ALL = ["top core", "top search", "peel core"];
 
+// ⚠ **重い群は、⚠ 何本かに分けて同時に回す**（2026-08-22。hidetzu/konjaku#190）。
+//   ⚠ **実測（2026-08-22・PR hidetzu/konjaku#209 の CI）**: peel/core 5:12 ／ top/core 3:45 ／ top/search 1:23。
+//   ⚠ **2 つずつに割ると**（手元の実測から換算）:
+//     peel 2:24 / 2:48 ／ top 1:47 / 1:58 ／ search 1:23 → ⚠ **律速は 2:48。**
+//   ⚠ **3 つに割ると偏る**（peel: 1:14 / 2:31 / 1:27）。⚠ **1 本が重いままなので効かない。**
+//   ⚠ **search は割らない**（1:23 で、⚠ 割っても律速に届かない。⚠ 外へ出る口を増やさない）。
+const SHARDS = { "top core": 2, "peel core": 2 };
+
 // ⚠ **出し方は 2 つあるが、⚠ 決め方は 1 つ。**⚠ 形を変えるだけ。
 const emit = (lines) => {
   if (process.argv.includes("--json")) {
-    console.log(JSON.stringify(lines.map((l) => {
+    const out = [];
+    for (const l of lines) {
       const [suite, group] = l.split(" ");
-      return { suite, group };
-    })));
+      const n = SHARDS[l] ?? 1;
+      for (let i = 1; i <= n; i++) {
+        // ⚠ **名で見せ、⚠ id で保存する。**⚠ id に `/` を入れると成果物の名前が壊れる。
+        const shard = n > 1 ? `${i}/${n}` : "";
+        out.push({ suite, group, shard,
+          name: shard ? `${suite}/${group} ${shard}` : `${suite}/${group}`,
+          id: shard ? `${suite}-${group}-${i}of${n}` : `${suite}-${group}` });
+      }
+    }
+    console.log(JSON.stringify(out));
   } else {
     console.log(lines.join("\n"));
   }
