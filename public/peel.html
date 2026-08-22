@@ -286,12 +286,14 @@
      ⚠ 横に並べると「現在 → 昔」と「現在」が隣り合い、⚠ **利用者役 3/4 が
        「現在が 2 回書いてある」と言った**（実測 2026-08-22・1280×800・豊洲）。
      ⚠ 縦に分けると、上が「この帯は何か」、下が「いま何を見ているか」になる。 */
-  .time-panel-head > .head-stack{min-width:0;display:flex;flex-direction:column;gap:2px}
+  /* ⚠ **見出しの主役**（この帯が何か ＋ いま何を見ているか）。⚠ 畳みボタンの隣に置く。
+     ⚠ 名前は**役割**で付ける（`.claude/rules/css.md`。⚠ `stack` は構造の名前なので使わない）。 */
+  .time-panel-head > .time-panel__main{min-width:0;display:flex;flex-direction:column;gap:2px}
   .time-panel-name{flex:none}
 
   .time-panel-name{min-width:0;display:flex;align-items:baseline;gap:9px;white-space:nowrap}
   #timePanelTitle{font-size:var(--fs-body);font-weight:600;letter-spacing:.05em;color:var(--ink)}
-  /* ⚠ **#timePanelBody の余白は、ここと PC の 2 か所だけ**（2026-08-22 にまとめた）。
+  /* ⚠ **カードの中身。**⚠ 余白はここと PC の 2 か所だけ（2026-08-22 にまとめた）。
      ⚠ 以前は 4 か所に散っていて、⚠ **基底で 7px 14px 10px を置いてから、狭い幅で
        上を 0 に、左右を 10px に上書きし、PC でまた元へ戻す**という往復をしていた。
      ⚠ この作りは「いまどの値が効いているか」を読むのに 4 か所を追う必要がある。
@@ -302,7 +304,9 @@
                                        10px だった（実測 2026-08-18）。端から引くと
                                        端末の「戻る」スワイプと喧嘩するので、ノブの半径ぶん空ける
        PC      padding 7px 14px 10px  ⚠ 下の @media(min-width:681px) に 1 行だけ */
-  #timePanelBody{border-top:1px solid rgba(255,255,255,.12);padding:var(--pad-y) var(--pad-x)}
+  /* ⚠ **見た目は class**（`.claude/rules/css.md`: 新しい CSS で #id を使わない）。
+     ⚠ **id は残す。**⚠ JS（`getElementById`）と検査が掴んでいる。 */
+  .time-panel__body{border-top:1px solid rgba(255,255,255,.12);padding:var(--pad-y) var(--pad-x)}
   /* 共有された状態を復元できなかったときの1行。
      ⚠ 警告色にはしない。壊れてはいない。共有元と別のものを見ている、という断り書き */
   #stateMiss{margin:0 0 7px;padding:6px 9px;border-radius:7px;
@@ -1013,7 +1017,7 @@
        ⚠ **丸み・余白・地色は `.time-panel` が持つ。**⚠ 見た目を足すときはクラス側へ。 -->
   <section id="timePanel" class="time-panel" aria-labelledby="timePanelTitle">
     <div class="time-panel-head">
-      <div class="head-stack">
+      <div class="time-panel__main">
         <!-- ⚠ **「現在 → 昔」は消した**（2026-08-22。Owner 判断）。
              ⚠ 軸の向きは目盛り（左が現在・右が明治期）で読める。
              ⚠ 実測 2026-08-22（利用者役・1280×800・豊洲）: **2 回**指摘が出ている。
@@ -1031,7 +1035,7 @@
       </div>
       </div>
     </div>
-    <div id="timePanelBody">
+    <div id="timePanelBody" class="time-panel__body">
       <!-- 共有された年代・建物がこの土地に無かったときの1行。
            ⚠ **年代を動かす帯のすぐ上**に置く。読んだ人が次にすることは「別の年代を選ぶ」なので、
              選ぶ場所の隣にないと、何をすればよいか分からない。
