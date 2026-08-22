@@ -389,7 +389,11 @@
      ⚠ **地図のドラッグを食わないため。**⚠ 行に敷きを持たせているので、⚠ 行が指を食う。
      ⚠ **「▴ が押せない」の原因はここではなかった**（⚠ `inert` だった。`peel3d.js` の
        `sealOldControls`）。⚠ **z-index も pointer-events も疑って測り、⚠ どちらも違った。** */
-  .chrome-row{display:flex;gap:8px;pointer-events:none}
+  /* ⚠ **帯は、⚠ 小さいときも広げたときも同じ形**（2026-08-22。Owner 判断）。
+     ⚠ **左に「← 今昔へ」・右に「▾ 広げる／▴ 小さくする」。**⚠ パネルの幅にそろえる。
+     ⚠ 実測（2026-08-22・375）: ⚠ **`▾` が 小さい x=66（← の隣）／広げた x=317（右端）**だった。 */
+  .chrome-row{display:flex;gap:8px;pointer-events:none;
+    width:100%;justify-content:space-between;align-items:center}
   #chrome a,#chrome button{position:relative;z-index:1;pointer-events:auto}
   /* ⚠ **補足の層。**⚠ 敷きは自前で持つ（航空写真の上で字が沈まないように）。
      ⚠ 検査は敷きを**祖先まで辿って**見る（render.mjs）。⚠ 敷きを外すと落ちる。
@@ -446,6 +450,12 @@
   .maplibregl-ctrl-group button .maplibregl-ctrl-icon{filter:invert(1) brightness(1.7)}
   /* 指の当たり判定。既定は 29×29 で iOS の最小 var(--tap) を下回っていた */
   .maplibregl-ctrl-group button{width:var(--tap)!important;height:var(--tap)!important}
+  /* ⚠ **地図の操作と、⚠ パネルの帯を重ねない**（2026-08-22）。
+     ⚠ 実測（375×667・小さい状態）: ⚠ **`▾ 広げる`（317,14）と ＋（320,11）が重なり、
+       ⚠ `elementFromPoint` は ▾ を返した**＝ ⚠ **＋ が押せなくなっていた。**
+     ⚠ **帯は上端に固定なので、⚠ 地図の操作を下へ逃がす。**
+     ⚠ **広げているときは、⚠ パネルが覆うので位置は関係ない。** */
+  .maplibregl-ctrl-top-right{top:58px}
   /* ⚠ **狭い幅が既定**（2026-08-21。hidetzu/konjaku#133）。
      ⚠ **ここから下は、⚠ もともと `@media(max-width:680px)` の中にあったもの。**
      ⚠ **原文のまま外へ出した**（コメントも値も動かしていない）。
@@ -518,7 +528,7 @@
     /* ⚠ **全画面になるのは、⚠ 広げたときだけ**（2026-08-22。Owner 判断）。
        ⚠ **小さい状態は上側に置く**（⚠ 中央 ＝ 調べている地点を覆わない）。 */
     #panel{top:58px;left:14px;right:14px;bottom:auto;width:auto;max-width:none;
-      max-height:calc(50% - 70px);border-radius:11px;border:1px solid var(--line);padding:11px 12px}
+      max-height:calc(50% - 70px);border-radius:11px;border:1px solid var(--line);padding:11px 14px}
     #panel.open{top:0;left:0;right:0;bottom:0;max-height:none;
       border-radius:0;border:0;padding:14px 14px 24px;
       /* ⚠ HUD（z-index 12）と地図の帰属表示（14）より上に出す。
@@ -550,8 +560,12 @@
     /* ⚠ ☰ は opacity:0 で消えているが、帯の中では**場所を取り続ける**。
          左右に離す配置なので、真ん中に見えない箱が残ると間隔が読めない。畳む。 */
     /* ⚠ **広げても ▴ は残す**（2026-08-22） */
+    /* ⚠ **帯は、⚠ 小さいときも広げたときも同じ場所**（2026-08-22。Owner 判断）。
+       ⚠ 実測（2026-08-22・375）: ⚠ **`← 今昔へ` が 小さい x=14 / 広げた x=12**、
+         ⚠ **`▴` が 66 / 319** とばらついていた。⚠ **左端をそろえる。**
+       ⚠ **敷きは広げたときだけ**（⚠ 小さいときは地図の上に浮かせる）。 */
     #panel.open ~ #chrome{
-      top:0;left:0;right:0;padding:10px 12px;
+      top:0;left:0;right:0;padding:10px 14px;
       align-items:stretch;gap:0;overflow:visible;
       background:color-mix(in srgb, var(--bg) 92%, transparent);
       backdrop-filter:blur(18px);border-bottom:1px solid var(--line)}
