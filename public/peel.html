@@ -87,7 +87,17 @@
      ⚠ **問いには線を付けない。**⚠ 付けると問いまで「節」になり、⚠ 短い板に線が 4 本並ぶ。
        ⚠ **問いは本文で、⚠ 補足情報は本文に差し込まれた断り。**⚠ 格が違う。 */
   .sec-note{margin:12px 0;padding:12px 0;
-    border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+    border-top:1px solid var(--line);border-bottom:1px solid var(--line);
+    display:flex;align-items:flex-start;gap:8px}
+  .sec-note > ul{flex:1;min-width:0}
+  /* ⚠ **? は的として 44×44**（`rules/css.md`）。⚠ 見た目の丸は中に描く。 */
+  .note-help{flex:none;width:var(--tap);height:var(--tap);
+    display:inline-flex;align-items:center;justify-content:center;
+    background:none;border:0;color:var(--ink-dim);font-size:var(--fs-body);line-height:1;
+    cursor:pointer}
+  .note-help > span[aria-hidden]{display:inline-flex;align-items:center;justify-content:center;
+    width:22px;height:22px;border:1px solid var(--line);border-radius:50%}
+  .note-help[aria-expanded="true"]{color:var(--ink)}
   /* ⚠ **字間は 0.08em**（2026-08-22）。⚠ 大きさは `.sec>.label`（出典）と同じまま。
      ⚠ 実測: 12px に 0.15em で、⚠ **「補 足 情 報」と読めていた**
        （⚠ 和文の 4 字ラベルに、⚠ 欧文の SMALL CAPS 的なトラッキングは効かない）。
@@ -299,6 +309,22 @@
   #panel:not(.open) #breakdown,
   #panel:not(.open) .prov-q,
   #panel:not(.open) .sec:not(:first-of-type){display:none}
+  /* ⚠ **狭い幅では、⚠ 小さくしているあいだ 3 つの問いごと畳む**（2026-08-23。Owner 判断）。
+     ⚠ **実測（375×667・渋谷）**: ⚠ **地図が素で見えるのは 149px / 667px（22%）** しか無く、
+       ⚠ **そのうえ「昔はどんな土地？」が y=322 で切れていた**（74px のうち 38px だけ）。
+       ⚠ **切れた見出しは、⚠ 答えを読ませずに「壊れている」とだけ伝える。**
+     ⚠ **消したのではない。**⚠ 「▾ 全画面で読む」で全部読める（掟 §1）。
+     ⚠ **断り（`caveat`）は畳まない。**⚠ **絵と同時に読めないと意味がない**（掟 §1・§4-1）。
+     ⚠ **畳むのは操作の案内（`tip`）だけ。**⚠ ? で出せる。
+     ⚠ **広い幅には効かせない。**⚠ **PC は板と地図が並ぶので、⚠ 覆っていない。** */
+  #panel:not(.open) #landAll{display:none}
+  /* ⚠ **問いを畳んだら、⚠ その下の余白も畳む**（2026-08-23）。
+     ⚠ **実測（375×667・渋谷）**: ⚠ **補足の下線の下に 23px の空白**が残り、
+       ⚠ **「まだ続きがあって切れている」ように見えた。**⚠ 下線の下は板の余白だけでよい。 */
+  #panel:not(.open) .sec-note{margin-bottom:0}
+  #panel:not(.open) .sec-note:not(.sec-note--tips) #notes li[data-kind="tip"]{display:none}
+  /* ⚠ **広げているときは ? を出さない**（⚠ 全部読めているので押す相手がいない。ADR 0026）。 */
+  #panel.open .note-help{display:none}
   /* ⚠ 調べ終わった土地で、検索欄が最上段にあるのは順序として弱い。
      結果を先に出すと、いちばん遠かった「いま画面に出ているもの」が近くなる。
      実測（375×667・パネルを開いた状態）: 641px → 264px。
@@ -327,6 +353,12 @@
 .brand b{font-weight:500;letter-spacing:.22em}
 
   .sec{margin-top:13px;padding-top:11px;border-top:1px solid var(--line)}
+  /* ⚠ **いちばん上の節は、⚠ 自分で上の余白と区切りを作らない**（2026-08-23）。
+     ⚠ **すぐ上に `.chrome-row` があり、⚠ あちらが敷きを持つので区切りになっている。**
+     ⚠ **実測（375×667・渋谷）**: ⚠ **▾ の下端 y=70 から 地名 y=113 まで 43px が余白だけ**だった。
+     ⚠ **狭い画面では、⚠ その 43px がそのまま地図の取り分。**
+     ⚠ **`.sec` より後ろに置く**（⚠ 同じ強さなので、⚠ 前に置くと負ける。⚠ 実際に負けた）。 */
+  .sec--place{margin-top:0;padding-top:0;border-top:0}
   .sec>.label{font-size:var(--fs-note);letter-spacing:.08em;color:var(--ink-dim);margin-bottom:8px}
 
   /* 検索 */
@@ -451,7 +483,9 @@
     width:100%;justify-content:space-between;align-items:stretch;
     position:sticky;top:0;z-index:2;flex:none;
     /* ⚠ **的の高さを縮めない。**⚠ `align-items:center` だと 44 → 22 に潰れた（実測 2026-08-22） */
-    margin:0 0 10px;padding-bottom:8px;
+    /* ⚠ **下の余白は 10px 1 つ**（2026-08-23）。⚠ **前は padding 8 ＋ margin 10 = 18px。**
+       ⚠ **敷き（`background`）が要るのは的の高さまで**なので、⚠ padding は要らない。 */
+    margin:0 0 10px;
     background:var(--panel-bg,rgba(10,14,20,.96))}
   .chrome-row a,.chrome-row button{position:relative;z-index:1;pointer-events:auto}
   /* ⚠ **補足の層。**⚠ 敷きは自前で持つ（航空写真の上で字が沈まないように）。
@@ -542,7 +576,12 @@
          載っていたときに、⚠ **2 つを 1 枚に見せるためのもの**。⚠ **器が 1 つになったので、
          上だけ角が無い箱**になっていた。⚠ 上下とも 14px（既定）に戻す。 */
     #hud{padding:0 12px 26px;gap:0}
-    .chrome-row a span,#toggle span{display:none}
+    /* ⚠ **狭い幅では、⚠ ▾ の字だけ出す**（2026-08-23。Owner 判断）。
+       ⚠ **利用者役 4/4 が「▾ だけでは何のボタンか分からない」と答えた**
+         （⚠ 読みは「もっと下に何かある」2 名／「並び替え」1 名／「メニュー」1 名に割れた）。
+       ⚠ **左の「今昔へ」は矢印だけにする。**⚠ **横幅を空けるため**（実測: 左 90px ／ 右 76〜99px）。
+       ⚠ **読み上げには残る**（`.sr-only` ではなく、⚠ `a` の `aria-label` / `title` が名乗る）。 */
+    .chrome-row a span{display:none}
     #drumWrap{display:block;position:relative;flex:1;min-width:0}
     /* ⚠ **押せる／払えると見えるようにする。**利用者役 3/3 が
          「枠も線も無いので、操作できる場所だと気づかない」と答えた。 */
@@ -673,6 +712,18 @@
          ⚠ **PC は既定で `.open`** なので、⚠ **1280 で常に 0×0 だった。**
        ⚠ **`main` では両方が `:not(.hide)` で同じ強さだった。**⚠ 書き換えたときに弱めた。 */
     #panel.open ~ #chrome #notice,#panel ~ #chrome #notice{display:block}
+    /* ⚠ **PC では 3 つの問いを畳まない**（2026-08-23）。⚠ **板と地図が並ぶので覆っていない。**
+       ⚠ **既定（狭い幅）に書いたものは PC にも効く。**⚠ **ここで打ち消す**（`rules/css.md`）。 */
+    #panel:not(.open) #landAll{display:block}
+    /* ⚠ **PC は問いを畳まないので、⚠ 余白も戻す**（⚠ 正本は上の `.sec-note`）。 */
+    #panel:not(.open) .sec-note{margin-bottom:12px}
+    /* ⚠ **打ち消しは、⚠ 同じ形で書く**（2026-08-23）。
+       ⚠ **`#panel:not(.open) #notes li[…]`（id 2・class 2・要素 1）では、
+         ⚠ 既定の `#panel:not(.open) .sec-note:not(.sec-note--tips) #notes li[…]`
+         （id 2・class 4・要素 1）に負ける。**⚠ **実際に負けた**（⚠ PC で案内が消え、
+         ⚠ **PC には ? が無いので出す手段が無かった**）。 */
+    #panel:not(.open) .sec-note:not(.sec-note--tips) #notes li[data-kind="tip"]{display:list-item}
+    #panel:not(.open) .note-help{display:none}
     /* ⚠ **PC でも縦の積み上げのまま**（押せる行 → 補足）。
          ⚠ 横並びに戻すと、⚠ **補足がボタンの隣に並んで帯が伸びる。** */
     /* ⚠ **PC でも、⚠ 帯は `.open` で変えない**（2026-08-22。Owner 指摘）。
@@ -702,7 +753,7 @@
        （全画面で読むので、開く導線が要らない）。⚠ 広い画面では板と地図が並ぶので出す。
        ⚠ 実測（2026-08-21）: これを書き忘れて、⚠ **#chrome が 269 → 123px になった。** */
     #panel ~ #chrome #toggle{display:inline-flex}
-      .chrome-row a span,#toggle span{display:inline}
+      .chrome-row a span{display:inline}
 
     /* 年代の箱は、広い幅の大きさに戻す */
     #hud{padding:0 26px 26px}
@@ -818,7 +869,8 @@
   <div id="status" style="margin-top:8px"></div>
 
   <div id="result" style="display:none">
-    <div class="sec">
+    <!-- ⚠ **場所を名乗る節**（2026-08-23）。⚠ **上の余白を持たない**（⚠ 上に帯があるので二重になる）。 -->
+    <div class="sec sec--place">
       <div class="place" id="placeName"></div>
       <!-- ⚠ **補足情報**（2026-08-22。Owner 判断: `tmp/tmp3.md`）。
            ⚠ **地図の上（`#notice`）から移した。**⚠ 上の注記に、⚠ **何を引き受けたか**を書いた。
@@ -836,6 +888,14 @@
              ⚠ **古い実装の名残**（⚠ 地図の上に別々に浮かせていた頃のもの）。
              ⚠ **同じ形で並べる。**⚠ 増やすときは `peel3d.js` の配列に 1 行足すだけ。 -->
         <ul id="notes" aria-label="この絵について知っておくこと"></ul>
+        <!-- ⚠ **操作の案内は、⚠ 小さくしているあいだ ? の中**（2026-08-23。Owner 判断）。
+             ⚠ **断り（掟 §1）は畳まない。**⚠ **畳むのは「押せば分かること」だけ。**
+             ⚠ **広げているときは ? ごと出ない**（⚠ 全部読めているので押す相手がいない）。
+             ⚠ **畳む相手がいないときも出さない**（`peel3d.js` が `hidden` にする。ADR 0026）。 -->
+        <button type="button" class="note-help" id="noteHelp"
+                aria-controls="notes" aria-expanded="false" hidden>
+          <span aria-hidden="true">?</span><span class="sr-only">この絵でできることを見る</span>
+        </button>
       </div>
       <!-- ⚠ パネルも**層**で答える（ADR 0030）。スマホの HUD（#land）と同じ値を描く。
            ⚠ **同じ問いに 2 つの答えを持たない。**HUD だけ層にしたとき、

@@ -552,6 +552,14 @@ map.on("mouseleave","bld",()=>map.getCanvas().style.cursor="");
 // エリアの読み込み — ここが「任意の場所でやる」の本体
 // ============================================================
 const statusEl=document.getElementById("status");
+// ⚠ **補足の ? は、⚠ 操作の案内だけを出し入れする**（2026-08-23。Owner 判断）。
+//   ⚠ **断りは出し入れしない**（掟 §1・§4-1: ⚠ 限界は必ず書く）。⚠ **常に出ている。**
+const noteBox=document.getElementById("noteBox");
+const noteHelp=document.getElementById("noteHelp");
+if(noteHelp&&noteBox) noteHelp.onclick=()=>{
+  const on=noteBox.classList.toggle("sec-note--tips");
+  noteHelp.setAttribute("aria-expanded", String(on));
+};
 const resultEl=document.getElementById("result");
 let area=null;   // 現在のエリアの集計
 let marker=null; // 調べている地点の印
@@ -1400,6 +1408,9 @@ const NARROW_Q="(max-width:680px)";
 const narrow=()=>matchMedia(NARROW_Q).matches;
 // ⚠ 幅が変わったら、閉じている側を入れ替える（画面回転・折りたたみ端末で起きる）
 matchMedia(NARROW_Q).addEventListener("change",()=>{
+  // ⚠ **ボタンの字は幅で変わる**（2026-08-23）。⚠ **回したら名乗り直す。**
+  //   ⚠ さもないと ⚠ **PC 幅で「全画面で読む」と名乗ったまま**になる（⚠ 起きることが違う）。
+  applyPanel();
 });
 
 // ============ 共有された状態を、URL に載せる／URL から戻す ============
@@ -1830,14 +1841,26 @@ function describe(v){
     // ⚠ **この字は掟 §1 に直結する。**⚠ 実測（2026-08-14）: 広島 1945–50 の焼け野原の上に
     //   現在の 3,555 棟が立ち、⚠ **利用者は最初の 3 秒「1945年の広島」だと読んだ。**
     //   ⚠ **判別できた人の根拠は画面ではなく、⚠ 自分の歴史知識だった。**
+    // ⚠ **2 種類ある**（2026-08-23。Owner 判断）。⚠ **狭い画面で扱いが違う。**
+    //   `caveat` ⚠ **断り**。⚠ **絵と同時に読めないと意味がない**（掟 §1・§4-1「限界は必ず書く」）。
+    //           ⚠ **畳まない。**⚠ 小さくしていても出す。
+    //   `tip`    操作の案内。⚠ **押せば分かること。**⚠ 小さくしているあいだは ? の中へ。
+    //   ⚠ **実測（2026-08-23・375×667・渋谷）**: ⚠ **地図が素で見えるのは 149px / 667px（22%）。**
+    //     ⚠ **案内 1 行を畳むと、⚠ パネルが 207 → 175px** になる。
     if(bldVisible&&pos>0.02)
-      notes.push(`この街並みは<b>いまのもの</b>です。地面だけが ${esc(cur.label)} です`);
+      notes.push({kind:"caveat", t:`この街並みは<b>いまのもの</b>です。地面だけが ${esc(cur.label)} です`});
     // ⚠ **意味の語だけ色を付ける**（`.k` ＝ `--estimate` ＝ 推定）。
     //   ⚠ **前は 12 字ぜんぶ `<b>` で白くしていた**（⚠ 問いの見出しと同じ明るさで競っていた）。
-    if(bldVisible) notes.push('建物が消える年代は<span class="k">推定</span>です');
+    if(bldVisible) notes.push({kind:"caveat", t:'建物が消える年代は<span class="k">推定</span>です'});
     // ⚠ 一度押した人には出さない（⚠ もう知っている）
-    if(bldVisible&&!picked) notes.push("建物を押すと、その足元が分かります");
-    notesEl.innerHTML=notes.map((t)=>`<li>${t}</li>`).join("");
+    if(bldVisible&&!picked) notes.push({kind:"tip", t:"建物を押すと、その足元が分かります"});
+    notesEl.innerHTML=notes.map((n)=>`<li data-kind="${n.kind}">${n.t}</li>`).join("");
+    // ⚠ **? は、⚠ 畳む相手がいるときだけ出す**（ADR 0026: 押しても何も起きない導線を置かない）。
+    if(noteHelp){
+      const tips=notes.some((n)=>n.kind==="tip");
+      noteHelp.hidden=!tips;
+      if(!tips) noteBox?.classList.remove("sec-note--tips");
+    }
   }
 
   // ⚠ 台帳の**文面と語彙は public/prov.js**（実測／未取得／欠落／未対応／推定）。
@@ -1985,8 +2008,18 @@ const applyPanel = () => { setPanelHidden(!panelOpen);
   // ⚠ **押す前に、⚠ 何が起きるかを名乗る**（`aria-expanded` も合わせる）。
   if(toggle){
     toggle.setAttribute("aria-expanded", String(panelOpen));
-    toggle.innerHTML = panelOpen ? '▴ <span>小さくする</span>' : '▾ <span>広げる</span>';
-    toggle.title = panelOpen ? "パネルを小さくする" : "パネルを広げる";
+    // ⚠ **何が起きるかで名乗る**（2026-08-23。Owner 判断）。
+    //   ⚠ **前は「広げる」「小さくする」。**⚠ **利用者役 3/4 が「地図を広げる」と読んだ**
+    //     （⚠ この画面は地図が主役なので、⚠ 主語が無いと地図に係る）。
+    //   ⚠ **幅で字を変える。**⚠ **起きることが違うから**（実測 2026-08-23・渋谷）:
+    //     ⚠ 375 は 347×308 → **375×667（全画面。地図が全部隠れる）**
+    //     ⚠ 1280 は 300×470 → 300×760（**高さが伸びるだけ。地図は横に見えたまま**）
+    //   ⚠ **利用者役 3/4 が「地図が消えるとは思わなかった」と答えた。**
+    const wide = !narrow();
+    toggle.innerHTML = panelOpen
+      ? (wide ? '▴ <span>小さくする</span>' : '▴ <span>地図に戻る</span>')
+      : (wide ? '▾ <span>もっと読む</span>' : '▾ <span>全画面で読む</span>');
+    toggle.title = toggle.textContent.replace(/^[▴▾]\s*/, "");
   } };
 const openPanel  = () => { panelOpen = true;  applyPanel(); };
 const closePanel = () => { panelOpen = false; applyPanel(); };
