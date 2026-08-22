@@ -1076,10 +1076,17 @@ function layersOf(area, lf){
     layers.push({ n:3, title:WORD.layerTitle(3),
       head:{kind:"name", v:`${area.total} 件`},
       what:"の建物が、この範囲にあります",
-      // ⚠ **答えの割合は、⚠ 分母と同じ行に置く**（⚠ 別の行にすると分母が離れる）
-      den:`うち ${(area.wet/area.classified*100).toFixed(1)}% が、明治期には水の上だった`
-        + `（${area.classified} / ${area.total}件の足元を判定）`,
-      subs: [] });
+      // ⚠ **割合の分母を、⚠ 主語として字で名指す**（2026-08-23。Owner 判断）。
+      //   ⚠ **前は「うち 1.4% が…（4832 / 5038件の足元を判定）」だった。**
+      //   ⚠ **利用者役 4/4 が「5038 件のうち 1.4%」と読んだ**（⚠ 実装は 4832 が分母）。
+      //     ⚠ **件数に直すと 68 件 と 70 件で食い違う**（掟 §6）。
+      //   ⚠ **括弧の中に正しい分母は書いてあったが、⚠ 4/4 が「補足」と読んで係り先に取らなかった。**
+      //   ⚠ **件数も併記する。**⚠ **割合だけだと、⚠ 分母を取り違えたことに気づけない。**
+      // ⚠ **「足元」をその場で定義する**（⚠ 4/4 が意味を取れず、⚠ 読みは 3 通りに割れた）。
+      den:`足元（建っている地面）を判定できた ${area.classified} 件のうち、`
+        + `${(area.wet/area.classified*100).toFixed(1)}%（${area.wet} 件）が、明治期には水の上だった`,
+      subs: area.total>area.classified
+        ? [{kind:"rest", v:`（ほか ${area.total-area.classified} 件は判定の範囲外）`}] : [] });
   } else if(area.total>0)
     missing.push({ n:3, why:"outside", note:`建物 ${area.total} 件` });
   // ⚠ **問いは必ず 3 つ出す**（2026-08-22。Owner 判断）。
@@ -1167,7 +1174,9 @@ function paintLayer(L){
     : sb.kind==="wet"   ? `<div class="land-sub">水域だった建物: ${sb.v}%</div>`
     // ⚠ **粗さ**（2026-08-22。hidetzu/konjaku#128）。⚠ **⚠ の記号は使わない**
     //   （この画面では ⚠ を災害リスクに使っている。⚠ 精度の話に同じ印を出すと「危ない土地」に読まれる）。
-    : sb.kind==="coarse" ? `<div class="land-sub land-coarse">${esc(sb.v)}</div>` : "").join("");
+    : sb.kind==="coarse" ? `<div class="land-sub land-coarse">${esc(sb.v)}</div>`
+    // ⚠ **答えの分母に入らなかったぶん**（「ほか N 件は判定の範囲外」）
+    : sb.kind==="rest"   ? `<div class="land-sub">${esc(sb.v)}</div>` : "").join("");
   // ⚠ **並びは 答え → 内訳 → 材料**（2026-08-22。Owner 判断）。
   //   ⚠ **内訳は答えの分割**なので、⚠ **答えの直後。**⚠ 材料（台帳）はそのあと。
   // ⚠ **材料の中身はここで作らない。**⚠ 器だけ置き、⚠ **`describe()` が入れる**
@@ -1305,18 +1314,37 @@ function paintBreakdown(el,b,bldState,saidByLayer3,area){
     return;
   }
   const rows=[];
-  rows.push({ label:"足元が分かる", n:b.classified, color:"#8fb9dd", peek:null,
-    note:b.outside ? `ほか ${b.outside} 件は、明治期の低湿地データを整備している範囲の外` : "" });
+  // ⚠ **3 行は内訳ではない**（2026-08-23。Owner 判断）。
+  //   ⚠ **利用者役 3/4 が「足すと 5038 を超えるので内訳ではない」と気づいて止まった**
+  //     （4832 + 1373 + 21 = 6226）。⚠ **同じ 5038 件を、⚠ 3 つの別の観点で数えている。**
+  //   ⚠ **そう書いていなかった。**⚠ **見出しで言う。**
+  // ⚠ **「ほか N 件は、明治期の低湿地データを整備している範囲の外」は消した**
+  //   （2026-08-23。Owner 判断: ⚠ **説明になっていない**）。
+  //   ⚠ **件数そのものは消していない。**⚠ **答えの下に「ほか N 件は判定の範囲外」として残る。**
+  rows.push({ label:"足元が分かる", n:b.classified, peek:null, note:"" });
   if(area.hSrc)
-    rows.push({ label:"高さが実測", n:area.hSrc.measured, color:"#d8cfa8", peek:"peekH",
+    rows.push({ label:"高さが実測", n:area.hSrc.measured, peek:"peekH", peekLabel:"高さを地図で光らせる",
+      // ⚠ **色見本は、⚠ ボタンの隣に置く**（2026-08-23。Owner 判断）。
+      //   ⚠ **前は行の見出しに付いていたが、⚠ 地図に対応する相手がいない色があった。**
+      //     ⚠ **`足元が分かる` の水色は「明治期に水だった」の色**で、⚠ **4832 件の色ではない。**
+      //     ⚠ **`高さが実測` の砂色も同じ**（⚠ 実測の建物は水色にも砂色にもなる）。
+      //   ⚠ **押したとき地図で実際に変わる色だけを出す**（⚠ 照合できない色見本を出さない）。
+      peekNote:{color:"#5b6470", text:"押すと、実測でない建物がこの色になります"},
       note:`階数から換算 ${area.hSrc.levels} 件 ／ 種別ごとの既定値 ${area.hSrc.default} 件` });
-  rows.push({ label:"建てられた年が分かる", n:area.dated, color:"#e6c47a",
-    peek:area.dated?"peekY":null, note:"根拠は「足元が水なら埋立前には無い」だけ" });
-  el.innerHTML=rows.map((r)=>
-    `<div class="stat"><span><i class="legend" style="background:${r.color}"></i>${esc(r.label)}</span>`
+  // ⚠ **「根拠は『足元が水なら埋立前には無い』だけ」はここから外した**（2026-08-23）。
+  //   ⚠ **利用者役 2/4 が「21 件の根拠」と読んだ。**⚠ **実際は「消える年代」の根拠。**
+  //   ⚠ **同じ字が材料の行にもある**（`prov.js`）。⚠ **正本はそちら。**
+  rows.push({ label:"建てられた年が分かる", n:area.dated,
+    peek:area.dated?"peekY":null, peekLabel:"建てられた年を地図で光らせる",
+    peekNote:{color:"#e6c47a", text:"押すと、年が分かる建物がこの色になります"}, note:"" });
+  el.innerHTML=`<div class="hint">同じ ${area.total} 件を、3 つの見方で数えたもの（足し算はできません）</div>`
+    + rows.map((r)=>
+    `<div class="stat"><span>${esc(r.label)}</span>`
     + `<b>${r.n}<span style="color:var(--ink-dim);font-weight:400"> / ${area.total}</span></b></div>`
-    + (r.peek ? `<button class="peek" id="${r.peek}">地図で光らせる</button>` : "")
-    + (r.note ? `<div class="hint">${r.note}</div>` : "")).join("");
+    + (r.note ? `<div class="hint">${r.note}</div>` : "")
+    + (r.peek ? `<button class="peek" id="${r.peek}">${esc(r.peekLabel)}</button>` : "")
+    + (r.peek ? `<div class="hint"><i class="legend" style="background:${r.peekNote.color}"></i>`
+              + `${esc(r.peekNote.text)}</div>` : "")).join("");
 }
 
 
@@ -1808,7 +1836,9 @@ function describe(v){
   for(const n of [1,2,3]){
     const box=document.querySelector(`.prov-q[data-q="${n}"]`);
     if(!box) continue;
-    const html=KonjakuProv.section(byQ[n], KonjakuWords.whyLabel);
+    // ⚠ **答えが出せた問いかは、⚠ `paintLand` が付けた印で見る**（`.land-miss`）。
+    //   ⚠ **同じ意味の状態を、⚠ 変数と DOM の 2 か所に持たない**（`rules/javascript.md`）。
+    const html=KonjakuProv.section(byQ[n], KonjakuWords.whyLabel, !box.closest(".land-miss"));
     // ⚠ **DOM の現在値と比べない。**⚠ **前回書いた字と比べる。**
     //   ⚠ 実測（2026-08-22）: ⚠ **開くと `<details>` に `open=""` が入るので、
     //     ⚠ DOM と比べると必ず「変わった」になり、⚠ 書き直して閉じてしまう。**
