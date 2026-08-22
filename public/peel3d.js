@@ -610,9 +610,9 @@ let retryAt=null;
 // ⚠ **段の作り方は `public/eras.js` の 1 か所**（hidetzu/konjaku#170）。
 //   ⚠ **落とし方（`unreachable` は残す／404 と白紙は出さない）も、⚠ あちらが持つ。**
 //   ⚠ **ここは時間座標を付けて、⚠ 新しい順に並べ替えるだけ。**
-function stepsFrom(ph){
+function stepsFrom(ph,hasMeiji){
   return withTau(KonjakuEras.stepsOf({
-    photos: ph, latest: Konjaku.LATEST, meiji: MEIJI, hasMeiji: true }));
+    photos: ph, latest: Konjaku.LATEST, meiji: MEIJI, hasMeiji: hasMeiji !== false }));
 }
 // 場所を切り替えたときの取り違え防止。遅れて返った前の場所の応答で段を組み替えない
 let areaSeq=0;
@@ -620,10 +620,18 @@ async function setTimeline(lon,lat,seq){
   let ph=null, failed=false;
   // 取得の層を直接呼ばない。トップで取ってあれば、ここは1本も出ない
   try{ ph=await KonjakuLand.photos(lon,lat); }catch{ failed=true; }
+  // ⚠ **明治期の段を出してよいかは、⚠ トップと同じ判定を使う**（hidetzu/konjaku#170）。
+  //   ⚠ **前はここが無条件に明治期を足していた。**⚠ **札幌（整備対象外）でも右端が「明治期」**で、
+  //     ⚠ **押しても水域は出なかった**（⚠ 押しても何も起きない段。ADR 0026）。
+  //   ⚠ **通信は増えない**（実測 2026-08-23・豊洲と札幌: ⚠ **0 本・1ms**。
+  //     ⚠ `land.js` が控えていて、⚠ この画面は既に別経路で同じものを取っている）。
+  //   ⚠ **取れなかったときは足す**（⚠ 「取れなかった」を「無い」にしない。掟）。
+  let hasMeiji=true;
+  try{ const m=await KonjakuLand.meijiPoint(lon,lat); hasMeiji=m?.state!=="absent"; }catch{ hasMeiji=true; }
   if(seq!==areaSeq) return;                 // 別の場所へ移ったあと。触らない
   // ⚠ 判定そのものが落ちたときは、**何も間引かない**。
   //   「確かめられなかった」を「無い」に変えてはいけない
-  steps=failed?allSteps():stepsFrom(ph);
+  steps=failed?allSteps():stepsFrom(ph,hasMeiji);
   timelineReady=true;
   syncEra();
   // ⚠ 段が確定してから当てる。ここで初めて「この土地にその年代は無い」と言える

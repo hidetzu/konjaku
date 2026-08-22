@@ -3944,6 +3944,47 @@ ${dom}
       return `補足 ${r.notes.length} 行とも出たまま／問い ${r.layers} 個／? は出ない`;
     },
   },
+  // ⚠ **明治期のデータが無い地点で、⚠ 右端を「明治期」にしない**（hidetzu/konjaku#170）。
+  //   ⚠ **前は `/peel` が無条件に明治期を足していた**（⚠ トップは判定できたときだけ足していた）。
+  //     ⚠ **同じ問いに 2 つの実装があり、⚠ 答えが違っていた。**
+  //   ⚠ **実測（2026-08-23・375×667）**: ⚠ 札幌の段は「現在 1974–78 1945–50 **明治期**」で、
+  //     ⚠ **押しても水域は出なかった**（⚠ 押しても何も起きない段。ADR 0026）。
+  //   ⚠ **静的では捕まらない。**⚠ その土地に低湿地データがあるかは、⚠ 動かさないと分からない。
+  {
+    name: "明治期のデータが無い地点では、右端を「明治期」にしない",
+    path: `/peel?${SAPPORO}`, viewport: { width: 375, height: 667 }, hasTouch: true,
+    async check(page) {
+      await peelReady(page);
+      await settleAfterCondition(page);
+      const labels = await stepLabels(page);
+      must(labels.length > 1, `段が 1 つも組めていない: ${labels.join("/")}`);
+      must(labels[0] === "現在", `左端が現在でない: ${labels[0]}`);
+      // ⚠ **本題**: ⚠ 明治期が段に出ていないこと（⚠ 右端だけでなく、⚠ どこにも）
+      must(!labels.includes("明治期"),
+        `明治期のデータが無いのに段に出している: ${labels.join("/")}`);
+      // ⚠ **消したのは明治期だけ。**⚠ **写真の段は残っている**（⚠ 段ごと消していない）
+      must(labels.length >= 3, `写真の段まで消えている: ${labels.join("/")}`);
+      // ⚠ **理由は画面が言う**（⚠ 黙って消さない。掟 §1）
+      const why = await page.evaluate(() =>
+        (document.getElementById("landAll")?.textContent ?? "").replace(/\s+/g, " "));
+      must(/整備対象外/.test(why),
+        `明治期を段から外したのに、⚠ 理由を言っていない: ${why.slice(0, 100)}`);
+      return `${labels.length} 段（${labels.join("/")}）／右端 ${labels.at(-1)}／理由は画面にある`;
+    },
+  },
+  // ⚠ **明治期のデータがある地点では、⚠ いままでどおり右端が「明治期」**（⚠ 対で見る）。
+  //   ⚠ **「消した」だけの検査にしない**（`verify` §5）。
+  {
+    name: "明治期のデータがある地点では、右端は「明治期」のまま",
+    path: `/peel?${TOYOSU}`, viewport: { width: 375, height: 667 }, hasTouch: true,
+    async check(page) {
+      await peelReady(page);
+      await settleAfterCondition(page);
+      const labels = await stepLabels(page);
+      must(labels.at(-1) === "明治期", `右端が明治期でない: ${labels.join("/")}`);
+      return `${labels.length} 段（右端 ${labels.at(-1)}）`;
+    },
+  },
   // ⚠ **押したら地図が本当に変わること**（2026-08-23。⚠ **実際に壊れていた**）。
   //   ⚠ **`wireProvPeek()` を `describe()` が呼んでいたが、⚠ ボタンを作るのは `paintBreakdown`** で、
   //     ⚠ **そちらが後に走る。**⚠ **繋いだ直後に `#breakdown` ごと差し替えられて listener が消えていた。**
