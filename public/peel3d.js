@@ -1364,7 +1364,13 @@ function sealOldControls(){
     if(off) el.setAttribute("aria-hidden","true"); else el.removeAttribute("aria-hidden"); };
   // ⚠ **コンポーネントの中は、コンポーネントが閉じる**（sealed を渡す）。
   //   ⚠ ここが閉じるのは、⚠ **画面が持っているもの**だけ。
-  for(const id of ["toggle","land"]){ const el=document.getElementById(id); if(el) seal(el,full); }
+  // ⚠ **`#toggle` は閉じない**（2026-08-22。⚠ **いまは「▴ 小さくする」＝ 唯一の戻り道**）。
+  //   ⚠ 前は ☰＝「開く」だったので、⚠ 開いているあいだ封じるのが正しかった。
+  //   ⚠ **✕ を消した時点で、⚠ 封じると出られなくなる。**
+  //   ⚠ 実測（2026-08-22・375/344/320）: ⚠ **`inert` は当たり判定ごと消す**ので、
+  //     ⚠ **押しても `open` が true のまま**だった（Playwright も「intercepts pointer events」で時間切れ）。
+  //     ⚠ z-index も pointer-events も原因ではなかった（⚠ 両方を疑って測り、⚠ どちらも違った）。
+  for(const id of ["land"]){ const el=document.getElementById(id); if(el) seal(el,full); }
   syncEra();
 }
 
@@ -1802,7 +1808,6 @@ const applyPanel = () => { setPanelHidden(!panelOpen);
 function setChrome(playing){ setPanelHidden(playing || !panelOpen); }
 const openPanel  = () => { panelOpen = true;  applyPanel(); };
 const closePanel = () => { panelOpen = false; applyPanel(); };
-document.getElementById("closePanel").onclick = closePanel;
 // ⚠ **同じ的で、広げる／小さくする**（2026-08-22）。⚠ 押しても何も起きない状態を作らない。
 toggle.onclick = () => { panelOpen ? closePanel() : openPanel(); };
 applyPanel();

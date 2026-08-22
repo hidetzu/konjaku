@@ -84,6 +84,9 @@
   .sec-note #est::before,.sec-note #tip::before{content:"- "}
   .sec-note #est:empty::before,.sec-note #tip:empty::before{content:""}
   .sec-note:not(:has(#est:not(:empty))):not(:has(#tip:not(:empty))){display:none}
+  /* ⚠ **「光らせる」は PC でも 44 を割らない**（`.claude/rules/css.md`）。
+     ⚠ 実測（2026-08-22・1280×800）: ⚠ **220×27**。⚠ 狭い幅では 44 あった（PC だけ割れていた）。 */
+  .peek{min-height:var(--tap)}
   .drill{margin-top:6px}
   .drill>summary{display:flex;align-items:center;gap:6px;min-height:var(--tap);
     cursor:pointer;color:var(--action);font-size:var(--fs-note);list-style:none}
@@ -278,9 +281,7 @@
   /* ⚠ ✕ は #chrome の中（← と同じ帯）に居る。**位置を自分で決めない。**
        以前はパネルの中で position:absolute だったので、パネルと一緒に流れて
        画面外へ消えた（実測 2026-08-18・375×667: 400px スクロールで y=-298）。 */
-  #closePanel:hover{border-color:var(--missing);color:var(--missing)}
   /* ⚠ PC は地図が横に見えているので「地図へ」は嘘になる。字は狭い幅の全画面でだけ出す */
-  #closePanel span{display:none}
   h1{margin:0 0 2px;font-size:var(--fs-claim);letter-spacing:.05em}
   .lead{margin:0 0 12px;font-size:var(--fs-note);color:var(--ink-dim)}
   /* サービス名。共有リンクから来た人が「何のサイトか」「戻る先」を持てるように */
@@ -390,7 +391,12 @@
     display:flex;flex-direction:column;align-items:flex-start;gap:9px;
     /* ⚠ **箱そのものは押せない。**押せるのは中のボタンだけ（地図のドラッグを食わない） */
     pointer-events:none}
-  .chrome-row{display:flex;gap:8px;pointer-events:auto}
+  /* ⚠ **行そのものは押せない。**⚠ 押せるのは中のボタンだけ（2026-08-22）。
+     ⚠ **地図のドラッグを食わないため。**⚠ 行に敷きを持たせているので、⚠ 行が指を食う。
+     ⚠ **「▴ が押せない」の原因はここではなかった**（⚠ `inert` だった。`peel3d.js` の
+       `sealOldControls`）。⚠ **z-index も pointer-events も疑って測り、⚠ どちらも違った。** */
+  .chrome-row{display:flex;gap:8px;pointer-events:none}
+  #chrome a,#chrome button{position:relative;z-index:1;pointer-events:auto}
   /* ⚠ **補足の層。**⚠ 敷きは自前で持つ（航空写真の上で字が沈まないように）。
      ⚠ 検査は敷きを**祖先まで辿って**見る（render.mjs）。⚠ 敷きを外すと落ちる。
      ⚠ **押せない。**⚠ **幅は HUD と同じ上限に合わせる**（同じものが 2 つの幅で並ばない）。 */
@@ -401,7 +407,9 @@
     box-shadow:0 10px 30px rgba(0,0,0,.34)}
   /* ⚠ 中身が 1 つも無いときは、⚠ **箱ごと消す**（空の枠を置かない） */
   #notice:not(:has(> :not(:empty))){display:none}
-  #chrome a,#chrome button{height:var(--tap);padding:0 12px;border-radius:9px;
+  /* ⚠ **押せる的は 44×44 を割らない**（`.claude/rules/css.md`）。
+     ⚠ 実測（2026-08-22・小さい状態）: ⚠ **「← 今昔へ」が 38×44** だった（字が隠れて記号だけ）。 */
+  #chrome a,#chrome button{height:var(--tap);min-width:var(--tap);padding:0 12px;border-radius:9px;
     border:1px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer;
     backdrop-filter:blur(16px);font:inherit;font-size:var(--fs-note);text-decoration:none;
     display:inline-flex;align-items:center;gap:6px;transition:opacity .25s}
@@ -411,8 +419,6 @@
   /* ⚠ **`#chrome button` より詳しく書く。** 上の `#chrome a,#chrome button` が
        `display:inline-flex` を持っていて、`#closePanel` 単体では負ける（実測で ✕ が
        地図のときも出た）。id だけで安心しない。 */
-  #chrome #closePanel{display:none}
-  #panel.open ~ #chrome #closePanel{display:inline-flex}
   /* パネルを開いたら ☰ だけ引っ込める。戻るは残す（開いていても帰りたい） */
   /* ⚠ `~` は**後続の**兄弟にしか効かない。#chrome を #panel より前に置いていたので、
        この規則は構造上ぜったいに一致していなかった（実測 2026-08-14）。
@@ -533,7 +539,6 @@
     /* ⚠ 全画面から戻る手段は、指で押せる大きさにする（実測 26×26px だった）。
          ⚠ 「← もどる」はトップへ帰る別の操作。**混ぜない。** */
     /* ⚠ 全画面から戻る手段。字を添えて「← 今昔へ」と区別する（3/3 が区別できなかった） */
-    #closePanel span{display:inline}
     /* ⚠ 全画面のときは幅に余裕がある。← の行き先を字で出す（狭い幅では既定で隠している） */
     #panel.open ~ #chrome a span{display:inline}
     /* ⚠ **「← もどる」は全画面の上にも残す。**（この画面の決まり: 戻る手段は常に見えている場所に置く）
@@ -553,11 +558,15 @@
     /* ⚠ **広げても ▴ は残す**（2026-08-22） */
     #panel.open ~ #chrome{
       top:0;left:0;right:0;padding:10px 12px;
-      align-items:stretch;gap:0;
+      align-items:stretch;gap:0;overflow:visible;
       background:color-mix(in srgb, var(--bg) 92%, transparent);
       backdrop-filter:blur(18px);border-bottom:1px solid var(--line)}
     /* ⚠ 帯になったときは、押せる行が幅いっぱいに広がって両端へ寄る */
-    #panel.open ~ #chrome .chrome-row{width:100%;justify-content:space-between;align-items:center}
+    /* ⚠ **広げたときは、⚠ パネルの上部の帯に 2 つだけ**（2026-08-22。Owner 判断）。
+       ⚠ **左「← 今昔へ」・右「▴ 小さくする」。**⚠ ✕ を消したので、⚠ 真ん中に浮く的が無くなった。
+       ⚠ 実測（2026-08-22・✕ を消す前）: ⚠ **▴ が x=167（画面の真ん中）に浮いていた。** */
+    #panel.open ~ #chrome .chrome-row{width:100%;justify-content:space-between;align-items:center;gap:8px}
+    /* ⚠ `margin-left:auto` は使わない。⚠ `justify-content:space-between` で足りる */
     /* ⚠ **全画面で根拠を読んでいるあいだ、補足は出さない。**
          ⚠ 地図が見えていないので、地図の上の断りは意味を持たない（#hud も同じ扱い）。 */
     #panel.open ~ #chrome #notice{display:none}
@@ -611,8 +620,7 @@
        （全画面で読むので、開く導線が要らない）。⚠ 広い画面では板と地図が並ぶので出す。
        ⚠ 実測（2026-08-21）: これを書き忘れて、⚠ **#chrome が 269 → 123px になった。** */
     #panel ~ #chrome #toggle{display:inline-flex}
-    #closePanel span{display:none}
-    #chrome a span,#toggle span,#panel.open ~ #chrome a span{display:inline}
+      #chrome a span,#toggle span,#panel.open ~ #chrome a span{display:inline}
 
     /* 年代の箱は、広い幅の大きさに戻す */
     #hud{padding:0 26px 26px}
@@ -689,7 +697,9 @@
        2 ⚠ **見出しの無いページにしない**（⚠ 読み上げで、⚠ ここが何のページか分からなくなる）。
      ⚠ **`display:none` にしない。**⚠ それだと読み上げからも消える。⚠ 見た目だけ外す。 -->
   <h1 class="sr-only">この場所を深掘り</h1>
-  <p class="lead">いまの街が、明治期の地面のどこに立っているか</p>
+  <!-- ⚠ **「いまの街が、明治期の地面のどこに立っているか」は消した**（2026-08-22。Owner 判断）。
+       ⚠ **3 つの問いが、⚠ それぞれ何に答えるかを自分で名乗っている。**⚠ 前置きが要らない。
+       ⚠ **字そのものは消えていない**（⚠ トップの `peelLead` が持っており、⚠ 押す前に読める）。 -->
 
   <!-- ⚠ **ここに検索欄・クイック地点・現在地を置かない**（2026-08-18 方針）。
        この画面は「トップで選んだ場所を深掘りする画面」で、場所を決めるのはトップの責務。
@@ -792,14 +802,11 @@
        → ← は**どこへ行くか**（今昔＝トップ）、✕ は**何をするか**（地図へ）を書く。 -->
   <a id="back" href="./" title="今昔（トップ）にもどる">← <span>今昔へ</span></a>
   <button id="toggle" title="情報を開く">☰ <span>この土地について</span></button>
-  <!-- ⚠ **✕ はここに置く。**以前はパネルの中（position:absolute）にあり、
-       パネルと一緒に流れて画面外へ消えていた（実測 2026-08-18・375×667:
-       400px スクロールで y=-298、押しても当たるものが無い）。
-       ⚠ 全画面で根拠を読んでいる最中に**地図へ戻る手段が消える**。
-         ← は「今昔へ帰る」で別の操作なので、代わりにならない。
-       ⚠ 直し方は「位置を固定値で足す」ではなく、**同じ積み上げに入れる**
-         （CLAUDE.md §9「隣り合うものは同じ積み上げに入れる。固定値で避けない」）。 -->
-  <button id="closePanel" title="根拠を閉じて地図へもどる">✕<span>地図へ</span></button>
+  <!-- ⚠ **✕（地図へ）は消した**（2026-08-22。Owner 判断: ⚠ **閉じるは不要**）。
+       ⚠ **パネルは常に出ているので、⚠ 「閉じる」という状態が無い。**
+       ⚠ **戻る手段は消えていない**（⚠ 「▴ 小さくする」で地図が見える。⚠ 「← 今昔へ」はトップへ）。
+       ⚠ 実測（2026-08-22）: ✕ は ⚠ **拡大ボタンと重なり**（3 幅とも）、⚠ **PC で 35×44** と
+         44 を割っていた。⚠ 消すことで両方とも解ける。 -->
   </div>
   <!-- ⚠ **補足の層**（2026-08-22。Owner 判断: HUD は年代と年代操作だけ）。
        ⚠ **地図の上に浮かせない。**⚠ 押せる帯と**同じ積み上げ**に入れて、上から縦に並べる
