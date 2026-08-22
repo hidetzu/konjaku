@@ -339,6 +339,19 @@ const peelReady = (page) => page.waitForFunction(
 // 直前の `waitForFunction` が既に条件を見ている。その後の描き終わりぶん
 const settleAfterCondition = (page) => page.waitForTimeout(300);
 
+// ⚠ **届かなくてよい待ち**（⚠ 止まりうる依存が相手）。⚠ **握りつぶさず、⚠ 捨てた時間を名乗る**。
+//   ⚠ **実際に踏んだ（2026-08-22）**: 札幌のケースが、⚠ **もう存在しない `#land`** を 20 秒待ち、
+//     ⚠ **毎回 20 秒を捨てたうえで、⚠ その先の 2 つの主張を一度も走らせていなかった**
+//     （⚠ 画面には「扇状地」が出ているのに「届かなかった」と書いていた）。
+//   ⚠ **`catch` で false にすると、⚠ 時間も主張も静かに消える。**⚠ **消えたことを出力に出す。**
+const waited = [];   // ⚠ 届かなかった待ちの控え。⚠ 走り終わりに名乗る
+const waitOptional = async (page, fn, { timeout, label }) => {
+  const t0 = Date.now();
+  const got = await page.waitForFunction(fn, null, { timeout }).then(() => true).catch(() => false);
+  if (!got) waited.push({ label, ms: Date.now() - t0 });
+  return got;
+};
+
 // 押した結果が描き終わるまで。⚠ **この画面は枠組みを使っていないので DOM は同期で変わる**。
 //   残っているのは CSS の遷移ぶん
 const settleAfterClick = (page) => page.waitForTimeout(400);
@@ -6964,9 +6977,16 @@ const CASES = [
         //   ⚠ 見ている主張は変えていない: **何が出せないのかが書かれていること**。
         must(/建物ごとには出せません|判定できません|判定できていません/.test(t),
           `何が出せないのかが書かれていない: ${t.slice(0, 60)}`);
-      const gotLf = await page.waitForFunction(
-        () => (document.getElementById("land")?.textContent ?? "").includes("扇状地"),
-        null, { timeout: 20000 }).then(() => true).catch(() => false);
+      // ⚠ **`#land` はもう無い**（2026-08-22 に気づいた）。
+      //   ⚠ **土地の答えは HUD から情報パネル（`#landAll`）の 1 か所へ移した**
+      //     （判断は `docs/adr/0033-HUDは年代の表示と操作だけを持つ.md`）。
+      //   ⚠ **消えた要素を 20 秒待っていた。**
+      //   ⚠ **毎回 20 秒を捨てたうえで、⚠ 下の 2 つの主張が一度も走っていなかった**
+      //     （⚠ 画面には「扇状地」が出ているのに「届かなかった」と書いていた）。
+      // ⚠ **見ている主張は変えていない**: ⚠ **地形分類が届いたら、答えられる範囲を示す。**
+      const gotLf = await waitOptional(page,
+        () => (document.getElementById("landAll")?.textContent ?? "").includes("扇状地"),
+        { timeout: 20000, label: "札幌の地形分類（扇状地）" });
       const t2 = (await page.locator("#landAll").textContent()).replace(/\s+/g, " ").trim();
         // ⚠ 地形分類が届いたら、**全部が出せないわけではない**と分かること。
         //   ⚠ 層になって、その言い方が変わった（「建物ごとには出せません」→
@@ -8771,6 +8791,16 @@ if (measured.length) {
   console.log(`\n\x1b[1m遅い順（上位 10）\x1b[0m`);
   for (const m of [...measured].sort((a, b) => b.ms - a.ms).slice(0, 10))
     console.log(`  ${(m.ms / 1000).toFixed(1).padStart(6)}s  外へ ${String(m.out).padStart(3)} 本  ${m.name.slice(0, 46)}`);
+  // ⚠ **届かなかった待ちを名乗る。**⚠ **握りつぶすと、⚠ 捨てた時間も、⚠ その先の主張も静かに消える**
+  //   （⚠ 2026-08-22 に、⚠ もう無い `#land` を 20 秒待っていたのを見つけた）。
+  if (waited.length) {
+    const lost = waited.reduce((a, w) => a + w.ms, 0);
+    console.log(`\n\x1b[1m⚠ 届かなかった待ち\x1b[0m`);
+    for (const w of waited)
+      console.log(`  ${(w.ms / 1000).toFixed(1).padStart(6)}s  ${w.label}`);
+    console.log(`  ⚠ 合計 ${(lost / 1000).toFixed(1)}s を待って、⚠ 届かなかった`
+      + `（⚠ **相手が止まりうるのか、⚠ こちらが消えたものを待っているのか**を見る）`);
+  }
   console.log(`\n\x1b[1m外部への出方\x1b[0m`);
   console.log(`  外へ出たケース: ${outside.length} / ${measured.length} 件`
     + `（⚠ **出ていないのは ${measured.length - outside.length} 件**）`);
