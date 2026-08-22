@@ -5115,32 +5115,33 @@ head("9. 画面の言葉");
   }
 }
 
-// ── 塞ぐ絵の一覧が、⚠ アプリの年代と揃っているか ──────────────────
-// ⚠ **2026-08-22 に踏んだ**（hidetzu/konjaku#191）。⚠ **`ort_USA10`（1945–50・米軍撮影）が
-//   ⚠ 塞ぐ一覧から抜けていて、⚠ 3 本が外へ出続けていた。**⚠ **検査は緑のままだった。**
-// ⚠ **見るのは向きが 1 つだけ。**⚠ **アプリが読む年代 ⊆ 塞ぐ一覧。**
-//   ⚠ 逆は見ない（⚠ 塞ぐ側が広いのは、⚠ 外へ出ないだけで害が無い）。
+// ── 年代のタイルを、⚠ 実描画が塞いでいないか ────────────────────
+// ⚠ **2026-08-22 に踏んで、⚠ 主張ごと入れ替えた**（hidetzu/konjaku#191）。
+// ⚠ **前はここで「アプリが読む年代 ⊆ 塞ぐ一覧」を見ていた**（＝全部塞げ、という主張）。
+//   ⚠ **それが間違いだった。**⚠ **「その年代の写真があるか」は、⚠ タイルが返るかで決まる**
+//     （`public/verify.js` の `photos()`）。⚠ **塞ぐと、⚠ 実在しない年代まで「ある」ことになる。**
+//   ⚠ **実測（2026-08-22・48 件に当てた）**: 軽井沢のバッジが
+//     ⚠ **「1974–78年から見られる（1年代）」→「1936–42年から見られる（7年代）」**に化けた。
+//     ⚠ **夢の島は 6年代 → 7年代。**⚠ **どちらも検査は緑のまま通った。**
+//     ⚠ **「年代を動かす操作パネル」は、⚠ 帯が変わって待ちが成立せず落ちた。**
+// ⚠ **いまの主張は逆。**⚠ **年代のタイルを、⚠ 1 つも塞いでいないこと。**
 {
   const eras = await readFile(join(ROOT, "public/verify.js"), "utf8");
   const lib  = await readFile(join(ROOT, "test/render/lib.mjs"), "utf8");
-  // `{ id: "ort_USA10", label: "1945–50", ...` の並びから id を拾う
   const block = /const ERAS = \[([\s\S]*?)\n  \];/.exec(eras);
   const ids = block ? [...block[1].matchAll(/\bid:\s*"([^"]+)"/g)].map((m) => m[1]) : [];
-  // 最新の空中写真は ERAS の外にある（⚠ そう書いてある）。⚠ **これも絵なので併せて見る。**
-  const latest = /const LATEST = \{\s*id:\s*"([^"]+)"/.exec(eras);
-  const want = latest ? [...ids, latest[1]] : ids;
-  const stub = new Set([...(/ERA_TILE_IDS = \[([\s\S]*?)\];/.exec(lib)?.[1] ?? "")
-      .matchAll(/"([^"]+)"/g)].map((m) => m[1]));
-  const photo = /PHOTO_ID = "([^"]+)"/.exec(lib);
-  if (photo) stub.add(photo[1]);
-  const miss = want.filter((id) => !stub.has(id));
-  if (!want.length) {
+  // ⚠ **塞いでいる本体だけを見る**（⚠ `ERA_TILE_IDS` は数える物差しなので、⚠ 宣言はあってよい）
+  const fn = /export const stubMapPictures = async \(page\) => \{([\s\S]*?)\n\};/.exec(lib);
+  if (!ids.length) {
     bad("public/verify.js から年代の id を 1 つも拾えなかった（⚠ この検査は何も見ていない）");
-  } else if (miss.length) {
-    bad(`アプリが読む年代のうち ${miss.length} 件が、実描画で塞ぐ一覧に無い: ${miss.join(" / ")}`
-      + "（⚠ **その分だけ外へ出続ける。**⚠ test/render/lib.mjs の ERA_TILE_IDS を直す）");
+  } else if (!fn) {
+    bad("test/render/lib.mjs の stubMapPictures を読めなかった（⚠ この検査は何も見ていない）");
+  } else if (/ERA_TILE_IDS/.test(fn[1])) {
+    bad("実描画が年代のタイルを塞いでいる"
+      + "（⚠ **塞ぐと、⚠ 実在しない年代まで「撮影されている」ことになる。**"
+      + "⚠ 実測: 軽井沢が 1年代 → 7年代 に化け、⚠ 検査は緑のまま通った）");
   } else {
-    ok(`実描画で塞ぐ絵が、アプリの年代と揃っている（${want.length} 件を突き合わせた）`);
+    ok(`実描画は年代のタイルを塞いでいない（アプリが読む ${ids.length} 年代は、実物を取りに行く）`);
   }
 }
 
@@ -5174,6 +5175,7 @@ head("9. 画面の言葉");
     ok("実描画の門番は、上が落ちても必ず結果を返す（always()）");
   }
 }
+
 
 console.log(`\n${"─".repeat(52)}`);
 if (failed) { console.log(`\x1b[31m${failed} 件の問題\x1b[0m${warned ? ` / ${warned} 件の警告` : ""}`); process.exit(1); }
