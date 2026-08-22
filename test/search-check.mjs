@@ -36,7 +36,10 @@ const LIVE = process.argv.includes("--live");
 const UPDATE = process.argv.includes("--update-fixtures");
 // ⚠ **`--offline` は、⚠ もう既定。**⚠ **古い呼び方を落とさない**（受けるが何もしない）。
 const ONLINE = LIVE || UPDATE;
-const API = "https://msearch.gsi.go.jp/address-search/AddressSearch?q=";
+// ⚠ **口はここに書かない**（2026-08-22。hidetzu/konjaku#181）。
+//   ⚠ **前は `places.js` と同じ URL を写していた。**⚠ 掟: 同じ問いに答える実装を2つ持たない。
+//   ⚠ **写していたせいで、⚠ 42 語は本番の取得経路を 1 度も通っていなかった。**
+//   ⚠ **確かめていたのは「検査自身が書いた通信」**で、⚠ 出荷するコードではなかった。
 const GAP_MS = 1500;
 
 // ---- 回帰リスト（42語）----
@@ -150,10 +153,15 @@ const LINE = {
 };
 
 // ---- 出荷するコードをそのまま読む ----
-const src = await readFile(join(ROOT, "public", "places.js"), "utf8");
+// ⚠ **画面と同じ順で載せる**（⚠ `peel.html` / `index.html` が `<script>` を並べるのと同じ）。
+//   ⚠ **口（gsi-address-search.js）を先に載せる。**⚠ `places.js` はそれを使う。
 const win = {};
-new Function("window", "module", src)(win, undefined);
+for (const f of ["gsi-address-search.js", "places.js"]) {
+  const src = await readFile(join(ROOT, "public", f), "utf8");
+  new Function("window", "module", src)(win, undefined);
+}
 const { places, createSearch } = win.KonjakuPlaces;
+const { createGsiAddressSearch } = win.KonjakuGsiAddressSearch;
 
 let failed = 0, unverified = 0;
 const ok   = (m) => console.log(`  \x1b[32m✓\x1b[0m ${m}`);
@@ -164,28 +172,41 @@ const bad  = (m) => { failed++; console.log(`  \x1b[31m✗\x1b[0m ${m}`); };
 const skip = (m) => { unverified++; console.log(`  \x1b[33m?\x1b[0m ${m}`); };
 const head = (m) => console.log(`\n\x1b[1m${m}\x1b[0m`);
 
-async function fetchWord(w) {
+// ⚠ **取ってくるのは、⚠ 本番の口**（`public/gsi-address-search.js`）。
+//   ⚠ **fixture は「fetch の応答」として渡す。**⚠ **口は差し替えない。**
+//   ⚠ **こうすると、⚠ 42 語を回すたびに ⚠ 本番の URL 組み立て・状態判定・
+//     応答の形の検査・再試行が通る**（⚠ 外へは 1 本も出ない）。
+//   ⚠ **前は fixture を直接読んでいたので、⚠ そこが 1 度も検査されていなかった。**
+// ⚠ **fixture を HTTP の応答のふりで返す。**⚠ 口から見ると、⚠ 本物と同じ形
+const fixtureFetch = async (url) => {
+  const w = decodeURIComponent(new URL(url).searchParams.get("q") ?? "");
   const file = join(FIX, encodeURIComponent(w) + ".json");
-  // ⚠ **既定は fixture。**⚠ **無ければ、⚠ 何が足りないかを言って落とす**
-  //   （⚠ 黙って 0 件にしない。⚠ 「取れなかった」と混ぜない）。
-  if (!ONLINE) {
-    // ⚠ **fixture の欠けは、⚠ こちらの落ち度**（2026-08-22 に踏んだ）。
-    //   ⚠ **「取れなかった」と混ぜない。**⚠ 相手の話ではないので、⚠ **保留にせず落とす。**
-    //   ⚠ **混ぜると、⚠ fixture を消しただけで「判定できません」と出て緑になる。**
-    try { return JSON.parse(await readFile(file, "utf8")); }
-    catch { throw Object.assign(new Error(
-      `fixture が無い／読めない（${file}）`
-      + `。⚠ **相手の話ではない。**⚠ node test/search-check.mjs --update-fixtures で取る`),
-      { ours: true }); }
-  }
-  const r = await fetch(API + encodeURIComponent(w), { signal: AbortSignal.timeout(20000) });
-  if (!r.ok) throw new Error(`HTTP ${r.status}`);
-  const j = await r.json();
-  // ⚠ **取り直しは明示的な操作のときだけ。**⚠ **`--live` では書き換えない**
-  //   （⚠ 書き換えると、⚠ 落ちるはずの回帰が、⚠ 新しい応答で塗り替えられて通る）。
-  if (UPDATE) { await mkdir(FIX, { recursive: true }); await writeFile(file, JSON.stringify(j)); }
-  return j;
-}
+  let body;
+  // ⚠ **fixture の欠けは、⚠ こちらの落ち度**（2026-08-22 に踏んだ）。
+  //   ⚠ **「取れなかった」と混ぜない。**⚠ 相手の話ではないので、⚠ **保留にせず落とす。**
+  try { body = JSON.parse(await readFile(file, "utf8")); }
+  catch { throw Object.assign(new Error(
+    `fixture が無い／読めない（${file}）`
+    + `。⚠ **相手の話ではない。**⚠ node test/search-check.mjs --update-fixtures で取る`),
+    { ours: true }); }
+  return { ok: true, status: 200, json: async () => body };
+};
+
+// ⚠ **取り直しのときだけ、⚠ 本物を叩いて控える。**⚠ **`--live` では書き換えない**
+//   （⚠ 書き換えると、⚠ 落ちるはずの回帰が、⚠ 新しい応答で塗り替えられて通る）。
+const recordingFetch = async (url, init) => {
+  const r = await fetch(url, init);
+  if (!UPDATE || !r.ok) return r;
+  const body = await r.json();
+  const w = decodeURIComponent(new URL(url).searchParams.get("q") ?? "");
+  await mkdir(FIX, { recursive: true });
+  await writeFile(join(FIX, encodeURIComponent(w) + ".json"), JSON.stringify(body));
+  return { ok: true, status: r.status, json: async () => body };
+};
+
+const gsi = createGsiAddressSearch({ fetch: ONLINE ? recordingFetch : fixtureFetch });
+
+async function fetchWord(w) { return gsi.search(w); }
 
 // ⚠ **何で回したかを、⚠ 必ず名乗る**（2026-08-22。hidetzu/konjaku#204）。
 //   ⚠ **fixture で回したのに「42 語を確かめた」とだけ出すと、
@@ -312,69 +333,9 @@ for (const [k, v] of Object.entries(LINE)) {
              : ok("上位10件に出ない語: 0（合格 0・修正前 5）"
                  + (miss.length ? `。⚠ 応答に無かった ${miss.length} 語は数えていない` : ""));
 }
-{
-  // ⚠ 1検索1リクエストを守る。これは**地理院への負荷の約束**で、緩めてはいけない。
-  //
-  // ⚠ 以前は「places.js に fetch( の字が無いこと」で見ていた。検索の通信を
-  //   places.js へ集約した時点で、この見方は使えない（必ず落ちる）。
-  //   ⚠ **閾値を緩めるのではなく、実際に何回叩いたかを数える形にする。**
-  //   createSearch({fetch}) で差し替えられるようにしてあるのは、このため。
-  const calls = [];
-  const mk = (impl) => createSearch({ fetch: (u, o) => { calls.push(u); return impl(u, o); } });
-  const okRes = (body) => Promise.resolve({ ok: true, json: async () => body });
+// ⚠ **取得の検査は `test/repository-check.mjs` へ出した**（2026-08-22。hidetzu/konjaku#181）。
+//   ⚠ **ここが見るのは「こちらの並べ替え」だけ。**⚠ 通信の作りは、⚠ 向こうが見る。
 
-  calls.length = 0;
-  const found = await mk(() => okRes([{ properties: { title: "東京都渋谷区" },
-    geometry: { coordinates: [139.7, 35.66] } }])).run("渋谷", 10);
-  found.state === "found" && calls.length === 1
-    ? ok(`1検索あたりの外部リクエスト: ${calls.length}（正常時）`)
-    : bad(`正常時の外部リクエストが1回でない: ${calls.length} 回 / state=${found.state}`);
-
-  // 瞬断は1回だけ再試行する。**2回を超えない**（相手を無限に叩かない）
-  calls.length = 0;
-  let n = 0;
-  const retried = await mk(() => (++n === 1 ? Promise.reject(new Error("boom")) : okRes([]))).run("渋谷", 10);
-  retried.state === "empty" && calls.length === 2
-    ? ok(`瞬断のときの外部リクエスト: ${calls.length}（1回だけ再試行）`)
-    : bad(`再試行の回数が違う: ${calls.length} 回 / state=${retried.state}`);
-
-  // ⚠ **上限そのものを試す。** 1回目だけ失敗させる上のケースでは、
-  //   再試行の上限を 2 に増やしても通ってしまう（2 回叩いた時点で成功するため）。
-  //   実際に踏んだ（2026-08-15）。**全部失敗させて、それでも 2 回で止まること**を見る。
-  calls.length = 0;
-  const allFail = await mk(() => Promise.reject(new Error("boom"))).run("渋谷", 10);
-  allFail.state === "error" && calls.length === 2
-    ? ok(`ずっと落ちていても外部リクエストは ${calls.length} 回で止まる`)
-    : bad(`落ち続けたときに止まらない: ${calls.length} 回 / state=${allFail.state}`
-      + `（相手を余分に叩く。1検索あたり最大2回）`);
-
-  // ⚠ 時間切れは再試行しない（同じ相手をもう8秒待たせるのは、待たせただけになる）
-  calls.length = 0;
-  const to = () => { const e = new Error("timeout"); e.name = "TimeoutError"; return Promise.reject(e); };
-  const timed = await mk(to).run("渋谷", 10);
-  timed.state === "error" && timed.why === "時間切れ" && calls.length === 1
-    ? ok("時間切れのときは再試行しない（1回で止める）")
-    : bad(`時間切れの扱いが違う: ${calls.length} 回 / state=${timed.state} / why=${timed.why}`);
-
-  // ⚠ 取れなかったことを「無い」と言わない。200 でも配列でなければ error
-  calls.length = 0;
-  const notArray = await mk(() => okRes({ message: "ng" })).run("渋谷", 10);
-  notArray.state === "error"
-    ? ok("200 でも一覧の形でなければ「取れなかった」として扱う")
-    : bad(`配列でない応答を error にしていない: state=${notArray.state}`);
-
-  // ⚠ 入力を消したら、遅れて返った応答で画面を上書きしない
-  const sr = mk(() => new Promise((r) => setTimeout(() => r({ ok: true, json: async () => [] }), 30)));
-  const p1 = sr.run("渋谷", 10);
-  sr.cancel();
-  (await p1).state === "stale"
-    ? ok("cancel() のあとの応答は stale（画面に触らない）")
-    : bad("cancel() しても応答が stale にならない（遅れた候補が復活する）");
-}
-
-// ---- 自動選択の誤発火 ----
-// 「確度が高いときだけ選ぶ」の価値は、選んだときに必ず当たっていること。
-// 1件でも外して選ぶなら、選ばないほうがましなので、ここは 0 でなければ落とす。
 head("自動選択");
 {
   const fired = rows.filter((r) => r.pick >= 0);

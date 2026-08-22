@@ -120,6 +120,11 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
         with:
           node-version: "22"
+      # ⚠ **口の作り**（1検索1リクエスト・再試行・時間切れ・形）。⚠ **外へは出ない。**
+      #   ⚠ **本番の口をそのまま動かす**（2026-08-22。hidetzu/konjaku#181）。
+      - name: 住所検索の口（1検索1リクエスト / 再試行の上限 / 時間切れ / 形）
+        run: node test/repository-check.mjs
+      # ⚠ **並べ替えの回帰。**⚠ **こちらも本番の口を通す**（⚠ fixture は fetch の応答として渡す）。
       - name: 42語の回帰（1位27以上 / 3位内34以上 / 圏外0 / 誤発火0 / 決められない語で発火0）
         run: node test/search-check.mjs
 
