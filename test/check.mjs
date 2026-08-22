@@ -5112,6 +5112,35 @@ head("9. 画面の言葉");
   }
 }
 
+// ── 塞ぐ絵の一覧が、⚠ アプリの年代と揃っているか ──────────────────
+// ⚠ **2026-08-22 に踏んだ**（hidetzu/konjaku#191）。⚠ **`ort_USA10`（1945–50・米軍撮影）が
+//   ⚠ 塞ぐ一覧から抜けていて、⚠ 3 本が外へ出続けていた。**⚠ **検査は緑のままだった。**
+// ⚠ **見るのは向きが 1 つだけ。**⚠ **アプリが読む年代 ⊆ 塞ぐ一覧。**
+//   ⚠ 逆は見ない（⚠ 塞ぐ側が広いのは、⚠ 外へ出ないだけで害が無い）。
+{
+  const eras = await readFile(join(ROOT, "public/verify.js"), "utf8");
+  const lib  = await readFile(join(ROOT, "test/render/lib.mjs"), "utf8");
+  // `{ id: "ort_USA10", label: "1945–50", ...` の並びから id を拾う
+  const block = /const ERAS = \[([\s\S]*?)\n  \];/.exec(eras);
+  const ids = block ? [...block[1].matchAll(/\bid:\s*"([^"]+)"/g)].map((m) => m[1]) : [];
+  // 最新の空中写真は ERAS の外にある（⚠ そう書いてある）。⚠ **これも絵なので併せて見る。**
+  const latest = /const LATEST = \{\s*id:\s*"([^"]+)"/.exec(eras);
+  const want = latest ? [...ids, latest[1]] : ids;
+  const stub = new Set([...(/ERA_TILE_IDS = \[([\s\S]*?)\];/.exec(lib)?.[1] ?? "")
+      .matchAll(/"([^"]+)"/g)].map((m) => m[1]));
+  const photo = /PHOTO_ID = "([^"]+)"/.exec(lib);
+  if (photo) stub.add(photo[1]);
+  const miss = want.filter((id) => !stub.has(id));
+  if (!want.length) {
+    bad("public/verify.js から年代の id を 1 つも拾えなかった（⚠ この検査は何も見ていない）");
+  } else if (miss.length) {
+    bad(`アプリが読む年代のうち ${miss.length} 件が、実描画で塞ぐ一覧に無い: ${miss.join(" / ")}`
+      + "（⚠ **その分だけ外へ出続ける。**⚠ test/render/lib.mjs の ERA_TILE_IDS を直す）");
+  } else {
+    ok(`実描画で塞ぐ絵が、アプリの年代と揃っている（${want.length} 件を突き合わせた）`);
+  }
+}
+
 console.log(`\n${"─".repeat(52)}`);
 if (failed) { console.log(`\x1b[31m${failed} 件の問題\x1b[0m${warned ? ` / ${warned} 件の警告` : ""}`); process.exit(1); }
 console.log(`\x1b[32m問題なし\x1b[0m${warned ? ` / ${warned} 件の警告` : ""}`);

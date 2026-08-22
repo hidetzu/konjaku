@@ -263,19 +263,51 @@ export const whitePng = (size = 256) => pngOf(size, 0xff);
 export const photoPng = (size = 256) => pngOf(size, 0x80, true);
 export const eraRoute = (id) => `**://cyberjapandata.gsi.go.jp/xyz/${id}/**`;
 
-// ⚠ **地図の絵だけ白で返す**（2026-08-22。hidetzu/konjaku#191）。
+// ⚠ **地図の絵だけ差し替える**（2026-08-22。hidetzu/konjaku#191）。
 //   ⚠ **使ってよいのは「絵が本当に届くか」が主題でないケースだけ。**
 //     ⚠ **押せるか・並び・重なり・見えているか**を見るケースが対象。
 //   ⚠ **届くこと自体を見るケースには使わない**（⚠ 使うと、⚠ その検査は何も確かめなくなる）。
 //   ⚠ **判定は 1 つも変えない。**⚠ 減るのは外への本数だけ。
 //   ⚠ **fixture のファイルは置かない**（置くと「画素を読んで判定する」という主張が
 //     ⚠ 置いた絵の話にすり替わる）。
-// ⚠ **実測（2026-08-22・手元）**: これを当てたケースで 1151 → 415 本（−64%）。
-export const ERA_TILE_IDS = ["gazo1", "gazo2", "gazo3", "gazo4", "ort_riku10", "ort_old10", "ort"];
+// ⚠ **実測（2026-08-22・手元）**: `--suite=top --group=search` の 9 件で、
+//   ⚠ **外へ出た本数 81 → 26 本（−68%）**。⚠ **絵は 55 → 0 本。**
+//   ⚠ **判定の材料 20 本と住所検索 6 本は、⚠ 本物のまま変えていない。**
+//   ⚠ **時間は 58.4s → 58.7s で変わらない**（⚠ **待ちが理由で、⚠ 通信ではない**）。
+// ⚠ **年代のタイル。**⚠ **`public/verify.js` の ERAS と揃える**（2026-08-22 に取りこぼした）。
+//   ⚠ **`ort_USA10`（1945–50・米軍撮影）が抜けていて、⚠ 3 本が外へ出ていた。**
+export const ERA_TILE_IDS = ["gazo1", "gazo2", "gazo3", "gazo4",
+  "ort_riku10", "ort_USA10", "ort_old10"];
+// ⚠ **下地の地図**（⚠ 絵であって、⚠ 判定の材料ではない）。⚠ **差し替えてよい。**
+export const BASEMAP_IDS = ["pale", "std", "blank"];
+// ⚠ **空中写真**（⚠ `PHOTO_ROUTE` が塞ぐもの）。
+export const PHOTO_ID = "seamlessphoto";
+// ⚠ **判定の材料**（⚠ 低湿地・地形分類・標高）。⚠ **偽ると答えが変わる。⚠ 差し替えない。**
+//   ⚠ **ここに無いものを、⚠ 黙って材料に数えない**（⚠ 分からないものは経路のまま出す）。
+export const MATERIAL_ID_RE = /^(swale|lcmfc|experimental_l|landform|dem|relief)/;
+
+// ⚠ **外へ出た 1 本が何だったかを言う**（2026-08-22。hidetzu/konjaku#191）。
+//   ⚠ **「絵」の定義を 2 か所に持たない**（掟 §3）。⚠ **塞ぐ一覧と、⚠ 数える物差しは同じもの。**
+//   ⚠ **分からないものは「その他」にしない。**⚠ 経路をそのまま出して、⚠ 次に分類する人へ渡す。
+export const kindOfRequest = (url) => {
+  let u; try { u = new URL(url); } catch { return "（?）"; }
+  if (/address-search/.test(u.pathname)) return "（住所検索）";
+  // `/xyz/<タイルの名前>/z/x/y.png`
+  const seg = u.pathname.split("/");
+  const id = seg[1] === "xyz" ? seg[2] : null;
+  if (id) {
+    if (id === PHOTO_ID || ERA_TILE_IDS.includes(id) || BASEMAP_IDS.includes(id)) return "（絵）";
+    if (MATERIAL_ID_RE.test(id)) return "（判定の材料）";
+  }
+  return "（" + seg.slice(0, 4).join("/") + "）";
+};
+
 export const stubMapPictures = async (page) => {
   const pic = (r) => r.fulfill({ status: 200, contentType: "image/png", body: photoPng() });
   await page.route(PHOTO_ROUTE, pic);
   for (const id of ERA_TILE_IDS) await page.route(eraRoute(id), pic);
+  // ⚠ **下地も絵。**⚠ **判定の材料（低湿地・地形分類）は塞がない**（⚠ 偽ると答えが変わる）。
+  for (const id of BASEMAP_IDS) await page.route(eraRoute(id), pic);
 };
 
 // 段が**確定する**まで待つ。

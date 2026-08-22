@@ -2580,8 +2580,12 @@ export const CASES = [
   //   指を離す前にレイアウトが動くので、押した座標には別の要素が来ている。
   //   見せ方をどれだけ磨いても、ここが塞がっていると誰も判定に到達できない。
   {
+    // ⚠ **主題はタップが届くか**（2026-08-22。hidetzu/konjaku#191）。⚠ **絵が届くかではない。**
+    //   ⚠ **実測**: 外へ 46 本のうち ⚠ **絵が 33 本**（空中写真 29 ／ 下地 4）。
+    //   ⚠ **判定の材料（低湿地・地形分類 12 本）と住所検索 1 本は、⚠ 本物のまま。**
+    //   ⚠ **材料を偽ると、⚠ 答えが変わる。**⚠ **絵だけ差し替える。**
     name: "スマホで、最初の1タップが空振りしない", dep: "search", path: "/",
-    viewport: { width: 375, height: 667 }, hasTouch: true,
+    viewport: { width: 375, height: 667 }, hasTouch: true, setup: stubMapPictures,
     async check(page) {
       // (1) クイック選択（地名の例）
       await page.waitForSelector("#quick button");
@@ -4464,13 +4468,18 @@ export const CASES = [
     },
   },
   {
+    // ⚠ **主題は「古い候補で上書きされないこと」**（hidetzu/konjaku#191）。⚠ **絵は関係ない。**
+    //   ⚠ **実測**: 外へ 30 本。⚠ **住所検索は差し替え済みで、⚠ 残りは地図の絵だった。**
     name: "検索中に場所を選んでも、行動一覧が古い候補で上書きされない", dep: "search", path: "/",
-    setup: (page) => page.route("**/AddressSearch*", async (r) => {
-      await new Promise((x) => setTimeout(x, 2000));
-      await r.fulfill({ status: 200, contentType: "application/json",
-        body: JSON.stringify([{ properties: { title: "東京都渋谷区" },
-                                geometry: { coordinates: [139.7, 35.66] } }]) });
-    }),
+    setup: async (page) => {
+      await stubMapPictures(page);
+      await page.route("**/AddressSearch*", async (r) => {
+        await new Promise((x) => setTimeout(x, 2000));
+        await r.fulfill({ status: 200, contentType: "application/json",
+          body: JSON.stringify([{ properties: { title: "東京都渋谷区" },
+                                  geometry: { coordinates: [139.7, 35.66] } }]) });
+      });
+    },
     async check(page) {
       await page.fill("#q", "渋谷");
       await page.waitForTimeout(1000);         // 応答はまだ返っていない
