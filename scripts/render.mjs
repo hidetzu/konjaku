@@ -5853,9 +5853,21 @@ const CASES = [
     //   ⚠ **姿勢は MapLibre のコンパスの style から読む。**地図を外へ公開しない。
     //     実測（2026-08-19）: rotateX が pitch、末尾の rotateZ が -bearing。
     //   ⚠ **zoom は画面に出ていないので、ここでは測っていない**（経路は静的検査が見る）。
+    // ⚠ **このケースの主題は「カメラが動かないこと」**（2026-08-22。hidetzu/konjaku#191）。
+    //   ⚠ **外部から本当に取れるかは、⚠ ここでは見ていない。**
+    // ⚠ **待ちは短くしない。**⚠ **「6 秒後」「15 秒後」に動いていないことが主張**なので、
+    //   ⚠ **縮めると主張が弱まる**（⚠ 対の「振れる」側は、⚠ 止まるまで待つ形にできた）。
+    // ⚠ **地図の絵だけ白で返す。**⚠ **外への本数だけ減らす。**
     name: "「動きを減らす」を入れると、深掘りの再生でカメラを振らない",
     path: `/peel?${TOYOSU}`, group: "core",
-    setup: (page) => page.emulateMedia({ reducedMotion: "reduce" }),
+    setup: async (page) => {
+      await page.emulateMedia({ reducedMotion: "reduce" });
+      await page.route(PHOTO_ROUTE, (r) => r.fulfill({
+        status: 200, contentType: "image/png", body: whitePng() }));
+      for (const id of ["gazo1", "gazo2", "gazo3", "gazo4", "ort_riku10", "ort_old10", "ort"])
+        await page.route(eraRoute(id), (r) => r.fulfill({
+          status: 200, contentType: "image/png", body: whitePng() }));
+    },
     async check(page) {
       const cam = () => page.evaluate(() => {
         const st = document.querySelector(".maplibregl-ctrl-compass .maplibregl-ctrl-icon")
@@ -5889,9 +5901,24 @@ const CASES = [
   {
     // ⚠ **減らしていない人の見え方を変えない。**
     //   ⚠ これが無いと、**カメラを全員から止めてしまっても**上の検査は通る。
+    // ⚠ **このケースの主題は「カメラが動くか」**（2026-08-22。hidetzu/konjaku#191）。
+    //   ⚠ **外部から本当に取れるかは、⚠ ここでは見ていない**（それは別のケースが見る）。
+    // ⚠ **実測（2026-08-22・`main` = `986d7a4`）**: このケースだけで
+    //   ⚠ **外へ 1151 本 ／ 15.9 秒**。⚠ **9 段を送るあいだ、⚠ 段ごとに新しいタイルを取り続けていた。**
+    // ⚠ **だから、⚠ 地図の絵だけ白で返す。**⚠ **傾斜・向き・年代の判定は 1 つも変えない。**
+    //   ⚠ **fixture のファイルは置かない**（置くと「画素を読んで判定する」という主張が
+    //     置いた画像に対する主張へ化ける）。⚠ **その場で組み立てる**（`whitePng`）。
     name: "「動きを減らす」でない人には、深掘りの再生でカメラが振れる",
     path: `/peel?${TOYOSU}`, group: "core",
-    setup: (page) => page.emulateMedia({ reducedMotion: "no-preference" }),
+    setup: async (page) => {
+      await page.emulateMedia({ reducedMotion: "no-preference" });
+      // ⚠ **写真のタイルだけ**。⚠ 低湿地・標高・建物は生かす（⚠ 画面が成立しなくなる）
+      await page.route(PHOTO_ROUTE, (r) => r.fulfill({
+        status: 200, contentType: "image/png", body: whitePng() }));
+      for (const id of ["gazo1", "gazo2", "gazo3", "gazo4", "ort_riku10", "ort_old10", "ort"])
+        await page.route(eraRoute(id), (r) => r.fulfill({
+          status: 200, contentType: "image/png", body: whitePng() }));
+    },
     async check(page) {
       const cam = () => page.evaluate(() => {
         const st = document.querySelector(".maplibregl-ctrl-compass .maplibregl-ctrl-icon")
@@ -5904,7 +5931,22 @@ const CASES = [
         null, { timeout: 90000 });
       const a = await cam();
       await page.click("#play");
-      await page.waitForTimeout(15000);
+      // ⚠ **15 秒の決め打ちをやめ、⚠ 「カメラが止まった」を待つ**（2026-08-22。hidetzu/konjaku#191）。
+      //   ⚠ **待っていたのは「再生が終わること」**で、⚠ **15 秒はその見積もりでしかなかった。**
+      //   ⚠ **主張は変えていない**（⚠ 下の 3 つはそのまま）。⚠ **待ち方だけ変えた。**
+      // ⚠ **年代の到着では足りない**（⚠ 実測 2026-08-22）: 明治期に着いた時点で待つのをやめると、
+      //   ⚠ **カメラがまだ動いており、向きが 41.5°（期待 46°）で落ちた。**
+      //   ⚠ **年代とカメラは、⚠ 別々に動いている。**⚠ **止まったことを直接見る。**
+      // ⚠ **上限は残す**（⚠ 終わらなければ、⚠ 待ったうえで落ちる）。
+      await page.waitForFunction(() => {
+        const st = document.querySelector(".maplibregl-ctrl-compass .maplibregl-ctrl-icon")
+          ?.getAttribute("style") ?? "";
+        const meiji = /明治/.test(document.getElementById("rlYear")?.innerText ?? "");
+        const last = window.__camLast;
+        window.__camLast = st;
+        // ⚠ **明治期に着き、⚠ かつ 2 回続けてカメラの姿勢が同じ**
+        return meiji && last === st && st !== "";
+      }, null, { timeout: 30000, polling: 400 });
       const c = await cam();
       // ⚠ 実測（2026-08-19）: 終点は pitch +10°・bearing +46°（rotateZ は -bearing なので -46）
       must(c.pitch - a.pitch >= 9 && c.pitch - a.pitch <= 11,
