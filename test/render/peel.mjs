@@ -3100,12 +3100,20 @@ ${dom}
       // ⚠ 触る前に、押せることが**画面に出ている**こと。
       //   以前は左パネルの中に案内があったが、スマホはパネルが閉じて始まり、
       //   PC は内スクロールの外だったので、誰も読んでいなかった。
+      // ⚠ **案内は `?` の中へ移した**（2026-08-23。Owner 判断。⚠ 狭い幅で地図が 22% しか
+      //   ⚠ 見えていなかったため）。⚠ **消したのではない。**⚠ **押せば出る。**
+      //   ⚠ **見る主張は 2 つに分ける**: ⚠ **①出す手段がある**／⚠ **②押すと画面内に出る。**
+      //   ⚠ **`?` が 44×44 であることは、⚠ 別のケースが見ている。**
+      const help = await page.locator("#noteHelp");
+      if (await help.isVisible()) { await help.click(); await settleAfterClick(page); }
       const tip = await page.evaluate(() => {
-        const t = document.getElementById("tip"), r = t?.getBoundingClientRect();
+        const t = [...document.querySelectorAll('#notes li[data-kind="tip"]')]
+          .find((e) => e.checkVisibility());
+        const r = t?.getBoundingClientRect();
         return { text: (t?.textContent ?? "").trim(),
           inView: !!r && r.height > 0 && r.top >= 0 && r.bottom <= innerHeight };
       });
-      must(tip.text.length > 0, "建物を押せることが、どこにも書かれていない");
+      must(tip.text.length > 0, "建物を押せることが、どこにも書かれていない（? を押しても出ない）");
       must(tip.inView, `案内が画面の外にある: ${JSON.stringify(tip)}`);
       must(/押す|押し/.test(tip.text), `何をすればよいか書かれていない: ${tip.text}`);
 
@@ -3113,7 +3121,8 @@ ${dom}
       await settleAfterClick(page);
       // ⚠ 役目が終わった案内を、画面に置き続けない
       const tipAfter = await page.evaluate(() =>
-        (document.getElementById("tip")?.textContent ?? "").trim());
+        [...document.querySelectorAll('#notes li[data-kind="tip"]')]
+          .map((e) => e.textContent).join("").trim());
       must(tipAfter === "", `一度押したのに案内が残っている: ${tipAfter}`);
       const r = await page.evaluate(() => {
         const pop = document.querySelector(".pick-pop .maplibregl-popup-content");

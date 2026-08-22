@@ -461,6 +461,10 @@ map.on("load",()=>{
 //   **両方の端末で画面の外**だった。利用者役のエージェントによる検証で「押しても何も起きないように見える」
 //   「スマホでは何も起きない」と3体が報告したのは、実際に何も見えていなかったから。
 let pickPop=null, picked=false;
+// ⚠ **押した結果を読んでいるあいだ、⚠ 板を退かせる**（2026-08-23。Owner 判断）。
+//   ⚠ **消すのではない。**⚠ **閉じたら戻る。**⚠ **場所も高さも変えない**（⚠ 下の帯が飛び跳ねない）。
+const setPanelAside=(on)=>document.getElementById("panel")
+  ?.classList.toggle("panel--aside", !!on);
 // いま選んでいる建物の鍵（bldKey）。URL に載せる
 let pickBld=null;
 // URL から復元したいもの。段・建物が揃ってから当てる
@@ -519,11 +523,17 @@ function showPick(p,lngLat){
     .setHTML(pickCard(p)+(("speechSynthesis" in window)
       ? `<button class="pick-say" id="pickSay">🔊 読み上げる</button>`:""))
     .addTo(map);
+  // ⚠ **押しているあいだ、⚠ 板を退かせる**（2026-08-23。Owner 判断）。
+  //   ⚠ **hidetzu/konjaku#155 で `#land` にやったのと同じ手。**⚠ **相手が板に変わった。**
+  //   ⚠ **実測（2026-08-23・375×667・豊洲）**: ⚠ **吹き出し y146→311 のうち、
+  //     ⚠ 上 50px（30%）が板（`#noteBox`）の下に隠れていた。**
+  //   ⚠ **z-index では解けない**（⚠ `#map` の `filter` が積み重ねの文脈を作るので、
+  //     ⚠ **吹き出しは `#map` の外へ出られない**）。
+  //   ⚠ **狭い幅だけ。**⚠ **PC は板と地図が並ぶので重ならない。**
+  setPanelAside(true);
   // 吹き出しを閉じたら、URL からも建物を外す。
   // ⚠ 外さないと、閉じたあとに共有した人の URL が、閉じたはずの建物を開く
-  // ⚠ **2026-08-21 に、⚠ 「押しているあいだ要約を退かせる」をやめた**（hidetzu/konjaku#152）。
-  //   ⚠ hidetzu/konjaku#155 で足したもの。⚠ **退かせる相手（`#land`）が無くなった。**
-  pickPop.on("close",()=>{ if(pickBld===p.k){ pickBld=null; syncUrl(); } });
+  pickPop.on("close",()=>{ setPanelAside(false); if(pickBld===p.k){ pickBld=null; syncUrl(); } });
   const say=document.getElementById("pickSay");
   if(say) say.onclick=()=>{
     try{

@@ -318,6 +318,17 @@
      ⚠ **実測（375×667・渋谷）**: ⚠ **補足の下線の下に 23px の空白**が残り、
        ⚠ **「まだ続きがあって切れている」ように見えた。**⚠ 下線の下は板の余白だけでよい。 */
   #panel:not(.open) .sec-note{margin-bottom:0}
+  /* ⚠ **押した結果を読んでいるあいだ、⚠ 板を退かせる**（2026-08-23。Owner 判断）。
+     ⚠ **実測（375×667・豊洲）**: ⚠ **吹き出し y146→311 のうち、⚠ 上 50px（30%）が
+       ⚠ 板の下に隠れていた。**⚠ **「高さ」「建設年」の行の上が切れて読めない。**
+     ⚠ **z-index では解けない**（⚠ `#map` の `filter` が積み重ねの文脈を作る。
+       ⚠ **吹き出しは `#map` の外へ出られない**）。
+     ⚠ **消すのではない。**⚠ **閉じたら戻る。**⚠ **場所も高さも変えない。**
+     ⚠ **`pointer-events` も切る。**⚠ 透明なだけだと、⚠ **吹き出しの上を押せない。** */
+  /* ⚠ **動きを減らす人の扱いは、⚠ 画面全体の 1 か所が持つ**（下の `reduce` ブロックが
+     ⚠ `transition-duration` を潰す）。⚠ **ここで自前の媒体クエリを書かない**（食い違う）。 */
+  #panel{transition:opacity .12s linear}
+  #panel.panel--aside{opacity:0;pointer-events:none}
   #panel:not(.open) .sec-note:not(.sec-note--tips) #notes li[data-kind="tip"]{display:none}
   /* ⚠ **広げているときは ? を出さない**（⚠ 全部読めているので押す相手がいない。ADR 0026）。 */
   #panel.open .note-help{display:none}
@@ -700,6 +711,8 @@
     #panel:not(.open) #landAll{display:block}
     /* ⚠ **PC は問いを畳まないので、⚠ 余白も戻す**（⚠ 正本は上の `.sec-note`）。 */
     #panel:not(.open) .sec-note{margin-bottom:12px}
+    /* ⚠ **PC では退かせない**（2026-08-23）。⚠ **板と地図が並ぶので重ならない。** */
+    #panel.panel--aside{opacity:1;pointer-events:auto}
     /* ⚠ **打ち消しは、⚠ 同じ形で書く**（2026-08-23）。
        ⚠ **`#panel:not(.open) #notes li[…]`（id 2・class 2・要素 1）では、
          ⚠ 既定の `#panel:not(.open) .sec-note:not(.sec-note--tips) #notes li[…]`
