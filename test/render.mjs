@@ -35,7 +35,7 @@ if (process.argv.includes("--count")) {
   process.exit(0);
 }
 // ---- ローカルサーバ ----
-const server = spawn(process.execPath, ["serve.js"], {
+const server = spawn(process.execPath, ["scripts/serve.mjs"], {
   env: { ...process.env, PORT: String(PORT) }, stdio: "ignore",
 });
 const stop = () => server.kill();

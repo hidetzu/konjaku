@@ -13,7 +13,7 @@
 
 - `public/` の自前スクリプト（`index.html` / `peel.html` / `verify.js` / `places.js` /
   `events.js` / `peel3d.js` / `share.js` / `esc.js` / `sw.js`）
-- `worker.js`、`serve.js`、ルートの前処理スクリプト
+- `worker.js`、`scripts/serve.mjs`、`scripts/` の前処理スクリプト
 - `scripts/` の取り込み・書き出し・検査
 - `.github/workflows/`
 

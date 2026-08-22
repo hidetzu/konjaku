@@ -18,7 +18,7 @@ const BASE = `http://127.0.0.1:${PORT}`;
 // 無料枠（Cloudflare、2026-08 時点の公表値）
 const FREE = { worker: 100000, d1write: 100000 };   // /日
 
-const server = spawn(process.execPath, ["serve.js"], {
+const server = spawn(process.execPath, ["scripts/serve.mjs"], {
   env: { ...process.env, PORT: String(PORT) }, stdio: "ignore",
 });
 process.on("exit", () => server.kill());

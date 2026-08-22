@@ -4,11 +4,14 @@
 // Overpass の公開インスタンスは本番の成立条件に置けない
 // （実際 overpass-api.de はタイムアウトした）。取得は1回きりにして結果を commit する。
 //
-// 実行: node fetch-buildings.js
+// 実行: node scripts/fetch-buildings.mjs
 
 import { writeFile } from "node:fs/promises";
 
-// 豊洲。PLATEAU の LOD2 整備地区でもある（§3.10）
+// 豊洲。PLATEAU の LOD2 整備地区でもある
+// ⚠ **前は節番号で引いていた**（2026-08-22 に直した）。⚠ **指す先が見つからなかった。**
+//   ⚠ **番号は、⚠ 文書を消すと宙に浮く**（掟: 名前で引く）。
+//   ⚠ **PLATEAU を取り込むかは hidetzu/konjaku#196 が持つ**（⚠ 調査は済み・⚠ 決めるのは人）。
 //
 // ★ 別の地点を足すとき: NAME と BBOX を書き換えて実行し、
 //    ⚠ **出来た GeoJSON を足す先だった範囲索引は、2026-08-20 に廃止した。**
@@ -18,7 +21,7 @@ import { writeFile } from "node:fs/promises";
 const NAME = "toyosu";
 const BBOX = { s: 35.6480, w: 139.7880, n: 35.6620, e: 139.8060 };
 // 配信するのは public/ だけなので、そこへ直接書く（スクリプトからの相対＝cwd に依存しない）
-const OUT = new URL(`public/data/${NAME}-buildings.geojson`, import.meta.url);
+const OUT = new URL(`../public/data/${NAME}-buildings.geojson`, import.meta.url);
 
 const ENDPOINTS = [
   "https://overpass.kumi.systems/api/interpreter",
