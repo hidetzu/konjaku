@@ -1435,11 +1435,11 @@ export const CASES = [
       await page.waitForFunction(
         () => /この土地は/.test(document.getElementById("landAll")?.textContent ?? ""),
         null, { timeout: 60000 });
-        // ⚠ **建物の層まで待つ。**層は別々に返るので、途中で読むと
-        //   「建物ごとには出せない」の行がまだ無い（実測 2026-08-19 に踏んだ）。
-        await page.waitForFunction(
-          () => /建物/.test(document.getElementById("landAll")?.textContent ?? ""),
-          null, { timeout: 60000 });
+      // ⚠ **建物の層が決着するまで待つ**（2026-08-23 に CI で踏んだ）。
+      //   ⚠ **`/建物/` では足りない。**⚠ **「建物を取得しています」にも一致する**ので、
+      //     ⚠ **途中で通り抜けて、⚠ 「建物ごとには出せません」がまだ無い状態で読む。**
+      //   ⚠ **手元は速いので揃っていた。**⚠ **CI は遅いので追い越した**（`peelReady` と同じ形）。
+      await peelReady(page);
       const hero = (await page.locator("#landAll").textContent()).trim();
       // ⚠ 見ているのは「**割合を作らない**」（0% を出さない）。
       //   ⚠ 建物の件数のような**実際に数えた数**は出してよい（同種の札幌の検査と同じ書き方）。
