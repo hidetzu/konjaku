@@ -11,7 +11,7 @@
 import { CASES as TOP_CASES } from "./render/top.mjs";
 import { CASES as PEEL_CASES } from "./render/peel.mjs";
 import {
-  PORT, BASE, OUT, waited,
+  PORT, BASE, OUT, waited, kindOfRequest,
 } from "./render/lib.mjs";
 import { spawn } from "node:child_process";
 import { chromium } from "playwright";
@@ -179,7 +179,16 @@ async function runCase(c, attempt) {
     const sent = (await Promise.all(sentOut)).filter(Boolean);
     measured.push({ name: c.name, ms: Date.now() - tCase,
       tried: reqs.filter(OUTSIDE).length, out: sent.length,
-      hosts: [...new Set(sent.map((u) => { try { return new URL(u).host; } catch { return "?"; } }))] });
+      hosts: [...new Set(sent.map((u) => { try { return new URL(u).host; } catch { return "?"; } }))],
+      // ⚠ **相手先ごと・種類ごとの本数**（2026-08-22。hidetzu/konjaku#191）。
+      //   ⚠ **名前だけでは、⚠ どこを減らせばよいか決められない。**
+      //   ⚠ **同じ相手でも、⚠ 絵と判定の材料は別もの。**⚠ **絵は差し替えてよいが、
+      //     ⚠ 材料を偽ると答えが変わる**（⚠ 分け方は `kindOfRequest` が正本）。
+      byHost: sent.reduce((m, u) => {
+        let h = "?"; try { h = new URL(u).host; } catch { /* そのまま */ }
+        const key = h + kindOfRequest(u);
+        m[key] = (m[key] ?? 0) + 1; return m;
+      }, {}) });
     // ⚠ **印と実際の通信を突き合わせる。** 印が古くなると、再試行も切り分けも効かなくなる。
     //   ⚠ 応答を差し替えているケースでも request は出るので、これは
     //     「印が付いているのに一度も検索しない」ほうだけを見る（片方向）。
@@ -260,9 +269,14 @@ if (measured.length) {
   //   ⚠ **減らす先を選ぶには、⚠ 本数の物差しが要る。**
   console.log(`\n\x1b[1m外へ多い順（上位 10）\x1b[0m`);
   console.log(`  ⚠ **本当に外へ出た本数**（⚠ かっこ内は「出そうとした数」。⚠ 差し替えた分を含む）`);
-  for (const m of [...measured].sort((a, b) => b.out - a.out).slice(0, 10))
+  for (const m of [...measured].sort((a, b) => b.out - a.out).slice(0, 10)) {
     console.log(`  ${String(m.out).padStart(5)} 本（試み ${String(m.tried).padStart(4)}）`
       + `  ${(m.ms / 1000).toFixed(1).padStart(6)}s  ${m.name.slice(0, 40)}`);
+    // ⚠ **相手先ごとに出す**（⚠ どこを減らせばよいかは、⚠ これが無いと決められない）
+    const per = Object.entries(m.byHost ?? {}).sort((a, b) => b[1] - a[1])
+      .map(([h, n]) => `${h} ${n}`).join(" ／ ");
+    if (per) console.log(`         ${per}`);
+  }
   console.log(`\n\x1b[1m外部への出方\x1b[0m`);
   console.log(`  外へ出たケース: ${outside.length} / ${measured.length} 件`
     + `（⚠ **出ていないのは ${measured.length - outside.length} 件**）`);
