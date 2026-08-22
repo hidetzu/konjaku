@@ -286,12 +286,22 @@ async function buildWater(bbox){
            transparentPixels:a.transparentPixels, unknownPixels:a.unknownPixels };
 }
 
+// ⚠ **1 位だけでなく、⚠ 全部返す**（2026-08-22。Owner 判断）。
+//   ⚠ **前は `entries[0]` だけ返し、⚠ 残りを捨てていた。**
+//   ⚠ 実測（2026-08-22・静岡市）: ⚠ **8 区分ぶん数えていて、⚠ 画面に出ていたのは 1 つだけ。**
+//     田 90.0% ／ 河川・湖沼・海面 9.0% ／ 干潟・砂浜 0.5% ／ 堤防 0.5% ／
+//     砂礫地 0.1% ／ 塩田 0.0% ／ 湿地 0.0% ／ 泥炭地 0.0%
+//   ⚠ **この内訳は、⚠ 明治期の低湿地データだけから作れる。**⚠ **建物は要らない。**
+//     ⚠ **建物が未対応の土地でも出せる**（⚠ 静岡市はまさにそれ）。
+// ⚠ **分母は「区分を特定できた画素」。**⚠ 建物の件数とは別の分母（掟 §6）。
 function summarizeLand(counts, classifiedPixels){
   if(!counts || !(classifiedPixels>0)) return null;
   const entries=Object.entries(counts).filter(([,n])=>n>0).sort((a,b)=>b[1]-a[1]);
   if(!entries.length) return null;
   const [name,count]=entries[0];
-  return {name,count,classifiedPixels,pct:(count/classifiedPixels*100).toFixed(1)};
+  return {name,count,classifiedPixels,pct:(count/classifiedPixels*100).toFixed(1),
+    // ⚠ **全部の内訳。**⚠ 画面がどこまで出すかは画面が決める（⚠ ここは数と意味だけ）
+    all: entries.map(([n,c])=>({name:n,count:c,pct:(c/classifiedPixels*100).toFixed(1)}))};
 }
 
 // 建物の足元に付いた明治期区分の最多値。「該当なし」「特定できず」は
@@ -451,6 +461,10 @@ map.on("load",()=>{
 //   **両方の端末で画面の外**だった。利用者役のエージェントによる検証で「押しても何も起きないように見える」
 //   「スマホでは何も起きない」と3体が報告したのは、実際に何も見えていなかったから。
 let pickPop=null, picked=false;
+// ⚠ **押した結果を読んでいるあいだ、⚠ 板を退かせる**（2026-08-23。Owner 判断）。
+//   ⚠ **消すのではない。**⚠ **閉じたら戻る。**⚠ **場所も高さも変えない**（⚠ 下の帯が飛び跳ねない）。
+const setPanelAside=(on)=>document.getElementById("panel")
+  ?.classList.toggle("panel--aside", !!on);
 // いま選んでいる建物の鍵（bldKey）。URL に載せる
 let pickBld=null;
 // URL から復元したいもの。段・建物が揃ってから当てる
@@ -494,7 +508,7 @@ function pickSpeech(p){
 //   共有先だけ吹き出しの中身が違う、という差が生まれる（掟: 同じ問いに答える実装を2つ持たない）。
 function showPick(p,lngLat){
   // 一度でも押したら、案内は役目を終える
-  if(!picked){ picked=true; const t=document.getElementById("tip"); if(t) t.textContent=""; }
+  if(!picked){ picked=true; render(); }   // ⚠ 補足の並びから「押すと〜」が抜ける
   // ⚠ **押した結果は、⚠ 押した場所の吹き出しだけ**（2026-08-21。Owner 判断）。
   //   ⚠ 前はここでパネルの `#pick` にも同じ `pickCard(p)` を入れていた。
   //     ⚠ **同じ字が同時に 2 か所**に出ていた（⚠ 実測: 4 幅とも一致）。
@@ -509,11 +523,17 @@ function showPick(p,lngLat){
     .setHTML(pickCard(p)+(("speechSynthesis" in window)
       ? `<button class="pick-say" id="pickSay">🔊 読み上げる</button>`:""))
     .addTo(map);
+  // ⚠ **押しているあいだ、⚠ 板を退かせる**（2026-08-23。Owner 判断）。
+  //   ⚠ **hidetzu/konjaku#155 で `#land` にやったのと同じ手。**⚠ **相手が板に変わった。**
+  //   ⚠ **実測（2026-08-23・375×667・豊洲）**: ⚠ **吹き出し y146→311 のうち、
+  //     ⚠ 上 50px（30%）が板（`#noteBox`）の下に隠れていた。**
+  //   ⚠ **z-index では解けない**（⚠ `#map` の `filter` が積み重ねの文脈を作るので、
+  //     ⚠ **吹き出しは `#map` の外へ出られない**）。
+  //   ⚠ **狭い幅だけ。**⚠ **PC は板と地図が並ぶので重ならない。**
+  setPanelAside(true);
   // 吹き出しを閉じたら、URL からも建物を外す。
   // ⚠ 外さないと、閉じたあとに共有した人の URL が、閉じたはずの建物を開く
-  // ⚠ **2026-08-21 に、⚠ 「押しているあいだ要約を退かせる」をやめた**（hidetzu/konjaku#152）。
-  //   ⚠ hidetzu/konjaku#155 で足したもの。⚠ **退かせる相手（`#land`）が無くなった。**
-  pickPop.on("close",()=>{ if(pickBld===p.k){ pickBld=null; syncUrl(); } });
+  pickPop.on("close",()=>{ setPanelAside(false); if(pickBld===p.k){ pickBld=null; syncUrl(); } });
   const say=document.getElementById("pickSay");
   if(say) say.onclick=()=>{
     try{
@@ -542,6 +562,14 @@ map.on("mouseleave","bld",()=>map.getCanvas().style.cursor="");
 // エリアの読み込み — ここが「任意の場所でやる」の本体
 // ============================================================
 const statusEl=document.getElementById("status");
+// ⚠ **補足の ? は、⚠ 操作の案内だけを出し入れする**（2026-08-23。Owner 判断）。
+//   ⚠ **断りは出し入れしない**（掟 §1・§4-1: ⚠ 限界は必ず書く）。⚠ **常に出ている。**
+const noteBox=document.getElementById("noteBox");
+const noteHelp=document.getElementById("noteHelp");
+if(noteHelp&&noteBox) noteHelp.onclick=()=>{
+  const on=noteBox.classList.toggle("sec-note--tips");
+  noteHelp.setAttribute("aria-expanded", String(on));
+};
 const resultEl=document.getElementById("result");
 let area=null;   // 現在のエリアの集計
 let marker=null; // 調べている地点の印
@@ -555,9 +583,15 @@ const {HALF_LON,HALF_LAT}=KonjakuGround;
 // ⚠ 地名は共有された URL の q か、地理院の応答から来る。属性の中も HTML なので esc を通す
 const retryBtn=(lon,lat,title)=>
   `<button class="retry-btn" data-ll="${lon},${lat}" data-title="${esc(title)}">再試行</button>`;
+// ⚠ **どこに置かれた再試行でも拾う**（2026-08-22。Owner 判断で 3 つ目の問いへ移した）。
+//   ⚠ **前は `#status` の中だけを見ていた。**⚠ 移した先で押しても何も起きなくなる。
 function wireRetry(lon,lat,title){
-  statusEl.querySelectorAll(".retry-btn").forEach((b)=>{ b.onclick=()=>loadArea(lon,lat,title); });
+  document.querySelectorAll("#panel .retry-btn").forEach((b)=>{
+    b.onclick=()=>loadArea(lon,lat,title); });
 }
+// ⚠ **いまの場所。**⚠ 再試行を、⚠ **描き直しのたびに繋ぎ直す**ために持つ
+//   （⚠ 3 つ目の問いは `paintLand` が作り直すので、⚠ その都度繋がないと押せない）。
+let retryAt=null;
 
 // ============================================================
 // 年代の段を、この地点に合わせて組み直す
@@ -683,7 +717,10 @@ async function loadArea(lon,lat,title,opt){
     statusEl.innerHTML=`<span class="err">このエリアは、明治期の低湿地データで<b>水域に該当しません</b>。</span>
       <span style="color:var(--ink-dim)">空中写真の年代送りは使えます。</span>`;
   } else {
-    statusEl.innerHTML=`<span style="color:var(--ink-dim)">水域 ${w.rects} 面を判定しました。</span>`;
+    // ⚠ **水域の面数は、⚠ 材料の行が持つ**（2026-08-22。Owner 判断）。
+    //   ⚠ `prov.js` の `sourceRow`:「水面は、明治期の低湿地データから N 面を起こしたもの」
+    //   ⚠ **同じ数字を 2 か所で言わない**（掟 §6）。
+    statusEl.innerHTML="";
   }
   // 建物を待たずに、いま言えることだけで一度出す。
   // 判定できない土地では「判定できません」がここで出る。以前はここで初期値の
@@ -742,15 +779,19 @@ async function loadArea(lon,lat,title,opt){
     //   実測（2026-08-18）: 同じ「まだ提供していない」に 2 通りの文があり、
     //   20 秒のあいだに入れ替わっていた（「まだ用意できていません」→「まだ提供していません」）。
     //   ⚠ 入れ替わると、同じことを言っているのだと分からない。文は prov.js の 1 つを借りる。
-    statusEl.innerHTML+=blWhy===BL_ABSENT
-      ? `<div style="margin-top:5px"><b>${KonjakuProv.NOTYET}。</b></div>`
-      : `<div style="margin-top:5px">建物を取得中…</div>`;
+    // ⚠ **取得中は、⚠ 3 つ目の問いが言う**（2026-08-22。Owner 判断）。
+    //   ⚠ **「今建っている建物は？ → 建物を取得しています」**（`layerMissing`）。
+    //   ⚠ **ここでは言わない**（⚠ 同じことを 2 か所で言わない）。
+    //   ⚠ **相手先の名前も、⚠ 秒数も出さない**（⚠ 利用者の問いに答えていない）。
+    statusEl.innerHTML+=`<div style="margin-top:5px"></div>`;
     const line=statusEl.querySelector("div:last-of-type");
     const els=await fetchBuildings(bbox,(m)=>{
       // ⚠ 何を待っていて、**駄目だったらどうなるか**を先に言う。
       //   黙って待たせると、止まっているのか動いているのか分からない
-      line.textContent=(blWhy===BL_ABSENT?`${KonjakuProv.NOTYET}。`:"")
-        +m+"（最大20秒。取れなければ水域と写真だけで表示します）";
+      // ⚠ **進捗は出さない**（2026-08-22。Owner 判断）。
+      //   ⚠ **3 つ目の問いが「建物を取得しています」と言っている。**
+      //   ⚠ `m` は相手先の名前を含む。⚠ **利用者の問いに答えていない。**
+      line.textContent="";
     });
     if(seq!==areaSeq) return;   // 別の場所へ移った／押し直された。古い結果で上書きしない
     if(els){ feats=toGeoJSON(els).features; bldSource="overpass"; }
@@ -764,19 +805,14 @@ async function loadArea(lon,lat,title,opt){
     area={ title, total:0, wet:0, classified:0, unread:0, counts:{}, dated:0,
       waterRatio:w.ratio, waterRead, waterUnread, waterRects:w.rects, bldState:notYet?"notyet":"fail",
       landSummary:summarizeLand(w.classCounts,w.classifiedPixels), buildingLand:null };
-    statusEl.innerHTML=(notYet
-      // ⚠ **⚠ の記号を使わない。**この画面の外（トップ）では ⚠ を「この土地で
-      //   気をつけること」（＝災害リスク）に使っている。在庫の話に同じ印を出すと、
-      //   利用者役 2/3 が「危ない土地の警告か」と読んだ（2026-08-18）。
-      ? `<span class="err">${KonjakuProv.NOTYET}。</span>
-         <span style="color:var(--ink-dim)">${KonjakuProv.NOTYET_WHY}。</span>`
-      : blWhy===BL_UNKNOWN
-      ? `<span class="err">建物データを取得できませんでした。</span>
-         <span style="color:var(--ink-dim)">用意してあるかどうかも確かめられていません。</span>`
-      : `<span class="err">建物データを取得できませんでした。</span>
-         <span style="color:var(--ink-dim)">用意はしてありますが、いま読めていません。</span>`)
-      + `<span style="color:var(--ink-dim)">水域と空中写真だけで表示しています。</span> ${retryBtn(lon,lat,title)}`;
-    wireRetry(lon,lat,title);
+    // ⚠ **未対応も取得失敗も、⚠ 3 つ目の問いが答える**（2026-08-22。Owner 判断）。
+    //   ⚠ 実測（静岡市 / 渋谷）: ⚠ **同じ字が `#status` と 3 つ目の問いに 2 か所**出ていた。
+    //   ⚠ **消えたのは繰り返しであって、⚠ 事実ではない。**
+    statusEl.innerHTML="";
+    // ⚠ **取得失敗も、⚠ 3 つ目の問いが言う**（2026-08-22。Owner 判断）。
+    //   ⚠ **前は同じ字が `#status` と 3 つ目の問いに 2 か所出ていた。**
+    //   ⚠ **再試行の的も、⚠ 断りのすぐ隣（3 つ目の問い）へ移した。**
+    retryAt={lon,lat,title};
     // ⚠ **台帳（#prov）も組み直す。** ここで render() を呼んでいなかったので、
     //   台帳だけ「未取得 建物データを**取得中**／まだ**届いていない**だけで」のまま残っていた。
     //   利用者役 3/3 が、その 2 語を見て**自分の通信を疑った**（2026-08-18）。
@@ -849,11 +885,15 @@ async function loadArea(lon,lat,title,opt){
   // ⚠ **由来（水域の面数・取り込んだ日）は、ここでは言わない**（2026-08-22。hidetzu/konjaku#153）。
   //   ⚠ **ここは「いま判定できたか」を言う場所**で、⚠ **材料がどこから来たかは「表示データについて」が持つ**
   //     （`prov.js` の `sourceRow`）。⚠ **消したのではない。**⚠ 同じ画面の別の節にある。
-  statusEl.innerHTML=`<span style="color:var(--ink-dim)">${
-    area.total===0
-      ? `この範囲に、<b>OSM に登録された建物は 0 件</b>です${WORD.bldPre(bldSource==="tiles")}。`
-        + `水域と空中写真で表示しています。`
-      : `建物 ${area.total} 件を判定しました${WORD.bldPre(bldSource==="tiles")}。`}</span>${
+  // ⚠ **判定できたときは、⚠ ここに書かない**（2026-08-22。Owner 判断）。
+  //   ⚠ **件数は「今建っている建物は？」の分母（`N / M件の足元を判定`）が言う。**
+  //   ⚠ **0 件のときは残す**（⚠ **分母が立たないので、⚠ どこにも出なくなる**）。
+  // ⚠ **「建物 N 件を判定しました」は到達しない**（2026-08-23 に気づいた）。
+  //   ⚠ **`area.total>0` のときは空にする**ので、⚠ **ここへ来るのは 0 件のときだけ。**
+  //   ⚠ **死にコードは、⚠ コードより強く誤誘導する**（`CLAUDE.md` §5）。⚠ 落とす。
+  statusEl.innerHTML = area.total>0 ? "" : `<span style="color:var(--ink-dim)">${
+      `この範囲に、<b>OSM に登録された建物は 0 件</b>です${WORD.bldPre(bldSource==="tiles")}。`
+      + `水域と空中写真で表示しています。`}</span>${
       blTrunc?`<span class="err"> この範囲は建物が多く、取りきれていない可能性があります。</span>`:""}`;
   if(!waterRead) statusEl.innerHTML = (waterUnread
     ? `<span class="err">明治期の低湿地データを<b>いま読み込めませんでした</b>。</span> `
@@ -870,6 +910,13 @@ async function loadArea(lon,lat,title,opt){
 // 「判定できません」で終わる。地形分類はその土地そのものには必ず答えられるので、
 // 集計が出せないときの受け皿として持つ。集計の代わりに使うのではない。
 let landform=null;
+// ⚠ **第1の問いを支える材料**（2026-08-22）。⚠ **新しく取りに行かない。**
+//   ⚠ `landform` は既に読んである。⚠ **その中の原典（`why`）を、⚠ 分類し直して渡すだけ。**
+//   ⚠ **読めていないときは null**（⚠ 「不明」の行を作らない）。
+const landClassNow = () => (landform && landform.ok && landform.value)
+  ? { name: landform.value, why: landform.why ?? "",
+      artificial: landform.artificial ?? null, artificialWhy: landform.artificialWhy ?? "" }
+  : null;
 async function loadLandform(lon,lat,seq){
   landform=null;
   // 同上。⚠ **トップ経由なら控えから返る**（実測 2本 → 0本）
@@ -949,8 +996,17 @@ const WORD = {
       //   ⚠ 私が持ち込んだ「整備している範囲の外」は 2 だけだった。**新語を増やさない。**
       ? (why === "unread" ? "明治期の低湿地データを読み込めませんでした"
                           : "この範囲は明治期の低湿地データの整備対象外です")
+      // ⚠ **取得中と、⚠ 取得できなかったを分ける**（2026-08-22。Owner 判断）。
+      //   ⚠ **問いは必ず出す。**⚠ **黙って空にしない**（掟 §1）。
+      //   ⚠ **「取得中」は進行形だが、⚠ ここは本当にいま起きていること**なので使える
+      //     （`CLAUDE.md` §4-1 が禁じるのは、⚠ **状態の説明に進行形を使うこと**）。
       : (why === "unread" ? "建物の足元を読み込めませんでした"
         : why === "outside" ? "建物は出ていますが、1 件ずつの足元は判定できていません"
+        : why === "loading" ? "建物を取得しています"
+        : why === "fail" ? "建物を取得できませんでした"
+        // ⚠ **読めた結果としての 0 件**（2026-08-23）。⚠ **「無い」と言い切らない**
+        //   （⚠ 断りは材料の行が言う: ⚠ 「OSM に登録が無いだけで、現地に建物が無いとは限らない」）。
+        : why === "zero" ? "OSM に登録された建物は 0 件でした"
                             : KonjakuProv.NOTYET),
 };
 
@@ -1028,31 +1084,43 @@ function layersOf(area, lf){
         subs: area.landSummary ? [{kind:"top", v:area.landSummary}] : [] });
   } else missing.push({ n:2, why: area.waterUnread ? "unread" : "outside" });
 
-  // ---- 第3層: いま建っている建物は、何の上？ ----
+  // ---- 第3層: 今建っている建物は？ ----
+  // ⚠ **建物の話は建物の数で言う**（2026-08-22。Owner 判断）。
+  //   ⚠ **前は「田 建物の足元は、明治期には最多でした」から始まっていた。**
+  //     ⚠ **明治期の区分名が主役**で、⚠ **建物の話に見えなかった。**
+  //     ⚠ 「4832 / 5038件の足元を判定 ／ 水域だった建物：1.4%」は
+  //       ⚠ **1 行に 2 つの主張**が入っていた。
+  //   ⚠ **総数を先に言い、⚠ 何が分かっているかを内訳で並べる。**
+  //     ⚠ **分母は 3 つとも同じ（総数）**なので、⚠ 並べても分母が食い違わない（掟 §6）。
+  //   ⚠ **明治期の区分の内訳は、⚠ 「昔はどんな土地？」が面積の分母で持つ。**
+  //     ⚠ **ここは建物の分母で、⚠ 別の問い**（⚠ 2026-08-22 に分けた）。
   if(area.classified>0){
-    const land=area.buildingLand;
-    const isWater=land&&KonjakuSwale.isWater(land.name);
     layers.push({ n:3, title:WORD.layerTitle(3),
-      head: (land&&!isWater) ? {kind:"name", v:land.name} : {kind:"pct", v:(area.wet/area.classified*100).toFixed(1)},
-      what: (land&&!isWater) ? "建物の足元は、明治期には最多でした" : "の建物が、明治期には水の上だった",
-      // ⚠ **水域だった割合は、分母と同じ行に置く。**
-      //   ⚠ 区分名が主役の土地（渋谷・上野・西新宿）では、head が「田」なので、
-      //     **水の割合がどこにも出なくなる**。実測 2026-08-19: HUD から消えていた。
-      //   ⚠ 補足に置くと HUD で畳まれて消える。**答えの一部なので、畳まない側に置く。**
-      den:`${area.classified} / ${area.total}件の足元を判定`
-        + ((land&&!isWater)?` ／ 水域だった建物：${(area.wet/area.classified*100).toFixed(1)}%`:""),
-      // ⚠ **ここにあった `kind:"share"` の補足を落とした**（2026-08-20。hidetzu/konjaku#130）。
-      //   ⚠ 出していたのは「区分を特定できた足元のうち 河川・湖沼・海面 510 / 543件（93.9%）」。
-      //   ⚠ **同じ数字・同じ区分名が、⚠ 下の「内訳」の 1 行目にもあった**
-      //     （実測 2026-08-20・1280×800・豊洲: y376 と y876。⚠ **500px 離れて 2 回**）。
-      //   ⚠ **内訳が正本。**⚠ あちらは 2 位以下も出すので、⚠ 1 位だけを別の場所で繰り返す意味が無い。
-      //   ⚠ **区分名は消えない。**⚠ 内訳の 1 行目がそれ。
-      //   ⚠ **93.9%（＝ 1 位 ÷ 判定できた件数）だけは画面から消える。**
-      //     ⚠ 生の件数（510 / 543）は内訳に残るので、⚠ 数えられる。
-      subs: [] });
+      head:{kind:"name", v:`${area.total} 件`},
+      what:"の建物が、この範囲にあります",
+      // ⚠ **割合の分母を、⚠ 主語として字で名指す**（2026-08-23。Owner 判断）。
+      //   ⚠ **前は「うち 1.4% が…（4832 / 5038件の足元を判定）」だった。**
+      //   ⚠ **利用者役 4/4 が「5038 件のうち 1.4%」と読んだ**（⚠ 実装は 4832 が分母）。
+      //     ⚠ **件数に直すと 68 件 と 70 件で食い違う**（掟 §6）。
+      //   ⚠ **括弧の中に正しい分母は書いてあったが、⚠ 4/4 が「補足」と読んで係り先に取らなかった。**
+      //   ⚠ **件数も併記する。**⚠ **割合だけだと、⚠ 分母を取り違えたことに気づけない。**
+      // ⚠ **「足元」をその場で定義する**（⚠ 4/4 が意味を取れず、⚠ 読みは 3 通りに割れた）。
+      den:`足元（建っている地面）を判定できた ${area.classified} 件のうち、`
+        + `${(area.wet/area.classified*100).toFixed(1)}%（${area.wet} 件）が、明治期には水の上だった`,
+      subs: area.total>area.classified
+        ? [{kind:"rest", v:`（ほか ${area.total-area.classified} 件は判定の範囲外）`}] : [] });
   } else if(area.total>0)
     missing.push({ n:3, why:"outside", note:`建物 ${area.total} 件` });
-  else if(area.bldState==="notyet") missing.push({ n:3, why:"notyet" });
+  // ⚠ **問いは必ず 3 つ出す**（2026-08-22。Owner 判断）。
+  //   ⚠ **前は `loading` / `fail` がどちらにも入らず、⚠ 問いごと消えていた。**
+  //   ⚠ **問いが消えると「その問いは無い」に読まれる**（掟 §1。
+  //     ⚠ 静岡の見出しを消さないと決めたのと同じ理由。⚠ 利用者役 2/3 がそう読んだ）。
+  //   ⚠ **取得中は、⚠ 取得中だと分かるようにする**（⚠ 黙って空にしない）。
+  // ⚠ **読んで 0 件だったのを「まだ提供していません」に落とさない**（2026-08-23）。
+  //   ⚠ **`layerMissing(3, "ok")` が `NOTYET` に落ちていた。**⚠ **こちらの都合のせいにしている。**
+  //   ⚠ **0 件は答えである**（⚠ 読めた結果）。⚠ **`answered` を立てて、⚠ 材料を畳ませない。**
+  else if(area.bldState==="ok") missing.push({ n:3, why:"zero", answered:true });
+  else missing.push({ n:3, why: area.bldState==="notyet" ? "notyet" : area.bldState });
   return { layers, missing };
 }
 
@@ -1087,8 +1155,25 @@ function paintLand(el, m){
     if(L){ out.push(paintLayer(L)); continue; }
     const M=by.get(n);
     // ⚠ 出ない層は、絞っていても**必ず出す**。黙って消すと「その土地に何も無い」に読まれる
-    if(M) out.push(`<div class="land-miss"><div class="land-sub">${WORD.layerMissing(n, M.why)}</div>`
-      + (M.note?`<div class="land-sub">${M.note}</div>`:"")+`</div>`);
+    // ⚠ **出ない層にも、⚠ 見出しを付ける**（2026-08-22。Owner 判断: 3 つの問いに集約する）。
+    //   ⚠ 前は見出しが無く、⚠ **前の層の続きに読めた**（実測 2026-08-22・静岡市 375×667）。
+    //   ⚠ **見出しごと消す案は採らない。**⚠ 利用者役 2/3 が
+    //     「⚠ **この場所は建物が無いのかと思った**」と読んだ（掟 §1）。
+    // ⚠ **できることから書く**（`CLAUDE.md` §4-1）。⚠ 利用者役 3/3 が「何が見られるか先に分かる」。
+    //   ⚠ **字は `words.js` の 1 か所から借りる**（⚠ トップの導線と同じ幹）。
+    // ⚠ **「未対応」の理由は、⚠ 材料の行が言う。**⚠ ここで同じ字を繰り返さない。
+    if(M) out.push(`<div class="land-layer land-miss"><div class="land-q">${WORD.layerTitle(n)}</div>`
+      // ⚠ **「代わりにできること」は、⚠ 断りに添える**（2026-08-22。Owner 判断）。
+      //   ⚠ **問いの答えの位置には置かない。**⚠ 実測: ⚠ **「空中写真を年代で切りかえて…」が
+      //     ⚠ 「今建っている建物は？」の答えの位置に出ていて、⚠ 問いと噛み合っていなかった。**
+      //   ⚠ **`CLAUDE.md` §4-1 は「⚠ 代わりにできることを ⚠ 断りに添えろ」と言っている。**
+      //     ⚠ **問いの答えの位置に置け、とは言っていない**（⚠ こちらが誤って適用した）。
+      //   ⚠ **未対応のときは、⚠ 材料の行（`prov.js`）が答える。**⚠ ここは見出しだけ。
+      + (M.why==="notyet" ? "" : `<div class="land-sub">${WORD.layerMissing(n, M.why)}</div>`)
+      + (M.note?`<div class="land-sub">${M.note}</div>`:"")
+      // ⚠ **答えが出せたかを印で持つ**（2026-08-23）。⚠ **`describe()` が「詳しく見る」を出すか決める。**
+      //   ⚠ **0 件は答えなので、⚠ 材料を畳ませない**（掟 §1: ⚠ 断りが消える）。
+      + `<div class="prov-q" data-q="${n}" data-answered="${M.answered?1:0}"></div></div>`);
   }
   el.innerHTML=out.join("");
 }
@@ -1110,13 +1195,25 @@ function paintLayer(L){
   //   ⚠ **HUD に土地の答えを出さなくなったので、⚠ 出し分ける相手が無くなった。**
   const subs=(L.subs??[]).map((sb)=>
       sb.kind==="art"   ? `<div class="land-sub">${WORD.ground1Art(esc(sb.v))}</div>`
-    : sb.kind==="top"   ? `<div class="land-sub">この範囲で最も多い区分: <b>${esc(sb.v.name)}</b>（${sb.v.pct}%）</div>`
+    // ⚠ **「最も多い区分」の 1 行は消した**（2026-08-22。Owner 判断）。
+    //   ⚠ **内訳の 1 位と、⚠ 同じ数字・同じ区分名を 2 回言っていた。**
+    //   ⚠ **消したのは繰り返しであって、⚠ 事実ではない**（⚠ 内訳の先頭がそれ）。
+    : sb.kind==="top"   ? ""
     : sb.kind==="wet"   ? `<div class="land-sub">水域だった建物: ${sb.v}%</div>`
     // ⚠ **粗さ**（2026-08-22。hidetzu/konjaku#128）。⚠ **⚠ の記号は使わない**
     //   （この画面では ⚠ を災害リスクに使っている。⚠ 精度の話に同じ印を出すと「危ない土地」に読まれる）。
-    : sb.kind==="coarse" ? `<div class="land-sub land-coarse">${esc(sb.v)}</div>` : "").join("");
+    : sb.kind==="coarse" ? `<div class="land-sub land-coarse">${esc(sb.v)}</div>`
+    // ⚠ **答えの分母に入らなかったぶん**（「ほか N 件は判定の範囲外」）
+    : sb.kind==="rest"   ? `<div class="land-sub">${esc(sb.v)}</div>` : "").join("");
+  // ⚠ **並びは 答え → 内訳 → 材料**（2026-08-22。Owner 判断）。
+  //   ⚠ **内訳は答えの分割**なので、⚠ **答えの直後。**⚠ 材料（台帳）はそのあと。
+  // ⚠ **材料の中身はここで作らない。**⚠ 器だけ置き、⚠ **`describe()` が入れる**
+  //   （⚠ 台帳は段が変わるたび、⚠ 層は場所が変わるたび。⚠ **周期が違う**）。
   return `<div class="land-layer"><div class="land-q">${L.title}</div>`
-    + `<div class="land-line">${head}${what}</div>${den}${subs}</div>`;
+    + `<div class="land-line">${head}${what}</div>${den}${subs}`
+    + (L.n===2 ? `<div id="areaBreak"></div>` : "")
+    + (L.n===3 ? `<div id="breakdown"></div>` : "")
+    + `<div class="prov-q" data-q="${L.n}"></div></div>`;
 }
 
 
@@ -1125,6 +1222,8 @@ function showResult(){
   resultEl.style.display="";
   // ⚠ 以前は「（集計範囲: 〜）」を添える枝があった（2026-08-20 に外した）。
   //   ⚠ **土地ごとの専用の集計範囲が無くなり、中心とズレることが無くなった**ため。
+  // ⚠ **地名だけ**（2026-08-22。Owner 判断: `tmp/tmp3.md`）。
+  //   ⚠ 一度「今の位置: 」を付けたが、⚠ **モックでは地名だけ**だったので戻した。
   document.getElementById("placeName").textContent = area.title;
   // ⚠ **パネルも層で描く。**HUD と同じ値（layersOf）を使う。
   //   ⚠ 2 か所で作ると、同じ画面で言うことが食い違う（ADR 0021）。
@@ -1137,8 +1236,61 @@ function showResult(){
   landModel = layersOf(area, landform);
   // ⚠ **描くのはパネルの 1 か所だけ**（2026-08-21。hidetzu/konjaku#152）
   paintLand(document.getElementById("landAll"), landModel);
+  // ⚠ **器を作り直したら、⚠ その場で入れ直す**（2026-08-22）。
+  //   ⚠ `paintLand` は `.prov-q` ごと作り直すので、⚠ **中身が消える。**
+  // ⚠ **`describe()` は前と同じ内容なら早期 return する**（`described` の覚え）。
+  //   ⚠ **器を作り直したことに気づけないので、⚠ 覚えを捨ててから呼ぶ。**
+  //   ⚠ 実測（2026-08-22・豊洲）: ⚠ **これが無いと 4 通り中 2 通りで材料の行が 0 行**になり、
+  //     ⚠ **「推定です」の断りごと消えていた**（掟 §1）。
+  described=null;
+  render();
 
-  paintBreakdown(document.getElementById("breakdown"), breakdown(area.counts, area.total), area.bldState);
+  // ⚠ **3 つ目の問いが「まだ出していない」と答えているなら、⚠ 内訳で繰り返さない**
+  //   （2026-08-22。Owner 判断）。⚠ 実測（静岡市）: ⚠ **同じ字が 4 か所**に出ていた。
+  const said3 = landModel.missing.some((mi) => mi.n === 3);
+  paintBreakdown(document.getElementById("breakdown"),
+    breakdown(area.counts, area.total), area.bldState, said3, area);
+  // ⚠ **面積の内訳**（2026-08-22。Owner 判断）。⚠ **明治期の低湿地データだけから作れる。**
+  //   ⚠ **建物が未対応の土地でも出せる**（⚠ 静岡市がまさにそれ）。
+  //   ⚠ **分母は「区分を特定できた画素」。**⚠ 建物の件数（4832 件）とは別の分母（掟 §6）。
+  //     ⚠ **だから、⚠ 建物の内訳とは別の問いの下に置く。**
+  //     ⚠ 実測（2026-08-22・渋谷）: 前は「田 88.7%（面積）」と「田 605 / 4832（件数）」が
+  //       ⚠ **同じ画面に、⚠ どちらの分母か分からないまま並んでいた。**
+  paintAreaBreak(document.getElementById("areaBreak"), area.landSummary);
+}
+
+// ⚠ **面積の内訳。**⚠ **数と意味は `summarizeLand` が持つ。**⚠ ここは並べるだけ。
+function paintAreaBreak(el, sum){
+  if(!el) return;
+  if(!sum || !sum.all || sum.all.length<2){ el.innerHTML=""; return; }   // ⚠ 1 種類なら内訳にならない
+  // ⚠ **色見本は付けない。**⚠ 建物の内訳（`.swatch`）と同じ形にすると、⚠ 同じ分母に見える。
+  // ⚠ **`0.0%` と書かない**（2026-08-22）。⚠ **画素はあるのに「無い」と読まれる**（掟 §1）。
+  //   ⚠ 実測（2026-08-22・静岡市）: ⚠ **塩田 79 / 湿地 67 / 泥炭地 14 画素**あるのに、
+  //     ⚠ **3 行とも `0.0%` と出ていた。**
+  //   ⚠ **行ごと隠さない。**⚠ 隠すのは「無い」と言うのと同じ（掟 §1）。
+  //   ⚠ **「0.1% 未満」と書く。**⚠ 小さいことは言うが、⚠ **無いとは言わない。**
+  // ⚠ **色は、⚠ 判定に使っている凡例そのもの**（2026-08-22。Owner 判断）。
+  //   ⚠ **こちらで決めた飾りではない。**⚠ `swale.js` の `SWALE[].rgb` は、
+  //     ⚠ **国土地理院の凡例 `lw_legend.pdf` から抽出した 14 区分の RGB**（ADR 0017）。
+  //     ⚠ **判定はこの RGB との距離**（`TOLERANCE`）で出している。
+  //   ⚠ **だから、⚠ 色を出すことは「判定の根拠そのものを見せる」ことになる。**
+  // ⚠ **地図には既に重なっている**（`g-swale` の raster。⚠ 明治期の段で不透明度が上がる）。
+  //   ⚠ **足りなかったのは凡例。**⚠ **色が出ているのに、⚠ それが何かを言う場所が無かった。**
+  // ⚠ **建物の内訳（`.swatch`）とは形を変える。**⚠ あちらは水／陸の 2 色で、⚠ 分母も違う。
+  const rgbOf=(name)=>{
+    const c=(KonjakuSwale.SWALE??[]).find((x)=>x.name===name);
+    return c ? `rgb(${c.rgb.join(",")})` : null;
+  };
+  el.innerHTML=sum.all.map((r)=>{
+    const tiny=Number(r.pct)===0&&r.count>0;
+    const col=rgbOf(r.name);
+    return `<div class="stat">`
+      + `<span>${col?`<i class="legend" style="background:${col}"></i>`:""}${esc(r.name)}</span>`
+      + (tiny
+          ? `<b style="font-weight:400;color:var(--ink-dim)">0.1% 未満</b>`
+          : `<b>${r.pct}<span style="color:var(--ink-dim);font-weight:400">%</span></b>`)
+      + `</div>`;
+  }).join("");
 }
 
 // 内訳は「足元の判定の**分割**」。足すと、判定できた件数になる。
@@ -1171,21 +1323,80 @@ function breakdown(counts,total){
 }
 
 // ここは組み立てるだけ。⚠ **何と言うかは上で決まっている**（WORD と breakdown）。
-function paintBreakdown(el,b,bldState){
+function paintBreakdown(el,b,bldState,saidByLayer3,area){
   if(!el) return;
-  // ⚠ 分割の分母は「判定できた件数」。総数にすると、判定できなかった分だけ小さく見える
-  const rows=b.rows.map((r)=>
-    `<div class="stat"><span><i class="swatch" style="background:${r.water?"#8fb9dd":"#d8cfa8"}"></i>${r.name}</span>
-      <b>${r.n}<span style="color:var(--ink-dim);font-weight:400"> / ${b.classified}</span></b></div>`).join("");
-  // ⚠ 色見本を付けない。付けると分類に見える
-  const aside=[["unread",b.unread],["outside",b.outside]].filter(([,n])=>n>0).map(([k,n])=>
-    `<div class="hint">${WORD.notClassified(k,n,b.classified===0&&n===b.total)}</div>`).join("");
-  el.innerHTML = b.total
-    ? (rows+aside)
-    // ⚠ 取得中・正常に0件・未対応・取得失敗を書き分ける。
-    //   以前は2状態しか無く、**正常に0件だった土地に「建物を取得中…」**が出続けていた
-    //   （ステータスは「0 件を判定しました」と言っているのに、ここは待っている顔をしていた）。
-    : `<div class="hint">${WORD.noBuildings(bldState)}</div>`;
+  // ⚠ **層 3 が既に理由を言っているなら、⚠ ここは黙る**（2026-08-22。Owner 判断）。
+  //   ⚠ **黙るのは「同じ字を 2 回言わない」ためで、⚠ 事実を消すためではない。**
+  if(!b.total && saidByLayer3){ el.innerHTML=""; return; }
+  // ⚠ **建物について、⚠ 何が分かっているかを並べる**（2026-08-22。Owner 判断）。
+  //   ⚠ **分母は 3 つとも同じ（総数）。**⚠ **並べても分母が食い違わない**（掟 §6）。
+  //   ⚠ **明治期の区分の内訳は、⚠ ここには置かない。**⚠ **面積の分母で「昔はどんな土地？」が持つ。**
+  //     ⚠ 前は ⚠ **同じ区分名が、⚠ 面積の割合と建物の件数で 2 か所に並んでいた。**
+  // ⚠ **色見本は、⚠ 押したときに地図で光る色そのもの**（⚠ 照合する相手が地図にある）。
+  //   ⚠ **地図の既定の色は変えない**（⚠ 水域だったか＝答えの色。⚠ 塗り替えると答えが消える）。
+  // ⚠ **「無い」と書かない。**⚠ 0 件のときも行を出し、⚠ **0 / N** と書く（掟 §1）。
+  if(!area || !area.total){
+    // ⚠ **再試行は材料の行が持つ**（`prov.js`）。⚠ **層 3 が `missing` のとき、
+    //   ⚠ この器（`#breakdown`）そのものが作られない**ので、⚠ ここに置くと消える（実測 2026-08-22）。
+    el.innerHTML=`<div class="hint">${WORD.noBuildings(bldState)}</div>`;
+    return;
+  }
+  const rows=[];
+  // ⚠ **3 行は内訳ではない**（2026-08-23。Owner 判断）。
+  //   ⚠ **利用者役 3/4 が「足すと 5038 を超えるので内訳ではない」と気づいて止まった**
+  //     （4832 + 1373 + 21 = 6226）。⚠ **同じ 5038 件を、⚠ 3 つの別の観点で数えている。**
+  //   ⚠ **そう書いていなかった。**⚠ **見出しで言う。**
+  // ⚠ **「ほか N 件は、明治期の低湿地データを整備している範囲の外」は消した**
+  //   （2026-08-23。Owner 判断: ⚠ **説明になっていない**）。
+  //   ⚠ **件数そのものは消していない。**⚠ **答えの下に「ほか N 件は判定の範囲外」として残る。**
+  rows.push({ label:"足元が分かる", n:b.classified, peek:null, note:"" });
+  if(area.hSrc)
+    // ⚠ **「高さが実測」→「高さが分かる」**（2026-08-23。Owner 判断）。
+    //   ⚠ **上下の行（`足元が分かる` / `建てられた年が分かる`）と言い回しをそろえる。**
+    //   ⚠ **数えているものは変えていない**（⚠ 実測の件数のまま。⚠ 残りは下の行が言う）。
+    rows.push({ label:"高さが分かる", n:area.hSrc.measured, peek:"peekH", peekLabel:"高さを地図で光らせる",
+      // ⚠ **色見本は、⚠ ボタンの隣に置く**（2026-08-23。Owner 判断）。
+      //   ⚠ **前は行の見出しに付いていたが、⚠ 地図に対応する相手がいない色があった。**
+      //     ⚠ **`足元が分かる` の水色は「明治期に水だった」の色**で、⚠ **4832 件の色ではない。**
+      //     ⚠ **`高さが実測` の砂色も同じ**（⚠ 実測の建物は水色にも砂色にもなる）。
+      //   ⚠ **押したとき地図で実際に変わる色だけを出す**（⚠ 照合できない色見本を出さない）。
+      peekNote:{color:"#5b6470", text:"押すと、実測でない建物がこの色になります"},
+      note:`階数から換算 ${area.hSrc.levels} 件 ／ 種別ごとの既定値 ${area.hSrc.default} 件` });
+  // ⚠ **「根拠は『足元が水なら埋立前には無い』だけ」はここから外した**（2026-08-23）。
+  //   ⚠ **利用者役 2/4 が「21 件の根拠」と読んだ。**⚠ **実際は「消える年代」の根拠。**
+  //   ⚠ **同じ字が材料の行にもある**（`prov.js`）。⚠ **正本はそちら。**
+  rows.push({ label:"建てられた年が分かる", n:area.dated,
+    peek:area.dated?"peekY":null, peekLabel:"建てられた年を地図で光らせる",
+    peekNote:{color:"#e6c47a", text:"押すと、年が分かる建物がこの色になります"}, note:"" });
+  // ⚠ **地図の建物の色の凡例**（2026-08-23。Owner 指摘で戻した）。
+  //   ⚠ **前は行の見出しに色見本が付いていて、⚠ それが唯一の凡例だった。**
+  //     ⚠ **色見本を外したときに、⚠ 地図の色を読む手がかりごと消してしまった。**
+  //   ⚠ **今度は、⚠ 地図が実際に塗り分けている境目そのものを書く**（`BLD_COLOR`）。
+  // ⚠ **砂色を「水ではなかった」と言わない**（掟 §1）。
+  //   ⚠ **`wasWater` は「水と判定できた」= 1 で、⚠ 判定できなかった建物も 0 になる。**
+  //   ⚠ **砂色には、⚠ 判定できなかった ${area.total-area.classified} 件が混ざっている。**
+  const rest=area.total-area.wet;
+  const unknown=area.total-area.classified;
+  const mapLegend=`<div class="hint">地図の建物の色</div>`
+    + `<div class="stat"><span><i class="legend" style="background:#8fb9dd"></i>`
+    + `明治期に水だった</span><b>${area.wet}<span style="color:var(--ink-dim);font-weight:400">`
+    + ` / ${area.total}</span></b></div>`
+    + `<div class="stat"><span><i class="legend" style="background:#d8cfa8"></i>`
+    + `そのほか</span><b>${rest}<span style="color:var(--ink-dim);font-weight:400">`
+    + ` / ${area.total}</span></b></div>`
+    + (unknown ? `<div class="hint">そのほかには、足元を判定できなかった ${unknown} 件が含まれます`
+               + `（水ではなかった、という意味ではありません）</div>` : "");
+  el.innerHTML=mapLegend
+    + `<div class="hint">同じ ${area.total} 件を、3 つの見方で数えたもの（足し算はできません）</div>`
+    + rows.map((r)=>
+    `<div class="stat"><span>${esc(r.label)}</span>`
+    + `<b>${r.n}<span style="color:var(--ink-dim);font-weight:400"> / ${area.total}</span></b></div>`
+    + (r.note ? `<div class="hint">${r.note}</div>` : "")
+    + (r.peek ? `<button class="peek" id="${r.peek}">${esc(r.peekLabel)}</button>` : "")
+    + (r.peek ? `<div class="hint"><i class="legend" style="background:${r.peekNote.color}"></i>`
+              + `${esc(r.peekNote.text)}</div>` : "")).join("");
+  // ⚠ **作った直後に繋ぐ**（2026-08-23）。⚠ **ここが唯一の繋ぎ口。**
+  wireProvPeek();
 }
 
 
@@ -1217,6 +1428,9 @@ const NARROW_Q="(max-width:680px)";
 const narrow=()=>matchMedia(NARROW_Q).matches;
 // ⚠ 幅が変わったら、閉じている側を入れ替える（画面回転・折りたたみ端末で起きる）
 matchMedia(NARROW_Q).addEventListener("change",()=>{
+  // ⚠ **ボタンの字は幅で変わる**（2026-08-23）。⚠ **回したら名乗り直す。**
+  //   ⚠ さもないと ⚠ **PC 幅で「全画面で読む」と名乗ったまま**になる（⚠ 起きることが違う）。
+  applyPanel();
 });
 
 // ============ 共有された状態を、URL に載せる／URL から戻す ============
@@ -1314,7 +1528,8 @@ const setPos = (v) => { pos = Math.max(0, Math.min(Math.max(0, steps.length - 1)
 //   ⚠ 「← 今昔へ」「✕ 地図へ」は帯に出ているので閉じない（戻る手段は常に残す）。
 // ⚠ **panelOpen を直に読まない。**この関数は宣言より前に呼ばれる。
 //   ⚠ 2026-08-19 に TDZ で 2 回踏んだ。**クラスから読む**（DOM は初期化順に依らない）。
-const fullRead = () => narrow() && !panel.classList.contains("hide");
+// ⚠ **「広げて読んでいる」＝ `.open`**（2026-08-22。⚠ 小さい状態は地図を隠さない）。
+const fullRead = () => narrow() && panel.classList.contains("open");
 function sealOldControls(){
   const full = fullRead();
   const seal=(el,off)=>{ if(!el) return;
@@ -1322,7 +1537,13 @@ function sealOldControls(){
     if(off) el.setAttribute("aria-hidden","true"); else el.removeAttribute("aria-hidden"); };
   // ⚠ **コンポーネントの中は、コンポーネントが閉じる**（sealed を渡す）。
   //   ⚠ ここが閉じるのは、⚠ **画面が持っているもの**だけ。
-  for(const id of ["toggle","land"]){ const el=document.getElementById(id); if(el) seal(el,full); }
+  // ⚠ **`#toggle` は閉じない**（2026-08-22。⚠ **いまは「▴ 小さくする」＝ 唯一の戻り道**）。
+  //   ⚠ 前は ☰＝「開く」だったので、⚠ 開いているあいだ封じるのが正しかった。
+  //   ⚠ **✕ を消した時点で、⚠ 封じると出られなくなる。**
+  //   ⚠ 実測（2026-08-22・375/344/320）: ⚠ **`inert` は当たり判定ごと消す**ので、
+  //     ⚠ **押しても `open` が true のまま**だった（Playwright も「intercepts pointer events」で時間切れ）。
+  //     ⚠ z-index も pointer-events も原因ではなかった（⚠ 両方を疑って測り、⚠ どちらも違った）。
+  for(const id of ["land"]){ const el=document.getElementById(id); if(el) seal(el,full); }
   syncEra();
 }
 
@@ -1471,7 +1692,13 @@ function paint(v){
     if(map.getLayoutProperty(`g-${e.id}`,"visibility")!==want)
       map.setLayoutProperty(`g-${e.id}`,"visibility",want);
   }
-  const sw=(timelineReady&&swaleVisible(pos,nPhoto))?"visible":"none";
+  // ⚠ **「昔はどんな土地？」の詳しく見るを開いているあいだ、⚠ 明治期を重ねる**
+  //   （2026-08-22。Owner 判断）。⚠ **可視を先に決める**（⚠ 不透明度だけ上げても出ない）。
+  //   ⚠ 実測（2026-08-22）: ⚠ **`opacity` だけ上げて `visibility=none` のままにして、
+  //     ⚠ 地図に何も出なかった。**⚠ この関数の 1 行目のコメントが、⚠ まさにそれを言っていた。
+  //   ⚠ **見るのは層 2 の詳しく見る**。⚠ 建物の側ではない。
+  const peek=!!document.querySelector('.prov-q[data-q="2"] details')?.open;
+  const sw=(timelineReady&&(swaleVisible(pos,nPhoto)||peek))?"visible":"none";
   if(map.getLayoutProperty("g-swale","visibility")!==sw)
     map.setLayoutProperty("g-swale","visibility",sw);
 
@@ -1480,7 +1707,11 @@ function paint(v){
     const s=steps[k];
     if(s&&!s.meiji) map.setPaintProperty(`g-${s.id}`,"raster-opacity",k===i?1-f:f);
   }
-  map.setPaintProperty("g-swale","raster-opacity",i===nPhoto-1?f:0);
+  // ⚠ **凡例だけ出して、⚠ 照合する相手が地図に無い状態を作らない**（ADR 0026 の同類）。
+  //   ⚠ **年代の選択は変えない。**⚠ 閉じれば元の年代の見え方へ戻る。
+  //   ⚠ **薄くする**（0.75）。⚠ **いまの写真を消さない**（⚠ 何に重ねているかが読めなくなる）。
+  map.setPaintProperty("g-swale","raster-opacity",
+    i===nPhoto-1 ? f : (peek ? 0.75 : 0));
 
   map.setPaintProperty("bld","fill-extrusion-height",
     ["*",["get","height"],["max",0,["min",1,["/",["-",["get","vanish"],tau],1.1]]]]);
@@ -1507,10 +1738,12 @@ function paint(v){
 //   以前は 6 個を render() の中で getElementById していた（＝「あるか分からない」
 //   という不安がコードに残っていた）。無ければ**起動時に**分かるほうがよい。
 const eraSummaryNoteEl=document.getElementById("eraSummaryNote");
-const overEl=document.getElementById("over");
-const tipEl=document.getElementById("tip");
-const estEl=document.getElementById("est");
-const provEl=document.getElementById("prov");
+// ⚠ **補足は 1 か所から配列で出す**（2026-08-22。Owner 判断）。
+//   ⚠ **前は `#est` と `#tip` の 2 要素**で、⚠ **句点も太字も行頭の印もバラバラだった**
+//     （⚠ 地図の上に別々に浮かせていた頃の名残）。
+const notesEl=document.getElementById("notes");
+// ⚠ **台帳の書き込み先は、⚠ 3 つの問いの中**（2026-08-22。Owner 判断）。
+//   ⚠ **`#prov` という 1 つの箱はもう無い。**⚠ 器は `paintLand` が作るので、⚠ **毎回引き直す。**
 
 // 言葉を変えうるものの一覧。
 // ⚠ **ここに挙げたものだけが、言葉を変える。**足したのに挙げ忘れると、
@@ -1603,8 +1836,6 @@ function describe(v){
   // ⚠ 過去の年代に入ったら、年と同じ強さで「重ねている」と言う。
   //   建物は現在のもので、地面だけが過去。そこを画面が言わないと、
   //   利用者は自分の知識でしか判別できない（知識が無ければ判別できない）。
-  if(overEl) overEl.innerHTML=(bldVisible&&pos>0.02)
-    ? `この街並みは<b>いまのもの</b>です。地面だけが ${cur.label} です。` : "";
 
   // ⚠ 触る前の案内。押したら消す。役目が終わったものを画面に置き続けない
   // ⚠ 建物が1棟も見えていないとき（明治期の端）は、建物の話をしない。
@@ -1612,40 +1843,94 @@ function describe(v){
   //   「建物は…件が推定」「建物を押すと分かります」が出続け、
   //   **見えない建物が押せた**（4か所試して 4/4 でカードが出た）。
   //   利用者は「幽霊」「気持ち悪い」と言った。
-  if(tipEl) tipEl.textContent=(bldVisible&&!picked)
-    ? "建物を押すと、その足元が分かります" : "";
-
-  // ⚠ 「建物が消える年代は演出」は、**ここにしか置けない**。
-  //   実測（2026-08-15）: この主張は #prov（パネルの中）にしか無く、
-  //   スマホではパネルが閉じて始まるので **☰ を押す＋パネル内を 254px スクロール**
-  //   しないと読めなかった。#est は建物が見えているあいだ 100%・0アクションで見える。
-  //   誤解を止める文は、到達率の高い側にしか置けない。
-  // ⚠ 主張を先頭に置く。1行目だけ読んだ人が受け取るのが「演出」になるように。
-  // ⚠ 「建物はいまの形です」は落とした。過去の写真の上では #over が 15px で
-  //   「この街並みはいまのものです」と言っており、51px 離れて同じ主張が
-  //   2つの大きさで並んでいた（実測 SP: y=452 と y=503）。
-  if(estEl){
-    // ⚠ **1 行だけにする**（2026-08-21。hidetzu/konjaku#151。Owner 判断）。
-    //   ⚠ 前はここが分数を 2 つ持っていた（⚠ 建てられた年 N / M ／ 高さ N / M）。
-    //     ⚠ 実測（375×667・渋谷）: この 1 要素だけで 329×69px の 2 行。
-    //     ⚠ HUD 全体で常時 18 行 / 200 字、⚠ 数字 8 個、⚠ #land と合わせて画面の 66% を覆っていた。
-    //   ⚠ **分母つきの主張は消していない。**⚠ パネル（`prov.js` の建物 2 行）へ移した
-    //     （⚠ 掟 §1・§6。⚠ 実描画が「どこかに 1 回だけ分母つきで出る」ことを数える）。
-    // ⚠ **「演出」ではなく「推定」を使う**（Owner 判断 2026-08-21）。
-    //   ⚠ 言い換えは画面・SPEC・検査をまとめて直した（⚠ 半分だけ残さない）。
-    estEl.innerHTML = bldVisible ? `<b>建物が消える年代は推定</b>です。` : "";
+  // ⚠ **補足は、⚠ ここ 1 か所で組む**（2026-08-22。Owner 判断）。
+  //   ⚠ **増やすときは、⚠ この配列に 1 行足すだけ。**⚠ 見た目は全部同じ。
+  //   ⚠ **どれも「いま画面で起きていること」への断りとヒント**。⚠ 順は上から読む順。
+  //
+  // ⚠ **「建物が消える年代は推定」は、⚠ 建物が立っている絵と同時に読めないと意味がない**
+  //   （掟 §1: ⚠ 推定を実測のように見せない）。⚠ **だから建物が見えているときだけ出す。**
+  //   ⚠ **「演出」ではなく「推定」を使う**（Owner 判断 2026-08-21。⚠ 画面・SPEC・検査をまとめて直した）。
+  // ⚠ **句点を付けない。**⚠ パネルの他の行が付けていない（実測 2026-08-22）。
+  //   ⚠ **箇条書きの 1 行**なので、⚠ 文の作法ではなく並びの作法にそろえる。
+  if(notesEl){
+    const notes=[];
+    // ⚠ **過去の写真の上では、⚠ いちばん先に「重ねている」と言う**（2026-08-22。Owner 判断）。
+    //   ⚠ **前は地図の上の `#over` に出していた**が、⚠ **PC で 0×0 になっていた**
+    //     （⚠ 隠す規則のほうが強かった。⚠ 実測 2026-08-22・1280×800）。
+    //   ⚠ **補足を 2 か所に持たない。**⚠ ここ 1 か所へ寄せた。
+    // ⚠ **この字は掟 §1 に直結する。**⚠ 実測（2026-08-14）: 広島 1945–50 の焼け野原の上に
+    //   現在の 3,555 棟が立ち、⚠ **利用者は最初の 3 秒「1945年の広島」だと読んだ。**
+    //   ⚠ **判別できた人の根拠は画面ではなく、⚠ 自分の歴史知識だった。**
+    // ⚠ **2 種類ある**（2026-08-23。Owner 判断）。⚠ **狭い画面で扱いが違う。**
+    //   `caveat` ⚠ **断り**。⚠ **絵と同時に読めないと意味がない**（掟 §1・§4-1「限界は必ず書く」）。
+    //           ⚠ **畳まない。**⚠ 小さくしていても出す。
+    //   `tip`    操作の案内。⚠ **押せば分かること。**⚠ 小さくしているあいだは ? の中へ。
+    //   ⚠ **実測（2026-08-23・375×667・渋谷）**: ⚠ **地図が素で見えるのは 149px / 667px（22%）。**
+    //     ⚠ **案内 1 行を畳むと、⚠ パネルが 207 → 175px** になる。
+    if(bldVisible&&pos>0.02)
+      notes.push({kind:"caveat", t:`この街並みは<b>いまのもの</b>です。地面だけが ${esc(cur.label)} です`});
+    // ⚠ **意味の語だけ色を付ける**（`.k` ＝ `--estimate` ＝ 推定）。
+    //   ⚠ **前は 12 字ぜんぶ `<b>` で白くしていた**（⚠ 問いの見出しと同じ明るさで競っていた）。
+    if(bldVisible) notes.push({kind:"caveat", t:'建物が消える年代は<span class="k">推定</span>です'});
+    // ⚠ 一度押した人には出さない（⚠ もう知っている）
+    if(bldVisible&&!picked) notes.push({kind:"tip", t:"建物を押すと、その足元が分かります"});
+    notesEl.innerHTML=notes.map((n)=>`<li data-kind="${n.kind}">${n.t}</li>`).join("");
+    // ⚠ **? は、⚠ 畳む相手がいるときだけ出す**（ADR 0026: 押しても何も起きない導線を置かない）。
+    if(noteHelp){
+      const tips=notes.some((n)=>n.kind==="tip");
+      noteHelp.hidden=!tips;
+      if(!tips) noteBox?.classList.remove("sec-note--tips");
+    }
   }
 
-  if(!provEl) return;
   // ⚠ 台帳の**文面と語彙は public/prov.js**（実測／未取得／欠落／未対応／推定）。
   //   ここでは組み立てない。行を足したくなったら prov.js に足す。
   //   分けた理由: あちらは DOM も地図も見ないので、検査がブラウザ抜きで
   //   全組み合わせを回せる（掟: 取れなかったを「無い」と言わない、を字面ではなく tag で見る）。
   // ⚠ **由来（取り込んだ日・水面の面数）も、この台帳が持つ**（2026-08-22。hidetzu/konjaku#153）。
   //   ⚠ **値の出どころは 1 か所のまま**（`blAt` は取り込み、`waterRects` は水域の生成）。
-  provEl.innerHTML=KonjakuProv.html(KonjakuProv.rows({ groundArrived:arrived, era:near, area,
-    blAt, waterRects: area && area.waterRead ? area.waterRects : null }));
-  wireProvPeek();
+  // ⚠ **問いごとに配る**（2026-08-22。Owner 判断: ⚠ **「使用しているデータ・状態」をやめた**）。
+  //   ⚠ **行は 1 つも減らしていない。**⚠ 置き場所と、⚠ 読む手間の差だけを変えた。
+  //   ⚠ **「実測」だけ畳む。**⚠ 「推定」「未取得」「欠落」「未対応」は常時（掟 §1）。
+  const byQ=KonjakuProv.byQuestion({ groundArrived:arrived, era:near, area,
+    blAt, waterRects: area && area.waterRead ? area.waterRects : null,
+    landClass: landClassNow() });
+  // ⚠ **中身が変わっていないなら、⚠ 書き直さない**（2026-08-22）。
+  //   ⚠ **書き直すと `<details>` が作り直され、⚠ 開いていたものが勝手に閉じる。**
+  //   ⚠ 実測（2026-08-22）: ⚠ **「詳しく見る」を開いても、⚠ 次の描画で閉じていた。**
+  //     ⚠ `describe()` は段が変わるたび・タイルが届くたびに走る。
+  //   ⚠ **3 つの問いの「詳しく見る」すべてに効いていた。**
+  for(const n of [1,2,3]){
+    const box=document.querySelector(`.prov-q[data-q="${n}"]`);
+    if(!box) continue;
+    // ⚠ **答えが出せた問いかは、⚠ `paintLand` が付けた印で見る**（`.land-miss`）。
+    //   ⚠ **同じ意味の状態を、⚠ 変数と DOM の 2 か所に持たない**（`rules/javascript.md`）。
+    // ⚠ **答えが出せた問いかは、⚠ `paintLand` が付けた印で見る**（2026-08-23）。
+    //   ⚠ **`.land-miss` だけでは足りない。**⚠ **0 件は「層が立たない」が「答えは出ている」。**
+    const html=KonjakuProv.section(byQ[n], KonjakuWords.whyLabel,
+      box.dataset.answered!=="0");
+    // ⚠ **DOM の現在値と比べない。**⚠ **前回書いた字と比べる。**
+    //   ⚠ 実測（2026-08-22）: ⚠ **開くと `<details>` に `open=""` が入るので、
+    //     ⚠ DOM と比べると必ず「変わった」になり、⚠ 書き直して閉じてしまう。**
+    if(box.dataset.html!==html){ box.dataset.html=html; box.innerHTML=html; }
+  }
+  // ⚠ **「地図で光らせる」をここで繋がない**（2026-08-23）。
+  //   ⚠ **ボタンを作るのは `paintBreakdown`** で、⚠ **`describe()` より後に走る。**
+  //   ⚠ **ここで繋ぐと、⚠ そのあと `#breakdown` ごと差し替えられて listener が消える。**
+  //   ⚠ 実測（2026-08-23・1280×950・渋谷）: ⚠ **押しても地図の塗りが変わらなかった**
+  //     （`["case",["==",["get","wasWater"],1],"#8fb9dd","#d8cfa8"]` のまま）。
+  //   ⚠ **繋ぐのは、⚠ 作った場所の直後 1 か所だけ**（`rules/javascript.md`:
+  //     ⚠ 同じ要素へ、⚠ 複数の場所からイベントを足さない）。
+  // ⚠ **再試行は、⚠ 描き直しのたびに繋ぎ直す**（⚠ 材料の行は作り直されるため）
+  if(retryAt) wireRetry(retryAt.lon,retryAt.lat,retryAt.title);
+  // ⚠ **開閉したら、⚠ その場で描き直す**（2026-08-22）。
+  //   ⚠ さもないと ⚠ **次の render まで地図が変わらない**（⚠ 押しても何も起きないに見える）。
+  //   ⚠ **同じ要素へ 2 回付けない**（`rules/javascript.md`）。⚠ 印で見分ける。
+  for(const d of document.querySelectorAll('.prov-q[data-q="2"] details')){
+    if(d.dataset.wired) continue;
+    d.dataset.wired="1";
+    d.addEventListener("toggle",()=>{ described=null; render(); });
+  }
 }
 
 // ⚠ 押している間だけ。既定の色は wasWater（99.6% の色そのもの）なので、
@@ -1735,17 +2020,37 @@ let panelOpen = !isNarrow;              // スマホでは主役（3Dの絵）�
 //   ⚠ 前は「⚠ `.hide` を外すのと `#land` を描くのを同じ同期処理でやる」必要があった
 //     （⚠ HUD が表示責務を引き継ぐ瞬間に空白を見せないため）。
 //   ⚠ **土地の答えはパネルの 1 か所だけになったので、⚠ 引き継ぎそのものが無い。**
-const setPanelHidden = (hidden) => { panel.classList.toggle("hide", hidden); };
+// ⚠ **パネルは常に出す。⚠ 小さくできるだけ**（2026-08-22。Owner 判断）。
+//   ⚠ **前は `.hide`（透明・押せない）で、⚠ スマホでは ☰ を押すまで何も読めなかった。**
+//   ⚠ **`.open` が「広げた」。**⚠ 既定は小さい状態（地名 ＋ 3 つの問いの答え 1 行ずつ）。
+//   ⚠ **再生中は小さくする**（⚠ 絵を見せる操作なので、⚠ 板で覆わない）。
+const setPanelHidden = (hidden) => { panel.classList.toggle("open", !hidden); };
 const applyPanel = () => { setPanelHidden(!panelOpen);
-  // ⚠ 全画面で読むあいだ、地図側の操作を閉じる／戻す
-  if(typeof sealOldControls==="function") sealOldControls(); };
-function setChrome(playing){ setPanelHidden(playing || !panelOpen); }
+  // ⚠ 広げているあいだ、地図側の操作を閉じる／戻す
+  if(typeof sealOldControls==="function") sealOldControls();
+  // ⚠ **押す前に、⚠ 何が起きるかを名乗る**（`aria-expanded` も合わせる）。
+  if(toggle){
+    toggle.setAttribute("aria-expanded", String(panelOpen));
+    // ⚠ **何が起きるかで名乗る**（2026-08-23。Owner 判断）。
+    //   ⚠ **前は「広げる」「小さくする」。**⚠ **利用者役 3/4 が「地図を広げる」と読んだ**
+    //     （⚠ この画面は地図が主役なので、⚠ 主語が無いと地図に係る）。
+    //   ⚠ **幅で字を変える。**⚠ **起きることが違うから**（実測 2026-08-23・渋谷）:
+    //     ⚠ 375 は 347×308 → **375×667（全画面。地図が全部隠れる）**
+    //     ⚠ 1280 は 300×470 → 300×760（**高さが伸びるだけ。地図は横に見えたまま**）
+    //   ⚠ **利用者役 3/4 が「地図が消えるとは思わなかった」と答えた。**
+    const wide = !narrow();
+    toggle.innerHTML = panelOpen
+      ? (wide ? '▴ <span>小さくする</span>' : '▴ <span>地図に戻る</span>')
+      : (wide ? '▾ <span>もっと読む</span>' : '▾ <span>全画面で読む</span>');
+    toggle.title = toggle.textContent.replace(/^[▴▾]\s*/, "");
+  } };
 const openPanel  = () => { panelOpen = true;  applyPanel(); };
 const closePanel = () => { panelOpen = false; applyPanel(); };
-document.getElementById("closePanel").onclick = closePanel;
+// ⚠ **同じ的で、広げる／小さくする**（2026-08-22）。⚠ 押しても何も起きない状態を作らない。
+toggle.onclick = () => { panelOpen ? closePanel() : openPanel(); };
 applyPanel();
 function stop(){ if(raf)cancelAnimationFrame(raf); raf=null;
-  playingNow=false; syncEra(); setChrome(false); }
+  playingNow=false; syncEra(); }
 function togglePlay(){
   if(raf) return stop();
   // ⚠ 通しで送るときだけ、全年代を先に読む。**押した人だけが払う。**
@@ -1754,7 +2059,7 @@ function togglePlay(){
   // ⚠ 終点も所要時間も**段の数から出す**。8 段を決め打ちすると、
   //   広島（7 段）では端まで行かないまま止まる／速すぎる、のどちらかになる。
   preloadAll=true; render();
-  playingNow=true; syncEra(); setChrome(true);
+  playingNow=true; syncEra();
   const end=(steps.length-1)*100;
   const from=pos*100>=end-5?0:pos*100;
   const dur=DUR_PER_STEP*(steps.length-1);
@@ -1782,7 +2087,7 @@ function togglePlay(){
   };
   raf=requestAnimationFrame(step);
 }
-toggle.onclick=openPanel;
+// ⚠ **`toggle.onclick` は applyPanel の隣で束ねた**（2026-08-22。⚠ 2 か所に持たない）。
 addEventListener("keydown",(e)=>{
   // ⚠ 以前は「検索欄に入力中は除く」を見ていた。検索欄を外した（2026-08-18）ので、
   //   入力中の要素そのもので見る。⚠ 「入力欄が無いから素通しでよい」にしない。

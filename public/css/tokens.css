@@ -26,6 +26,9 @@
 
   /* 意味ごとの文字サイズ */
   --fs-badge: var(--text-sm);
+  /* ⚠ **いま調べている場所の名前**（2026-08-22）。⚠ `/peel` のパネルの主語。
+     ⚠ **値ではなく意味で名づける**（`.claude/rules/css.md`）。 */
+  --fs-place: var(--text-2xl);
   --fs-body: var(--text-base);
   --fs-claim: var(--text-lg);
   --fs-era: var(--text-2xl);
