@@ -5334,6 +5334,42 @@ head("9. 画面の言葉");
     : ok("控えは、返ってきたものをそのまま返す（404 のまま ／ URL ごとに別 ／ 失敗は控えない）");
 }
 
+// ── 回す先を決める口が、⚠ CI と同じ書き方で動くか ────────────────
+// ⚠ **2026-08-22 に踏んだ**（hidetzu/konjaku#190）。
+// ⚠ **`--json` を先に書くと、⚠ 範囲が `--json` だと解釈されて `git diff` が失敗し、
+//   ⚠ 「分からなければ全部に倒す」規則で ⚠ **黙って全部走っていた。**
+//   ⚠ **落ちない。**⚠ **安全な側に倒れるので、⚠ 気づけない。**
+// ⚠ **`--files=` と `--all --json` は試したのに、⚠ CI が使う形だけ試していなかった。**
+// ⚠ **だから、⚠ CI が実際に打つ形をそのまま試す。**
+{
+  const scope = join(ROOT, "test/render-scope.mjs");
+  const run = (args) => execFileSync(process.execPath, [scope, ...args],
+    { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+  const wrong5 = [];
+  // ⚠ **必ず「範囲を通る道」で試す**（2026-08-22 に 2 回踏んだ）。
+  //   ⚠ **最初は `--files=` で試していて、⚠ わざと壊しても素通りした。**
+  //   ⚠ **`--files=` は範囲を見ないので、⚠ 不具合のある道をそもそも通らない。**
+  //   ⚠ **`HEAD...HEAD` は必ず在って、⚠ 必ず空。**⚠ だから答えは「回さない」で決まる。
+  const EMPTY = "HEAD...HEAD";
+  try {
+    const out = run(["--json", EMPTY]);
+    if (out !== "[]") {
+      wrong5.push(`--json を先に書くと、⚠ 変更が無いのに「${out.slice(0, 50)}」と答える`);
+    }
+  } catch (e) { wrong5.push(`--json を先に書くと落ちる: ${String(e.message).slice(0, 60)}`); }
+  // ⚠ **順番を変えても同じ答えか**（⚠ 引数の順に寄りかからない）
+  try {
+    const a = run(["--json", EMPTY]);
+    const b = run([EMPTY, "--json"]);
+    if (a !== b) wrong5.push(`引数の順で答えが変わる: 「${a.slice(0, 40)}」と「${b.slice(0, 40)}」`);
+  } catch (e) { wrong5.push(`順を変えると落ちる: ${String(e.message).slice(0, 60)}`); }
+  wrong5.length
+    ? bad(`実描画を回す先を決める口が、CI と同じ書き方で動かない（${wrong5.length} 件）: `
+        + wrong5.join(" ／ ")
+        + "（⚠ **落ちるのではなく、⚠ 全部に倒れて黙って全部走る**）")
+    : ok("実描画を回す先を決める口は、CI と同じ書き方でも、引数の順を変えても同じ答えを返す");
+}
+
 console.log(`\n${"─".repeat(52)}`);
 if (failed) { console.log(`\x1b[31m${failed} 件の問題\x1b[0m${warned ? ` / ${warned} 件の警告` : ""}`); process.exit(1); }
 console.log(`\x1b[32m問題なし\x1b[0m${warned ? ` / ${warned} 件の警告` : ""}`);

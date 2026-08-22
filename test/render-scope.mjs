@@ -93,7 +93,13 @@ const emit = (lines) => {
 if (process.argv.includes("--all")) { emit(ALL); process.exit(0); }
 
 const given = (process.argv.find((a) => a.startsWith("--files=")) ?? "").split("=")[1];
-const range = process.argv[2] ?? "origin/main...HEAD";
+// ⚠ **範囲は「`--` で始まらない最初の引数」**（2026-08-22 に踏んで直した）。
+//   ⚠ **前は `process.argv[2]` を範囲としていた。**
+//   ⚠ **CI は `--json "origin/main...HEAD"` と、⚠ `--json` を先に書いていたので、
+//     ⚠ 範囲が `--json` になり、⚠ `git diff --name-only --json` が失敗していた。**
+//   ⚠ **失敗すると「分からなければ全部に倒す」ので、⚠ 落ちずに、⚠ 黙って全部走っていた。**
+//   ⚠ **`--files=` と `--all --json` は試したのに、⚠ CI が使う形だけ試していなかった。**
+const range = process.argv.slice(2).find((a) => !a.startsWith("--")) ?? "origin/main...HEAD";
 let files = [];
 if (given !== undefined) files = given.split(",").filter(Boolean);
 else
