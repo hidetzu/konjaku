@@ -5291,6 +5291,49 @@ head("9. 画面の言葉");
   }
 }
 
+// ── 控えが、⚠ 返ってきたものをそのまま返すか ─────────────────────
+// ⚠ **2026-08-22 に足した**（hidetzu/konjaku#191）。
+// ⚠ **控えが状態を書き換えたら、⚠ 「その年代の写真があるか」の答えが変わる。**
+//   ⚠ **404 を 200 にしてしまうと、⚠ 実在しない年代まで「撮影されている」ことになる**
+//     （⚠ hidetzu/konjaku#211 で、⚠ 絵を偽って軽井沢が 1年代 → 7年代 に化けた）。
+// ⚠ **控えはブラウザを知らない形にしてあるので、⚠ ここで直接動かせる。**
+{
+  const { createShelf } = await import(pathToFileURL(join(ROOT, "test/render/shelf.mjs")).href);
+  const wrong4 = [];
+  {
+    // ⚠ **404 は 404 のまま**（⚠ 2 回目に別のものを渡しても、⚠ 控えが勝つ）
+    const sh = createShelf();
+    const a = await sh.get("u", async () => ({ status: 404, body: "x" }));
+    const b = await sh.get("u", async () => ({ status: 200, body: "y" }));
+    if (a.status !== 404 || b.status !== 404) wrong4.push(`404 が ${b.status} になった`);
+    if (b.body !== "x") wrong4.push("控えたはずの中身が違う");
+    const t = sh.stats();
+    if (t.real !== 1 || t.replayed !== 1) wrong4.push(`数え方が違う: ${JSON.stringify(t)}`);
+  }
+  {
+    // ⚠ **別の URL は、⚠ 別に取りに行く**（⚠ 全部を 1 つに混ぜない）
+    const sh = createShelf();
+    await sh.get("a", async () => ({ status: 200, body: "A" }));
+    const b = await sh.get("b", async () => ({ status: 200, body: "B" }));
+    if (b.body !== "B") wrong4.push("別の URL に、別のものが返っていない");
+    if (sh.stats().real !== 2) wrong4.push("別の URL を取りに行っていない");
+  }
+  {
+    // ⚠ **取りに行けなかったものは控えない**（⚠ 「取れなかった」を答えに変えない）
+    const sh = createShelf();
+    let threw = false;
+    try { await sh.get("u", async () => { throw new Error("届かなかった"); }); }
+    catch { threw = true; }
+    if (!threw) wrong4.push("届かなかったのに、控えが黙って何かを返した");
+    const after = await sh.get("u", async () => ({ status: 200, body: "後から取れた" }));
+    if (after.body !== "後から取れた") wrong4.push("届かなかったことを控えてしまっている");
+  }
+  wrong4.length
+    ? bad(`控えが、返ってきたものをそのまま返していない（${wrong4.length} 件）: ${wrong4.join(" ／ ")}`
+        + "（⚠ **状態を書き換えると、⚠ 実在しない年代まで「ある」ことになる**）")
+    : ok("控えは、返ってきたものをそのまま返す（404 のまま ／ URL ごとに別 ／ 失敗は控えない）");
+}
+
 console.log(`\n${"─".repeat(52)}`);
 if (failed) { console.log(`\x1b[31m${failed} 件の問題\x1b[0m${warned ? ` / ${warned} 件の警告` : ""}`); process.exit(1); }
 console.log(`\x1b[32m問題なし\x1b[0m${warned ? ` / ${warned} 件の警告` : ""}`);
