@@ -1348,7 +1348,7 @@ export const CASES = [
       // 建物データが画面に出ることが、作品の成立条件（掟: 取れなかったを「無い」と言わない）。
       // ⚠ **`#status` はもう喋らない**（2026-08-22。Owner 判断）。⚠ **問いの側で待つ。**
       await page.waitForFunction(
-        () => /\d+ 件の建物が、この範囲にあります/.test(
+        () => /\d+\s*件\s*の建物が、この範囲にあります/.test(
           document.getElementById("landAll")?.textContent ?? ""),
         null, { timeout: 60000 });
       const ms = Math.round(await page.evaluate(() => performance.now()));
@@ -1500,7 +1500,7 @@ export const CASES = [
     async check(page) {
       // ⚠ **`#status` はもう喋らない**（2026-08-22。Owner 判断）。⚠ **問いの側で待つ。**
       await page.waitForFunction(
-        () => /\d+ 件の建物が、この範囲にあります/.test(
+        () => /\d+\s*件\s*の建物が、この範囲にあります/.test(
           document.getElementById("landAll")?.textContent ?? ""),
         null, { timeout: 60000 });
       const prov = await provText(page);
@@ -2994,6 +2994,10 @@ ${dom}
       // 未取り込みの地点だけ、従来どおり「読み込めない」状態を確認する。
       const hasStatic = /\d+\.\d+\s*%/.test(t);
       if (!hasStatic) must(/読み込め/.test(t), `読み込めなかったことが書かれていない: ${t.slice(0, 60)}`);
+      // ⚠ **狭い幅では、⚠ 小さいあいだ問いを畳む**（2026-08-23。Owner 判断）。
+      //   ⚠ **主張は「⚠ 答えが読めること」。**⚠ **広げてから測る**（⚠ 消していない）。
+      await openPanel(page);
+      await settleAfterClick(page);
       must(await effOpacity(page, "#landAll") > 0, "答えが読めない");
       return t.slice(0, 60);
     },
@@ -3023,20 +3027,22 @@ ${dom}
       const heroOpen = await effOpacity(page, "#landAll");
       must(heroOpen > 0, `パネルの答えが読めない: 実効 opacity ${heroOpen}`);
       const num = (await page.locator("#landAll .land-num").first().textContent()).trim();
-      // ⚠ **小さくしたら、⚠ 答えは画面から退く**（⚠ 別の場所に写らない）
+      // ⚠ **PC では、⚠ 小さくしても答えは残る**（2026-08-23。Owner 判断）。
+      //   ⚠ **板と地図が並ぶので、⚠ 覆っていない。**⚠ **畳むのは狭い幅だけ。**
+      //   ⚠ **主張を引き継ぐ**: ⚠ **答えは「⚠ パネルの 1 か所」**（⚠ HUD に写らない）。
+      //   ⚠ **「退くこと」は主張から外した。**⚠ **起きていないことを見続けると、
+      //     ⚠ この検査は「PC でも畳む実装」を要求し続ける**（⚠ いまの設計と食い違う）。
       await page.click("#toggle");
       await settleAfterClick(page);
-      // ⚠ **淡くなり切るまで待つ**（⚠ 途中を読むと、⚠ 機械の速さで結果が変わる）。
-      //   ⚠ 実測: 手元 0.02 ／ ⚠ **CI 0.058**（2026-08-21 に CI で落ちた）。
-      const after = await waitOpacity(page, "#landAll", (v) => v < 0.05);
-      must(after < 0.05, `閉じても答えが読める場所が残っている: 実効 opacity ${after}`);
+      const after = await effOpacity(page, "#landAll");
+      must(after > 0, `PC で小さくしたら答えが読めなくなった: 実効 opacity ${after}`);
       must((await page.$$eval("#land", (els) => els.length)) === 0,
-        "閉じたら HUD に答えが出た（答えはパネルの 1 か所）");
+        "小さくしたら HUD に答えが出た（答えはパネルの 1 か所）");
       // ⚠ **☰ で開き直せる**（⚠ 読めなくなったままにしない）
       await page.click("#toggle");
       await settleAfterClick(page);
-      must(await effOpacity(page, "#landAll") > 0, "☰ で開き直しても答えが読めない");
-      return `パネル 開=${num}／閉=答えは退く／☰ で開き直せる`;
+      must(await effOpacity(page, "#landAll") > 0, "広げ直しても答えが読めない");
+      return `パネル 広=${num}／小さくしても答えはパネルの 1 か所／広げ直せる`;
     },
   },
   {
@@ -3318,12 +3324,12 @@ ${dom}
       //   ⚠ **読むのは「高さが分かる N / M」と「階数から換算 X 件 ／ 既定値 Y 件」。**
       const bdTx = await page.evaluate(() =>
         (document.getElementById("breakdown")?.textContent ?? "").replace(/\s+/g, " "));
-      const mh = bdTx.match(/高さが分かる(\d+) \/ (\d+)/);
+      const mh = bdTx.match(/高さが分かる\s*(\d+)\s*\/\s*(\d+)/);
       must(mh, `高さを分母つきで言っていない: ${bdTx.slice(0, 140)}`);
-      const my = bdTx.match(/建てられた年が分かる(\d+) \/ (\d+)/);
+      const my = bdTx.match(/建てられた年が分かる\s*(\d+)\s*\/\s*(\d+)/);
       must(my, `建設年を分母つきで言っていない: ${bdTx.slice(0, 140)}`);
       // ⚠ **実測でない分は、⚠ その内訳が言う**（⚠ 足すと総数になる）
-      const me = bdTx.match(/階数から換算 (\d+) 件 ／ 種別ごとの既定値 (\d+) 件/);
+      const me = bdTx.match(/階数から換算\s*(\d+)\s*件\s*／\s*種別ごとの既定値\s*(\d+)\s*件/);
       must(me, `実測でない高さの内訳が無い: ${bdTx.slice(0, 140)}`);
       must(+mh[1] + +me[1] + +me[2] === +mh[2],
         `高さの内訳が総数と合わない: ${mh[1]} ＋ ${me[1]} ＋ ${me[2]} ≠ ${mh[2]}`);
@@ -3377,8 +3383,16 @@ ${dom}
             () => (document.getElementById("notes")?.textContent ?? "").trim().length > 0,
             null, { timeout: 60000 });
           await settleAfterCondition(p2);
+          // ⚠ **狭い幅では 3 つの問いを畳む**（2026-08-23。Owner 判断）。
+          //   ⚠ **分母つきは板の中。**⚠ **広げてから読む**（⚠ 主張は変えていない）。
+          await openPanel(p2);
+          await settleAfterCondition(p2);
           const r = await p2.evaluate(() => ({
-            est: (document.getElementById("notes").innerText || "").replace(/\s+/g, " ").trim(),
+            // ⚠ **補足は配列になった**（2026-08-22）。⚠ **断りだけを読む**（⚠ 案内は別の役目）。
+            //   ⚠ **主張は「⚠ 断りは 1 行で、⚠ 数字を含まない」**（⚠ 分数はパネルへ移した）。
+            est: [...document.querySelectorAll('#notes li[data-kind="caveat"]')]
+              .map((e) => (e.innerText || "").replace(/\s+/g, " ").trim())
+              .filter((t) => /消える年代/.test(t)).join(" ／ "),
             hud: (document.getElementById("hud").innerText || "").replace(/\s+/g, " ").trim(),
             all: (document.body.innerText || "").replace(/\s+/g, " ").trim(),
             prov: [...document.querySelectorAll("#panel .prov-q")]
@@ -3390,13 +3404,14 @@ ${dom}
             `${w}px: 帯が 1 行になっていない: 「${r.est}」`);
           must(!/[0-9]/.test(r.est), `${w}px: 帯に数字が残っている: 「${r.est}」`);
           // ⚠ AC2: HUD に分数が 0 個
-          const hudFrac = (r.hud.match(/\d+ \/ \d+ 件/g) ?? []);
+          // ⚠ **否定形なので、⚠ 空白でずれると「0 個」になり、⚠ 何も見ない**（2026-08-23）
+          const hudFrac = (r.hud.match(/\d+\s*\/\s*\d+/g) ?? []);
           must(hudFrac.length === 0, `${w}px: HUD に分数が残っている: ${hudFrac.join(" / ")}`);
           // ⚠ AC3: パネル側に、⚠ 建設年と高さが **それぞれ 1 回だけ** 分母つきで
           // ⚠ **件数は内訳が持つ**（2026-08-22。Owner 判断）。⚠ **主張は同じ**:
           //   ⚠ **建設年と高さが、⚠ それぞれ 1 回だけ、⚠ 分母つきで出ていること。**
-          const dated = (r.all.match(/建てられた年が分かる\d+ \/ \d+/g) ?? []);
-          const hgt = (r.all.match(/高さが分かる\d+ \/ \d+/g) ?? []);
+          const dated = (r.all.match(/建てられた年が分かる\s*\d+\s*\/\s*\d+/g) ?? []);
+          const hgt = (r.all.match(/高さが分かる\s*\d+\s*\/\s*\d+/g) ?? []);
           must(dated.length === 1, `${w}px: 建設年の分母つきが ${dated.length} 回`);
           must(hgt.length === 1, `${w}px: 高さの分母つきが ${hgt.length} 回`);
           // ⚠ **台帳は「どう決めたか」を言う**（⚠ 件数は言わない）
@@ -3429,7 +3444,7 @@ ${dom}
       // ⚠ 言い方も1つにする。#est が「建てられた年」、#prov が「建設年」と、
       //   同じことを別の語で2回言っていた（数字が3か所にあったのと同じ話）。
       // ⚠ **件数は内訳が持つ**（2026-08-22）。⚠ **主張は同じ**（⚠ 分母つきで 1 か所）。
-      must(/建てられた年が分かる\d+ \/ \d+/.test(t), `分母つきで言っていない: ${t.slice(0, 120)}`);
+      must(/建てられた年が分かる\s*\d+\s*\/\s*\d+/.test(t), `分母つきで言っていない: ${t.slice(0, 120)}`);
       // ⚠ この断りは、**パネルを開かなくても読める場所**に無いと意味がない。
       //   実測（2026-08-15）: 断りは #prov にしか無く、スマホでは
       //   ☰ を押して 254px スクロールしないと届かなかった。
@@ -3441,8 +3456,8 @@ ${dom}
       must(!/\d/.test(est), `帯に数字が残っている（分数はパネルへ移した）: ${est.slice(0, 90)}`);
       // ⚠ 同じ数字を2か所に置かない（掟: 同じ問いに答える実装を2つ持たない）。
       //   実測（2026-08-15）: 8 / 533 が #est・#prov・内訳 の 3 か所にあった（当時の分母）。
-      const dated = (t.match(/建てられた年が分かる(\d+) \/ (\d+)/) ?? [])[0];
-      const times = t.split(/建てられた年が分かる\d+ \/ \d+/).length - 1;
+      const dated = (t.match(/建てられた年が分かる\s*(\d+)\s*\/\s*(\d+)/) ?? [])[0];
+      const times = t.split(/建てられた年が分かる\s*\d+\s*\/\s*\d+/).length - 1;
       must(times === 1, `「${dated}」が画面に ${times} 回出ている`);
       const bare = (t.match(new RegExp(`${(dated.match(/(\d+) \/ (\d+)/) ?? [])[0]}`, "g")) ?? []).length;
       must(bare === 1, `「${(dated.match(/\d+ \/ \d+/) ?? [])[0]}」という数字が画面に ${bare} 回出ている`);
@@ -3669,7 +3684,10 @@ ${dom}
       must(/現地に建物が無いという意味でもありません|現地に建物が無いという意味でもない/.test(wet),
         `「対応していない」を「無い」と読まれないよう断っていない: ${wet.slice(0, 160)}`);
       // ⚠ 台帳が、上の文と同じことを言っていること（同じ画面で主語を食い違わせない）
-      must(/未対応/.test(t.prov), `台帳が「未対応」と言っていない: ${t.prov.slice(0, 120)}`);
+      // ⚠ **札（未対応）は消した**（2026-08-22。Owner 判断: ⚠ 色で伝わる）。
+      //   ⚠ **主張は「⚠ こちらがまだ提供していない、と字で言うこと」**（掟 §4-1）。
+      must(/まだ提供していません/.test(t.prov),
+        `台帳が「まだ提供していない」と言っていない: ${t.prov.slice(0, 120)}`);
       // ⚠ 建物が出なくても、この画面は成立している（実測: 空中写真・年代・区分の内訳）
       must(/明治期/.test(t.land), `建物が無いだけで、答えの板まで空になっている: ${t.land.slice(0, 90)}`);
       return `${t.status.slice(0, 46)}… ／ 台帳「${t.prov.slice(-52)}」`;
@@ -3705,7 +3723,7 @@ ${dom}
       // 詰めた形を読めていること。戻せていなければ建物は1つも建たない
       // ⚠ **建物の総数は、⚠ 3 つ目の問いの答えが持つ**（2026-08-22 以降。⚠ `#status` ではない）。
       //   ⚠ **見ている主張は同じ**（⚠ 建物が実際に建っていること）。
-      const n = Number((t.match(/([\d,]+) 件の建物が、この範囲にあります/) ?? [])[1]?.replace(/,/g, ""));
+      const n = Number((t.match(/([\d,]+)\s*件\s*の建物が、この範囲にあります/) ?? [])[1]?.replace(/,/g, ""));
       must(n > 0, `建物が1件も建っていない（詰めた形を戻せていない）: ${t.slice(0, 200)}`);
       // ⚠ **場所が「表示データについて」へ移った**（2026-08-22。hidetzu/konjaku#153）。
       //   ⚠ **主張は変えていない**（⚠ いつ取り込んだ結果かが画面にあること）。
@@ -3941,7 +3959,7 @@ ${dom}
       const t = (await page.evaluate(() => document.body.innerText)).replace(/\s+/g, " ");
       // ⚠ **建物の総数は、⚠ 3 つ目の問いの答えが持つ**（2026-08-22 以降。⚠ `#status` ではない）。
       //   ⚠ **見ている主張は同じ**（⚠ 建物が実際に建っていること）。
-      const total = Number((t.match(/(\d+) 件の建物が、この範囲にあります/) ?? [])[1]);
+      const total = Number((t.match(/(\d+)\s*件\s*の建物が、この範囲にあります/) ?? [])[1]);
       must(total > 0, `件数が読めない: ${t.slice(0, 80)}`);
       // 「いま画面に出ているもの」に高さの行があること（畳んでいないこと）
       const prov = await provText(page);
@@ -3959,7 +3977,7 @@ ${dom}
       //   ⚠ **推定の件数が、⚠ 主張範囲の分母つきで、⚠ 1 か所だけ。**
       const bd = await page.evaluate(() =>
         (document.getElementById("breakdown")?.textContent ?? "").replace(/\\s+/g, " "));
-      const mh = bd.match(/高さが分かる(\d+) \/ (\d+)/);
+      const mh = bd.match(/高さが分かる\s*(\d+)\s*\/\s*(\d+)/);
       must(mh, `高さの件数が分母つきで出ていない: ${bd.slice(0, 120)}`);
       must(Number(mh[2]) === total,
         `高さの分母が主張範囲と違う: ${mh[2]} / 判定した件数 ${total}`);
@@ -3976,7 +3994,7 @@ ${dom}
         `同じ母数を実測の側からも言っている（押す先の名前）: ${prov.replace(/\s+/g, " ").slice(0, 140)}`);
       // ⚠ **内訳は足して推定の件数になること**（⚠ 台帳が持つのは内訳だけ）
       // ⚠ **内訳の言い方も変わった**（2026-08-22）: 「階数から換算 X 件 ／ 種別ごとの既定値 Y 件」
-      const mm = bd.match(/階数から換算 (\d+) 件 ／ 種別ごとの既定値 (\d+) 件/);
+      const mm = bd.match(/階数から換算\s*(\d+)\s*件\s*／\s*種別ごとの既定値\s*(\d+)\s*件/);
       must(mm, `高さの内訳が読めない: ${bd.slice(0, 160)}`);
       must(Number(mm[1]) + Number(mm[2]) === Number(m[1]),
         `内訳が推定の件数と合わない: ${mm[1]} ＋ ${mm[2]} ≠ ${m[1]}`);

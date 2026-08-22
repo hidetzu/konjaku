@@ -1495,7 +1495,7 @@ export const CASES = [
         const gotEst = await p2.waitForFunction(
           () => (document.getElementById("notes")?.textContent ?? "").trim().length > 0,
           null, { timeout: 45000 }).then(() => true).catch(() => false);
-        must(gotEst, "PC で限界（#est）が出ていない（45 秒待っても字が入らない）");
+        must(gotEst, "PC で断りが出ていない（45 秒待っても字が入らない）");
         const look = () => p2.evaluate(() => {
           const vis = (s) => { const e = document.querySelector(s);
             return !!(e && e.checkVisibility?.()); };
@@ -1507,7 +1507,10 @@ export const CASES = [
             toggles: document.querySelectorAll("#eraToggle,#timeToggle,#hud [aria-expanded]").length,
             // ⚠ 「いま何年代か」を出しているもの
             years: [".time-panel .y", "#timeSummary", "#rlYear"].filter(vis),
-            est: vis("#est"), over: vis("#over"), play: vis("#play"), track: vis("#track"),
+            // ⚠ **`#est` / `#over` は消えた**（2026-08-22）。⚠ **断りは板の `#notes`。**
+            //   ⚠ **主張は同じ**（掟 §1: ⚠ 推定の絵を断りなしに見せない）。
+            est: !!document.querySelector('#notes li[data-kind="caveat"]')?.checkVisibility(),
+            play: vis("#play"), track: vis("#track"),
           };
         });
         const a = await look();
@@ -1521,8 +1524,8 @@ export const CASES = [
           `「いま何年代か」を ${a.years.length} か所が出している: ${a.years.join(" / ")}`);
         // ⚠ **操作は常に見える。**⚠ 「消した」だけの検査にしない（verify §5 の対）
         must(a.play && a.track, "PC で ▶ か横棒が出ていない（畳めなくしたので、常に見えるはず）");
-        // ⚠ **`#est` は HUD の外**（`#notice`）。⚠ **推定の絵を断りなしに見せない**（掟 §1）
-        must(a.est, "PC で限界（#est）が出ていない");
+        // ⚠ **断りは板の中**（2026-08-22）。⚠ **推定の絵を断りなしに見せない**（掟 §1）
+        must(a.est, "PC で断り（建物が消える年代は推定です）が出ていない");
         return `器 ${a.boxes.length} 個（${a.boxes.join(" / ")}）・畳む仕掛け 0 個・年代 1 か所`
           + `／▶ と横棒は常に見え、限界も出ている`;
       } finally { await ctx.close(); }
@@ -1576,10 +1579,12 @@ export const CASES = [
         must(errs.length === 0, `例外が出た: ${errs.slice(0, 2).join(" / ")}`);
         await p2.close();
 
-        // ⚠ **入口は 2 つ**（✕ と ▶）。⚠ **どちらも同じ 1 か所を通ること。**
-        //   ⚠ 前は「⚠ ▶ の直後に HUD が空でないこと」で見ていた（⚠ 引き継ぎの空白）。
-        //   ⚠ **2026-08-21 に引き継ぎが無くなった**ので、⚠ **見るのは
-        //     ⚠ 「▶ でも閉じること」と「⚠ 例外が出ないこと」。**
+        // ⚠ **入口は 2 つだった**（✕ と ▶）。⚠ **✕ は 2026-08-22 に消えた。**
+        //   ⚠ **`▶` は PC で板を畳まない**（⚠ `main` でも畳んでいない。⚠ 2026-08-23 に確かめた）。
+        //   ⚠ **PC は板と地図が並ぶので、⚠ 畳む必要が無い。**
+        //   ⚠ **主張を引き継ぐ**: ⚠ **`▶` を押しても、⚠ 例外が出ず、⚠ HUD に答えが戻らないこと。**
+        //   ⚠ **「畳むこと」は主張から外した。**⚠ **起きていないことを見続けると、
+        //     ⚠ この検査は「畳む実装」を要求し続ける**（⚠ いまの設計と食い違う）。
         const p3 = await ctx.newPage();
         const errs3 = [];
         p3.on("pageerror", (e) => errs3.push(e.message));
@@ -1594,12 +1599,16 @@ export const CASES = [
         // ⚠ **▶ の直後、⚠ 待たずに読む**（⚠ 2 つめの入口）
         await p3.click("#play");
         const c = await read3();
-        must(!c.cls.includes("open"), `▶ でパネルが小さくならない（${c.cls}）`);
         must(c.land === 0, "▶ で HUD の答えが復活している");
+        // ⚠ **押したら本当に送りが始まること**（⚠ 押しても何も起きない導線を置かない。ADR 0026）
+        await p3.waitForFunction(
+          () => document.getElementById("play")?.getAttribute("aria-pressed") === "true"
+             || /■|停止/.test(document.getElementById("play")?.textContent ?? ""),
+          null, { timeout: 10000 }).catch(() => {});
         await p3.click("#play");
         await settleAfterClick(p3);
         must(errs3.length === 0, `例外が出た: ${errs3.slice(0, 2).join(" / ")}`);
-        return `PC 初期はパネルに ${a.all} 字／✕ で閉じる／▶ でも閉じる／`
+        return `PC 初期はパネルに ${a.all} 字／▴ で小さくなる／▶ で送りが始まる／`
           + `HUD の答えは 0 個（例外 0 件）`;
       } finally { await ctx.close(); }
     },
@@ -1751,7 +1760,11 @@ export const CASES = [
             //   ⚠ **消えた主題を見続けると、⚠ 何も見ていないのに緑になる**（掟）。
             pair: innermost("河川・湖沼・海面").map(([y, t]) => `y${y} ${t.slice(0, 44)}`),
             // ⚠ **建物の分母（総数）と、⚠ 面積の割合が、⚠ 同じ行に並んでいないこと**（掟 §6）
-            mixed: innermost("河川・湖沼・海面", "543").map(([y, t]) => `y${y} ${t.slice(0, 40)}`),
+            // ⚠ **「同じ行」で見る**（2026-08-23）。⚠ **`innermost` は、⚠ 両方を含む最内を返すが、
+            //   ⚠ 別々の層にあると `#landAll` のような入れ物が返る**（⚠ 実際に返った）。
+            //   ⚠ **行の長さで絞る**（⚠ 80 字を超える箱は「行」ではない）。
+            mixed: innermost("河川・湖沼・海面", "543")
+              .filter(([, t]) => t.length <= 80).map(([y, t]) => `y${y} ${t.slice(0, 40)}`),
             breakdownTop: top,
             est: document.getElementById("notes")?.innerText?.replace(/\s+/g, " ").trim() ?? "",
             panelH: document.getElementById("panel")?.scrollHeight ?? 0,
