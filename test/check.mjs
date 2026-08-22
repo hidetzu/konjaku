@@ -4154,11 +4154,28 @@ head("9. 画面の言葉");
       if (/\.\/peel\?/.test(o))
         bad8.push("根拠パネルに ./peel への導線が戻っている（導線は一覧行の 1 か所）");
     // ⚠ **字の持ち主は TOPWORD.peelLead**。⚠ 呼ぶ側が書き写していないこと
-    const OWNED = ["いまの街が、明治期の地面のどこに立っているか",
-                   "空中写真を年代で切りかえて、明治期の地面と見くらべる"];
+    const OWNED = ["いまの街が、明治期の地面のどこに立っているか"];
     for (const w of OWNED) {
       const n = IX.split(w).length - 1;
       if (n !== 1) bad8.push(`「${w.slice(0, 18)}…」が index.html に ${n} 個ある（peelLead の 1 か所だけ）`);
+    }
+    // ⚠ **建物の判定が無い土地の字は、⚠ `words.js` が持つ**（2026-08-22。hidetzu/konjaku の
+    //   パネル整理で、⚠ **`/peel` も同じ字を使うようになった**）。
+    //   ⚠ **前は index.html にべた書きで 1 個**だった。⚠ **移した先でも 1 か所であること**を見る。
+    //   ⚠ **弱めていない。**⚠ **見る場所が index.html → words.js に移っただけ。**
+    {
+      const STEM = "空中写真を年代で切りかえて、明治期の地面と見くらべ";
+      const inW = (src["words.js"] ?? "").split(STEM).length - 1;
+      const inIX = IX.split(STEM).length - 1;
+      const inPeel = ((src["peel.html"] ?? "") + (src["peel3d.js"] ?? "")).split(STEM).length - 1;
+      if (inW !== 1) bad8.push(`words.js に「${STEM.slice(0, 14)}…」が ${inW} 個ある（1 か所のはず）`);
+      if (inIX) bad8.push(`index.html が「${STEM.slice(0, 14)}…」を書き写している（${inIX} 個）`);
+      if (inPeel) bad8.push(`/peel が「${STEM.slice(0, 14)}…」を書き写している（${inPeel} 個）`);
+      // ⚠ **両方が、⚠ 同じ口を通っていること**（⚠ 死にコードにしない）
+      if (!/KonjakuWords\.canWithoutBuildings\("top"\)/.test(IX))
+        bad8.push("index.html が canWithoutBuildings を通っていない（字が 2 か所になる）");
+      if (!/KonjakuWords\.canWithoutBuildings\("peel"\)/.test(src["peel3d.js"] ?? ""))
+        bad8.push("/peel が canWithoutBuildings を通っていない（字が 2 か所になる）");
     }
     // ⚠ **判定カードの CTA が peelLead を通っていること**（⚠ 死にコードにしない）
     //   ⚠ **2026-08-21 に、⚠ 導線が行動一覧から判定カードの中へ移った。**

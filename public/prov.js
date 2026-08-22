@@ -40,16 +40,16 @@
   // ⚠ 届いていないときに「実測」と書かない。ここは画面でいちばん広い面なので、
   //   水面・建物に入れたガードを、いちばん大きく破れる場所でもある。
   const groundRow = (arrived, era) => arrived
-    ? { level: OK, tag: "実測",
+    ? { q: 2, level: OK, tag: "実測",
         body: `地表は${era ? "<b>その年代の空中写真</b>" : "<b>明治期の低湿地データ</b>"}そのもの。加工なし` }
-    : { level: NO, tag: "未取得",
+    : { q: 2, level: NO, tag: "未取得",
         body: `地表の${era ? `<b>${era.label}の空中写真</b>` : "<b>明治期の低湿地データ</b>"}が届いていない`,
         note: "届いていないだけで、この年代の記録の有無は分かっていない" };
 
   // 水面。読めた／読めなかった／本当に無い、を混ぜない
   const waterRow = (area) => (!area || area.waterRead)
-    ? { level: OK, tag: "実測", body: "水面の形は低湿地データから起こした<b>実際の水域</b>" }
-    : { level: NO, tag: area.waterUnread ? "未取得" : "欠落",
+    ? { q: 2, level: OK, tag: "実測", body: "水面の形は低湿地データから起こした<b>実際の水域</b>" }
+    : { q: 2, level: NO, tag: area.waterUnread ? "未取得" : "欠落",
         body: area.waterUnread ? "明治期の低湿地データを読み込めていない"
                                : "この範囲に明治期の低湿地データが無い" };
 
@@ -58,22 +58,22 @@
   //   同じ「欠落」と書いていた。
   const buildingRows = (area) => {
     if (!area || area.bldState === "loading")
-      return [{ level: NO, tag: "未取得", body: "建物データを<b>取得中</b>",
+      return [{ q: 3, level: NO, tag: "未取得", body: "建物データを<b>取得中</b>",
                 note: "まだ届いていないだけで、この範囲の建物の有無は分かっていない" }];
     // ⚠ **進行形を使わない。**「取得中」「届いていない」は、利用者役 3/3 が
     //   そろって自分の通信の話として読んだ。今この瞬間に動いている感じが出るため。
     // ⚠ **「通信の問題ではありません」と言い切る。**野暮でも書く。
     if (area.bldState === "notyet")
-      return [{ level: NO, tag: "未対応",
+      return [{ q: 3, level: NO, tag: "未対応",
                 body: NOTYET.replace("この場所ではまだ提供していません",
                                      "<b>この場所ではまだ提供していません</b>"),
                 note: NOTYET_WHY }];
     if (area.bldState === "fail")
-      return [{ level: NO, tag: "未取得", body: "建物データを<b>取得できていない</b>",
+      return [{ q: 3, level: NO, tag: "未取得", body: "建物データを<b>取得できていない</b>",
                 note: "届いていないだけで、この範囲の建物の有無は分かっていない" }];
     // ⚠ どの資料で 0 件だったかまで書く（台帳は出所を書く欄）
     if (!area.total)
-      return [{ level: OK, tag: "実測",
+      return [{ q: 3, level: OK, tag: "実測",
                 body: area.bldSource === "overpass" ? "OSM への問い合わせで<b>建物 0 件</b>"
                                                     : "取り込み済みの建物データで<b>建物 0 件</b>",
                 note: "OSM に登録が無いだけで、現地に建物が無いとは限らない" }];
@@ -81,7 +81,7 @@
     const out = [];
     // ⚠ 高さは「いま見えている形」そのもの。消える年代の演出より手前の事実なので先に置く。
     if (area.hSrc)
-      out.push({ level: EST, tag: "推定",
+      out.push({ q: 3, level: EST, tag: "推定",
         body: "建物の<b>高さ</b>は、ほとんどが\n<b>こちらで決めた既定値</b>。",
         // ⚠ **数え方は「推定」を主語に統一する**（2026-08-21。Owner 判断）。
         //   ⚠ 前は「OSM に高さが入っているのは 40 / 543 件」（⚠ **実測が主語**）で、
@@ -102,7 +102,7 @@
     //   ⚠ 前は「⚠ 件数と『演出』はここに書かない。⚠ 両方 #est（常時見える）にある」だった。
     //   ⚠ **#est は 1 行に減らす**と決まったので、⚠ 分母つきはここが持つ。
     //   ⚠ **消すのではない。**⚠ 読める場所を HUD からパネルへ移しただけ（掟 §1・§6）。
-    out.push({ level: EST, tag: "推定",
+    out.push({ q: 3, level: EST, tag: "推定",
       body: "建物が<b>消える年代</b>は、\nこちらが立てた概算。",
       note: `建てられた年が分かるのは ${area.dated} / ${area.total} 件。\n`
           + "根拠は「足元が水なら埋立前には無い」だけ"
@@ -113,7 +113,7 @@
 
   // 足元の判定が届かなかった建物
   const unreadRow = (area) => (area && area.unread)
-    ? [{ level: NO, tag: "未取得", body: `${area.unread} 件は足元の判定ができていない`,
+    ? [{ q: 3, level: NO, tag: "未取得", body: `${area.unread} 件は足元の判定ができていない`,
          note: "読み込めなかっただけで、明治期のデータが無いとは限らない" }]
     : [];
 
@@ -126,17 +126,37 @@
   const sourceRow = (s) => {
     const out = [];
     if (s.blAt)
-      out.push({ level: OK, tag: "実測", body: `建物のデータは <b>${s.blAt}</b> に取り込んだもの`,
+      out.push({ q: 3, level: OK, tag: "実測", body: `建物のデータは <b>${s.blAt}</b> に取り込んだもの`,
         note: "⚠ そのあとに建った・消えた建物は入っていない" });
     if (s.area && s.area.waterRead && typeof s.waterRects === "number")
-      out.push({ level: OK, tag: "実測",
+      out.push({ q: 2, level: OK, tag: "実測",
         body: `水面は、明治期の低湿地データから <b>${s.waterRects} 面</b>を起こしたもの`,
         note: "面の数は、この範囲で読めた区画の数" });
     return out;
   };
 
+  // ⚠ **第1の問い（ここはどんな土地？）を支える行**（2026-08-22。Owner 判断）。
+  //   ⚠ **新しく取りに行かない。**⚠ `public/data/landform.json` に ⚠ **既に配ってある**
+  //     区分ごとの原典（`why`）を、⚠ **分類し直して出すだけ**。⚠ 通信は 1 本も増えない。
+  //   ⚠ **原典はそのまま。**⚠ こちらで要約しない（ADR 0030 §4-5・ADR 0031）。
+  //   ⚠ **区分が読めていないときは、行を出さない**（⚠ 「不明」と書かない）。
+  const landRow = (s) => {
+    const L = s && s.landClass;
+    if (!L || !L.name) return [];
+    const out = [{ q: 1, level: OK, tag: "実測",
+      body: `この区分は<b>国土地理院の土地条件データ</b>から読んだもの`,
+      note: L.why || "" }];
+    // ⚠ **人の手が入っているかは、⚠ 別の行**（成因と人工改変を 1 行に混ぜない。ADR 0030 §4-4）
+    if (L.artificial)
+      out.push({ q: 1, level: OK, tag: "実測",
+        body: `人の手が入った区分は<b>${L.artificial}</b>`,
+        note: L.artificialWhy || "" });
+    return out;
+  };
+
   // 出ているものだけを説明する。出ていないものの出所は書かない
   const rows = (s) => [
+    ...landRow(s),
     groundRow(s.groundArrived, s.era),
     waterRow(s.area),
     ...buildingRows(s.area),
@@ -157,11 +177,35 @@
         : "")
     + "</div>").join("");
 
+  // ⚠ **問いごとに配る**（2026-08-22。Owner 判断: ⚠ **「使用しているデータ・状態」をやめる**）。
+  //   ⚠ **利用者は「使用しているデータ・状態」が何の話か分からなかった**（Owner 実測）。
+  //   ⚠ **材料の話は、⚠ その材料が支えている問いの下に置く。**
+  const byQuestion = (s) => {
+    const out = { 1: [], 2: [], 3: [] };
+    for (const r of rows(s)) (out[r.q] ?? out[3]).push(r);
+    return out;
+  };
+
+  // ⚠ **畳んでよいのは「実測」だけ**（2026-08-22）。
+  //   ⚠ **畳んだ `<details>` の中身は、⚠ 画面にも innerText にも出ない**（`peel.html` に実測）。
+  //   ⚠ だから ⚠ **「未取得」「欠落」「未対応」「推定」は畳まない。**
+  //     ⚠ 畳むと、⚠ **推定の高さで建物が立った絵を、断りなしに見せる**（掟 §1）。
+  //   ⚠ **消すのではない。**⚠ **読む手間の差だけを付ける。**
+  const section = (list, whyLabel) => {
+    const always = list.filter((r) => r.level !== OK);
+    const folded = list.filter((r) => r.level === OK);
+    return html(always)
+      + (folded.length
+          ? `<details class="drill"><summary>${whyLabel}</summary>${html(folded)}</details>`
+          : "");
+  };
+
   // ⚠ 「読めなかった」と言う行。ここに挙がっている tag は、
   //   **無いと断定する文を持ってはいけない**（検査がこの表を使う）
   const TAGS = { OK: "実測", ABSENT: "欠落", UNREAD: "未取得", NOTYET: "未対応", EST: "推定" };
 
-  g.KonjakuProv = { rows, html, groundRow, waterRow, buildingRows, unreadRow, sourceRow, TAGS,
+  g.KonjakuProv = { rows, html, byQuestion, section, landRow,
+    groundRow, waterRow, buildingRows, unreadRow, sourceRow, TAGS,
     // ⚠ 画面のほかの場所も、この文を借りる（書き写さない）
     NOTYET, NOTYET_WHY };
 })(typeof globalThis !== "undefined" ? globalThis : this);

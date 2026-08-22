@@ -870,6 +870,13 @@ async function loadArea(lon,lat,title,opt){
 // 「判定できません」で終わる。地形分類はその土地そのものには必ず答えられるので、
 // 集計が出せないときの受け皿として持つ。集計の代わりに使うのではない。
 let landform=null;
+// ⚠ **第1の問いを支える材料**（2026-08-22）。⚠ **新しく取りに行かない。**
+//   ⚠ `landform` は既に読んである。⚠ **その中の原典（`why`）を、⚠ 分類し直して渡すだけ。**
+//   ⚠ **読めていないときは null**（⚠ 「不明」の行を作らない）。
+const landClassNow = () => (landform && landform.ok && landform.value)
+  ? { name: landform.value, why: landform.why ?? "",
+      artificial: landform.artificial ?? null, artificialWhy: landform.artificialWhy ?? "" }
+  : null;
 async function loadLandform(lon,lat,seq){
   landform=null;
   // 同上。⚠ **トップ経由なら控えから返る**（実測 2本 → 0本）
@@ -1087,8 +1094,19 @@ function paintLand(el, m){
     if(L){ out.push(paintLayer(L)); continue; }
     const M=by.get(n);
     // ⚠ 出ない層は、絞っていても**必ず出す**。黙って消すと「その土地に何も無い」に読まれる
-    if(M) out.push(`<div class="land-miss"><div class="land-sub">${WORD.layerMissing(n, M.why)}</div>`
-      + (M.note?`<div class="land-sub">${M.note}</div>`:"")+`</div>`);
+    // ⚠ **出ない層にも、⚠ 見出しを付ける**（2026-08-22。Owner 判断: 3 つの問いに集約する）。
+    //   ⚠ 前は見出しが無く、⚠ **前の層の続きに読めた**（実測 2026-08-22・静岡市 375×667）。
+    //   ⚠ **見出しごと消す案は採らない。**⚠ 利用者役 2/3 が
+    //     「⚠ **この場所は建物が無いのかと思った**」と読んだ（掟 §1）。
+    // ⚠ **できることから書く**（`CLAUDE.md` §4-1）。⚠ 利用者役 3/3 が「何が見られるか先に分かる」。
+    //   ⚠ **字は `words.js` の 1 か所から借りる**（⚠ トップの導線と同じ幹）。
+    // ⚠ **「未対応」の理由は、⚠ 材料の行が言う。**⚠ ここで同じ字を繰り返さない。
+    if(M) out.push(`<div class="land-layer land-miss"><div class="land-q">${WORD.layerTitle(n)}</div>`
+      + (M.why==="notyet"
+          ? `<div class="land-sub">${KonjakuWords.canWithoutBuildings("peel")}</div>`
+          : `<div class="land-sub">${WORD.layerMissing(n, M.why)}</div>`)
+      + (M.note?`<div class="land-sub">${M.note}</div>`:"")
+      + `<div class="prov-q" data-q="${n}"></div></div>`);
   }
   el.innerHTML=out.join("");
 }
@@ -1115,8 +1133,14 @@ function paintLayer(L){
     // ⚠ **粗さ**（2026-08-22。hidetzu/konjaku#128）。⚠ **⚠ の記号は使わない**
     //   （この画面では ⚠ を災害リスクに使っている。⚠ 精度の話に同じ印を出すと「危ない土地」に読まれる）。
     : sb.kind==="coarse" ? `<div class="land-sub land-coarse">${esc(sb.v)}</div>` : "").join("");
+  // ⚠ **並びは 答え → 内訳 → 材料**（2026-08-22。Owner 判断）。
+  //   ⚠ **内訳は答えの分割**なので、⚠ **答えの直後。**⚠ 材料（台帳）はそのあと。
+  // ⚠ **材料の中身はここで作らない。**⚠ 器だけ置き、⚠ **`describe()` が入れる**
+  //   （⚠ 台帳は段が変わるたび、⚠ 層は場所が変わるたび。⚠ **周期が違う**）。
   return `<div class="land-layer"><div class="land-q">${L.title}</div>`
-    + `<div class="land-line">${head}${what}</div>${den}${subs}</div>`;
+    + `<div class="land-line">${head}${what}</div>${den}${subs}`
+    + (L.n===3 ? `<div id="breakdown"></div>` : "")
+    + `<div class="prov-q" data-q="${L.n}"></div></div>`;
 }
 
 
@@ -1125,7 +1149,8 @@ function showResult(){
   resultEl.style.display="";
   // ⚠ 以前は「（集計範囲: 〜）」を添える枝があった（2026-08-20 に外した）。
   //   ⚠ **土地ごとの専用の集計範囲が無くなり、中心とズレることが無くなった**ため。
-  document.getElementById("placeName").textContent = area.title;
+  // ⚠ **どこを見ているかを、⚠ 名乗ってから答える**（2026-08-22。Owner 判断）。
+  document.getElementById("placeName").textContent = area.title ? `今の位置: ${area.title}` : "";
   // ⚠ **パネルも層で描く。**HUD と同じ値（layersOf）を使う。
   //   ⚠ 2 か所で作ると、同じ画面で言うことが食い違う（ADR 0021）。
   //     実測（2026-08-19）: HUD だけ層にしたとき、⚠ **豊洲で 99.6% が 2 回**出ていた
@@ -1137,8 +1162,15 @@ function showResult(){
   landModel = layersOf(area, landform);
   // ⚠ **描くのはパネルの 1 か所だけ**（2026-08-21。hidetzu/konjaku#152）
   paintLand(document.getElementById("landAll"), landModel);
+  // ⚠ **器を作り直したら、⚠ その場で入れ直す**（2026-08-22）。
+  //   ⚠ `paintLand` は `.prov-q` ごと作り直すので、⚠ **次の render まで空になる。**
+  render();
 
-  paintBreakdown(document.getElementById("breakdown"), breakdown(area.counts, area.total), area.bldState);
+  // ⚠ **3 つ目の問いが「まだ出していない」と答えているなら、⚠ 内訳で繰り返さない**
+  //   （2026-08-22。Owner 判断）。⚠ 実測（静岡市）: ⚠ **同じ字が 4 か所**に出ていた。
+  const said3 = landModel.missing.some((mi) => mi.n === 3);
+  paintBreakdown(document.getElementById("breakdown"),
+    breakdown(area.counts, area.total), area.bldState, said3);
 }
 
 // 内訳は「足元の判定の**分割**」。足すと、判定できた件数になる。
@@ -1171,8 +1203,11 @@ function breakdown(counts,total){
 }
 
 // ここは組み立てるだけ。⚠ **何と言うかは上で決まっている**（WORD と breakdown）。
-function paintBreakdown(el,b,bldState){
+function paintBreakdown(el,b,bldState,saidByLayer3){
   if(!el) return;
+  // ⚠ **層 3 が既に理由を言っているなら、⚠ ここは黙る**（2026-08-22。Owner 判断）。
+  //   ⚠ **黙るのは「同じ字を 2 回言わない」ためで、⚠ 事実を消すためではない。**
+  if(!b.total && saidByLayer3){ el.innerHTML=""; return; }
   // ⚠ 分割の分母は「判定できた件数」。総数にすると、判定できなかった分だけ小さく見える
   const rows=b.rows.map((r)=>
     `<div class="stat"><span><i class="swatch" style="background:${r.water?"#8fb9dd":"#d8cfa8"}"></i>${r.name}</span>
@@ -1510,7 +1545,8 @@ const eraSummaryNoteEl=document.getElementById("eraSummaryNote");
 const overEl=document.getElementById("over");
 const tipEl=document.getElementById("tip");
 const estEl=document.getElementById("est");
-const provEl=document.getElementById("prov");
+// ⚠ **台帳の書き込み先は、⚠ 3 つの問いの中**（2026-08-22。Owner 判断）。
+//   ⚠ **`#prov` という 1 つの箱はもう無い。**⚠ 器は `paintLand` が作るので、⚠ **毎回引き直す。**
 
 // 言葉を変えうるものの一覧。
 // ⚠ **ここに挙げたものだけが、言葉を変える。**足したのに挙げ忘れると、
@@ -1636,15 +1672,22 @@ function describe(v){
     estEl.innerHTML = bldVisible ? `<b>建物が消える年代は推定</b>です。` : "";
   }
 
-  if(!provEl) return;
   // ⚠ 台帳の**文面と語彙は public/prov.js**（実測／未取得／欠落／未対応／推定）。
   //   ここでは組み立てない。行を足したくなったら prov.js に足す。
   //   分けた理由: あちらは DOM も地図も見ないので、検査がブラウザ抜きで
   //   全組み合わせを回せる（掟: 取れなかったを「無い」と言わない、を字面ではなく tag で見る）。
   // ⚠ **由来（取り込んだ日・水面の面数）も、この台帳が持つ**（2026-08-22。hidetzu/konjaku#153）。
   //   ⚠ **値の出どころは 1 か所のまま**（`blAt` は取り込み、`waterRects` は水域の生成）。
-  provEl.innerHTML=KonjakuProv.html(KonjakuProv.rows({ groundArrived:arrived, era:near, area,
-    blAt, waterRects: area && area.waterRead ? area.waterRects : null }));
+  // ⚠ **問いごとに配る**（2026-08-22。Owner 判断: ⚠ **「使用しているデータ・状態」をやめた**）。
+  //   ⚠ **行は 1 つも減らしていない。**⚠ 置き場所と、⚠ 読む手間の差だけを変えた。
+  //   ⚠ **「実測」だけ畳む。**⚠ 「推定」「未取得」「欠落」「未対応」は常時（掟 §1）。
+  const byQ=KonjakuProv.byQuestion({ groundArrived:arrived, era:near, area,
+    blAt, waterRects: area && area.waterRead ? area.waterRects : null,
+    landClass: landClassNow() });
+  for(const n of [1,2,3]){
+    const box=document.querySelector(`.prov-q[data-q="${n}"]`);
+    if(box) box.innerHTML=KonjakuProv.section(byQ[n], KonjakuWords.whyLabel);
+  }
   wireProvPeek();
 }
 

@@ -68,6 +68,17 @@
     --fs-ruler-arrow:var(--text-ruler-arrow);
   }
   *{box-sizing:border-box}
+  /* ⚠ **「なぜそう言える？」で開く**（2026-08-22。Owner 判断: ⚠ 詳細はドリルダウン）。
+     ⚠ **畳んでよいのは「実測」の行だけ**（判断は `prov.js` の `section`）。
+     ⚠ **畳んだ中身は innerText に出ない＝画面にも出ない**ので、
+       ⚠ **「取れなかった」「未対応」「推定」は、⚠ 畳まない側に置いてある。**
+     ⚠ 押せる的は 44px を割らない（`.claude/rules/css.md`）。 */
+  .drill{margin-top:6px}
+  .drill>summary{display:flex;align-items:center;gap:6px;min-height:var(--tap);
+    cursor:pointer;color:var(--action);font-size:var(--fs-note);list-style:none}
+  .drill>summary::-webkit-details-marker{display:none}
+  .drill>summary::before{content:"▸";display:inline-block;transition:transform .15s}
+  .drill[open]>summary::before{transform:rotate(90deg)}
   /* ⚠ **html に font-size を書かない**（2026-08-20）。トップと同じ理由。
      ⚠ 0.875rem × 既定 16px = 14px で、いままでと同じ大きさ。 */
   html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);overflow:hidden}
@@ -628,6 +639,9 @@
              PC はここが古い形のままで、豊洲で 99.6% が 2 回出ていた。
            ⚠ HUD は第1層＋1 つに絞るが、**パネルは 3 層とも出す**。 -->
       <div id="landAll"></div>
+      <!-- ⚠ **内訳の器は、⚠ 3 つ目の問いの中に `paintLand` が作る**（2026-08-22。Owner 判断）。
+           ⚠ **ここには置かない。**⚠ 置くと ⚠ **答え → 材料 → 内訳**の順になり、
+             ⚠ **内訳が答えから離れる**（実測 2026-08-22・豊洲 375×667）。 -->
     </div>
     <!-- ⚠ **並びは「答え → Domain の結果 → 入力データの状態」**
            （2026-08-22。hidetzu/konjaku#160。Owner 判断: `tmp/今昔：Domain情報と表示情報の責務整理.md`）。
@@ -636,12 +650,12 @@
          ⚠ **実測（2026-08-22・375×667・豊洲）**: 前の並び（答え → データ → 内訳）では、
            ⚠ **内訳が y=830 で画面の外**だった（⚠ 8 通り中 6 通り）。⚠ 並べ替えで画面内に入る。
          ⚠ **中身は 1 つも変えていない。**⚠ 並びと名前だけ。 -->
-    <div class="sec"><div class="label">建物の足元判定</div><div id="breakdown"></div></div>
-    <!-- ⚠ **入力データの状態（Provenance）。**⚠ **Domain の結果と混ぜない。**
-           ⚠ 2026-08-22 に「表示データについて」→「使用しているデータ・状態」へ（Owner 判断）。
-           ⚠ **何を材料にしているか**を言う場所で、⚠ **判定の結果は言わない。**
-           ⚠ **土地の答えの分母（「N / M件の足元を判定」）はここへ混ぜない**（答えの直下のまま）。 -->
-    <div class="sec s-prov"><div class="label">使用しているデータ・状態</div><div id="prov"></div></div>
+    <!-- ⚠ **「使用しているデータ・状態」という節はやめた**（2026-08-22。Owner 判断）。
+         ⚠ **利用者に、何の話か伝わっていなかった。**
+         ⚠ **材料の話は、⚠ その材料が支えている問いの下へ配った**（`prov.js` の `byQuestion`）。
+         ⚠ **消したのは節であって、⚠ 行ではない。**⚠ 行は 1 つも減っていない。
+       ⚠ **これは hidetzu/konjaku#160 の Owner 判断（答え → Domain の結果 → 入力データの状態）を
+         差し替えるもの。**⚠ 経緯は ADR に残す。 --></div>
     <!-- ⚠ **押した建物の板（#pick）は消した**（2026-08-21。Owner 判断）。
          ⚠ **押した結果は、⚠ 押した場所の吹き出しだけ**にする。
            ⚠ 前は同じ `pickCard(p)` が吹き出しとここに同時に出ていた（実測 4 幅とも一致）。
