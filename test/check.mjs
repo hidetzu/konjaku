@@ -4957,6 +4957,38 @@ head("9. 画面の言葉");
       ? ok(`docs/adr/README.md の本数の名乗りが合っている（${n} 本）`)
       : bad(`docs/adr/README.md が ${n ?? "?"} 本と名乗っているが、実体は ${adrFiles.length} 本`);
   }
+}
+
+// ⚠ **42 語すべてに fixture があるか**（2026-08-22。hidetzu/konjaku#204）。
+//   ⚠ **走らせる前に分かる。**⚠ **走らせてから気づくと、⚠ 1 語ぶん静かに減る。**
+//   ⚠ **実際に踏んだ**: 控えを別名で戻して fixture を 1 つ壊したとき、
+//     ⚠ **検査は「取れなかった」として保留にし、⚠ 緑のままだった。**
+{
+  const sc = await readFile(join(ROOT, "test", "search-check.mjs"), "utf8").catch(() => "");
+  const head = sc.slice(0, sc.indexOf("const WORDS = ["));
+  const words = [...head.matchAll(/\n\s*\["([^"]+)",/g)].map((m) => m[1]);
+  const fixDir = join(ROOT, "test", "fixtures", "search");
+  const fixFiles = (await readdir(fixDir).catch(() => []))
+    .filter((f) => f.endsWith(".json") && f !== "_meta.json")
+    .map((f) => decodeURIComponent(f.replace(/\.json$/, "")));
+  if (!words.length) {
+    bad("test/search-check.mjs から語を読めない（⚠ この検査が何も見ていない）");
+  } else {
+    const lack = words.filter((w) => !fixFiles.includes(w));
+    const extra = fixFiles.filter((w) => !words.includes(w));
+    lack.length || extra.length
+      ? bad("検索の fixture が語と合っていない"
+          + (lack.length ? ` — 足りない ${lack.length} 語: ${lack.slice(0, 5).join("、")}` : "")
+          + (extra.length ? ` — 余り ${extra.length}: ${extra.slice(0, 5).join("、")}` : "")
+          + "。⚠ node test/search-check.mjs --update-fixtures で取り直す")
+      : ok(`検索の fixture が ${words.length} 語ぶん揃っている（⚠ 余りも無い）`);
+    // ⚠ **いつ取ったかが分かること。**⚠ **分からないと、⚠ いつの応答で回したか言えない**
+    const fm = await readFile(join(fixDir, "_meta.json"), "utf8").then(JSON.parse).catch(() => null);
+    fm?.takenAt
+      ? ok(`検索の fixture の取得日が分かる（${fm.takenAt}）`
+          + "。⚠ **本物との疎通は test/search-live-check.mjs が別に見る**")
+      : bad("検索の fixture の取得日が分からない（test/fixtures/search/_meta.json の takenAt）");
+  }
   // ⚠ **0 件で緑にしない。**⚠ 1 件も走っていないのに「問題なし」と言わない
   //   （⚠ 以前は SPEC との突き合わせが、⚠ 偶然この役目も果たしていた）。
   const mine = passed + 1;
