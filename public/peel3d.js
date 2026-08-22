@@ -1206,7 +1206,7 @@ function paintBreakdown(el,b,bldState){
 // ============================================================
 // 描画・再生
 // ============================================================
-const slider=document.getElementById("t"), eraEl=document.getElementById("era");
+const slider=document.getElementById("t"), timePanelEl=document.getElementById("timePanel");
 const trackEl=document.getElementById("track"), fillEl=trackEl.querySelector(".fill");
 const knobEl=trackEl.querySelector(".knob"), gradeEl=document.getElementById("grade");
 const mapEl=document.getElementById("map"), panel=document.getElementById("panel");
@@ -1342,23 +1342,18 @@ function sealOldControls(){
     if(off) el.setAttribute("aria-hidden","true"); else el.removeAttribute("aria-hidden"); };
   // ⚠ **狭い幅では #bar の中を全部使わない。**ものさしに差し替えたので、ドラムも使わない。
   //   （ドラムは 2026-08-18 に入れたが、2026-08-19 にものさしへ置き換えた）
-  for(const id of ["timeToggle","play","t","track","drum"]) seal(document.getElementById(id),narrowNow);
+  for(const id of ["play","t","track","drum"]) seal(document.getElementById(id),narrowNow);
   // ⚠ 広い幅ではドラムを使わない。**これは main からある漏れ**（実測 2026-08-19:
   //   PC でドラムのボタン 9 個に、見えないまま焦点が当たっていた）。ここで一緒に閉じる。
   if(!narrowNow) seal(document.getElementById("drum"),true);
-  // ⚠ 隠したまま「開いている」と名乗らせない
-  // ⚠ **timePanelOpen をここで読まない。**この関数は宣言より前に呼ばれる（buildRuler の中）。
-  //   実測 2026-08-19: TDZ で例外になり、**そこから下の初期化が丸ごと止まった**
-  //   （CLAUDE.md の落とし穴。describe() で一度踏んでいる）。
-  //   ⚠ 広い幅の aria-expanded は applyTimePanel が毎回書くので、ここでは触らない。
-  const tt=document.getElementById("timeToggle");
-  if(tt&&narrowNow) tt.removeAttribute("aria-expanded");
+  // ⚠ **「隠したまま開いていると名乗らせない」手当ては、要らなくなった**（2026-08-22）。
+  //   ⚠ 畳みボタンそのものを消したので、⚠ **aria-expanded を持つ要素が無い。**
   // ⚠ **逆も閉じる。** PC ではものさしを出していないので、こちらを到達不能にする。
   //   片側だけ閉じると、広い幅で ‹ › とドラムのボタンに焦点が当たった（実測 2026-08-19）。
   if(rulerEl){ rulerEl.inert=!narrowNow;
     if(narrowNow) rulerEl.removeAttribute("aria-hidden"); else rulerEl.setAttribute("aria-hidden","true"); }
   // ⚠ **根拠を全画面で読んでいるあいだ、地図側の操作は閉じる。**
-  //   実測（2026-08-19・320幅）: パネルが覆っているのに toggle / eraToggle / ‹ › に
+  //   実測（2026-08-19・320幅）: パネルが覆っているのに toggle / 年代の畳み / ‹ › に
   //   焦点が当たっていた。⚠ 見えないものを押させない（掟）。
   //   ⚠ 「← 今昔へ」「✕ 地図へ」は帯に出ているので閉じない（戻る手段は常に残す）。
   // ⚠ **panelOpen を直に読まない。**この関数は宣言より前に呼ばれる（buildRuler の中）。
@@ -1703,7 +1698,6 @@ function paint(v){
 // ⚠ 静的 HTML にあるものを、毎フレーム引き直さない。**1 度だけ引いて持つ。**
 //   以前は 6 個を render() の中で getElementById していた（＝「あるか分からない」
 //   という不安がコードに残っていた）。無ければ**起動時に**分かるほうがよい。
-const timeSummaryEl=document.getElementById("timeSummary");
 const eraSummaryNoteEl=document.getElementById("eraSummaryNote");
 const overEl=document.getElementById("over");
 const tipEl=document.getElementById("tip");
@@ -1789,18 +1783,19 @@ function describe(v){
   described=key;
   ground={ id:gid, ok:arrived };
 
-  eraEl.querySelector(".y").textContent=cur.label;
+  // ⚠ **いま選択中の年代は #timePanel の 1 か所**（2026-08-22。Owner 判断で #era を消した）。
+  //   ⚠ **器を消しただけで、字は減らしていない。**⚠ 年・種別・接続・名乗りは同じものを出す。
+  timePanelEl.querySelector(".y").textContent=cur.label;
   const read=eraReadout(gstate, near?subOf(near):MEIJI.sub);
-  eraEl.querySelector(".kick").textContent=read.kick;
-  eraEl.querySelector(".s").textContent=read.sub;
+  timePanelEl.querySelector(".kick").textContent=read.kick;
+  timePanelEl.querySelector(".s").textContent=read.sub;
   // ⚠ 接続の話は**別の行**に置く。写真の話と混ぜると、どちらが事実か読めなくなる
-  const netEl=eraEl.querySelector(".era-net");
+  const netEl=timePanelEl.querySelector(".era-net");
   if(netEl) netEl.textContent=read.hint ?? "";
-  eraEl.classList.toggle("waiting",gstate.kind==="late");
-  eraEl.classList.toggle("failed",gstate.kind==="fail");
-  eraEl.classList.toggle("meiji",!near); trackEl.classList.toggle("meiji",!near);
+  timePanelEl.classList.toggle("waiting",gstate.kind==="late");
+  timePanelEl.classList.toggle("failed",gstate.kind==="fail");
+  timePanelEl.classList.toggle("meiji",!near); trackEl.classList.toggle("meiji",!near);
   slider.setAttribute("aria-valuetext",cur.label);
-  if(timeSummaryEl) timeSummaryEl.textContent=cur.label;
   if(eraSummaryNoteEl) eraSummaryNoteEl.textContent=(bldVisible&&pos>.02)?"いまの街を重ねています":"";
   // ⚠ 過去の年代に入ったら、年と同じ強さで「重ねている」と言う。
   //   建物は現在のもので、地面だけが過去。そこを画面が言わないと、
@@ -1945,39 +1940,19 @@ trackEl.addEventListener("pointerup",(e)=>{
 trackEl.addEventListener("pointercancel",()=>{ labFrom=null; });
 
 const playBtn=document.getElementById("play");
-const eraDetails=document.getElementById("eraDetails");
-const eraToggle=document.getElementById("eraToggle");
-const eraToggleText=document.getElementById("eraToggleText");
-let eraPanelOpen=true;
-function applyEraPanel(){
-  eraEl.classList.toggle("collapsed",!eraPanelOpen);
-  eraDetails.hidden=!eraPanelOpen;
-  eraToggle.setAttribute("aria-expanded",String(eraPanelOpen));
-  // ⚠ 画面には記号だけ出す。名乗りは読み上げに残す（.sr）。
-  //   ⚠ **記号の向きは CSS が回す（.collapsed で rotate(180deg)）。ここで文字を差し替えない。**
-  //   両方やると二重に反転して、閉じているのに「閉じる」向きになる（2026-08-19 に踏んだ）。
-  eraToggleText.textContent=eraPanelOpen?"閉じる":"開く";
-  eraToggle.setAttribute("aria-label",`この年代の説明を${eraPanelOpen?"閉じる":"開く"}`);
-}
-eraToggle.onclick=()=>{ eraPanelOpen=!eraPanelOpen; applyEraPanel(); };
-applyEraPanel();
+// ⚠ **年代の説明を畳む仕掛け（#eraToggle）は消した**（2026-08-22。Owner 判断）。
+//   ⚠ 畳む相手だった #eraDetails は、⚠ **中身を #notice へ移したあと空だった。**
+//   ⚠ 空の箱を開閉するボタンは「押しても何も起きない導線」（ADR 0026）。
+//   ⚠ **畳めるのは「年代を動かす」操作部（#timePanel）だけ**になった。
 const timePanel=document.getElementById("timePanel");
-const timePanelBody=document.getElementById("timePanelBody");
-const timeToggle=document.getElementById("timeToggle");
-const timeToggleText=document.getElementById("timeToggleText");
-let timePanelOpen=true;
-function applyTimePanel(){
-  timePanel.classList.toggle("collapsed",!timePanelOpen);
-  timePanelBody.hidden=!timePanelOpen;
-  timeToggle.setAttribute("aria-expanded",String(timePanelOpen));
-  // ⚠ 画面には記号だけ出す。名乗りは読み上げに残す（.sr）。
-  //   ⚠ **記号の向きは CSS が回す（.collapsed で rotate(180deg)）。ここで文字を差し替えない。**
-  //   両方やると二重に反転して、閉じているのに「閉じる」向きになる（2026-08-19 に踏んだ）。
-  timeToggleText.textContent=timePanelOpen?"閉じる":"開く";
-  timeToggle.setAttribute("aria-label",`年代を動かす帯を${timePanelOpen?"閉じる":"開く"}`);
-}
-timeToggle.onclick=()=>{ timePanelOpen=!timePanelOpen; applyTimePanel(); };
-applyTimePanel();
+// ⚠ **年代を動かす帯の畳みボタン（#timeToggle）は消した**（2026-08-22。Owner 判断）。
+//   ⚠ **`Owner 決定 2`（畳めるようにする）を覆した。**⚠ 理由は大きさが変わったこと。
+//   ⚠ 実測（2026-08-22・1280×800・豊洲）: 器を 1 つにして HUD が **262 → 166px** になった。
+//     ⚠ 畳んで得られるのは 90px で、⚠ **畳まなくても中央（調べている地点）は覆っていない。**
+//   ⚠ 利用者役 4 名（⚠ 実在の利用者ではない）: ⚠ **押す前に何が起きるか伝わったのは 2/4。**
+//     ⚠ 1 名は「パネル全体が消える」と誤解、⚠ 1 名は「⌄ だけでは分からない」。
+//     ⚠ **畳む価値があるかは 2/4 対 2/4 で割れた**（「動かしに来たのに動かす部分を隠す意味が分からない」）。
+//   ⚠ **年代を動かすのが /peel の主目的。**⚠ その操作部を常に見せる。
 // 1段あたりの所要時間。全 8 段で 11 秒だったものを、段あたりに直した。
 // ⚠ 段の数は地点によって変わる（豊洲 8 / 広島 6 / 長崎 出島 3 段の写真）。
 //   総時間を固定すると、段が少ない地点ほど1段が長くなって間延びする。
