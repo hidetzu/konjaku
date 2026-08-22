@@ -13,7 +13,14 @@
 //
 // ⚠ 住所検索は 10req/10秒 の制限がある。⚠ **数語だけ**、1.5 秒あけて叩く。
 
-const API = "https://msearch.gsi.go.jp/address-search/AddressSearch?q=";
+// ⚠ **口は書かない**（2026-08-22。hidetzu/konjaku#181）。⚠ **本番の口を通して叩く。**
+//   ⚠ **そうしないと、⚠ 「本番のコードで話せるか」を確かめたことにならない**
+//   （⚠ 検査が自分で書いた通信で話せても、⚠ 出荷するコードが話せる保証にはならない）。
+import { readFile } from "node:fs/promises";
+const win = {};
+new Function("window", "module",
+  await readFile(new URL("../public/gsi-address-search.js", import.meta.url), "utf8"))(win, undefined);
+const { createGsiAddressSearch } = win.KonjakuGsiAddressSearch;
 const GAP_MS = 1500;
 // ⚠ **少数でよい。**⚠ **大量に叩いて品質を測るのは、⚠ ここの目的ではない。**
 const WORDS = ["渋谷", "新宿"];
@@ -23,15 +30,14 @@ const ok  = (m) => console.log(`  \x1b[32m✓\x1b[0m ${m}`);
 const out = (m) => { ng++; console.log(`  \x1b[33m?\x1b[0m ${m}`); };
 
 console.log(`\x1b[1m地理院の住所検索と話せるか（${WORDS.length}語）\x1b[0m`);
-console.log("  ⚠ **ここは相手先の話。**⚠ 落ちても、⚠ こちらのコードが壊れたわけではない");
+console.log("  ⚠ **たいていは相手先の話。**⚠ ただし ⚠ **こちらの口の不具合でも落ちる**");
+console.log("  ⚠ **理由をそのまま出す。**⚠ 決めつけずに、⚠ 読んで切り分ける");
 
 for (const w of WORDS) {
   try {
-    const r = await fetch(API + encodeURIComponent(w), { signal: AbortSignal.timeout(20000) });
-    if (!r.ok) { out(`${w}: HTTP ${r.status}（⚠ 相手が返した）`); continue; }
-    const j = await r.json();
+    // ⚠ **本番の口を、⚠ そのまま使う**（⚠ URL 組み立て・時間切れ・状態・形・再試行を通る）。
+    const j = await createGsiAddressSearch({}).search(w);
     // ⚠ **形だけ見る。**⚠ **何位に何が来るかは見ない**（⚠ それは相手の都合で動く）。
-    if (!Array.isArray(j)) { out(`${w}: 配列で返ってこなかった（⚠ 形が変わった可能性）`); continue; }
     if (!j.length) { out(`${w}: 0 件だった（⚠ 相手の側の話）`); continue; }
     const p = j[0]?.properties, g = j[0]?.geometry;
     if (typeof p?.title !== "string" || !Array.isArray(g?.coordinates)) {
@@ -48,7 +54,9 @@ for (const w of WORDS) {
 //   ⚠ **全部駄目だったときだけ落とす**（⚠ 一時的な揺れで赤にしない）。
 if (ng === WORDS.length) {
   console.log(`\n\x1b[31m${WORDS.length} 語とも話せなかった\x1b[0m`
-    + `。⚠ **相手先か回線の話。**⚠ **こちらのコードの不具合ではない**`
+    + `。⚠ **相手先・回線・こちらの口のどれか。**⚠ **上の理由を読んで切り分ける**`
+    + `（⚠ 2026-08-22 に、⚠ ここでこちらの口の不具合を見つけた。`
+    + `⚠ **決めつけていたら、⚠ 相手のせいにして見逃していた**）`
     + `。⚠ 並べ替えの回帰は test/search-check.mjs（fixture）が別に見ている`);
   process.exit(1);
 }

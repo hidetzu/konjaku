@@ -11,6 +11,7 @@
 | [`render/peel.mjs`](render/peel.mjs) | 深掘り（`/peel`）のケース |
 | [`render-scope.mjs`](render-scope.mjs) | ⚠ **変更ファイル → どの検査を回すか** |
 | [`search-check.mjs`](search-check.mjs) | 検索の入口の回帰（42 語）。⚠ **fixture で回す。⚠ 外へ出ない** |
+| [`repository-check.mjs`](repository-check.mjs) | ⚠ **住所検索の口の作り**（1検索1リクエスト・再試行・時間切れ・形）。⚠ **外へ出ない** |
 | [`search-live-check.mjs`](search-live-check.mjs) | ⚠ **地理院と話せるかだけ**（数語）。⚠ **定期・手動のみ** |
 | [`fixtures/search/`](fixtures/search/) | 42 語ぶんの応答（⚠ **取得日は `_meta.json`**） |
 

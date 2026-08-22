@@ -338,27 +338,20 @@
   //
   // ⚠ `fetch` は差し替えられるようにする。**検査が「1検索で何回叩いたか」を数えるため**
   //   （数えられないと、1検索1リクエストという地理院への約束を機械で守れない）。
-  const API = "https://msearch.gsi.go.jp/address-search/AddressSearch?q=";
-  const SEARCH_TIMEOUT_MS = 8000;              // verify.js の TIMEOUT_MS と同じ
-
-  // 画面に出す理由は、こちらが用意した文字列だけにする（応答の中身は入れない）
-  const whyOf = (e) => e?.name === "TimeoutError" ? "時間切れ"
-    : /^サーバが|^応答が/.test(e?.message ?? "") ? e.message : "通信できません";
+  // ⚠ **外の話は `gsi-address-search.js` が持つ**（2026-08-22 に切り出した。
+  //   hidetzu/konjaku#181）。⚠ **URL・時間切れ・状態・形・再試行はここに書かない。**
+  //   ⚠ **書き写すと、⚠ 検査が「本番の経路」を通らなくなる**（⚠ 実際にそうなっていた）。
+  const repo = () => (typeof module === "object" && module.exports)
+    ? require("./gsi-address-search.js")
+    : global.KonjakuGsiAddressSearch;
+  const SEARCH_TIMEOUT_MS = repo().TIMEOUT_MS;
 
   function createSearch(opt) {
-    const doFetch = opt?.fetch ?? ((...a) => global.fetch(...a));
+    // ⚠ **口そのものを差し替えてもよい**（⚠ 検査は `fetch` を差し替えるだけで足りる）。
+    const search = opt?.repository ?? repo().createGsiAddressSearch({ fetch: opt?.fetch });
+    const whyOf = repo().whyOf;
     // 遅れて返った古い応答で画面を上書きしない。**入力を消したときも進める**（cancel）。
     let seq = 0;
-
-    async function once(q) {
-      const r = await doFetch(API + encodeURIComponent(q),
-        { signal: AbortSignal.timeout(SEARCH_TIMEOUT_MS) });
-      if (!r.ok) throw new Error(`サーバが ${Number(r.status)} を返しました`);
-      const j = await r.json();
-      // 200 でも本文が配列とは限らない。形を確かめる前に「無い」と言わない
-      if (!Array.isArray(j)) throw new Error("応答が一覧の形をしていません");
-      return j;
-    }
 
     return {
       // ⚠ 入力が短くなった／画面が別のことを始めたときに呼ぶ。
@@ -371,14 +364,11 @@
       async run(q, limit) {
         const my = ++seq;
         const stale = () => my !== seq;
+        // ⚠ **取ってくるのは口の仕事**（⚠ 再試行も時間切れも、⚠ 向こうが決める）。
+        //   ⚠ **ここが持つのは「いまの検索か」だけ。**
         let list = null, err = null;
-        // 瞬断と 5xx は1回だけ自動で再試行する。
-        // 時間切れは再試行しない（同じ相手をもう8秒待たせるのは、待たせただけになる）。
-        for (let i = 0; i < 2 && list === null; i++) {
-          try { list = await once(q); } catch (e) { err = e; }
-          if (stale()) return { state: "stale" };
-          if (err?.name === "TimeoutError") break;
-        }
+        try { list = await search.search(q); } catch (e) { err = e; }
+        if (stale()) return { state: "stale" };
         if (list === null) return { state: "error", why: whyOf(err) };
         if (!list.length) return { state: "empty" };
         // 応答は関連度順ではなく都道府県コードの昇順なので、そのままでは先頭が別の土地になる。
