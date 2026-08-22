@@ -188,12 +188,25 @@ jobs:
           fi
           echo "変更 $(echo "$files" | wc -l | tr -d ' ') ファイル:"
           echo "$files" | sed 's/^/  /'
-          if echo "$files" | grep -qv '^\.claude/'; then
+          # ⚠ **線は「render.mjs が読むか」で引く**（2026-08-22。hidetzu/konjaku#187 の子）。
+          #   ⚠ **実測（2026-08-22・`main` = `113ee90`）**: `render.mjs` が触るのは 3 つだけ。
+          #     public/**（serve.js が配る中身 ＋ public/data/landform.json を直接読む）
+          #     serve.js（配信そのもの）
+          #     scripts/render.mjs（検査コード自身）
+          #   ⚠ **`docs/` は 1 行も読んでいない**（残っているのはコメントだけ。
+          #     ⚠ hidetzu/konjaku#184 で `docs/SPEC.md` の読み取りが消えた）。
+          # ⚠ **除くのは、⚠ 画面にも実行環境にも届かないものだけ。**
+          #   ⚠ `scripts/` は render.mjs 以外も**回す**（安全側。Owner 判断 2026-08-22）。
+          #     ⚠ 走者どうしが共有する前提（件数の数え方など）を壊しうる。
+          #   ⚠ `.github/` も回す（⚠ Workflow 自身を変えたときは確かめたい）。
+          #   ⚠ `package.json` / lock も回す（⚠ Playwright の版など実行環境が変わる）。
+          if echo "$files" | grep -qvE '^(\.claude/|docs/|[^/]+\.md$)'; then
             echo "run=yes" >> "$GITHUB_OUTPUT"
           else
             echo "run=no" >> "$GITHUB_OUTPUT"
-            echo "⚠ この実行では実描画を回していない（変更が .claude/ の中だけ。画面には届かない）"
-            echo "⚠ 静的検査は回っている（全追跡ファイルを走査している）"
+            echo "⚠ この実行では実描画を回していない（変更が .claude/ ・ docs/ ・ ルートの *.md だけ）"
+            echo "⚠ どれも render.mjs が読まない。画面にも実行環境にも届かない"
+            echo "⚠ 静的検査は回っている（全追跡ファイルを走査している。docs/ も読む）"
           fi
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
