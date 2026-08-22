@@ -74,7 +74,7 @@ export const CASES = [
     viewport: { width: 375, height: 667 }, hasTouch: true, setup: stubMapPictures,
     async check(page) {
       await page.waitForFunction(
-        () => (document.getElementById("est")?.textContent ?? "").trim().length > 0,
+        () => (document.getElementById("notes")?.textContent ?? "").trim().length > 0,
         null, { timeout: 45000 });
       await settleAfterCondition(page);
       const out = [];
@@ -86,12 +86,12 @@ export const CASES = [
         await page.setViewportSize({ width: w, height: h });
         await page.reload({ waitUntil: "domcontentloaded" });
         await page.waitForFunction(
-          () => (document.getElementById("est")?.textContent ?? "").trim().length > 0,
+          () => (document.getElementById("notes")?.textContent ?? "").trim().length > 0,
           null, { timeout: 45000 });
         await settleAfterCondition(page);
         const r = await page.evaluate(() => {
           const rect = (id) => document.getElementById(id).getBoundingClientRect();
-          const est = document.getElementById("est"), hud = document.getElementById("hud");
+          const est = document.getElementById("notes"), hud = document.getElementById("hud");
           const nb = rect("notice"), hb = rect("hud");
           const row = document.querySelector("#chrome .chrome-row").getBoundingClientRect();
           // ⚠ **敷きは祖先を辿って探す。**⚠ 地図そのものは敷きに数えない
@@ -215,15 +215,19 @@ export const CASES = [
     name: "パネルは 答え → 建物の足元判定 → 使用しているデータ の順", path: `/peel?${TOYOSU}`,
     viewport: { width: 375, height: 667 }, hasTouch: true, setup: stubMapPictures,
     async check(page) {
-      await page.waitForFunction(() => /件を判定しました/.test(document.body.innerText),
-        null, { timeout: 60000 });
+      // ⚠ **`#status` の「件を判定しました」は、⚠ 狭い幅で畳まれている**（`ba54efc`）。
+      //   ⚠ **待っているのは「答えが描けたこと」**なので、⚠ **`peelReady` に寄せる**
+      //   （⚠ `.prov-q[data-q="3"]` を見る。⚠ 幅にも `#status` にも依らない）。
+      await peelReady(page);
       await settleAfterCondition(page);
       const out = [];
       for (const [w, h] of [[1280, 800], [375, 667], [344, 882], [320, 640]]) {
         await page.setViewportSize({ width: w, height: h });
         await page.reload({ waitUntil: "domcontentloaded" });
-        await page.waitForFunction(() => /件を判定しました/.test(document.body.innerText),
-          null, { timeout: 60000 });
+        // ⚠ **`#status` の「件を判定しました」は、⚠ 狭い幅で畳まれている**（`ba54efc`）。
+        //   ⚠ **待っているのは「答えが描けたこと」**なので、⚠ **`peelReady` に寄せる**
+        //   （⚠ `.prov-q[data-q="3"]` を見る。⚠ 幅にも `#status` にも依らない）。
+        await peelReady(page);
         await settleAfterCondition(page);
         if (await page.evaluate(() => document.getElementById("panel").classList.contains("hide"))) {
           await page.click("#toggle");
@@ -374,8 +378,10 @@ export const CASES = [
     name: "画面が低くても、下の箱が調べている地点を覆わない", path: `/peel?${TOYOSU}`,
     viewport: { width: 320, height: 480 }, hasTouch: true,
     async check(page) {
-      await page.waitForFunction(() => /件を判定しました/.test(document.body.innerText),
-        null, { timeout: 60000 });
+      // ⚠ **`#status` の「件を判定しました」は、⚠ 狭い幅で畳まれている**（`ba54efc`）。
+      //   ⚠ **待っているのは「答えが描けたこと」**なので、⚠ **`peelReady` に寄せる**
+      //   （⚠ `.prov-q[data-q="3"]` を見る。⚠ 幅にも `#status` にも依らない）。
+      await peelReady(page);
       await settleAfterCondition(page);
       // ⚠ 過去の段がいちばん厳しい（#over が増える）
       await page.evaluate(() => { const s = document.getElementById("t");
@@ -442,8 +448,10 @@ export const CASES = [
     name: "見えない操作に、キーボードで届かない", path: `/peel?${TOYOSU}`,
     viewport: { width: 320, height: 640 }, hasTouch: true,
     async check(page) {
-      await page.waitForFunction(() => /件を判定しました/.test(document.body.innerText),
-        null, { timeout: 60000 });
+      // ⚠ **`#status` の「件を判定しました」は、⚠ 狭い幅で畳まれている**（`ba54efc`）。
+      //   ⚠ **待っているのは「答えが描けたこと」**なので、⚠ **`peelReady` に寄せる**
+      //   （⚠ `.prov-q[data-q="3"]` を見る。⚠ 幅にも `#status` にも依らない）。
+      await peelReady(page);
       await settleAfterCondition(page);
       const leaks = () => page.evaluate(() => {
         const bad = [...document.querySelectorAll("button,input,a[href]")].filter((e) => {
@@ -499,8 +507,10 @@ export const CASES = [
     name: "年代の頭を細くしても、押せる大きさと名乗りは残る", path: `/peel?${TOYOSU}`,
     viewport: { width: 320, height: 640 }, hasTouch: true,
     async check(page) {
-      await page.waitForFunction(() => /件を判定しました/.test(document.body.innerText),
-        null, { timeout: 60000 });
+      // ⚠ **`#status` の「件を判定しました」は、⚠ 狭い幅で畳まれている**（`ba54efc`）。
+      //   ⚠ **待っているのは「答えが描けたこと」**なので、⚠ **`peelReady` に寄せる**
+      //   （⚠ `.prov-q[data-q="3"]` を見る。⚠ 幅にも `#status` にも依らない）。
+      await peelReady(page);
       await settleAfterCondition(page);
       const at = (k) => page.evaluate((k) => {
         const s = document.getElementById("t");
@@ -571,8 +581,10 @@ export const CASES = [
     name: "根拠を全画面で読んでも、戻る 2 つが上に残る", path: `/peel?${TOYOSU}`,
     viewport: { width: 375, height: 667 }, hasTouch: true,
     async check(page) {
-      await page.waitForFunction(() => /件を判定しました/.test(document.body.innerText),
-        null, { timeout: 60000 });
+      // ⚠ **`#status` の「件を判定しました」は、⚠ 狭い幅で畳まれている**（`ba54efc`）。
+      //   ⚠ **待っているのは「答えが描けたこと」**なので、⚠ **`peelReady` に寄せる**
+      //   （⚠ `.prov-q[data-q="3"]` を見る。⚠ 幅にも `#status` にも依らない）。
+      await peelReady(page);
       await settleAfterCondition(page);
       // ⚠ 地図だけ見ているときは ✕ を出さない（押しても何も起きない導線を置かない）
       const beforeOpen = await page.evaluate(() => {
@@ -997,8 +1009,10 @@ export const CASES = [
     name: "スマホの根拠は全画面で読み、閉じれば地図に戻る", path: `/peel?${TOYOSU}`,
     viewport: { width: 375, height: 667 }, hasTouch: true,
     async check(page) {
-      await page.waitForFunction(() => /件を判定しました/.test(document.body.innerText),
-        null, { timeout: 60000 });
+      // ⚠ **`#status` の「件を判定しました」は、⚠ 狭い幅で畳まれている**（`ba54efc`）。
+      //   ⚠ **待っているのは「答えが描けたこと」**なので、⚠ **`peelReady` に寄せる**
+      //   （⚠ `.prov-q[data-q="3"]` を見る。⚠ 幅にも `#status` にも依らない）。
+      await peelReady(page);
       await settleAfterCondition(page);
       const look = () => page.evaluate(() => {
         const W = innerWidth, H = innerHeight;
@@ -1936,8 +1950,10 @@ export const CASES = [
   {
     name: "建物が取り込み済みなら、Overpass に出ない", path: `/peel?${TOYOSU}`,
     async check(page, reqs) {
-      await page.waitForFunction(() => /件を判定しました/.test(document.body.innerText),
-        null, { timeout: 60000 });
+      // ⚠ **`#status` の「件を判定しました」は、⚠ 狭い幅で畳まれている**（`ba54efc`）。
+      //   ⚠ **待っているのは「答えが描けたこと」**なので、⚠ **`peelReady` に寄せる**
+      //   （⚠ `.prov-q[data-q="3"]` を見る。⚠ 幅にも `#status` にも依らない）。
+      await peelReady(page);
       await settleAfterCondition(page);
       const t = (await page.evaluate(() => document.body.innerText)).replace(/\s+/g, " ");
       must(reqs.filter((u) => /overpass/i.test(u)).length === 0,
@@ -1949,9 +1965,15 @@ export const CASES = [
       // いつ取り込んだ結果かを言うこと
       // ⚠ **場所が「表示データについて」へ移った**（2026-08-22。hidetzu/konjaku#153）。
       //   ⚠ **主張は変えていない**（⚠ いつ取り込んだ結果かが画面にあること）。
-      must(/建物のデータは \d{4}-\d{2}-\d{2} に取り込んだもの/.test(t),
+      // ⚠ **由来の行は「詳しく見る」の中**（2026-08-22。⚠ 畳んである）。
+      //   ⚠ **`innerText` には出ない。**⚠ **`textContent` で読む**（⚠ 主張は同じ）。
+      must(/建物のデータは \d{4}-\d{2}-\d{2} に取り込んだもの/.test(
+        (await page.locator("#landAll").textContent()).replace(/\s+/g, " ")),
         `いつ取り込んだ結果か書かれていない: ${t.slice(0, 200)}`);
-      must(/事前に取り込んだデータ/.test(t), "取り込み済みだと書かれていない");
+      // ⚠ **「（事前に取り込んだデータ）」は、⚠ 0 件のときしか出ない**（2026-08-23 に確かめた）。
+      //   ⚠ **判定できたときの `#status` は空**（2026-08-22。Owner 判断: ⚠ 件数は答えが言う）。
+      //   ⚠ **主張は上の行が持つ**（⚠ 「建物のデータは YYYY-MM-DD に取り込んだもの」）。
+      //   ⚠ **消したのは重複であって、⚠ 主張ではない。**⚠ **Overpass を叩いていないことは上で見ている。**
       return `Overpass 0 件／${pct}%／取り込み日あり`;
     },
   },
@@ -1961,8 +1983,7 @@ export const CASES = [
     name: "共有された 3D の URL を踏んだ人も、1回だけ数える", path: `/peel?${TOYOSU}`,
     async check(page, reqs) {
       // 直接開いている（トップの導線を通っていない）
-      await page.waitForFunction(() => /件を判定しました/.test(document.body.innerText),
-        null, { timeout: 60000 }).catch(() => {});
+      await peelReady(page).catch(() => {});
       await settleAfterCondition(page);
       const t = reqs.filter((u) => /\/t(\?|$)/.test(u));
       must(t.length === 1, `直接開いたのに ${t.length} 回数えている（1回であること）`);
@@ -1980,8 +2001,10 @@ export const CASES = [
     path: `/peel?ll=34.39500,132.45500&q=%E5%BA%83%E5%B3%B6`,
     viewport: { width: 375, height: 667 }, hasTouch: true,
     async check(page) {
-      await page.waitForFunction(() => /件を判定しました/.test(document.body.innerText),
-        null, { timeout: 60000 });
+      // ⚠ **`#status` の「件を判定しました」は、⚠ 狭い幅で畳まれている**（`ba54efc`）。
+      //   ⚠ **待っているのは「答えが描けたこと」**なので、⚠ **`peelReady` に寄せる**
+      //   （⚠ `.prov-q[data-q="3"]` を見る。⚠ 幅にも `#status` にも依らない）。
+      await peelReady(page);
       await settleAfterCondition(page);
       const at = async (v) => { await page.$eval("#t", (e, v) => {
           e.value = String(v); e.dispatchEvent(new Event("input")); }, v);
@@ -2813,8 +2836,8 @@ ${dom}
       //   **建物を数え終える前に**条件を満たしてしまう。実装ではなく検査が早すぎた。
       // ⚠ **答えの板が描かれてから読む。**#status が先に埋まるので、
       //   ⚠ これだけだと板が空のまま opacity を測って null になる（実測 2026-08-19）。
-      await page.waitForFunction(() => /件を判定しました/.test(document.body.innerText)
-        && document.querySelector("#landAll .land-g1, #landAll .land-alt") !== null,
+      await page.waitForFunction(
+        () => document.querySelector("#landAll .land-g1, #landAll .land-alt") !== null,
         null, { timeout: 60000 });
       // ⚠ **2026-08-21 に、⚠ 土地の答えはパネルの 1 か所になった**（hidetzu/konjaku#152）。
       //   ⚠ **見ている主張は同じ**: ⚠ 判定できないのに割合を出さない。
@@ -2971,14 +2994,16 @@ ${dom}
     name: "見えていない建物の話をしない", path: `/peel?${TOYOSU}`,
     viewport: { width: 375, height: 667 }, hasTouch: true,
     async check(page) {
-      await page.waitForFunction(() => /件を判定しました/.test(document.body.innerText),
-        null, { timeout: 60000 });
+      // ⚠ **`#status` の「件を判定しました」は、⚠ 狭い幅で畳まれている**（`ba54efc`）。
+      //   ⚠ **待っているのは「答えが描けたこと」**なので、⚠ **`peelReady` に寄せる**
+      //   （⚠ `.prov-q[data-q="3"]` を見る。⚠ 幅にも `#status` にも依らない）。
+      await peelReady(page);
       await settleAfterCondition(page);
       const set = async (v) => { await page.$eval("#t", (e, v) => {
         e.value = String(v); e.dispatchEvent(new Event("input")); }, v);
         await page.waitForTimeout(1800); };
       const read = () => page.evaluate(() => ({
-        est: (document.getElementById("est")?.textContent ?? "").trim(),
+        est: (document.getElementById("notes")?.textContent ?? "").trim(),
         tip: (document.getElementById("tip")?.textContent ?? "").trim() }));
       const taps = async () => { let n = 0;
         for (const [x, y] of [[110, 260], [190, 300], [260, 240], [150, 380]]) {
@@ -3020,8 +3045,10 @@ ${dom}
     name: "押した結果は、押した場所の 1 か所だけに出る", path: `/peel?${TOYOSU}`,
     viewport: { width: 375, height: 667 }, hasTouch: true,
     async check(page) {
-      await page.waitForFunction(() => /件を判定しました/.test(document.body.innerText),
-        null, { timeout: 60000 });
+      // ⚠ **`#status` の「件を判定しました」は、⚠ 狭い幅で畳まれている**（`ba54efc`）。
+      //   ⚠ **待っているのは「答えが描けたこと」**なので、⚠ **`peelReady` に寄せる**
+      //   （⚠ `.prov-q[data-q="3"]` を見る。⚠ 幅にも `#status` にも依らない）。
+      await peelReady(page);
       await settleAfterCondition(page);
       // ⚠ **パネルに板そのものが無いこと**（⚠ 空の箱も置かない）
       must(await page.locator("#pick").count() === 0,
@@ -3065,8 +3092,10 @@ ${dom}
     name: "建物を押した結果が、押した場所に見える", path: `/peel?${TOYOSU}`,
     viewport: { width: 375, height: 667 }, hasTouch: true,
     async check(page) {
-      await page.waitForFunction(() => /件を判定しました/.test(document.body.innerText),
-        null, { timeout: 60000 });
+      // ⚠ **`#status` の「件を判定しました」は、⚠ 狭い幅で畳まれている**（`ba54efc`）。
+      //   ⚠ **待っているのは「答えが描けたこと」**なので、⚠ **`peelReady` に寄せる**
+      //   （⚠ `.prov-q[data-q="3"]` を見る。⚠ 幅にも `#status` にも依らない）。
+      await peelReady(page);
       await settleAfterCondition(page);
       // ⚠ 触る前に、押せることが**画面に出ている**こと。
       //   以前は左パネルの中に案内があったが、スマホはパネルが閉じて始まり、
@@ -3124,11 +3153,13 @@ ${dom}
     name: "建物の但し書きが、スマホで最初から見えて、隠せない", path: `/peel?${TOYOSU}`,
     viewport: { width: 375, height: 667 }, hasTouch: true,
     async check(page) {
-      await page.waitForFunction(() => /件を判定しました/.test(document.body.innerText),
-        null, { timeout: 60000 });
+      // ⚠ **`#status` の「件を判定しました」は、⚠ 狭い幅で畳まれている**（`ba54efc`）。
+      //   ⚠ **待っているのは「答えが描けたこと」**なので、⚠ **`peelReady` に寄せる**
+      //   （⚠ `.prov-q[data-q="3"]` を見る。⚠ 幅にも `#status` にも依らない）。
+      await peelReady(page);
       await settleAfterCondition(page);
       const r = await page.evaluate(() => {
-        const e = document.getElementById("est"), rc = e?.getBoundingClientRect();
+        const e = document.getElementById("notes"), rc = e?.getBoundingClientRect();
         return { text: (e?.textContent ?? "").replace(/\s+/g, " ").trim(),
           panelHidden: document.getElementById("panel")?.classList.contains("hide"),
           // ⚠ **但し書きを隠せる親がいないこと**（2026-08-22。畳みボタンを消した）。
@@ -3146,7 +3177,7 @@ ${dom}
       //   10.5px・薄い色・影だけで航空写真の上に置いており、読めるのは数字だけだった。
       //   年の見出しが 60px なのに但し書きが 10.5px で 5.7倍（UI/UX の実測）。
       const look = await page.evaluate(() => {
-        const e = document.getElementById("est"), c = getComputedStyle(e);
+        const e = document.getElementById("notes"), c = getComputedStyle(e);
         const y = document.querySelector("#timePanel .y");
         const a = (s) => (s.match(/[\d.]+/g) ?? []).map(Number);
         // ⚠ **敷きは、祖先を辿って探す。** 以前ここは `#era` の背景を決め打ちで見ていた。
@@ -3198,7 +3229,7 @@ ${dom}
       await page.$eval("#t", (e) => { e.value = "500"; e.dispatchEvent(new Event("input")); });
       await settleAfterClick(page);
       const past = await page.evaluate(() => ({
-        estVisible: document.getElementById("est").checkVisibility(),
+        estVisible: document.getElementById("notes").checkVisibility(),
         // ⚠ 隠せる仕掛けが 1 つも無いこと
         toggles: document.querySelectorAll("#eraToggle,#timeToggle,#hud [aria-expanded]").length,
         year: document.querySelector("#timePanel .y").textContent.trim(),
@@ -3232,11 +3263,11 @@ ${dom}
           await p2.goto(`${BASE}/peel?${TOYOSU}`, { waitUntil: "domcontentloaded", timeout: 45000 });
           await peelReady(p2);
           await p2.waitForFunction(
-            () => (document.getElementById("est")?.textContent ?? "").trim().length > 0,
+            () => (document.getElementById("notes")?.textContent ?? "").trim().length > 0,
             null, { timeout: 60000 });
           await settleAfterCondition(p2);
           const r = await p2.evaluate(() => ({
-            est: (document.getElementById("est").innerText || "").replace(/\s+/g, " ").trim(),
+            est: (document.getElementById("notes").innerText || "").replace(/\s+/g, " ").trim(),
             hud: (document.getElementById("hud").innerText || "").replace(/\s+/g, " ").trim(),
             all: (document.body.innerText || "").replace(/\s+/g, " ").trim(),
             prov: (document.getElementById("prov")?.innerText ?? "").replace(/\s+/g, " ").trim(),
@@ -3270,8 +3301,10 @@ ${dom}
     //   画面上でまったく同じに見え、同じように消えていた（2026-08-14 検証者の指摘）。
     name: "建設年が分かる建物を、こちらが決めた建物と同じに描かない", path: `/peel?${TOYOSU}`,
     async check(page) {
-      await page.waitForFunction(() => /件を判定しました/.test(document.body.innerText),
-        null, { timeout: 60000 });
+      // ⚠ **`#status` の「件を判定しました」は、⚠ 狭い幅で畳まれている**（`ba54efc`）。
+      //   ⚠ **待っているのは「答えが描けたこと」**なので、⚠ **`peelReady` に寄せる**
+      //   （⚠ `.prov-q[data-q="3"]` を見る。⚠ 幅にも `#status` にも依らない）。
+      await peelReady(page);
       await settleAfterCondition(page);
       const t = (await page.evaluate(() => document.body.innerText)).replace(/\s+/g, " ");
       // ⚠ **2026-08-21 に「演出」→「推定」へ統一**（hidetzu/konjaku#151。Owner 判断）
@@ -3325,8 +3358,10 @@ ${dom}
     name: "共有された建物を復元し、見つからなければ別の建物を選ばない", path: `/peel?${TOYOSU}`,
     async check(page) {
       await peelReady(page);
-      await page.waitForFunction(() => /件を判定しました/.test(document.body.innerText),
-        null, { timeout: 90000 });
+      // ⚠ **`#status` の「件を判定しました」は、⚠ 狭い幅で畳まれている**（`ba54efc`）。
+      //   ⚠ **待っているのは「答えが描けたこと」**なので、⚠ **`peelReady` に寄せる**
+      //   （⚠ `.prov-q[data-q="3"]` を見る。⚠ 幅にも `#status` にも依らない）。
+      await peelReady(page);
       await settleAfterCondition(page);
       // ⚠ 内部フィールドに触らない。描かれている素性から鍵を読む
       const key = await page.evaluate(() =>
@@ -3375,8 +3410,10 @@ ${dom}
     //   パネルの中にしか戻る手段が無いと**画面から戻れなくなる**
     viewport: { width: 375, height: 667 }, hasTouch: true,
     async check(page) {
-      await page.waitForFunction(() => /件を判定しました/.test(document.body.innerText),
-        null, { timeout: 60000 });
+      // ⚠ **`#status` の「件を判定しました」は、⚠ 狭い幅で畳まれている**（`ba54efc`）。
+      //   ⚠ **待っているのは「答えが描けたこと」**なので、⚠ **`peelReady` に寄せる**
+      //   （⚠ `.prov-q[data-q="3"]` を見る。⚠ 幅にも `#status` にも依らない）。
+      await peelReady(page);
       await settleAfterCondition(page);
       // ⚠ 戻る手段が、最初から画面に見えていること。
       //   以前はパネルの中の「←今昔」だけで、実測すると
@@ -3427,8 +3464,10 @@ ${dom}
     //   だから、もどる先が**いま見ている場所を持っている**ことまで確かめる。
     name: "3D に場所を探す口は無く、もどると同じ場所のトップへ出る", path: `/peel?${TOYOSU}`,
     async check(page) {
-      await page.waitForFunction(() => /件を判定しました/.test(document.body.innerText),
-        null, { timeout: 60000 });
+      // ⚠ **`#status` の「件を判定しました」は、⚠ 狭い幅で畳まれている**（`ba54efc`）。
+      //   ⚠ **待っているのは「答えが描けたこと」**なので、⚠ **`peelReady` に寄せる**
+      //   （⚠ `.prov-q[data-q="3"]` を見る。⚠ 幅にも `#status` にも依らない）。
+      await peelReady(page);
       const got = await page.evaluate(() => ({
         // 探す口の残骸。id が残っていると、CSS だけ消したつもりが押せる状態になりうる
         ids: ["q", "cands", "quick", "here", "hereMsg", "findBox", "findLabel"]
@@ -3532,8 +3571,10 @@ ${dom}
     name: "取り込んだだけの土地でも、3D が静的で成り立つ",
     path: "/peel?ll=34.39500,132.45500&q=%E5%BA%83%E5%B3%B6",
     async check(page, reqs) {
-      await page.waitForFunction(() => /件を判定しました/.test(document.body.innerText),
-        null, { timeout: 60000 });
+      // ⚠ **`#status` の「件を判定しました」は、⚠ 狭い幅で畳まれている**（`ba54efc`）。
+      //   ⚠ **待っているのは「答えが描けたこと」**なので、⚠ **`peelReady` に寄せる**
+      //   （⚠ `.prov-q[data-q="3"]` を見る。⚠ 幅にも `#status` にも依らない）。
+      await peelReady(page);
       await settleAfterCondition(page);
       const t = (await page.evaluate(() => document.body.innerText)).replace(/\s+/g, " ");
       must(reqs.filter((u) => /overpass/i.test(u)).length === 0,
@@ -3541,11 +3582,16 @@ ${dom}
       const tiles = reqs.filter((u) => /\/data\/bl\/14\//.test(u));
       must(tiles.length > 0, "建物タイルを読んでいない");
       // 詰めた形を読めていること。戻せていなければ建物は1つも建たない
-      const n = Number((t.match(/([\d,]+)\s*件を判定しました/) ?? [])[1]?.replace(/,/g, ""));
+      // ⚠ **建物の総数は、⚠ 3 つ目の問いの答えが持つ**（2026-08-22 以降。⚠ `#status` ではない）。
+      //   ⚠ **見ている主張は同じ**（⚠ 建物が実際に建っていること）。
+      const n = Number((t.match(/([\d,]+) 件の建物が、この範囲にあります/) ?? [])[1]?.replace(/,/g, ""));
       must(n > 0, `建物が1件も建っていない（詰めた形を戻せていない）: ${t.slice(0, 200)}`);
       // ⚠ **場所が「表示データについて」へ移った**（2026-08-22。hidetzu/konjaku#153）。
       //   ⚠ **主張は変えていない**（⚠ いつ取り込んだ結果かが画面にあること）。
-      must(/建物のデータは \d{4}-\d{2}-\d{2} に取り込んだもの/.test(t),
+      // ⚠ **由来の行は「詳しく見る」の中**（2026-08-22。⚠ 畳んである）。
+      //   ⚠ **`innerText` には出ない。**⚠ **`textContent` で読む**（⚠ 主張は同じ）。
+      must(/建物のデータは \d{4}-\d{2}-\d{2} に取り込んだもの/.test(
+        (await page.locator("#landAll").textContent()).replace(/\s+/g, " ")),
         `いつ取り込んだ結果か書かれていない: ${t.slice(0, 200)}`);
       return `Overpass 0 件／タイル ${tiles.length} 枚／${n.toLocaleString()} 件を判定`;
     },
@@ -3766,11 +3812,15 @@ ${dom}
   {
     name: "高さが推定であることを、主張範囲の数字で 1 か所だけ言う", path: `/peel?${TOYOSU}`,
     async check(page) {
-      await page.waitForFunction(() => /件を判定しました/.test(document.body.innerText),
-        null, { timeout: 60000 });
+      // ⚠ **`#status` の「件を判定しました」は、⚠ 狭い幅で畳まれている**（`ba54efc`）。
+      //   ⚠ **待っているのは「答えが描けたこと」**なので、⚠ **`peelReady` に寄せる**
+      //   （⚠ `.prov-q[data-q="3"]` を見る。⚠ 幅にも `#status` にも依らない）。
+      await peelReady(page);
       await settleAfterCondition(page);
       const t = (await page.evaluate(() => document.body.innerText)).replace(/\s+/g, " ");
-      const total = Number((t.match(/建物 (\d+) 件を判定しました/) ?? [])[1]);
+      // ⚠ **建物の総数は、⚠ 3 つ目の問いの答えが持つ**（2026-08-22 以降。⚠ `#status` ではない）。
+      //   ⚠ **見ている主張は同じ**（⚠ 建物が実際に建っていること）。
+      const total = Number((t.match(/(\d+) 件の建物が、この範囲にあります/) ?? [])[1]);
       must(total > 0, `件数が読めない: ${t.slice(0, 80)}`);
       // 「いま画面に出ているもの」に高さの行があること（畳んでいないこと）
       const prov = await page.locator("#prov").textContent();
@@ -3839,8 +3889,10 @@ ${dom}
       page.route("**/data/bl/index.json", (r) => r.abort()),
     ]),
     async check(page) {
-      await page.waitForFunction(() => /件を判定しました/.test(document.body.innerText),
-        null, { timeout: 60000 });
+      // ⚠ **`#status` の「件を判定しました」は、⚠ 狭い幅で畳まれている**（`ba54efc`）。
+      //   ⚠ **待っているのは「答えが描けたこと」**なので、⚠ **`peelReady` に寄せる**
+      //   （⚠ `.prov-q[data-q="3"]` を見る。⚠ 幅にも `#status` にも依らない）。
+      await peelReady(page);
       await settleAfterCondition(page);
       // ---- 建物カード（押した先）----
       const pt = await page.evaluate(() => {

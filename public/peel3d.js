@@ -878,11 +878,12 @@ async function loadArea(lon,lat,title,opt){
   // ⚠ **判定できたときは、⚠ ここに書かない**（2026-08-22。Owner 判断）。
   //   ⚠ **件数は「今建っている建物は？」の分母（`N / M件の足元を判定`）が言う。**
   //   ⚠ **0 件のときは残す**（⚠ **分母が立たないので、⚠ どこにも出なくなる**）。
+  // ⚠ **「建物 N 件を判定しました」は到達しない**（2026-08-23 に気づいた）。
+  //   ⚠ **`area.total>0` のときは空にする**ので、⚠ **ここへ来るのは 0 件のときだけ。**
+  //   ⚠ **死にコードは、⚠ コードより強く誤誘導する**（`CLAUDE.md` §5）。⚠ 落とす。
   statusEl.innerHTML = area.total>0 ? "" : `<span style="color:var(--ink-dim)">${
-    area.total===0
-      ? `この範囲に、<b>OSM に登録された建物は 0 件</b>です${WORD.bldPre(bldSource==="tiles")}。`
-        + `水域と空中写真で表示しています。`
-      : `建物 ${area.total} 件を判定しました${WORD.bldPre(bldSource==="tiles")}。`}</span>${
+      `この範囲に、<b>OSM に登録された建物は 0 件</b>です${WORD.bldPre(bldSource==="tiles")}。`
+      + `水域と空中写真で表示しています。`}</span>${
       blTrunc?`<span class="err"> この範囲は建物が多く、取りきれていない可能性があります。</span>`:""}`;
   if(!waterRead) statusEl.innerHTML = (waterUnread
     ? `<span class="err">明治期の低湿地データを<b>いま読み込めませんでした</b>。</span> `
