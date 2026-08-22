@@ -200,14 +200,29 @@ jobs:
           #     ⚠ 走者どうしが共有する前提（件数の数え方など）を壊しうる。
           #   ⚠ `.github/` も回す（⚠ Workflow 自身を変えたときは確かめたい）。
           #   ⚠ `package.json` / lock も回す（⚠ Playwright の版など実行環境が変わる）。
-          if echo "$files" | grep -qvE '^(\.claude/|docs/|[^/]+\.md$)'; then
-            echo "run=yes" >> "$GITHUB_OUTPUT"
+          # ⚠ **どの suite を回すかは `scripts/render-scope.mjs` が決める**（2026-08-22）。
+          #   ⚠ **判定をここに書き写さない。**⚠ 2 か所に書くと、⚠ 片方だけ古くなる（CLAUDE.md §3）。
+          #   ⚠ **手元でも同じものを使える**: `node scripts/render-scope.mjs origin/main...HEAD`
+          # ⚠ **main へ入るときは、⚠ 必ず全部回す**（⚠ PR で絞ったぶんを、⚠ ここで取り戻す）。
+          if [ "$EVENT" = "push" ]; then
+            plan=$(printf 'top core\ntop search\npeel core')
+            echo "⚠ main への取り込みなので、⚠ 全部回す"
           else
-            echo "run=no" >> "$GITHUB_OUTPUT"
-            echo "⚠ この実行では実描画を回していない（変更が .claude/ ・ docs/ ・ ルートの *.md だけ）"
-            echo "⚠ どれも render.mjs が読まない。画面にも実行環境にも届かない"
-            echo "⚠ 静的検査は回っている（全追跡ファイルを走査している。docs/ も読む）"
+            plan=$(node scripts/render-scope.mjs "origin/$BASE...HEAD")
           fi
+          if [ -z "$plan" ]; then
+            echo "⚠ この実行では実描画を回していない（画面にも実行環境にも届かない変更だけ）"
+            echo "⚠ 静的検査は回っている（全追跡ファイルを走査している。docs/ も読む）"
+          else
+            echo "⚠ 回すもの:"; echo "$plan" | sed 's/^/  /'
+          fi
+          {
+            echo "plan<<KONJAKU_PLAN"
+            echo "$plan"
+            echo "KONJAKU_PLAN"
+          } >> "$GITHUB_OUTPUT"
+          # ⚠ **後ろの段の `if:` は、⚠ これまでどおり run で見る**（⚠ 段を増やさない）
+          if [ -n "$plan" ]; then echo "run=yes" >> "$GITHUB_OUTPUT"; else echo "run=no" >> "$GITHUB_OUTPUT"; fi
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
         if: steps.scope.outputs.run == 'yes'
@@ -267,12 +282,22 @@ jobs:
       #     **アプリが正しく中断したのに検査だけが落ちる**。
       #     core が落ちたら、それは外部のせいにできない＝こちらの不具合。
       #   ⚠ search 群は render.mjs が **1 回だけ**やり直す。やり直した回数は必ず出る。
-      - name: ページが実際に描画されるか（外へ出ない分）
+      # ⚠ **回すものは上の段が決めている**（`scripts/render-scope.mjs`）。
+      #   ⚠ **`while read` を管でつながない**（⚠ 別の殻で走り、⚠ 落ちても気づけない）。
+      #   ⚠ **走った suite と件数は、⚠ render.mjs が 1 行目で名乗る。**
+      - name: ページが実際に描画されるか
         if: steps.scope.outputs.run == 'yes'
-        run: node scripts/render.mjs --group=core
-      - name: ページが実際に描画されるか（住所検索に寄りかかる分）
-        if: steps.scope.outputs.run == 'yes'
-        run: node scripts/render.mjs --group=search
+        env:
+          PLAN: ${{ steps.scope.outputs.plan }}
+        run: |
+          set -eu
+          while read -r suite group; do
+            [ -z "${suite:-}" ] && continue
+            echo "──── --suite=$suite --group=$group"
+            node scripts/render.mjs --suite="$suite" --group="$group"
+          done <<KONJAKU_PLAN
+          $PLAN
+          KONJAKU_PLAN
       # ⚠ 成果物は**落ちたときだけ**残す（render.mjs が失敗時のみ撮る）。
       #   以前は 75 件すべて撮っていたのに、`.artifacts/` が隠しディレクトリで
       #   upload-artifact に除外され、**1枚も保存されていなかった**。

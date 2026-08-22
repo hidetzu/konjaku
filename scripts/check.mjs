@@ -1671,8 +1671,9 @@ head("6. 外部リンク");
     const idx = JSON.parse(rf2(ip, "utf8"));
     // 索引は z12 の束ごとに、中の z14 タイルを1ビットずつ立てて持っている（読み方は evCovered）
     const covered = evCovered(idx, tileOf);
-    const m = /const UNSURVEYED = "ll=([\d.]+),([\d.]+)/.exec(rf2("scripts/render.mjs", "utf8"));
-    if (!m) bad("render.mjs の UNSURVEYED が読めない（未整備の検査が土地を失っている）");
+    // ⚠ **道具は `scripts/render/lib.mjs` へ移った**（2026-08-22 に suite へ割った）。
+    const m = /const UNSURVEYED = "ll=([\d.]+),([\d.]+)/.exec(rf2("scripts/render/lib.mjs", "utf8"));
+    if (!m) bad("render/lib.mjs の UNSURVEYED が読めない（未整備の検査が土地を失っている）");
     else {
       const { t, on } = covered(+m[2], +m[1]);
       on ? bad(`未整備の検査に使っている土地（z14 ${t.x}/${t.y}）を取り込んでしまった。`
@@ -1919,7 +1920,9 @@ head("6. 外部リンク");
     const { existsSync: ex3 } = await import("node:fs");
     const cands = [...htmlFiles, ...jsFiles].map((f) => [f, src[f]])
       .concat([["worker.js", await readFile(join(ROOT, "worker.js"), "utf8").catch(() => "")]])
-      .concat(await Promise.all(["check.mjs", "render.mjs", "search-check.mjs"]
+      // ⚠ **suite に割ったので、⚠ 走者だけ見ても足りない**（2026-08-22）
+      .concat(await Promise.all(["check.mjs", "render.mjs", "search-check.mjs",
+        "render/lib.mjs", "render/top.mjs", "render/peel.mjs"]
         .map(async (f) => [`scripts/${f}`, await readFile(join(ROOT, "scripts", f), "utf8").catch(() => "")])));
     const dead = [];
     let refs = 0;
@@ -3781,12 +3784,17 @@ head("9. 画面の言葉");
     // ⚠ **コメント落としは stripJs を使う。**⚠ 素朴な正規表現で書いたら、
     //   ⚠ **正規表現リテラルの中の `/*` を拾って、本物のコードを大量に消していた**
     //   （2026-08-20 に踏んだ。⚠ **わざと壊しても緑のままだった**）。CLAUDE.md §5。
-    const bare = stripJs(await readFile(join(ROOT, "scripts", "render.mjs"), "utf8"), "render.mjs");
-    const copied = [...new Set(OWNED_BY_WORDS.filter((w) => bare.includes(`"${w}"`)))];
-    copied.length
-      ? bad(`render.mjs が words.js の字を書き写している: ${copied.map((w) => `「${w}」`).join("、")}`
+    // ⚠ **ケースは suite が持つ**（2026-08-22 に割った）。⚠ **走者だけ見ると、⚠ 何も見なくなる。**
+    const files = ["render.mjs", "render/lib.mjs", "render/top.mjs", "render/peel.mjs"];
+    const copied = new Set();
+    for (const f of files) {
+      const bare = stripJs(await readFile(join(ROOT, "scripts", f), "utf8").catch(() => ""), f);
+      for (const w of OWNED_BY_WORDS) if (bare.includes(`"${w}"`)) copied.add(`${f}:「${w}」`);
+    }
+    copied.size
+      ? bad(`実描画が words.js の字を書き写している: ${[...copied].join("、")}`
           + `（言い直すと、製品ではなく検査が落ちる。WORDS から取ること）`)
-      : ok(`render.mjs は words.js の字（${OWNED_BY_WORDS.length} 語）を書き写していない`);
+      : ok(`実描画（${files.length} ファイル）は words.js の字（${OWNED_BY_WORDS.length} 語）を書き写していない`);
   }
 
   // ⚠ **写真の状態と、画面を分断したままにする**（2026-08-20・hidetzu/konjaku#116）。
