@@ -259,10 +259,6 @@
      ⚠ 3D のジオメトリにも既定の色にも触らない。敷きと文字の大きさだけで直す。 */
   /* ⚠ 年（60px）に対して、これが 12px では「言い切っている」ことにならない。
      利用者の言葉:「写真の横に『これは今の街を重ねた絵です』と、写真と同じ大きさで書いてほしい」 */
-  #over{margin-top:6px;font-size:var(--fs-claim);line-height:1.4;color:var(--estimate);
-    letter-spacing:.02em;text-shadow:0 2px 12px rgba(0,0,0,.9)}
-  #over:empty{display:none}
-  #over b{color:var(--ink);font-weight:600}
   /* ⚠ 触る前の案内。押したら消える（役目が終わったものを常設しない）。
      以前は左パネルの中に「建物をクリックすると、その足元を判定する。」と書いてあったが、
      スマホはパネルが閉じて始まり、PC は内スクロールの外だったので、**誰も読んでいなかった**。
@@ -464,10 +460,6 @@
        ⚠ **同じ縦の流れ**に入れる。⚠ **固定値（top:96px など）で避けない**
        （CLAUDE.md §9。実測: 別々に置いた #hud が #land に 92px 食い込んだ）。
      ⚠ **右端も持つ。**持たないと、補足の幅が中身しだいで画面外へ伸びる。 */
-  #chrome{position:absolute;top:14px;left:14px;right:14px;z-index:13;
-    display:flex;flex-direction:column;align-items:flex-start;gap:9px;
-    /* ⚠ **箱そのものは押せない。**押せるのは中のボタンだけ（地図のドラッグを食わない） */
-    pointer-events:none}
   /* ⚠ **行そのものは押せない。**⚠ 押せるのは中のボタンだけ（2026-08-22）。
      ⚠ **地図のドラッグを食わないため。**⚠ 行に敷きを持たせているので、⚠ 行が指を食う。
      ⚠ **「▴ が押せない」の原因はここではなかった**（⚠ `inert` だった。`peel3d.js` の
@@ -491,13 +483,7 @@
   /* ⚠ **補足の層。**⚠ 敷きは自前で持つ（航空写真の上で字が沈まないように）。
      ⚠ 検査は敷きを**祖先まで辿って**見る（render.mjs）。⚠ 敷きを外すと落ちる。
      ⚠ **押せない。**⚠ **幅は HUD と同じ上限に合わせる**（同じものが 2 つの幅で並ばない）。 */
-  #notice{max-width:min(580px,100%);pointer-events:none;
-    padding:8px 10px;border-radius:11px;
-    background:color-mix(in srgb, var(--bg) 82%, transparent);
-    border:1px solid var(--line);backdrop-filter:blur(14px);
-    box-shadow:0 10px 30px rgba(0,0,0,.34)}
   /* ⚠ 中身が 1 つも無いときは、⚠ **箱ごと消す**（空の枠を置かない） */
-  #notice:not(:has(> :not(:empty))){display:none}
   /* ⚠ **押せる的は 44×44 を割らない**（`.claude/rules/css.md`）。
      ⚠ 実測（2026-08-22・小さい状態）: ⚠ **「← 今昔へ」が 38×44** だった（字が隠れて記号だけ）。 */
   .chrome-row a,.chrome-row button{height:var(--tap);min-width:var(--tap);padding:0 12px;border-radius:9px;
@@ -657,7 +643,6 @@
          スクロールしても y=10 のまま動かなかった）。⚠ 効かないコードを足さない。
          スクロールするのは #panel の中身だけで、ページ自体はスクロールしない。
        ⚠ 左右に離す。以前 10px まで詰まって 3/3 が苦情を出した（2026-08-18）。 */
-    #chrome{z-index:17}
     /* ⚠ ☰ は opacity:0 で消えているが、帯の中では**場所を取り続ける**。
          左右に離す配置なので、真ん中に見えない箱が残ると間隔が読めない。畳む。 */
     /* ⚠ **広げても ▴ は残す**（2026-08-22） */
@@ -674,7 +659,6 @@
     /* ⚠ `margin-left:auto` は使わない。⚠ `justify-content:space-between` で足りる */
     /* ⚠ **全画面で根拠を読んでいるあいだ、補足は出さない。**
          ⚠ 地図が見えていないので、地図の上の断りは意味を持たない（#hud も同じ扱い）。 */
-    #panel.open ~ #chrome #notice{display:none}   /* ⚠ 補足は地図が見えているときだけ */
     /* ⚠ 帯のぶん、中身の頭を空ける。空けないと 1 行目が下敷きになる。 */
     /* ⚠ 帯はパネルの中なので、⚠ 頭を空ける必要が無くなった（2026-08-22） */
 
@@ -711,7 +695,6 @@
        ⚠ 実測: `#panel.open ~ …`（0,3,1）に対して `#panel ~ …`（0,2,1）では **負ける**。
          ⚠ **PC は既定で `.open`** なので、⚠ **1280 で常に 0×0 だった。**
        ⚠ **`main` では両方が `:not(.hide)` で同じ強さだった。**⚠ 書き換えたときに弱めた。 */
-    #panel.open ~ #chrome #notice,#panel ~ #chrome #notice{display:block}
     /* ⚠ **PC では 3 つの問いを畳まない**（2026-08-23）。⚠ **板と地図が並ぶので覆っていない。**
        ⚠ **既定（狭い幅）に書いたものは PC にも効く。**⚠ **ここで打ち消す**（`rules/css.md`）。 */
     #panel:not(.open) #landAll{display:block}
@@ -730,12 +713,8 @@
        ⚠ **板は常に左に居る**（常時表示にしたので、⚠ 開閉で居場所が変わらない）。
        ⚠ **だから帯も常にその右。**⚠ 前は `.open` のときだけ `left:320px` にしていて、
          ⚠ **開閉のたびに帯が左右へ飛んでいた。** */
-    #chrome{position:absolute;top:14px;right:14px;z-index:13;
-      display:flex;flex-direction:column;align-items:flex-start;gap:9px;
-      padding:0;background:none;border-bottom:0;backdrop-filter:none}
     /* ⚠ **PC では板が左に居るので、その右へ寄せる**（板と重ねない）。
          ⚠ 実測（2026-08-22・1280×800）: 板は左端から 300px。 */
-    #chrome{left:320px}
     /* ⚠ **PC では、⚠ 板の名乗りを出す**（2026-08-22。Owner 判断）。
        ⚠ **PC の板は常設の左カラム**なので、⚠ **「この板は何か」が分かる名前が要る。**
        ⚠ **狭い幅では出さない**（⚠ 押して着いた先なので知っている。⚠ 縦が足りない）。
@@ -747,12 +726,9 @@
     #panel h1.sr-only{position:static;width:auto;height:auto;margin:0 0 2px;padding:0;
       overflow:visible;clip:auto;clip-path:none;white-space:normal;
       font-size:var(--fs-label);font-weight:400;letter-spacing:.1em;color:var(--ink-dim)}
-    #chrome .chrome-row{
-      justify-content:flex-start;align-items:stretch;width:auto}
     /* ⚠ **PC では ☰ を出す。**⚠ 狭い幅は、⚠ **板を開いているあいだ ☰ を隠している**
        （全画面で読むので、開く導線が要らない）。⚠ 広い画面では板と地図が並ぶので出す。
        ⚠ 実測（2026-08-21）: これを書き忘れて、⚠ **#chrome が 269 → 123px になった。** */
-    #panel ~ #chrome #toggle{display:inline-flex}
       .chrome-row a span{display:inline}
 
     /* 年代の箱は、広い幅の大きさに戻す */
