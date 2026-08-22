@@ -22,7 +22,7 @@
 Node.js 22 以上を使います。
 
 ```
-node serve.js   # → http://localhost:8081
+node scripts/serve.mjs   # → http://localhost:8081
 ```
 
 依存パッケージのインストールは不要です（MapLibre は `public/vendor/` に同梱）。

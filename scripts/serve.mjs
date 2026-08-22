@@ -5,7 +5,9 @@ import { readFile } from "node:fs/promises";
 import { extname, normalize, join } from "node:path";
 
 // 配信対象は public/ のみ（wrangler.jsonc の assets.directory と揃える）
-const ROOT = join(import.meta.dirname, "public");
+// ⚠ **`scripts/` へ移した**（2026-08-22）。⚠ **配るのは repo の `public/`**なので、
+//   ⚠ **1 つ上へ辿る**（⚠ 忘れると `scripts/public` を配って、⚠ 全部 404 になる）。
+const ROOT = join(import.meta.dirname, "..", "public");
 const PORT = Number(process.env.PORT ?? 8081);
 
 const TYPES = {
