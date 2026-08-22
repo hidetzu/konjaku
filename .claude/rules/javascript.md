@@ -16,6 +16,9 @@
 ⚠ **この repo には、その形が既に 7 つある**: `photos.js` / `words.js` / `prov.js` /
 `swale.js` / `ground.js` / `land.js` / `verify.js`。⚠ **新しく切り出すときは、⚠ これに倣う。**
 
+⚠ **ただし `SHOULD` であって `MUST` ではない。**⚠ **DOM を持つ UI 部品は
+[`components.md`](components.md) に従う**（⚠ **そちらが条件を強くしている**）。
+
 ## DOM
 
 - SHOULD: JavaScript だけが使う目印は `data-*`。

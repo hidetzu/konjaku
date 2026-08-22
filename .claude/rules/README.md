@@ -10,6 +10,7 @@
 |---|---|
 | [`domain.md`](domain.md) | 今昔の Domain（何に答える機能か・Source / Domain / Display の分け方） |
 | [`javascript.md`](javascript.md) | 責務の分け方・DOM の触り方・命名 |
+| [`components.md`](components.md) | ⚠ **DOM を持つ UI 部品**（`public/components/`）の境界 |
 | [`css.md`](css.md) | class の付け方・Token・レスポンシブ |
 | [`testing.md`](testing.md) | 何を優先して確かめるか |
 | [`git.md`](git.md) | 禁止する操作 |
