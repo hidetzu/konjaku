@@ -18,7 +18,10 @@ import { execFileSync } from "node:child_process";
 
 // ⚠ **画面に届かないもの。**⚠ ここだけの変更なら、実描画は要らない
 //   （⚠ hidetzu/konjaku#188 で決めた範囲と同じ意味）。
-const NO_RENDER = [/^docs\//, /^\.claude\//, /^[^/]+\.md$/, /^\.github\/ISSUE_TEMPLATE\//];
+const NO_RENDER = [/^docs\//, /^\.claude\//, /^[^/]+\.md$/, /^\.github\/ISSUE_TEMPLATE\//,
+  // ⚠ **検索の fixture は画面に届かない**（2026-08-22。hidetzu/konjaku#204）。
+  //   ⚠ **実描画は 1 ケースも読まない。**⚠ 見るのは `test/search-check.mjs` だけ。
+  /^test\/fixtures\/search\//];
 
 // ⚠ **suite を名指しできるもの。**⚠ ここに無いものは全部に倒す。
 const TO_SUITE = [
