@@ -200,11 +200,14 @@
        ⚠ `#panel.open ~ #land`（⚠ パネルを広げたら隠す）
      ⚠ **層の見た目（.land-line 以下）は残す。**⚠ パネルが使っている。 */
   .land-line{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
-  .land-num{font-size:var(--fs-hero-sm);font-weight:600;line-height:1.15;color:var(--ink);
+  /* ⚠ **答えの数字。**⚠ **`.land-num`（%）と `.land-alt`（件数）は同じ大きさ**
+     （2026-08-23。Owner 判断。⚠ **小さいほう＝もとの「件数」に寄せた**）。
+     ⚠ **どちらもその問いの答えなので、⚠ 片方だけ大きいと重みが違って見える。**
+     ⚠ **`small`（%）を数字より大きくしない。** */
+  .land-num,
+  .land-alt{font-size:var(--fs-badge);font-weight:600;line-height:1.35;color:var(--ink);
     font-variant-numeric:tabular-nums}
-  .land-num small{font-size:var(--fs-body);margin-left:1px}
-  /* 数値を作れないとき（「建物ごとには出せません」）。0% を出さない */
-  .land-alt{font-size:var(--fs-badge);font-weight:600;line-height:1.35;color:var(--ink)}
+  .land-num small{font-size:var(--fs-badge);margin-left:1px}
   .land-what{font-size:var(--fs-note);line-height:1.5;color:#cbd3dc}
   .land-what b{color:var(--water);font-weight:600}
   .land-den{margin-top:3px;font-size:var(--fs-note);line-height:1.5;color:var(--ink-dim)}

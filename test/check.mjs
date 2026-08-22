@@ -3346,9 +3346,15 @@ head("6. 外部リンク");
   else {
     // ⚠ **`esc` も渡す**（2026-08-22。⚠ 内訳が区分名を esc するようになった）。
     //   ⚠ **本物と同じものを渡す**（⚠ ここで別物を作ると、⚠ 検査が本物を見ていない）。
-    const [B, W, P] = new Function("KonjakuSwale", "KonjakuProv", "esc",
+    // ⚠ **`retryAt` / `retryBtn` / `wireRetry` も渡す**（2026-08-22。⚠ 取得失敗のとき、
+    //   ⚠ **内訳が再試行の的を出すようになった**。⚠ 前は `#status` にしか無かった）。
+    const [B, W, P] = new Function("KonjakuSwale", "KonjakuProv", "esc", "retryAt", "retryBtn", "wireRetry",
       `${m[0]}${mw[0]}\nreturn [breakdown, WORD, paintBreakdown];`)(
-        globalThis.KonjakuSwale, globalThis.KonjakuProv, (globalThis.KonjakuEsc?.esc ?? ((x) => String(x))));
+        globalThis.KonjakuSwale, globalThis.KonjakuProv,
+        (globalThis.KonjakuEsc?.esc ?? ((x) => String(x))),
+        { lon: 139, lat: 35, title: "テスト" },
+        (lon, lat, t) => `<button class="retry-btn" data-ll="${lon},${lat}" data-title="${t}">再試行</button>`,
+        () => {});
     // ⚠ 組み立てた結果そのものを見る。**戻り値だけ見ていると、画面に出る分母を見ていない**
     //   （実測 2026-08-19: 分母を総数に戻す壊し方で、この検査が落ちなかった）
     const paint = (counts, total) => { const el = { innerHTML: "" }; P(el, B(counts, total), "ok"); return el.innerHTML; };
@@ -3392,6 +3398,20 @@ head("6. 外部リンク");
       // ⚠ **0 件でも行は出す**（⚠ 隠すのは「無い」と言うのと同じ。掟 §1）
       yes(/建てられた年が分かる/.test(h0), "建設年 0 件のとき、行ごと消えている");
       yes(/>0<span/.test(h0), "建設年 0 件のとき、0 / N と書いていない");
+      // ⚠ **再試行の的は、⚠ 材料の行（`prov.js`）が持つ**（2026-08-22。Owner 判断）。
+      //   ⚠ **層 3 が `missing` のとき、⚠ 内訳の器そのものが作られない**ので、
+      //     ⚠ **内訳に置くと消える**（⚠ 実測 2026-08-22。⚠ 一度そこへ置いて消えた）。
+      //   ⚠ **主張は同じ**（⚠ 取れなかったときは復帰手段を添える。掟）。⚠ **見る場所を移した。**
+      {
+        const Pr = globalThis.KonjakuProv;
+        const fail = Pr.buildingRows({ bldState: "fail" })[0];
+        yes(fail.retry === true, "取得に失敗したのに、再試行の的が無い（戻る手段が消える）");
+        yes(/class="retry-btn"/.test(Pr.html([fail])), "再試行の的が HTML に出ていない");
+        // ⚠ **未対応のときは出さない**（⚠ 押しても直らない。ADR 0026）
+        const notyet = Pr.buildingRows({ bldState: "notyet" })[0];
+        yes(!notyet.retry, "未対応なのに再試行の的がある（押しても何も起きない）");
+        yes(!/class="retry-btn"/.test(Pr.html([notyet])), "未対応の HTML に再試行の的がある");
+      }
     }
     yes(!/swatch[^>]*>\s*(データなし|読み込めず)/.test(paint({ "データなし": 5 }, 5)),
       "資料の範囲外に色見本が付いている");

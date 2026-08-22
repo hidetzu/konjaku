@@ -565,9 +565,15 @@ const {HALF_LON,HALF_LAT}=KonjakuGround;
 // ⚠ 地名は共有された URL の q か、地理院の応答から来る。属性の中も HTML なので esc を通す
 const retryBtn=(lon,lat,title)=>
   `<button class="retry-btn" data-ll="${lon},${lat}" data-title="${esc(title)}">再試行</button>`;
+// ⚠ **どこに置かれた再試行でも拾う**（2026-08-22。Owner 判断で 3 つ目の問いへ移した）。
+//   ⚠ **前は `#status` の中だけを見ていた。**⚠ 移した先で押しても何も起きなくなる。
 function wireRetry(lon,lat,title){
-  statusEl.querySelectorAll(".retry-btn").forEach((b)=>{ b.onclick=()=>loadArea(lon,lat,title); });
+  document.querySelectorAll("#panel .retry-btn").forEach((b)=>{
+    b.onclick=()=>loadArea(lon,lat,title); });
 }
+// ⚠ **いまの場所。**⚠ 再試行を、⚠ **描き直しのたびに繋ぎ直す**ために持つ
+//   （⚠ 3 つ目の問いは `paintLand` が作り直すので、⚠ その都度繋がないと押せない）。
+let retryAt=null;
 
 // ============================================================
 // 年代の段を、この地点に合わせて組み直す
@@ -781,19 +787,14 @@ async function loadArea(lon,lat,title,opt){
     area={ title, total:0, wet:0, classified:0, unread:0, counts:{}, dated:0,
       waterRatio:w.ratio, waterRead, waterUnread, waterRects:w.rects, bldState:notYet?"notyet":"fail",
       landSummary:summarizeLand(w.classCounts,w.classifiedPixels), buildingLand:null };
-    // ⚠ **未対応のときは、⚠ ここに書かない**（2026-08-22。Owner 判断）。
-    //   ⚠ **「今建っている建物は？」が答える。**⚠ 実測（静岡市 375×667）: ⚠ **同じ字が 2 回**出ていた。
-    //   ⚠ **消えたのは繰り返しであって、⚠ 事実ではない**（⚠ 3 つ目の問いに、⚠ 3 点セットで残る）。
-    // ⚠ **取得に失敗したときは、⚠ ここが言う。**⚠ **再試行の的がここにしか無い。**
-    statusEl.innerHTML=(notYet
-      ? ""
-      : blWhy===BL_UNKNOWN
-      ? `<span class="err">建物データを取得できませんでした。</span>
-         <span style="color:var(--ink-dim)">用意してあるかどうかも確かめられていません。</span>`
-      : `<span class="err">建物データを取得できませんでした。</span>
-         <span style="color:var(--ink-dim)">用意はしてありますが、いま読めていません。</span>`)
-      + (notYet ? "" : `<span style="color:var(--ink-dim)">水域と空中写真だけで表示しています。</span> ${retryBtn(lon,lat,title)}`);
-    wireRetry(lon,lat,title);
+    // ⚠ **未対応も取得失敗も、⚠ 3 つ目の問いが答える**（2026-08-22。Owner 判断）。
+    //   ⚠ 実測（静岡市 / 渋谷）: ⚠ **同じ字が `#status` と 3 つ目の問いに 2 か所**出ていた。
+    //   ⚠ **消えたのは繰り返しであって、⚠ 事実ではない。**
+    statusEl.innerHTML="";
+    // ⚠ **取得失敗も、⚠ 3 つ目の問いが言う**（2026-08-22。Owner 判断）。
+    //   ⚠ **前は同じ字が `#status` と 3 つ目の問いに 2 か所出ていた。**
+    //   ⚠ **再試行の的も、⚠ 断りのすぐ隣（3 つ目の問い）へ移した。**
+    retryAt={lon,lat,title};
     // ⚠ **台帳（#prov）も組み直す。** ここで render() を呼んでいなかったので、
     //   台帳だけ「未取得 建物データを**取得中**／まだ**届いていない**だけで」のまま残っていた。
     //   利用者役 3/3 が、その 2 語を見て**自分の通信を疑った**（2026-08-18）。
@@ -1298,6 +1299,8 @@ function paintBreakdown(el,b,bldState,saidByLayer3,area){
   //   ⚠ **地図の既定の色は変えない**（⚠ 水域だったか＝答えの色。⚠ 塗り替えると答えが消える）。
   // ⚠ **「無い」と書かない。**⚠ 0 件のときも行を出し、⚠ **0 / N** と書く（掟 §1）。
   if(!area || !area.total){
+    // ⚠ **再試行は材料の行が持つ**（`prov.js`）。⚠ **層 3 が `missing` のとき、
+    //   ⚠ この器（`#breakdown`）そのものが作られない**ので、⚠ ここに置くと消える（実測 2026-08-22）。
     el.innerHTML=`<div class="hint">${WORD.noBuildings(bldState)}</div>`;
     return;
   }
@@ -1812,6 +1815,8 @@ function describe(v){
     if(box.dataset.html!==html){ box.dataset.html=html; box.innerHTML=html; }
   }
   wireProvPeek();
+  // ⚠ **再試行は、⚠ 描き直しのたびに繋ぎ直す**（⚠ 材料の行は作り直されるため）
+  if(retryAt) wireRetry(retryAt.lon,retryAt.lat,retryAt.title);
   // ⚠ **開閉したら、⚠ その場で描き直す**（2026-08-22）。
   //   ⚠ さもないと ⚠ **次の render まで地図が変わらない**（⚠ 押しても何も起きないに見える）。
   //   ⚠ **同じ要素へ 2 回付けない**（`rules/javascript.md`）。⚠ 印で見分ける。
