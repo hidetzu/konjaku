@@ -1577,7 +1577,13 @@ function paint(v){
     if(map.getLayoutProperty(`g-${e.id}`,"visibility")!==want)
       map.setLayoutProperty(`g-${e.id}`,"visibility",want);
   }
-  const sw=(timelineReady&&swaleVisible(pos,nPhoto))?"visible":"none";
+  // ⚠ **「昔はどんな土地？」の詳しく見るを開いているあいだ、⚠ 明治期を重ねる**
+  //   （2026-08-22。Owner 判断）。⚠ **可視を先に決める**（⚠ 不透明度だけ上げても出ない）。
+  //   ⚠ 実測（2026-08-22）: ⚠ **`opacity` だけ上げて `visibility=none` のままにして、
+  //     ⚠ 地図に何も出なかった。**⚠ この関数の 1 行目のコメントが、⚠ まさにそれを言っていた。
+  //   ⚠ **見るのは層 2 の詳しく見る**。⚠ 建物の側ではない。
+  const peek=!!document.querySelector('.prov-q[data-q="2"] details')?.open;
+  const sw=(timelineReady&&(swaleVisible(pos,nPhoto)||peek))?"visible":"none";
   if(map.getLayoutProperty("g-swale","visibility")!==sw)
     map.setLayoutProperty("g-swale","visibility",sw);
 
@@ -1586,7 +1592,11 @@ function paint(v){
     const s=steps[k];
     if(s&&!s.meiji) map.setPaintProperty(`g-${s.id}`,"raster-opacity",k===i?1-f:f);
   }
-  map.setPaintProperty("g-swale","raster-opacity",i===nPhoto-1?f:0);
+  // ⚠ **凡例だけ出して、⚠ 照合する相手が地図に無い状態を作らない**（ADR 0026 の同類）。
+  //   ⚠ **年代の選択は変えない。**⚠ 閉じれば元の年代の見え方へ戻る。
+  //   ⚠ **薄くする**（0.75）。⚠ **いまの写真を消さない**（⚠ 何に重ねているかが読めなくなる）。
+  map.setPaintProperty("g-swale","raster-opacity",
+    i===nPhoto-1 ? f : (peek ? 0.75 : 0));
 
   map.setPaintProperty("bld","fill-extrusion-height",
     ["*",["get","height"],["max",0,["min",1,["/",["-",["get","vanish"],tau],1.1]]]]);
@@ -1758,11 +1768,29 @@ function describe(v){
   const byQ=KonjakuProv.byQuestion({ groundArrived:arrived, era:near, area,
     blAt, waterRects: area && area.waterRead ? area.waterRects : null,
     landClass: landClassNow() });
+  // ⚠ **中身が変わっていないなら、⚠ 書き直さない**（2026-08-22）。
+  //   ⚠ **書き直すと `<details>` が作り直され、⚠ 開いていたものが勝手に閉じる。**
+  //   ⚠ 実測（2026-08-22）: ⚠ **「詳しく見る」を開いても、⚠ 次の描画で閉じていた。**
+  //     ⚠ `describe()` は段が変わるたび・タイルが届くたびに走る。
+  //   ⚠ **3 つの問いの「詳しく見る」すべてに効いていた。**
   for(const n of [1,2,3]){
     const box=document.querySelector(`.prov-q[data-q="${n}"]`);
-    if(box) box.innerHTML=KonjakuProv.section(byQ[n], KonjakuWords.whyLabel);
+    if(!box) continue;
+    const html=KonjakuProv.section(byQ[n], KonjakuWords.whyLabel);
+    // ⚠ **DOM の現在値と比べない。**⚠ **前回書いた字と比べる。**
+    //   ⚠ 実測（2026-08-22）: ⚠ **開くと `<details>` に `open=""` が入るので、
+    //     ⚠ DOM と比べると必ず「変わった」になり、⚠ 書き直して閉じてしまう。**
+    if(box.dataset.html!==html){ box.dataset.html=html; box.innerHTML=html; }
   }
   wireProvPeek();
+  // ⚠ **開閉したら、⚠ その場で描き直す**（2026-08-22）。
+  //   ⚠ さもないと ⚠ **次の render まで地図が変わらない**（⚠ 押しても何も起きないに見える）。
+  //   ⚠ **同じ要素へ 2 回付けない**（`rules/javascript.md`）。⚠ 印で見分ける。
+  for(const d of document.querySelectorAll('.prov-q[data-q="2"] details')){
+    if(d.dataset.wired) continue;
+    d.dataset.wired="1";
+    d.addEventListener("toggle",()=>{ described=null; render(); });
+  }
 }
 
 // ⚠ 押している間だけ。既定の色は wasWater（99.6% の色そのもの）なので、

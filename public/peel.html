@@ -289,6 +289,10 @@
   /* ⚠ 答えが出ない層は、⚠ 1 行目を残す（⚠ 問いを立てて答えないのは ADR 0026）。
      ⚠ `:first-of-type` は class ではなく **要素の種類**を見るので、⚠ 兄弟の 2 つ目以降で書く。 */
   #panel:not(.open) .land-miss .land-sub ~ .land-sub,
+  /* ⚠ **内訳は 2 つある。⚠ 両方とも小さいときは隠す**（2026-08-22）。
+     ⚠ 実測: ⚠ **`#areaBreak` を一覧に入れ忘れ、⚠ 面積の内訳 8 行だけが出ていた。**
+     ⚠ **同じ「内訳」なのに片方だけ出るのは、⚠ 「小さい＝1 行目だけ」の判断に反する。** */
+  #panel:not(.open) #areaBreak,
   #panel:not(.open) #breakdown,
   #panel:not(.open) .prov-q,
   #panel:not(.open) .sec:not(:first-of-type){display:none}
