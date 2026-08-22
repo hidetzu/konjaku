@@ -5249,6 +5249,48 @@ head("9. 画面の言葉");
   }
 }
 
+// ── 「この画面だけが読む」は、⚠ 本当か ──────────────────────────
+// ⚠ **2026-08-22 に足した**（hidetzu/konjaku#190）。
+// ⚠ **`test/render-scope.mjs` は「このファイルは top だけ／peel だけ」と決めている。**
+//   ⚠ **間違えると、⚠ 落ちるのではなく、⚠ 検査が走らないまま緑になる。**
+// ⚠ **だから、⚠ 実物の HTML と突き合わせる。**⚠ **憶測で足せないようにする。**
+{
+  const scope = await readFile(join(ROOT, "test/render-scope.mjs"), "utf8");
+  const html = {
+    top: await readFile(join(ROOT, "public/index.html"), "utf8"),
+    peel: await readFile(join(ROOT, "public/peel.html"), "utf8"),
+  };
+  // `[/^public\/prov\.js$/,  "peel"],` の並びから拾う
+  const rows = [...scope.matchAll(/\[\/\^public\\\/([^/]+?)\\?\/?\$?\/,\s*"(top|peel)"\]/g)]
+    .map((m) => ({ file: m[1].replace(/\\/g, ""), suite: m[2] }));
+  const wrong = [];
+  let seen = 0;
+  for (const { file, suite } of rows) {
+    // ⚠ HTML そのものは、⚠ 自分を読み込まない
+    if (/\.html$/.test(file)) continue;
+    const other = suite === "top" ? "peel" : "top";
+    // ⚠ **本当に読み込んでいる所だけを見る**（`<script src=…>` / `<link href=…>`）。
+    //   ⚠ **名前で探すと、⚠ コメントの中の言及まで拾う**（2026-08-22 に踏んだ）。
+    //   ⚠ 実際に `peel3d.js` と `places.js` の 2 件を、⚠ **誤って落とした**
+    //     （どちらも「読まない」と書いてあるコメントだった）。
+    const name = file.split("/").pop().replaceAll(".", "\\.");
+    const loads = (h) => new RegExp(`(src|href)=["'][^"']*${name}["']`).test(h);
+    const inOwn = loads(html[suite]);
+    const inOther = loads(html[other]);
+    seen++;
+    if (!inOwn) wrong.push(`${file}: ${suite} だけと書いてあるが、${suite} の画面が読んでいない`);
+    else if (inOther) wrong.push(`${file}: ${suite} だけと書いてあるが、${other} の画面も読んでいる`);
+  }
+  if (!seen) {
+    bad("「この画面だけが読む」ものが 1 つも無い（⚠ この検査が何も見ていない）");
+  } else if (wrong.length) {
+    bad(`実描画を回す先の決め方が、実物と食い違う（${wrong.length} 件）: ${wrong.join(" ／ ")}`
+      + "（⚠ **落ちるのではなく、⚠ 検査が走らないまま緑になる**）");
+  } else {
+    ok(`「この画面だけが読む」が、実物の HTML と合っている（${seen} 件を突き合わせた）`);
+  }
+}
+
 console.log(`\n${"─".repeat(52)}`);
 if (failed) { console.log(`\x1b[31m${failed} 件の問題\x1b[0m${warned ? ` / ${warned} 件の警告` : ""}`); process.exit(1); }
 console.log(`\x1b[32m問題なし\x1b[0m${warned ? ` / ${warned} 件の警告` : ""}`);
