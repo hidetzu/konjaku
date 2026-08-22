@@ -12,6 +12,7 @@
     "ogp": "node scripts/generate-ogp.mjs",
     "check": "node test/check.mjs",
     "check-search": "node test/search-check.mjs",
+    "check-repository": "node test/repository-check.mjs",
     "render": "node test/render.mjs",
     "survey": "node scripts/survey.mjs",
     "cost": "node scripts/cost.mjs",

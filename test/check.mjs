@@ -17,13 +17,25 @@
 // 実行: node scripts/check.mjs        （--links を付けると外部URLも検査する）
 
 import { readFile, readdir } from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { join, extname, basename, dirname } from "node:path";
 import { VERSION_RE, hashOf, readSw } from "../scripts/sw-hash.mjs";
 import { VERSION as BL_VERSION, unpack as blUnpack } from "../scripts/bl-format.mjs";
 
 const ROOT = new URL("..", import.meta.url).pathname;
+// ⚠ **住所検索の口は `public/gsi-address-search.js` の1か所**（hidetzu/konjaku#181）。
+//   ⚠ **この検査も写さない。**⚠ 本番の口に URL を組み立てさせて借りる。
+const gsiSearchUrl = (q) => {
+  const win = {};
+  new Function("window", "module", readFileSync(new URL("../public/gsi-address-search.js",
+    import.meta.url), "utf8"))(win, undefined);
+  let seen = "";
+  win.KonjakuGsiAddressSearch.createGsiAddressSearch({
+    fetch: (u) => { seen = u; return Promise.resolve({ ok: true, json: async () => [] }); },
+  }).search(q);
+  return seen;
+};
 const PUB = join(ROOT, "public");
 const SITE = "https://konjaku.hidetzu.work";
 const CHECK_LINKS = process.argv.includes("--links");
@@ -217,7 +229,8 @@ for (const f of htmlFiles) {
         const cases = [
           [real, true, "判定文の根拠（地形分類）"],
           [new URL(`https://${lfc}/development/ichiran.html`), false, "同じホストだが /xyz/ でないもの"],
-          [new URL("https://msearch.gsi.go.jp/address-search/AddressSearch?q=x"), false, "住所検索"],
+          // ⚠ **口を書き写さない**（2026-08-22。hidetzu/konjaku#181）。⚠ 本番の口から借りる
+          [new URL(gsiSearchUrl("x")), false, "住所検索"],
           [new URL("https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/16/1/1.jpg"), true, "空中写真"],
         ];
         const wrong = cases.filter(([u, want]) => fns.isTile(u) !== want)
@@ -964,7 +977,7 @@ for (const f of htmlFiles) {
 //   「見つかりませんでした」と書いていた）。揃え直したあとも「揃えてあるだけ」で、
 //   片方だけ直す事故が起きうる状態だった（掟: 同じ問いに答える実装を2つ持たない）。
 {
-  const files = ["index.html", "peel.html", "places.js", "peel3d.js", "verify.js", "events.js", "share.js", "esc.js", "sw.js"];
+  const files = ["index.html", "peel.html", "places.js", "gsi-address-search.js", "peel3d.js", "verify.js", "events.js", "share.js", "esc.js", "sw.js"];
   const hits = [];
   for (const f of files) {
     const t = await readFile(join(PUB, f), "utf8").catch(() => "");
@@ -975,10 +988,12 @@ for (const f of htmlFiles) {
     const n = (bare.match(/AddressSearch\?q=/g) ?? []).length;
     if (n) hits.push(`${f}×${n}`);
   }
-  hits.length === 1 && hits[0].startsWith("places.js")
-    ? ok(`住所検索を叩くのは places.js の1か所だけ（${hits[0]}）`)
+  // ⚠ **2026-08-22 に、⚠ 口を `gsi-address-search.js` へ切り出した**（hidetzu/konjaku#181）。
+  //   ⚠ **期待する場所が変わっただけ。**⚠ 「1 か所だけ」という主張は変えていない。
+  hits.length === 1 && hits[0].startsWith("gsi-address-search.js")
+    ? ok(`住所検索を叩くのは gsi-address-search.js の1か所だけ（${hits[0]}）`)
     : bad(`住所検索を叩く箇所が1つでない: ${hits.join("、") || "0 か所"}`
-      + `（画面ごとに持つと、片方だけ直す事故が起きる。places.js の createSearch() を使うこと）`);
+      + `（画面ごとに持つと、片方だけ直す事故が起きる。gsi-address-search.js を使うこと）`);
 }
 
 // ⚠ **プライバシーの説明が、2 つの画面で割れないこと。**
@@ -4957,6 +4972,34 @@ head("9. 画面の言葉");
       ? ok(`docs/adr/README.md の本数の名乗りが合っている（${n} 本）`)
       : bad(`docs/adr/README.md が ${n ?? "?"} 本と名乗っているが、実体は ${adrFiles.length} 本`);
   }
+}
+
+// ⚠ **住所検索の口を、⚠ 2 か所に書かない**（2026-08-22。hidetzu/konjaku#181）。
+//   ⚠ **実際に踏んだ**: `public/places.js` と `test/search-check.mjs` が同じ URL を持ち、
+//     ⚠ **42 語の回帰が、⚠ 本番の取得経路を 1 度も通っていなかった。**
+//     ⚠ **検査が確かめていたのは「検査自身が書いた通信」**で、⚠ 出荷するコードではなかった。
+//   ⚠ **口は `public/gsi-address-search.js` だけが持つ。**
+//   ⚠ **ホスト名だけを挙げる所は別**（⚠ 外部リンクの確認・⚠ 出典の一覧）。⚠ **口の形で見る。**
+{
+  // ⚠ **探す字を、⚠ そのまま書かない**（⚠ 書くと ⚠ **この検査が自分を拾う**。CLAUDE.md §5）。
+  //   ⚠ **実際に踏んだ**（2026-08-22）。
+  const NEEDLE = "address-" + "search/Address" + "Search";
+  const OWNER = "public/gsi-address-search.js";
+  const { readdirSync: rdj } = await import("node:fs");
+  const cand = [...rdj(join(ROOT, "public")).filter((f) => f.endsWith(".js")).map((f) => `public/${f}`),
+    ...rdj(join(ROOT, "test")).filter((f) => f.endsWith(".mjs")).map((f) => `test/${f}`),
+    ...rdj(join(ROOT, "scripts")).filter((f) => f.endsWith(".mjs")).map((f) => `scripts/${f}`)];
+  const holders = [];
+  for (const f of cand) {
+    if (f === OWNER) continue;
+    const t = await readFile(join(ROOT, f), "utf8").catch(() => "");
+    // ⚠ **文字列として書いているものだけを見る**（⚠ コメントで名前を出すのは構わない）
+    if (new RegExp(`["'\`][^"'\`]*${NEEDLE}`).test(t)) holders.push(f);
+  }
+  holders.length
+    ? bad(`住所検索の口を書き写している: ${holders.join("、")}`
+        + `。⚠ **口は ${OWNER} の1か所。**⚠ 写すと、⚠ **検査が本番の経路を通らなくなる**`)
+    : ok(`住所検索の口は ${OWNER} の1か所（⚠ ${cand.length} ファイルを見た）`);
 }
 
 // ⚠ **42 語すべてに fixture があるか**（2026-08-22。hidetzu/konjaku#204）。
