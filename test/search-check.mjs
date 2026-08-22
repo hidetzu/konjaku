@@ -9,17 +9,33 @@
 // 出荷するコードそのもの（public/places.js）を読んで測る。
 // 検査用に写しを作ると、直したつもりで本番が直っていない状態が作れてしまう。
 //
-// 実行: node scripts/search-check.mjs
-//   --offline … .artifacts/search-cache/ に落とした応答で回す（APIを叩かない）
+// 実行: node test/search-check.mjs
+//   （既定）           … ⚠ **fixture で回す。⚠ 外へは 1 本も出ない**
+//   --live             … ⚠ **本物の地理院を叩く**（⚠ 1.5 秒あけて 1 語ずつ。⚠ 42 語で 63 秒以上）
+//   --update-fixtures  … ⚠ **本物を叩いて fixture を取り直す**（⚠ 明示的な操作。⚠ CI では走らせない）
 //
-// ⚠ 住所検索は 10req/10秒 の制限がある。既定で 1.5 秒あけて 1語ずつ叩く。
+// ⚠ **既定を fixture にした理由**（2026-08-22。hidetzu/konjaku#204）:
+//   ⚠ **実測（CI）**: 42 語の回帰が **73 秒**で、⚠ **静的ジョブ 85 秒の 86%** を占めていた。
+//   ⚠ **その大半は待ち**（10req/10秒 の制限に合わせた 1.5 秒 × 42 語 ＝ 最低 63 秒）。
+//   ⚠ **ここで見たいのは「こちらの並べ替えが正しいか」**であって、
+//     ⚠ **地理院がいま生きているかではない。**
+//
+// ⚠ **ただし、⚠ 誰も相手先を見なくなってはいけない**（CLAUDE.md §9 の裏返し）。
+//   ⚠ **本物との疎通は `test/search-live-check.mjs` が、⚠ 定期・手動で数語だけ確かめる。**
+//
+// ⚠ 住所検索は 10req/10秒 の制限がある。⚠ **本物を叩くときだけ** 1.5 秒あける。
 
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 
 const ROOT = new URL("..", import.meta.url).pathname;
-const CACHE = join(ROOT, ".artifacts", "search-cache");
-const OFFLINE = process.argv.includes("--offline");
+// ⚠ **fixture は `git` に載せる**（2026-08-22。hidetzu/konjaku#204）。
+//   ⚠ **`.artifacts/` は捨てる場所**なので、⚠ **CI には存在しなかった。**
+const FIX = join(ROOT, "test", "fixtures", "search");
+const LIVE = process.argv.includes("--live");
+const UPDATE = process.argv.includes("--update-fixtures");
+// ⚠ **`--offline` は、⚠ もう既定。**⚠ **古い呼び方を落とさない**（受けるが何もしない）。
+const ONLINE = LIVE || UPDATE;
 const API = "https://msearch.gsi.go.jp/address-search/AddressSearch?q=";
 const GAP_MS = 1500;
 
@@ -149,17 +165,47 @@ const skip = (m) => { unverified++; console.log(`  \x1b[33m?\x1b[0m ${m}`); };
 const head = (m) => console.log(`\n\x1b[1m${m}\x1b[0m`);
 
 async function fetchWord(w) {
-  const file = join(CACHE, encodeURIComponent(w) + ".json");
-  if (OFFLINE) return JSON.parse(await readFile(file, "utf8"));
+  const file = join(FIX, encodeURIComponent(w) + ".json");
+  // ⚠ **既定は fixture。**⚠ **無ければ、⚠ 何が足りないかを言って落とす**
+  //   （⚠ 黙って 0 件にしない。⚠ 「取れなかった」と混ぜない）。
+  if (!ONLINE) {
+    // ⚠ **fixture の欠けは、⚠ こちらの落ち度**（2026-08-22 に踏んだ）。
+    //   ⚠ **「取れなかった」と混ぜない。**⚠ 相手の話ではないので、⚠ **保留にせず落とす。**
+    //   ⚠ **混ぜると、⚠ fixture を消しただけで「判定できません」と出て緑になる。**
+    try { return JSON.parse(await readFile(file, "utf8")); }
+    catch { throw Object.assign(new Error(
+      `fixture が無い／読めない（${file}）`
+      + `。⚠ **相手の話ではない。**⚠ node test/search-check.mjs --update-fixtures で取る`),
+      { ours: true }); }
+  }
   const r = await fetch(API + encodeURIComponent(w), { signal: AbortSignal.timeout(20000) });
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
   const j = await r.json();
-  await mkdir(CACHE, { recursive: true });
-  await writeFile(file, JSON.stringify(j));       // --offline で回せるように残す
+  // ⚠ **取り直しは明示的な操作のときだけ。**⚠ **`--live` では書き換えない**
+  //   （⚠ 書き換えると、⚠ 落ちるはずの回帰が、⚠ 新しい応答で塗り替えられて通る）。
+  if (UPDATE) { await mkdir(FIX, { recursive: true }); await writeFile(file, JSON.stringify(j)); }
   return j;
 }
 
-head(`検索の並び（${WORDS.length}語${OFFLINE ? " / キャッシュ" : ""}）`);
+// ⚠ **何で回したかを、⚠ 必ず名乗る**（2026-08-22。hidetzu/konjaku#204）。
+//   ⚠ **fixture で回したのに「42 語を確かめた」とだけ出すと、
+//     ⚠ 相手先を見た検査だと読まれる。**
+const meta = ONLINE ? null : await readFile(join(FIX, "_meta.json"), "utf8")
+  .then(JSON.parse).catch(() => null);
+if (!ONLINE) {
+  if (!meta?.takenAt) {
+    bad("fixture の取得日が分からない（test/fixtures/search/_meta.json）"
+      + "。⚠ **いつの応答で回したか言えない検査にしない**");
+  } else {
+    const days = Math.floor((Date.now() - Date.parse(meta.takenAt)) / 86400000);
+    console.log(`\n\x1b[1m検索の並び（${WORDS.length}語 / fixture）\x1b[0m`);
+    console.log(`  ⚠ **外へは 1 本も出ていない。**⚠ 見ているのは「こちらの並べ替え」だけ`);
+    console.log(`  fixture は ${meta.takenAt} に取った（${days} 日前）`
+      + `。⚠ **本物との疎通は test/search-live-check.mjs が別に見る**`);
+  }
+} else {
+  head(`検索の並び（${WORDS.length}語 / ⚠ **本物の地理院**${UPDATE ? " ・ fixture を取り直す" : ""}）`);
+}
 const rows = [];
 // ⚠ 応答そのものが取れなかった語。⚠ **相手の側の話**なので、rows とは別に持つ
 const unfetched = [];
@@ -171,9 +217,11 @@ for (const [w, expect, opt] of WORDS) {
   catch (e) {
     // 取れなかったことを「並びが悪い」と言い換えない（掟: 取れなかったを「無い」と言わない）。
     // ⚠ **落とさない。**⚠ こちらの並べ替えは、この語について何も主張していない。
+    // ⚠ **ただし fixture の欠けは別**（⚠ こちらの落ち度なので、⚠ 保留にせず落とす）。
+    if (e.ours) { bad(`${w}: ${e.message}`); continue; }
     unfetched.push({ w, why: e.message });
     skip(`${w}: 応答を取得できませんでした（${e.message}）。⚠ 判定できません`);
-    if (!OFFLINE) await new Promise((s) => setTimeout(s, GAP_MS));
+    if (ONLINE) await new Promise((s) => setTimeout(s, GAP_MS));
     continue;
   }
   // ⚠ **0 件の応答で落ちない。**⚠ 実測（2026-08-21）: ここを素通りさせると
@@ -182,7 +230,7 @@ for (const [w, expect, opt] of WORDS) {
   if (!Array.isArray(list) || !list.length) {
     empty.push(w);
     skip(`${w}: 応答が 0 件でした。⚠ 判定できません`);
-    if (!OFFLINE) await new Promise((s) => setTimeout(s, GAP_MS));
+    if (ONLINE) await new Promise((s) => setTimeout(s, GAP_MS));
     continue;
   }
   const all = places(list, w, list.length).all;
@@ -194,7 +242,20 @@ for (const [w, expect, opt] of WORDS) {
     .filter((a) => a !== top).map((a) => a.stations));
   rows.push({ w, at, top: shown.rows[0]?.title ?? "", pick: shown.pick, expect,
               noPick: opt?.pick === "no", stations: top.stations, st2 });
-  if (!OFFLINE) await new Promise((s) => setTimeout(s, GAP_MS));
+  if (ONLINE) await new Promise((s) => setTimeout(s, GAP_MS));
+}
+
+// ⚠ **取り直したら、⚠ いつ取ったかを刻む**（2026-08-22。hidetzu/konjaku#204）。
+//   ⚠ **刻まないと、⚠ 「いつの応答で回したか」を誰も言えなくなる。**
+if (UPDATE) {
+  await writeFile(join(FIX, "_meta.json"), JSON.stringify({
+    takenAt: new Date().toISOString().slice(0, 10),
+    source: API,
+    words: WORDS.length,
+    note: "⚠ 地理院の応答をそのまま置いたもの。⚠ 相手先の正しさではなく、"
+        + "⚠ こちらの並べ替えが処理すべき入力例を固定するためのもの",
+  }, null, 2) + "\n");
+  console.log(`\n  fixture を取り直した（${WORDS.length} 語 ／ test/fixtures/search/）`);
 }
 
 // ⚠ **1 語も測れていないときだけ落とす。**

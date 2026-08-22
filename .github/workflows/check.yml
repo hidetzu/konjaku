@@ -47,7 +47,7 @@ jobs:
     #   実測（2026-08-18・成功した 12 回）: 1分33秒 〜 1分48秒。
     #   ⚠ `main` では外部リンクを全部（8 本）叩くので、そのぶんの余裕を見て 10 分。
     timeout-minutes: 10
-    name: 静的検査・外部リンク・検索の並び
+    name: 静的検査・外部リンク
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -99,20 +99,45 @@ jobs:
         continue-on-error: true
         run: node test/check.mjs --links
 
-      # ⚠ 住所検索APIを 42 語、1.5 秒あけて叩く（待機だけで約 63 秒）。
-      #   10req/10秒の制限内に収めている。**ここは速くできない**
-      #   （縮めると相手への頻度が上がる。語数を減らすと回帰の検出力が落ちる）。
-      #   だからこそ、他の短い検査と同じジョブに入れて端数を吸わせる。
-      #   応答が取れなかったときは「並びが悪い」ではなく取得失敗として落ちる。
-      # ⚠ fork の PR では skip する。**地理院の住所検索を 42 回**叩くので、
-      #   public にすると見知らぬ人の PR から地理院へ通信が飛ぶ
-      #   （掟: 地理院への負荷は自分の請求とは別に見る）。
-      #   ⚠ 代償: fork の PR では検索の並びが検証されない。取り込んでから main で見る。
-      #     （--offline で回す手はあるが、fixture の鮮度が別の問題になるので別の課題）
+
+  # ⚠ **検索を独立したジョブにした**（2026-08-22。Owner 判断）。
+  #   ⚠ **理由は速さではない。**⚠ **検索の実装（Repository の切り出し・hidetzu/konjaku#181）を
+  #     進めながら、⚠ そこだけを見て回せるようにする。**
+  #   ⚠ **落ちたときに、⚠ 何が壊れたのかがジョブ名で分かる**（⚠ 静的検査に埋もれない）。
+  # ⚠ **fixture で回す**（hidetzu/konjaku#204）。⚠ **外へは 1 本も出ない。**
+  #   ⚠ **前は 42 語を地理院へ投げ、⚠ 73 秒（静的ジョブ 85 秒の 86%）を使っていた。**
+  #   ⚠ **その大半は待ち**（10req/10秒 の制限に合わせた 1.5 秒 × 42 語）。
+  # ⚠ **fork の skip をやめられた。**⚠ **前は fork の PR で検索の並びを検証していなかった**
+  #   （⚠ 地理院へ通信が飛ぶため skip していた）。⚠ **外へ出ないので、⚠ もう skip しない。**
+  # ⚠ **相手先が生きているかは、⚠ 下の別ジョブが定期・手動で見る。**
+  #   ⚠ **fixture にしたことで、⚠ 誰も相手先を見なくなる**のが、⚠ この変更のいちばんの危険。
+  search:
+    name: 検索の並び（42語・fixture）
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v5.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
+        with:
+          node-version: "22"
       - name: 42語の回帰（1位27以上 / 3位内34以上 / 圏外0 / 誤発火0 / 決められない語で発火0）
-        if: >-
-          github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
         run: node test/search-check.mjs
+
+  # ⚠ **本物の地理院と話せるか**だけを見る（2026-08-22。hidetzu/konjaku#204）。
+  #   ⚠ **PR では走らせない。**⚠ 定期（週 1）と手動のときだけ。
+  #   ⚠ **ここが落ちても、⚠ こちらのコードが壊れたわけではない**（出力にもそう書く）。
+  #   ⚠ **並べ替えの回帰は静的ジョブが fixture で見ている。**⚠ 二重に叩かない。
+  search-live:
+    name: 住所検索と話せるか（本物・数語）
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v5.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
+        with:
+          node-version: "22"
+      - run: node test/search-live-check.mjs
 
   render:
     # ⚠ **既定は 360 分（6 時間）。**実測（2026-08-18・成功した 11 回）: 5分54秒 〜 6分46秒。
