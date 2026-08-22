@@ -653,6 +653,57 @@ const CASES = [
       return "豊洲: 粗さの行 0 ／「詳細版」0 回";
     } },
   {
+    // ⚠ **並びは「答え → Domain の結果 → 入力データの状態」**（2026-08-22。hidetzu/konjaku#160。Owner 判断）。
+    //   ⚠ **「内訳」は入力データの説明ではない。**⚠ **今昔が入力から計算した Domain 上の結果。**
+    //   ⚠ だから ⚠ **データの話より前**に置き、⚠ 名前も「建物の足元判定」にした。
+    // ⚠ **実測（2026-08-22・前の並び）**: 内訳が 375px で y=830 ＝ ⚠ **画面の外**（8 通り中 6 通り）。
+    //   ⚠ 並べ替えで 4 幅とも画面内に入った。⚠ **この検査は、その並びを固定する。**
+    name: "パネルは 答え → 建物の足元判定 → 使用しているデータ の順", path: `/peel?${TOYOSU}`,
+    viewport: { width: 375, height: 667 }, hasTouch: true,
+    async check(page) {
+      await page.waitForFunction(() => /件を判定しました/.test(document.body.innerText),
+        null, { timeout: 60000 });
+      await settleAfterCondition(page);
+      const out = [];
+      for (const [w, h] of [[1280, 800], [375, 667], [344, 882], [320, 640]]) {
+        await page.setViewportSize({ width: w, height: h });
+        await page.reload({ waitUntil: "domcontentloaded" });
+        await page.waitForFunction(() => /件を判定しました/.test(document.body.innerText),
+          null, { timeout: 60000 });
+        await settleAfterCondition(page);
+        if (await page.evaluate(() => document.getElementById("panel").classList.contains("hide"))) {
+          await page.click("#toggle");
+          await settleAfterClick(page);
+        }
+        const r = await page.evaluate(() => {
+          const panel = document.getElementById("panel");
+          const secs = [...panel.querySelectorAll(".sec")];
+          const labels = secs.map((s) => s.querySelector(".label")?.textContent?.trim() ?? "(答え)");
+          const bd = document.getElementById("breakdown").closest(".sec");
+          const pv = document.getElementById("prov").closest(".sec");
+          const bb = bd.getBoundingClientRect(), pb = pv.getBoundingClientRect();
+          return { labels, bdTop: Math.round(bb.top), pvTop: Math.round(pb.top),
+            // ⚠ **中身が減っていないこと**（⚠ 並べ替えで落としていないか）
+            rows: document.querySelectorAll("#breakdown .stat").length,
+            old: /内訳|表示データについて|いま画面に出ているもの/.test(document.body.innerText),
+            scrollTop: Math.round(panel.scrollTop) };
+        });
+        // ⚠ **前提**（スクロールしていない状態で見る）
+        must(r.scrollTop === 0, `${w}px: パネルがスクロールしている（この検査の前提が消えた）`);
+        // ⚠ **Domain の結果が、入力データの状態より前**
+        must(r.bdTop < r.pvTop,
+          `${w}px: 建物の足元判定がデータの節より後ろにある（${r.bdTop} / ${r.pvTop}）`);
+        // ⚠ **見出しが画面内**（⚠ これがこの Issue の元の困りごと）
+        must(r.bdTop < h, `${w}px: 建物の足元判定が画面の外にある（y=${r.bdTop} / 画面 ${h}）`);
+        // ⚠ **旧名が残っていない**
+        must(!r.old, `${w}px: 旧い節名（内訳／表示データについて）が画面に残っている`);
+        // ⚠ **中身を落としていない**
+        must(r.rows > 0, `${w}px: 建物の足元判定の中身が空`);
+        out.push(`${w}: 足元判定 y=${r.bdTop} / データ y=${r.pvTop}`);
+      }
+      return out.join(" ／ ");
+    } },
+  {
     // 溶接は「この土地の答え」を1枚に見せるためのもの。判定から出た語が無い土地で
     // 囲うと、どこでも同じ2行を囲んだ空箱になり、答えがあるように見える
     // ⚠ **2026-08-21 に、2 度目の書き直し。**
