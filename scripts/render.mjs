@@ -3676,6 +3676,160 @@ const CASES = [
   },
 
   {
+    // ⚠ **EraControlPanel だけを、⚠ 地図もネットも無しで動かす**（2026-08-22。hidetzu/konjaku#171）。
+    //
+    //   ⚠ **なぜ要るか。**⚠ 切り出しただけでは境界は保証されない。
+    //     ⚠ 実測（2026-08-22）: コンポーネントが `esc` を、⚠ **peel3d.js が最上位で宣言した
+    //       ものに黙って頼っていた。**⚠ classic script は最上位の `const` を共有するので、
+    //       ⚠ **実物のページでは動いてしまう。**⚠ **単体で開いて初めて落ちた。**
+    //     ⚠ 静的検査でも捕まらない（`esc` は禁止語ではない）。
+    //
+    //   ⚠ **配信物を増やさない。**⚠ `page.route` で組み立てる（実ファイルを置かない）。
+    //     ⚠ ⚠ 相対 URL を実サーバへ解かせたいので、⚠ **BASE の下の URL に見せる。**
+    //   ⚠ **速い。**⚠ /peel 全体は 1 ケース 10〜30 秒。⚠ ここは 100ms 台（実測）。
+    //   ⚠ **地図・地理院タイル・建物を 1 本も引かないこと**まで見る（引いたら境界が壊れている）。
+    name: "年代の表示と操作が、コンポーネント単体で動く", path: "/", group: "core",
+    async check(page) {
+      const ctx = await page.context().browser().newContext({
+        viewport: { width: 1280, height: 400 }, serviceWorkers: "block" });
+      try {
+        const p2 = await ctx.newPage();
+        // ⚠ **DOM は peel.html から取る。**⚠ ここへ写すと、⚠ **2 か所になって片方が古くなる**（掟）
+        const peel = await readFile(new URL("../public/peel.html", import.meta.url), "utf8");
+        const i = peel.indexOf('<section id="timePanel"');
+        const j = peel.indexOf("</section>", i) + "</section>".length;
+        must(i > 0 && j > i, "peel.html から #timePanel を切り出せない（この検査が何も見ていない）");
+        const dom = peel.slice(i, j);
+        // ⚠ **token は peel.html の :root が持つ。**⚠ ここで値を書くと 2 か所になるので、
+        //   ⚠ **peel.html の :root をそのまま借りる**（字面を写さない）。
+        const rootCss = /:root\{([\s\S]*?)\}/.exec(peel)?.[1] ?? "";
+        // ⚠ **--tap は tokens.css 側**（peel.html の :root には無い）。⚠ ここにある値で確かめる
+        must(rootCss.includes("--text-hero"), "peel.html の :root を読めない（この検査が何も見ていない）");
+        const html = `<!doctype html><html lang="ja"><head><meta charset="utf-8">
+<link rel="stylesheet" href="/css/tokens.css">
+<link rel="stylesheet" href="/components/era-control/era-control.css">
+<style>:root{${rootCss}} body{background:#0b0e13;margin:0;padding:20px;
+  font:14px/1.65 -apple-system,sans-serif;color:var(--ink)}</style></head><body>
+${dom}
+<script src="/esc.js"></script>
+<script src="/components/era-control/era-control.js"></script>
+<script>
+  window.__ev = [];
+  window.__c = createEraControl({ root: document.getElementById("timePanel"),
+    onChangeEra: (p) => window.__ev.push(["era", p]),
+    onTogglePlay: () => window.__ev.push(["play"]) });
+</script></body></html>`;
+        await p2.route(`${BASE}/__era-control-probe`, (r) =>
+          r.fulfill({ status: 200, contentType: "text/html; charset=utf-8", body: html }));
+        // ⚠ **何を引いたかを数える。**⚠ 地図を引いたら境界が壊れている
+        const got = [];
+        p2.on("request", (r) => got.push(new URL(r.url()).pathname));
+        const errs = [];
+        p2.on("pageerror", (e) => errs.push(e.message));
+
+        const t0 = Date.now();
+        await p2.goto(`${BASE}/__era-control-probe`, { waitUntil: "domcontentloaded", timeout: 30000 });
+        const STEPS = [{ id: "now", label: "現在" }, { id: "a", label: "1984–86" },
+                       { id: "b", label: "1945–50" }, { id: "swale", label: "明治期", meiji: true }];
+        // ---- ① 状態を渡すだけで組み上がる ----
+        const a = await p2.evaluate((steps) => {
+          window.__c.update({ steps, pos: 0, playing: false, narrow: false, sealed: false,
+            meijiHas: true, readout: { year: "現在", kick: "", sub: "最新の空中写真", net: "", note: "" }, tone: {} });
+          return { ticks: document.querySelectorAll("#track .tick").length,
+            labs: [...document.querySelectorAll("#track .lab")].map((e) => e.textContent.trim()).filter(Boolean),
+            y: document.querySelector("#timePanel .y").textContent,
+            s: document.querySelector("#timePanel .s").textContent,
+            note: document.querySelector("#rlNote").textContent,
+            radius: getComputedStyle(document.getElementById("timePanel")).borderRadius };
+        }, STEPS);
+        must(!errs.length, `コンポーネント単体で例外が出た: ${errs[0]}`);
+        must(a.ticks === STEPS.length, `目盛りが段の数と合わない（${a.ticks} / ${STEPS.length}）`);
+        must(a.labs.includes("現在") && a.labs.includes("明治期"),
+          `両端の年代名が出ていない: ${a.labs.join("／")}`);
+        must(a.y === "現在" && a.s === "最新の空中写真", `読みが渡らない: ${a.y} / ${a.s}`);
+        must(/空中写真 3 段/.test(a.note), `注記が段の数から出ていない: ${a.note}`);
+        must(a.radius && a.radius !== "0px", `CSS が効いていない（角 ${a.radius}）`);
+
+        // ---- ② 整備されていない土地では、注記が変わる（⚠ 渡した真偽値だけで決まる）----
+        const b2 = await p2.evaluate((steps) => {
+          window.__c.update({ steps, pos: 3, playing: true, narrow: false, sealed: false,
+            meijiHas: false, readout: { year: "明治期", kick: "", sub: "低湿地データ ─ 写真は存在しない", net: "", note: "" },
+            tone: { meiji: true } });
+          return { y: document.querySelector("#timePanel .y").textContent,
+            rlYear: document.querySelector("#rlYear").textContent,
+            note: document.querySelector("#rlNote").textContent,
+            play: document.querySelector("#play").textContent,
+            meiji: document.getElementById("timePanel").classList.contains("meiji") };
+        }, STEPS);
+        must(b2.y === "明治期" && b2.rlYear === "明治期", `年が渡らない: ${b2.y} / ${b2.rlYear}`);
+        must(/未整備/.test(b2.note), `⚠ 未整備の土地で「明治期は地図」と約束している: ${b2.note}`);
+        must(b2.play === "❚❚", `再生中の記号が出ていない: ${b2.play}`);
+        must(b2.meiji, "明治期の見た目に切り替わっていない");
+
+        // ---- ③ 操作が返ってくる（⚠ 中で描き直さない。一方向）----
+        await p2.click("#play");
+        const box = await p2.locator("#track .lab.at-end").boundingBox();
+        await p2.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+        const ev = await p2.evaluate(() => window.__ev);
+        must(ev.some((x) => x[0] === "play"), `▶ の合図が返ってこない: ${JSON.stringify(ev)}`);
+        must(ev.some((x) => x[0] === "era" && x[1] === STEPS.length - 1),
+          `端の年代を押しても最終段が返ってこない: ${JSON.stringify(ev)}`);
+
+        // ---- ④ ⚠ 地図もタイルも建物も引かない ----
+        const outside = [...new Set(got)].filter((u) =>
+          /maplibre|gsi|tile|data\/bl|data\/ev|peel3d/.test(u));
+        must(!outside.length, `⚠ コンポーネント単体なのに外を引いている: ${outside.join(" ")}`);
+        return `${Date.now() - t0}ms／引いた URL ${new Set(got).size} 本（地図 0）`
+          + `／目盛り ${a.ticks}／注記の出し分け ✓／合図 ${ev.length} 件`;
+      } finally { await ctx.close(); }
+    },
+  },
+
+  {
+    // ⚠ **配られる形になっているか**（2026-08-22。hidetzu/konjaku#171 の AC 6）。
+    //
+    //   ⚠ **EraControlPanel を `components/` の下へ出した。**⚠ 動的キャッシュの規則は
+    //     「直下の .js」しか一致しないので、⚠ **SHELL に入れ忘れると、オフラインで出ない。**
+    //
+    //   ⚠ **本当にネットを切って確かめる形は、⚠ 手元では作れなかった。**
+    //     ⚠ `peel.html` は **`location.protocol === "https:"` のときだけ** SW を登録する。
+    //     ⚠ 検査は `http://127.0.0.1` なので、⚠ **SW は一生登録されない。**
+    //     ⚠ 実際に踏んだ（2026-08-22）: `navigator.serviceWorker.ready` を待つ検査を書いたら、
+    //       ⚠ **解決しない Promise で 59 分止まった**（タイムアウトも効かない）。
+    //   ⚠ **だから、⚠ 「SW が実際に配れる状態か」を、⚠ SW 自身の作りから確かめる。**
+    //     ⚠ **静的検査（SHELL に文字列があるか）より強い**: ⚠ **実ファイルが取れることまで見る。**
+    //   ⚠ **これは「オフラインで動く」の証明ではない。**⚠ そこは正直に名乗る。
+    name: "年代 UI のファイルが、SHELL の経路で実際に取れる", path: "/", group: "core",
+    async check(page) {
+      const files = ["/components/era-control/era-control.js",
+                     "/components/era-control/era-control.css"];
+      const sw = await readFile(new URL("../public/sw.js", import.meta.url), "utf8");
+      const out = [];
+      for (const f of files) {
+        // ⚠ **SHELL に載っていること**（載っていないと、SW は取りに行かない）
+        must(sw.includes(`"${f}"`), `sw.js の SHELL に ${f} が無い（オフラインで年代 UI が出ない）`);
+        // ⚠ **実ファイルが本当に取れること。**⚠ 綴りが合っていても中身が無ければ SW の install が失敗する
+        const r = await page.request.get(`${BASE}${f}`);
+        must(r.ok(), `${f} が配れない（HTTP ${r.status()}）。SHELL に書いても実体が無い`);
+        const body = await r.text();
+        must(body.length > 200, `${f} の中身が空に近い（${body.length} 字）`);
+        out.push(`${f.split("/").pop()} ${Math.round(body.length / 1024)}KB`);
+      }
+      // ⚠ **動的キャッシュに頼れないことを、⚠ 規則そのもので確かめる。**
+      //   ⚠ 「SHELL から外しても、動的キャッシュが拾ってくれる」と思い込まないため
+      // ⚠ **コメントを先に落とす。**⚠ 落とさないと、⚠ **この決まりを説明したコメントの字面を拾う**
+      //   （CLAUDE.md §9。⚠ 2026-08-22 に実際に踏んだ: SHELL のコメントに書いた
+      //    「下の CACHEABLE を読む」を規則の本体と取り違えた）。
+      const swBare = sw.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/^\s*\/\/.*$/gm, " ");
+      const rt = /const CACHEABLE\s*=\s*\[([\s\S]*?)\];/.exec(swBare)?.[1];
+      must(rt, "sw.js の動的キャッシュの規則（CACHEABLE）を読めない（この検査が何も見ていない）");
+      must(!/components/.test(rt),
+        "動的キャッシュが components の下を拾う形になっている（SHELL の検査が意味を失う）");
+      return `${out.join("／")}／SHELL に 2 件／動的キャッシュは components を拾わない`;
+    },
+  },
+
+  {
     // ⚠ **答えに出ている区分名の意味が、「なぜそう言える？」を押さずに分かる**
     //   （2026-08-22。hidetzu/konjaku#148）。
     //

@@ -711,6 +711,72 @@ for (const f of htmlFiles) {
        + `（商用利用できないものは 0 件）`);
 }
 
+// ⚠ **EraControlPanel の境界**（2026-08-22。hidetzu/konjaku#171。Owner 指定）。
+//
+// ⚠ **「HUD」という箱ではなく、⚠ `EraControlPanel` を切り出した。**
+//   ⚠ 「HUD」だと、⚠ **また注意書き・建物情報・エラーが入ってくる**（実際に 3 回入った）。
+//   ⚠ `EraControlPanel = 年代の表示と操作` なら境界が強い。
+//
+// ⚠ **見るのは 2 つ。**
+//   a コンポーネントが、⚠ **禁じられた相手を 1 度も参照していない**
+//   b ⚠ **画面が、コンポーネントの中の DOM を直接書いていない**
+//
+// ⚠ **「消した」だけの検査にしない**（`.claude/rules/testing.md`）。
+//   ⚠ **口が生きていること**（画面が `createEraControl` を呼び、`update` を通ること）も見る。
+{
+  const fails = [];
+  const js = src["components/era-control/era-control.js"]
+    ?? await readFile(join(PUB, "components/era-control/era-control.js"), "utf8").catch(() => "");
+  const peel = src["peel3d.js"] ?? "";
+  if (!js) fails.push("era-control.js を読めない（この検査が何も見ていない）");
+  if (!peel) fails.push("peel3d.js を読めない（この検査が何も見ていない）");
+
+  // ⚠ **コメントは先に落とす**（CLAUDE.md §5。⚠ 説明の字面を検査が拾う事故を 3 回踏んでいる）
+  const bare = (t) => t.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/^\s*\/\/.*$/gm, " ");
+  const jsBare = bare(js), peelBare = bare(peel);
+
+  // ---- a コンポーネントが触ってはいけない相手（Owner 指定の 5 つ）----
+  const BANNED = [
+    ["maplibregl", "MapLibre を直接操作している"],
+    ["map\\.", "地図を直接操作している"],
+    ["#land", "土地の答えの箱を書き換えている"],
+    ["history\\.", "履歴を書き換えている"],
+    ["location\\.", "URL を読み書きしている"],
+    ["fetch\\(", "自分でデータを取りに行っている"],
+  ];
+  for (const [re, why] of BANNED)
+    if (new RegExp(re).test(jsBare))
+      fails.push(`era-control.js が ${why}（${re.replace(/\\/g, "")}）`);
+
+  // ---- b 画面が、コンポーネントの中の DOM を直接書いていない ----
+  // ⚠ **id を決め打ちで並べる。**⚠ 1 つでも直書きが残ると、状態が 2 か所に散る
+  const INSIDE = ["rlYear", "rlSub", "rlTicks", "rlKnob", "rlPrev", "rlNext", "rlLeft", "rlRight",
+                  "rlNote", "drum", "drumPos", "drumWrap", "track", "play"];
+  for (const id of INSIDE)
+    if (new RegExp(`getElementById\\("${id}"\\)`).test(peelBare))
+      fails.push(`peel3d.js が #${id} を直接引いている（コンポーネントへ渡す）`);
+  // ⚠ **年代のつまみ（#t）も同じ。**⚠ 値の正本は画面が持つが、⚠ **DOM は持たない**
+  if (/getElementById\("t"\)/.test(peelBare)) fails.push("peel3d.js が #t を直接引いている");
+  for (const w of ["slider.value", "slider.dispatchEvent", "playBtn.textContent"])
+    if (peelBare.includes(w)) fails.push(`peel3d.js に ${w} が残っている`);
+
+  // ---- ⚠ 口が生きていること（⚠ 「消した」だけにしない）----
+  if (!/createEraControl\s*\(/.test(peelBare)) fails.push("peel3d.js が createEraControl を呼んでいない");
+  if (!/\.update\s*\(/.test(peelBare)) fails.push("peel3d.js が update() を通っていない");
+  if (!/g\.createEraControl\s*=/.test(jsBare)) fails.push("era-control.js が createEraControl を出していない");
+
+  // ---- ⚠ 配られること（オフラインで年代 UI が消えない）----
+  // ⚠ **動的キャッシュは直下の .js しか一致しない。**⚠ SHELL に無いと配られない
+  const swTxt = src["sw.js"] ?? "";
+  for (const f of ["/components/era-control/era-control.js", "/components/era-control/era-control.css"])
+    if (!swTxt.includes(`"${f}"`)) fails.push(`sw.js の SHELL に ${f} が無い（オフラインで年代 UI が出ない）`);
+
+  fails.length
+    ? bad(`EraControlPanel の境界が破れている（${fails.length} 件）: ${fails.slice(0, 5).join(" / ")}`)
+    : ok(`EraControlPanel の境界は保たれている`
+       + `（禁止 ${BANNED.length} 件 0／画面からの直書き ${INSIDE.length + 4} 件 0／口は生きている／SHELL に 2 件）`);
+}
+
 // ---------- 5. OGP ----------
 head("5. OGP");
 for (const f of htmlFiles) {

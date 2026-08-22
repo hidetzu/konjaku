@@ -1,0 +1,287 @@
+/* EraControlPanel — 年代の表示と操作。
+ *
+ * ⚠ **peel.html から移しただけ。**⚠ **1 文字も見た目を変えていない**（hidetzu/konjaku#171）。
+ *   ⚠ 規則の順も、コメントも、そのまま持ってきている。
+ *
+ * ⚠ **ここに置くのは、コンポーネントの中だけ。**
+ *   ⚠ `#hud`（画面がこのコンポーネントを置く枠）／`#panel ~ #hud`（画面が隠す判断）／
+ *     `#stateMiss`（共有の復元の断り）は ⚠ **peel.html に残した。**
+ *   ⚠ **コンポーネントに、外の要素を知らせない。**
+ *
+ * ⚠ **色と大きさの token は peel.html の :root が持つ**（`--ink` `--tap` `--fs-*` など）。
+ *   ⚠ **ここで定義し直さない**（2 か所に書くと片方だけ古くなる）。
+ *   ⚠ このコンポーネント専用の値（`--pad-x` / `--pad-y`）だけ、`.time-panel` に閉じている。
+ *
+ * ⚠ **この画面は「狭い幅が既定」**（広い幅だけ `@media(min-width:681px)` で足す）。
+ *   ⚠ **既定に書いたものは PC にも効く。**⚠ PC 側で打ち消し忘れると消える
+ *     （`.claude/rules/css.md`。2026-08-22 に実際に踏んだ）。
+ */
+/* ⚠ パネルを開いている間は出さない。同じ答えを同じ画面で2度言わない
+     （☰ ボタンと同じ手。`~` は後続の兄弟にしか効かないが、#panel は #hud より前にある）。 */
+
+  /* 年代と、その読み方を1枚にまとめる。別々の板を縦に積むと、どれが同じ表示の
+     説明なのか分からず地図も細切れになる。初期状態では全部を見せ、読んだ後は畳める。 */
+  /* ⚠ **いま選択中の年代の読み。**⚠ **.time-panel の見出しの行に置く**（2026-08-22）。
+     ⚠ 以前は独立した箱（#era）だった。⚠ **器を消して、字だけ移した。**
+     ⚠ **横に並べる**（年 → 種別）。⚠ 接続の話（.era-net）だけは別の行に落とす。 */
+  .time-panel .era-readout{min-width:0;display:flex;align-items:baseline;flex-wrap:wrap;
+    column-gap:9px;row-gap:2px;justify-content:flex-start;text-align:left;line-height:1.1}
+  .era-kicker{font-size:var(--fs-note);color:#b8c2cd;letter-spacing:.08em;text-shadow:none}
+  /* ⚠ 普段は名乗らない。空のときに場所を取らせない */
+  .era-kicker:empty{display:none}
+  /* ⚠ 出ていないときだけ名乗る。そのときは目立ってよい（見落とされては困る） */
+  .time-panel.failed .era-kicker{color:#f0c479}
+  /* ⚠ **年代は 1 行に収める。** 実測（2026-08-19・320幅）: 「1936–42」が 2 行に割れて
+       38px → 76px になり、そのぶん箱が伸びて地図が減っていた（画面の 82% が箱）。
+       ⚠ ハイフンで折り返すのを止める。字を小さくして逃げるのではなく、**折らない**。 */
+  /* ⚠ **いま選択中の年。**⚠ 大きさは 4 段で測って決めた（2026-08-22・1280×800・豊洲）。
+       段              見出しの行   HUD
+       30px（ものさしと同じ）  57px   174px
+       ⚠ **22px（これ）**      49px   166px
+       19px                   45px   162px
+       17px                   44px   161px
+     ⚠ **19px 以下は見出しの行が下限（--tap = 44px）に当たり、⚠ それ以上小さくしても
+       HUD は 1px も縮まない。**⚠ 縮む余地は 30 → 17px で 13px しかない。
+     ⚠ **17px は採らなかった。**⚠ 目盛りの文字（12px）と近すぎて、
+       ⚠ **「いま選んでいる年」と「選べる年の一覧」が大きさで区別できない**
+       （利用者役 1/4 が実際に迷った）。
+     ⚠ **中央寄せは持ち込まない。**⚠ 3/4 が PC で「横が空いているのに真ん中に寄っている」
+       と答えたため（ものさしの中央寄せは狭さへの手当て）。
+     ⚠ **`--fs-hero-sm` は「数字を出せないときの、ヒーローの代わりの文」の名で付いている。**
+       ⚠ **年に使うと名前と用途がずれる。**⚠ 段としては合っているので借りているだけで、
+       ⚠ **意味を借りているのではない。** */
+  .time-panel .y{font-size:var(--fs-hero-sm);letter-spacing:.02em;font-weight:200;
+    font-variant-numeric:tabular-nums;white-space:nowrap;color:var(--ink)}
+  /* ⚠ ものさし（狭い幅のときだけ出す。既定は隠す） */
+  #ruler{display:none}
+  #ruler .rl-head{display:flex;align-items:center;gap:8px}
+  #ruler .rl-now{flex:1;text-align:center;line-height:1.1}
+  #ruler #rlYear{display:block;font-size:var(--fs-ruler-year);font-weight:200;
+    letter-spacing:.02em;font-variant-numeric:tabular-nums;white-space:nowrap}
+  #ruler #rlSub{display:block;font-size:var(--fs-note);color:#cbd3dc;letter-spacing:.14em}
+  #ruler #rlSub:empty{display:none}
+  /* ⚠ 44×44 を割らない（掟）。記号は小さくても、的は削らない */
+  #rlPrev,#rlNext{flex:none;width:var(--tap);height:var(--tap);border-radius:11px;
+    border:1px solid var(--line);background:rgba(255,255,255,.06);color:var(--ink);
+    font:inherit;font-size:var(--fs-ruler-arrow);line-height:1;cursor:pointer}
+  #rlPrev:disabled,#rlNext:disabled{opacity:.32;cursor:default}
+  #rlPrev:not(:disabled):hover,#rlNext:not(:disabled):hover{background:rgba(255,255,255,.14)}
+  /* 軸。⚠ 行そのものが指の面（44px）。刻みは押せる顔にしない */
+  #rlAxis{display:flex;align-items:center;gap:8px;height:var(--tap);touch-action:none}
+  #ruler .rl-end{flex:none;font-size:var(--fs-note);color:#9aa7b4;white-space:nowrap}
+  #ruler .rl-line{position:relative;flex:1;height:var(--tap);display:flex;align-items:center}
+  #ruler .rl-line::before{content:"";position:absolute;left:0;right:0;height:2px;
+    background:rgba(255,255,255,.22);border-radius:2px}
+  #rlTicks{position:absolute;left:0;right:0;height:14px;pointer-events:none}
+  #rlTicks i{position:absolute;top:0;width:2px;height:9px;margin-left:-1px;
+    background:rgba(255,255,255,.34);border-radius:1px}
+  /* ⚠ 明治期は写真ではない。刻みの形を変えて、仕切りを入れる */
+  #rlTicks i.rl-meiji{width:9px;height:9px;margin-left:-4px;border-radius:2px;
+    transform:rotate(45deg);background:#8fc6f5}
+  #rlTicks i.rl-cut{width:1px;height:16px;top:-3px;background:rgba(255,255,255,.5)}
+  #rlKnob{position:absolute;width:16px;height:16px;margin-left:-8px;border-radius:50%;
+    background:#eef3f8;box-shadow:0 2px 8px rgba(0,0,0,.5);pointer-events:none}
+  #rlNote{margin-top:5px;font-size:var(--fs-note);color:#9aa7b4;text-align:center;line-height:1.4}
+  #rlNote:empty{display:none}
+  .time-panel .s{font-size:var(--fs-note);letter-spacing:.16em;color:#cbd3dc}
+  /* ⚠ 接続の話は、写真の話と**別の行**に置く。混ぜるとどちらが事実か読めなくなる。
+     ⚠ 既存の .hint とは別物（あちらは根拠パネルの注記）。名前を分けている。 */
+  .time-panel .era-net{flex-basis:100%;font-size:var(--fs-note);color:#f0c479}
+  .time-panel .era-net:empty{display:none}
+  .time-panel.failed .s{color:#f0c479}
+  #eraSummaryNote{font-size:var(--fs-note);color:var(--estimate);white-space:nowrap;text-shadow:none}
+  #eraSummaryNote:empty{display:none}
+  .time-panel.meiji .y{color:var(--water)}
+
+  /* ============ 年代の操作パネル ============ */
+  /* ⚠ **カードの内側の余白は、この 1 組だけ**（2026-08-22 にまとめた）。
+     ⚠ 以前は head と body が別々の値を持ち、⚠ **左右が食い違っていた**
+       （実測 2026-08-22: PC で head 左14 右10 ／ body 左14 右14。
+         狭い幅で head 左11 右5 ／ body 左10 右10）。
+     ⚠ 右 5px は**畳みボタンがいたころの詰め**で、⚠ ボタンを消したあとも残っていた。
+     ⚠ **横は幅で変える**（狭い幅は 10px。⚠ ものさしのノブが画面の縁から 10px だと
+       端末の「戻る」スワイプと喧嘩するため。実測 2026-08-18）。⚠ **縦は共通。** */
+  .time-panel{--pad-x:10px;--pad-y:8px;
+    pointer-events:auto;width:min(720px,100%);border:1px solid rgba(255,255,255,.22);
+    border-radius:14px;background:rgba(8,12,18,.88);box-shadow:0 12px 38px rgba(0,0,0,.42);
+    backdrop-filter:blur(16px);overflow:hidden}
+  /* ⚠ **中身は左に寄せる**（2026-08-22。Owner 判断）。
+     ⚠ 畳みボタンだけは右端に残す（`margin-left:auto`）。⚠ **44×44 の的と位置は変えない。** */
+  .time-panel-head{min-height:var(--tap);padding:var(--pad-y) var(--pad-x);display:flex;
+    align-items:center;justify-content:flex-start;gap:10px}
+  /* ⚠ **いまの年代は、名乗りの下に置く**（2026-08-22。Owner 判断）。
+     ⚠ 横に並べると「現在 → 昔」と「現在」が隣り合い、⚠ **利用者役 3/4 が
+       「現在が 2 回書いてある」と言った**（実測 2026-08-22・1280×800・豊洲）。
+     ⚠ 縦に分けると、上が「この帯は何か」、下が「いま何を見ているか」になる。 */
+  /* ⚠ **見出しの主役**（この帯が何か ＋ いま何を見ているか）。⚠ 畳みボタンの隣に置く。
+     ⚠ 名前は**役割**で付ける（`.claude/rules/css.md`。⚠ `stack` は構造の名前なので使わない）。 */
+  .time-panel-head > .time-panel__main{min-width:0;display:flex;flex-direction:column;gap:2px}
+  .time-panel-name{flex:none}
+
+  .time-panel-name{min-width:0;display:flex;align-items:baseline;gap:9px;white-space:nowrap}
+  #timePanelTitle{font-size:var(--fs-body);font-weight:600;letter-spacing:.05em;color:var(--ink)}
+  /* ⚠ **カードの中身。**⚠ 余白はここと PC の 2 か所だけ（2026-08-22 にまとめた）。
+     ⚠ 以前は 4 か所に散っていて、⚠ **基底で 7px 14px 10px を置いてから、狭い幅で
+       上を 0 に、左右を 10px に上書きし、PC でまた元へ戻す**という往復をしていた。
+     ⚠ この作りは「いまどの値が効いているか」を読むのに 4 か所を追う必要がある。
+     ⚠ **このファイルはモバイルファースト**（基底＝狭い幅、min-width:681px で上書き）。
+       ⚠ だから**基底には狭い幅の値をそのまま書く**。
+       狭い幅  padding 0 10px 10px   ⚠ 上 0 … 見出しの行が padding-top:6px を持つ
+                                     ⚠ 左右 10px … 右端（明治期）のノブが画面の縁から
+                                       10px だった（実測 2026-08-18）。端から引くと
+                                       端末の「戻る」スワイプと喧嘩するので、ノブの半径ぶん空ける
+       PC      padding 7px 14px 10px  ⚠ 下の @media(min-width:681px) に 1 行だけ */
+  /* ⚠ **見た目は class**（`.claude/rules/css.md`: 新しい CSS で #id を使わない）。
+     ⚠ **id は残す。**⚠ JS（`getElementById`）と検査が掴んでいる。 */
+  .time-panel__body{border-top:1px solid rgba(255,255,255,.12);padding:var(--pad-y) var(--pad-x)}
+  /* 左端のノブは track の外へ半径ぶん出る。再生ボタンとの間隔は、ノブの外周を含めて空ける。 */
+  /* ⚠ **ノブは track の左へ半径ぶん（16px）はみ出す。**gap をそのぶん足さないと、
+       見た目の隙間はゼロに近づく。実測: ノブを 25→32px にしたら gap 26px でも
+       隙間が 4px に**悪化**した（2026-08-18）。gap 36 − はみ出し 16 = 20px を残す。 */
+  /* ============ 年代の操作 ============
+     ⚠ **PC（横棒）とスマホ（横ドラムロール）で、置き方を完全に分ける。**
+       共有の既定に片方の都合を書くと、**もう片方が黙って壊れる**。
+       実際に壊した（2026-08-18）: スマホ向けに gap を外したら、
+       PC で **▶ とノブが 16px かぶった**（1280 / 1024 / 900 すべてで再現）。
+     ⚠ ここ（既定）には、**どちらの形にも共通する骨組みだけ**を置く。
+       寸法・余白・どちらを出すかは、下の 2 つのブロックが持つ。 */
+  #bar{width:100%;display:flex;align-items:center}
+  /* ⚠ 実測 36〜38px。44px を割っていた（この画面の他の操作はそろえてある）。
+     ⚠ **左端のノブとの隙間が 5px しか無かった**（実測 2026-08-18・375/320 とも）。
+       「現在」へ戻そうとしてノブを掴み損ね、再生が始まる。#bar の gap で空ける。 */
+  #play{flex:none;width:var(--tap);height:var(--tap);border-radius:9px;cursor:pointer;font-size:var(--fs-body);
+    border:1px solid rgba(255,255,255,.22);background:rgba(255,255,255,.06);color:#cbd3dc;
+    transition:.15s}
+  #play:hover{border-color:var(--action);color:var(--action)}
+  #play[aria-pressed="true"]{background:var(--action);color:#07121c;border-color:var(--action)}
+  /* ⚠ 高さ 56px では、年代の文字の当たり判定が **19px** しか取れなかった
+       （実測 2026-08-18: 「現在」24×19px / 「1984–86」53×19px）。
+       文字は押すと**その段へ飛ぶ**（下の peel3d.js）のに、指の目安 44px を大きく割っていた。
+     ⚠ 文字の箱をそのまま当たり判定に使っている（labAt が矩形で見る）ので、
+       **箱を広げれば当たり判定も広がる**。高さを増やすのはそのため。 */
+  #track{position:relative;flex:1;height:72px;cursor:pointer}
+  #track .rail{position:absolute;top:19px;left:0;right:0;height:5px;border-radius:999px;
+    background:rgba(255,255,255,.32)}
+  #track .fill{position:absolute;top:19px;left:0;height:5px;border-radius:999px;background:var(--action)}
+  /* 1本が steps の1層。ラベルは狭い画面で間引いても、層の区切り自体は全て残す。 */
+  #track .tick{position:absolute;top:14px;width:2px;height:15px;margin-left:-1px;
+    border-radius:999px;background:#8995a2}
+  #track .tick.on{background:var(--action)}
+  #track .tick.selected{top:10px;height:23px;background:var(--ink)}
+  /* ⚠ **押せると見えるようにする。** 利用者役 3/3 が「ラベルを押せるようにしてほしい」と
+       言ったが、**機能は既にあった**（押すとその段へ飛ぶ）。
+       「枠も下線も無い、ただの薄い字なので押せるようには見えません」（実測 2026-08-18）。
+     ⚠ 縦 44px の当たり判定にする。横は広げない — 隣の年代と箱が重なって誤爆する
+       （中心の間隔は 375px で 69px しかない）。 */
+  /* ⚠ **枠付きのチップにしてはいけない。** 一度そうして実測したら、375px で
+       5 つが重なり「1945–50」が「1945–」に切れた（2026-08-18）。
+       文字の中心の間隔は 375px で 58px しかなく、「1984–86」の字だけで 53px ある。
+       **横に 1px も足す余地が無い。**
+     ⚠ そこで、**幅は増やさずに縦だけ 44px** にし、押せることは
+       点線の下線で伝える（横幅を食わない手掛かり）。 */
+  /* ⚠ 下線は**箱ではなく文字に**付ける。箱（44px）の底に付けたら、
+       文字から 25px 下に離れて手掛かりにならなかった（実測 2026-08-18）。 */
+  #track .lab{position:absolute;top:28px;height:44px;display:flex;align-items:center;
+    font-size:var(--fs-note);color:#bec8d3;
+    text-decoration:underline dotted rgba(255,255,255,.5);text-underline-offset:4px;
+    text-shadow:0 1px 5px #000;transform:translateX(-50%);white-space:nowrap}
+  /* 名前を間引いた段は的にしない（押しても何が選ばれたか読めない）。枠も出さない */
+  #track .lab:empty{display:none}
+  #track .lab.selected{color:var(--ink);font-weight:600;
+    text-decoration-color:var(--action)}
+  /* ⚠ 端の2つは中心そろえにしない。枠の外へ出て横スクロールが生まれる（peel3d.js に実測） */
+  #track .lab.at-start{transform:none}
+  #track .lab.at-end{transform:translateX(-100%)}
+  /* ⚠ 実測 25×25px。掴む的としては小さい（この画面の他の操作は 44px にそろえてある）。
+     ⚠ 44px まで広げるとレールの上で目盛りを覆うので、32px までにして
+       **文字のタップ**（44px）を主役にする。掴むのは補助。 */
+  #track .knob{position:absolute;top:6px;width:32px;height:32px;border:3px solid #07121c;
+    border-radius:50%;background:var(--ink);margin-left:-16px;
+    box-shadow:0 0 0 2px rgba(255,255,255,.48),0 3px 14px rgba(0,0,0,.75);transition:background .2s}
+  #track.meiji .knob{background:var(--water)}
+  /* ⚠ 飾りは指を受け取らない。**年代の文字も含めて**、操作は range input に一本化する。
+     実測（2026-08-14・375px）: 飾りが input を覆っていた頃は、年代の文字5つは全滅、
+     目盛りも大半が無反応、ノブは掴めなかった。**いちばん押したくなる的が、全部死んでいた。**
+     ⚠ 文字だけを pointer-events:auto に戻さない。押下が input に届かず range が
+     ドラッグを始めないので、**文字の上から引いても値が段に貼り付いて動かない**
+     （実測 2026-08-16・375×667・豊洲: 右へ 120px 引いて 200 → 200 → 200 …）。
+     「文字を押したらその段へ寄せる」は peel3d.js が pointerup で行う（既定動作を止めない）。 */
+  #track .rail,#track .fill,#track .tick,#track .lab,#track .knob{pointer-events:none}
+  #track input{position:absolute;inset:0;width:100%;height:100%;
+    opacity:0;cursor:pointer;margin:0}
+
+  /* ---- PC: 横棒（スライダー） ---- */
+  /* ⚠ PC は 1 段 77px あり、横棒のほうが一覧できる。ドラムは出さない。 */
+
+  #drum::-webkit-scrollbar{display:none}
+    .time-panel{width:min(580px,100%)}
+    /* ⚠ **狭い幅は「ものさし」に差し替える。**ドラムと横棒・▶・見出し行は出さない。
+         実測（2026-08-19）: ドラムでは 9 段のうち画面に入るのが 320 幅で **1 個**だけで、
+         「明治期」は x=849 と画面の外。⚠ どこまで遡れるかが**構造として**見えていなかった。
+       ⚠ 捨てたもの: 年号の直タップ・▶ の常設・見出し行（44px）。
+         代わりに ＜＞（44×44）と、軸そのもののドラッグで動かす。
+       ⚠ PC は今のまま（横棒）。**置き方を PC / スマホで分ける**という既存の判断を守る。 */
+    #ruler{display:block}
+    /* ⚠ **display:none で消す。**visibility や幅 0 では、**キーボードで到達できてしまう**。
+         実測（2026-08-19・320幅）: 隠したはずの #timeToggle / #play / #t とドラムの
+         ボタン 9 個に、⚠ **見えないまま焦点が当たった**（掟: 押しても何も起きない導線を置かない）。
+       ⚠ しかも #timeToggle は aria-expanded="true" のまま残っていた。
+         読み上げには「開いている折りたたみ」があるように聞こえる。
+       ⚠ display:none なら、焦点も読み上げも同時に外れる。 */
+    /* ⚠ **見出しの中身は消すが、⚠ 読みだけは残す。**
+       ⚠ 消すと「読み込めませんでした」「まだ出ていません」の名乗りが狭い幅で消える
+         （掟: 取れなかったことを「無い」と言わない）。 */
+    #timePanelTitle,#bar{display:none}
+    /* ⚠ **年を 2 か所に出さない。**（掟: 同じ問いに答える実装を 2 つ持たない）
+         ものさしが年を答えるので、年代の箱の大字は狭い幅では出さない。
+         ⚠ 年代の箱に残すのは「いま何の写真か（陸軍撮影）」と、届いていないときの名乗り。
+       ⚠ 実測（2026-08-19・320幅）: これで #era は 191 → 78px になる。 */
+    .time-panel .y{display:none}
+
+    /* ⚠ 60px は、年の大字（38px）＋説明（12px）を縦に積んでいたころの下限。
+         狭い幅では年をものさしへ移したので、⚠ **下限は押せる大きさ（44px）でよい**。 */
+
+
+    #timePanelTitle{font-size:var(--fs-lead)}
+
+    /* ============ 横ドラムロール ============ */
+    /* ⚠ 横棒（#track）は出さない。ただし **#t は DOM に残す**（値の正本・▶ が動かす）。 */
+    #track{display:none}
+    /* ⚠ **▶ と年代の枠を離す。**くっつけたら隙間 0px になり、年代の文字が ▶ の真横で
+         切れた（実測 2026-08-18: 375 で 6px・320 で **33px** 切れ）。
+       ⚠ ▶ 自体も左へ寄せる（帯の左余白を削る）。 */
+    #bar{padding:0 8px;gap:14px}
+    #drum{display:flex;width:100%;overflow-x:auto;scrollbar-width:none;
+      scroll-snap-type:x mandatory;overscroll-behavior-x:contain;
+      /* ⚠ 端の段も真ん中に来られるよう、前後に枠の半分ぶんの余白を置く */
+      padding:0 calc(50% - 44px);gap:0;
+      /* ⚠ **両端をぼかす。**切れた段が読めない断片として ▶ の横に立つのを避ける。
+         ⚠ 切ること自体はやめない。「次がある」の手掛かりなので、薄く残す。 */
+      -webkit-mask-image:linear-gradient(90deg,transparent 0,#000 26px,#000 calc(100% - 26px),transparent 100%);
+      mask-image:linear-gradient(90deg,transparent 0,#000 26px,#000 calc(100% - 26px),transparent 100%)}
+    /* ⚠ 320px では帯が 242px しかなく、年代の文字の間隔が 60px。
+         「1945–50」が 53px あるので、隣の「明治期」とくっついて
+         **「1945–50明治期」と 1 語に読めた**（実測 2026-08-18）。
+       ⚠ 文字を間引くと、その段はタップで選べなくなる（間引いた段は的にしない）。
+         **間引かずに、いちばん狭いところだけ字を一段落とす。** */
+    #track .lab{font-size:var(--fs-label);letter-spacing:-.01em}
+
+  @media(min-width:681px){
+    .time-panel .y{display:inline}
+    /* ⚠ 狭い幅では見出しの中身を隠している（ものさしが年を答えるため）。⚠ **PC では戻す。** */
+    .time-panel .time-panel-head{display:flex}
+    #timePanelTitle{display:inline}
+    /* ⚠ **▶ と横棒の行**（#bar）。⚠ 狭い幅ではドラムに差し替えるため隠している */
+    #bar{display:flex}
+    #timePanelTitle{font-size:var(--fs-body)}
+
+    /* 年代を選ぶ道具は、PC では横棒（狭い幅はものさし・ドラム） */
+    #ruler{display:none}
+    #track{display:block}
+    #track .lab{letter-spacing:normal;font-size:var(--fs-note)}
+    #drum,#drumWrap,#drumMark,#drumPos{display:none}
+    /* ⚠ **ノブは横棒の外へ半径ぶん（16px）はみ出す。**
+       gap にそのぶんを含めないと、いちばん左（現在）で ▶ と重なる。
+       ⚠ 左右の padding も同じ理由（右端＝明治期のノブが画面の縁に触れる）。 */
+    #bar{padding:0 16px;gap:36px}
+    .time-panel{--pad-x:14px;width:min(720px,100%)}}
