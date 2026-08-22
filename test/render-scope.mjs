@@ -1,6 +1,6 @@
 // 変更ファイルから、⚠ **どの実描画を回すか**を決める（2026-08-22。hidetzu/konjaku#187）。
 //
-//   node scripts/render-scope.mjs origin/main...HEAD
+//   node test/render-scope.mjs origin/main...HEAD
 //
 // ⚠ **出すのは「回すもの」だけ**（1 行 1 つ）:
 //
@@ -24,11 +24,11 @@ const NO_RENDER = [/^docs\//, /^\.claude\//, /^[^/]+\.md$/, /^\.github\/ISSUE_TE
 const TO_SUITE = [
   [/^public\/peel\.html$/,           "peel"],
   [/^public\/peel3d\.js$/,           "peel"],
-  [/^scripts\/render\/peel\.mjs$/,   "peel"],
+  [/^test\/render\/peel\.mjs$/,      "peel"],
   [/^public\/index\.html$/,          "top"],
   [/^public\/events\.js$/,           "top"],
   [/^public\/places\.js$/,           "top"],
-  [/^scripts\/render\/top\.mjs$/,    "top"],
+  [/^test\/render\/top\.mjs$/,       "top"],
 ];
 
 // ⚠ **一覧を直接渡す口**（`--files=a,b`）。⚠ **配線を確かめるために要る。**

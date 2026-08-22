@@ -20,8 +20,8 @@ import { readFile, readdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { join, extname, basename, dirname } from "node:path";
-import { VERSION_RE, hashOf, readSw } from "./sw-hash.mjs";
-import { VERSION as BL_VERSION, unpack as blUnpack } from "./bl-format.mjs";
+import { VERSION_RE, hashOf, readSw } from "../scripts/sw-hash.mjs";
+import { VERSION as BL_VERSION, unpack as blUnpack } from "../scripts/bl-format.mjs";
 
 const ROOT = new URL("..", import.meta.url).pathname;
 const PUB = join(ROOT, "public");
@@ -101,9 +101,14 @@ for (const f of htmlFiles) {
     .filter((f) => existsSync(join(ROOT, f)));
   const outsideSrc = Object.fromEntries(await Promise.all(
     outside.map(async (f) => [f, await readFile(join(ROOT, f), "utf8")])));
-  const scriptsDir = (await readdir(join(ROOT, "scripts"))).filter((f) => f.endsWith(".mjs"));
+  // ⚠ **検査は `test/` へ移した**（2026-08-22。Owner 判断）。⚠ **両方を見る。**
+  //   ⚠ **片方だけ見ると、⚠ 見ていないほうで静かに書き写される。**
+  const codeDirs = ["scripts", "test", "test/render"];
+  const codeFiles = (await Promise.all(codeDirs.map(async (d) =>
+    (await readdir(join(ROOT, d)).catch(() => []))
+      .filter((f) => f.endsWith(".mjs")).map((f) => `${d}/${f}`)))).flat();
   const scriptsSrc = Object.fromEntries(await Promise.all(
-    scriptsDir.map(async (f) => [`scripts/${f}`, await readFile(join(ROOT, "scripts", f), "utf8")])));
+    codeFiles.map(async (f) => [f, await readFile(join(ROOT, f), "utf8")])));
   const all = { ...src, ...outsideSrc, ...scriptsSrc };
   const holders = Object.keys(all).filter((f) => marker.test(all[f]));
   // ⚠ **表があってよいのは swale.js だけ。** 借りる側は書き写さない
@@ -434,7 +439,7 @@ head("2.6. 配信中の版（/version.json）");
 {
   // ⚠ 版の正しさの定義は scripts/version.mjs に1つだけ置いてある。
   //   ここで字面を写すと、片方だけ直したときに検査が通ってしまう。
-  const { versionJson } = await import("./version.mjs");
+  const { versionJson } = await import("../scripts/version.mjs");
   const SHA = "0123456789abcdef0123456789abcdef01234567";
 
   try {
@@ -797,7 +802,7 @@ for (const f of htmlFiles) {
       // ⚠ **ソースから名前を拾わない。実際に材料になっている一覧をもらう。**
       //   以前はディレクトリ名で前方一致していたので、**/vendor/other.js を足すと
       //   材料に入っていないのに「版の材料」と判定していた**（2026-08-16 の指摘）。
-      const { extraFiles } = await import("./sw-hash.mjs");
+      const { extraFiles } = await import("../scripts/sw-hash.mjs");
       const extra = (await extraFiles()).map((p) => "/" + p);
       const versioned = (u) => (fns.SHELL ?? []).includes(u) || extra.includes(u);
       // ⚠ 代表ファイルは**実在するもの**にする。/vendor/index.json のような
@@ -879,7 +884,7 @@ for (const f of htmlFiles) {
     off.length
       ? bad(`/vendor/ は immutable を名乗っているのに、名前を変えずに中身が変わった: ${off.join("、")}`
           + `（一度来た人は1年間、古いものを使い続ける。改名するか immutable をやめるか決めること。`
-          + `決めたら scripts/check.mjs の PINNED を直す）`)
+          + `決めたら test/check.mjs の PINNED を直す）`)
       : ok(`/vendor/ は immutable の約束を守っている（${Object.keys(PINNED).length} 本の中身が変わっていない）`);
   }
 }
@@ -1419,7 +1424,10 @@ head("6. 外部リンク");
 {
   const { readFileSync: rfk, readdirSync: rdk } = await import("node:fs");
   const files = [...rdk("public").filter((f) => /\.(html|js)$/.test(f)).map((f) => `public/${f}`),
-    ...rdk("scripts").filter((f) => f.endsWith(".mjs")).map((f) => `scripts/${f}`), "worker.js"];
+    ...rdk("scripts").filter((f) => f.endsWith(".mjs")).map((f) => `scripts/${f}`),
+    // ⚠ **検査は `test/` にある**（2026-08-22）。⚠ **ここを落とすと、⚠ 検査の中の §番号を見なくなる。**
+    ...rdk("test").filter((f) => f.endsWith(".mjs")).map((f) => `test/${f}`),
+    ...rdk("test/render").filter((f) => f.endsWith(".mjs")).map((f) => `test/render/${f}`), "worker.js"];
   const hit = [];
   for (const f of files) {
     let t = ""; try { t = rfk(f, "utf8"); } catch { continue; }
@@ -1633,7 +1641,7 @@ head("6. 外部リンク");
 //   （画面は何も言わない）。同じ入力を両方に通して、同じ形になることを見る。
 {
   const { readFileSync: rf3 } = await import("node:fs");
-  const { pack, unpack, VERSION, HSRC } = await import("./bl-format.mjs");
+  const { pack, unpack, VERSION, HSRC } = await import("../scripts/bl-format.mjs");
   // 実際のタイルを1枚、両方の手順で戻して突き合わせる
   const src = JSON.parse(rf3("public/data/bl/14/14553/6453.json", "utf8"));
   const html = rf3("public/peel3d.js", "utf8");
@@ -1664,7 +1672,7 @@ head("6. 外部リンク");
 //   索引に載ったらここで落とす（render.mjs の UNSURVEYED と同じ土地）。
 {
   const { readFileSync: rf2, existsSync: ex2 } = await import("node:fs");
-  const { tileOf } = await import("./db.mjs");
+  const { tileOf } = await import("../scripts/db.mjs");
   const ip = "public/data/ev/index.json";
   if (!ex2(ip)) bad("事物の索引が無い");
   else {
@@ -1672,7 +1680,7 @@ head("6. 外部リンク");
     // 索引は z12 の束ごとに、中の z14 タイルを1ビットずつ立てて持っている（読み方は evCovered）
     const covered = evCovered(idx, tileOf);
     // ⚠ **道具は `scripts/render/lib.mjs` へ移った**（2026-08-22 に suite へ割った）。
-    const m = /const UNSURVEYED = "ll=([\d.]+),([\d.]+)/.exec(rf2("scripts/render/lib.mjs", "utf8"));
+    const m = /const UNSURVEYED = "ll=([\d.]+),([\d.]+)/.exec(rf2("test/render/lib.mjs", "utf8"));
     if (!m) bad("render/lib.mjs の UNSURVEYED が読めない（未整備の検査が土地を失っている）");
     else {
       const { t, on } = covered(+m[2], +m[1]);
@@ -1720,7 +1728,7 @@ head("6. 外部リンク");
 // ⚠ 上限に当たったタイルでは、消えた判定をしてはいけない。
 //   ここは実際に動かして確かめる（読んで確かめると、後で条件が入れ替わっても気づけない）
 {
-  const { toDrop } = await import("./db.mjs");
+  const { toDrop } = await import("../scripts/db.mjs");
   const was = ["wd:Q1", "wd:Q2"], alive = new Set(["wd:Q1"]);
   const normal = toDrop(was, alive, 0), cut = toDrop(was, alive, 1);
   (normal.length === 1 && normal[0] === "wd:Q2" && cut.length === 0)
@@ -1841,7 +1849,7 @@ head("6. 外部リンク");
   const DB = ".data/konjaku.db";
   if (!ex(DB)) ok("索引の元データは手元に無い（取り込みを走らせた人だけが見る検査）");
   else {
-    const { open } = await import("./db.mjs");
+    const { open } = await import("../scripts/db.mjs");
     const db = open();
     for (const layer of ["ev", "bld"]) {
       const rows = db.prepare(
@@ -1921,9 +1929,10 @@ head("6. 外部リンク");
     const cands = [...htmlFiles, ...jsFiles].map((f) => [f, src[f]])
       .concat([["worker.js", await readFile(join(ROOT, "worker.js"), "utf8").catch(() => "")]])
       // ⚠ **suite に割ったので、⚠ 走者だけ見ても足りない**（2026-08-22）
-      .concat(await Promise.all(["check.mjs", "render.mjs", "search-check.mjs",
-        "render/lib.mjs", "render/top.mjs", "render/peel.mjs"]
-        .map(async (f) => [`scripts/${f}`, await readFile(join(ROOT, "scripts", f), "utf8").catch(() => "")])));
+      // ⚠ **検査は `test/`、⚠ 運用は `scripts/`**（2026-08-22 に分けた）。⚠ **両方を見る。**
+      .concat(await Promise.all(["test/check.mjs", "test/render.mjs", "test/search-check.mjs",
+        "test/render-scope.mjs", "test/render/lib.mjs", "test/render/top.mjs", "test/render/peel.mjs"]
+        .map(async (f) => [f, await readFile(join(ROOT, f), "utf8").catch(() => "")])));
     const dead = [];
     let refs = 0;
     for (const [f, t] of cands) {
@@ -2044,7 +2053,7 @@ head("6. 外部リンク");
 //   「見て 0 件」と「そもそも見ていない」が同じ顔になる。
 {
   const { readFileSync: rfe, readdirSync: rde, statSync: ste, existsSync: exe } = await import("node:fs");
-  const { tileOf } = await import("./db.mjs");
+  const { tileOf } = await import("../scripts/db.mjs");
   const ip = join(PUB, "data", "ev", "index.json");
   if (!exe(ip)) bad("事物の索引が無い（意味検査が何も見ていない）");
   else {
@@ -2139,7 +2148,7 @@ head("6. 外部リンク");
   const { tmpdir } = await import("node:os");
   const dir = mkdtempSync(join(tmpdir(), "konjaku-ev-"));
   try {
-    const { SCHEMA } = await import("./db.mjs");            // ⚠ スキーマは写さない
+    const { SCHEMA } = await import("../scripts/db.mjs");            // ⚠ スキーマは写さない
     const { DatabaseSync } = await import("node:sqlite");
     const dbPath = join(dir, "t.db"), out = join(dir, "ev");
     const db = new DatabaseSync(dbPath);
@@ -3785,10 +3794,11 @@ head("9. 画面の言葉");
     //   ⚠ **正規表現リテラルの中の `/*` を拾って、本物のコードを大量に消していた**
     //   （2026-08-20 に踏んだ。⚠ **わざと壊しても緑のままだった**）。CLAUDE.md §5。
     // ⚠ **ケースは suite が持つ**（2026-08-22 に割った）。⚠ **走者だけ見ると、⚠ 何も見なくなる。**
-    const files = ["render.mjs", "render/lib.mjs", "render/top.mjs", "render/peel.mjs"];
+    const files = ["test/render.mjs", "test/render/lib.mjs",
+      "test/render/top.mjs", "test/render/peel.mjs"];
     const copied = new Set();
     for (const f of files) {
-      const bare = stripJs(await readFile(join(ROOT, "scripts", f), "utf8").catch(() => ""), f);
+      const bare = stripJs(await readFile(join(ROOT, f), "utf8").catch(() => ""), f);
       for (const w of OWNED_BY_WORDS) if (bare.includes(`"${w}"`)) copied.add(`${f}:「${w}」`);
     }
     copied.size
