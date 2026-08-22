@@ -46,6 +46,9 @@ const NEW_LINKS = (() => {
 })();
 
 let failed = 0, warned = 0, passed = 0;
+// ⚠ **必須チェックにしている名前**（ruleset「main を守る」）。
+//   ⚠ **repo の外にあるものを控えている。**⚠ **ruleset を変えたら、⚠ ここも直す。**
+const REQUIRED_CHECKS = ["静的検査・外部リンク", "検索の並び（42語・fixture）", "実描画"];
 const ok   = (m) => { passed++; console.log(`  \x1b[32m✓\x1b[0m ${m}`); };
 const bad  = (m) => { failed++; console.log(`  \x1b[31m✗\x1b[0m ${m}`); };
 const warn = (m) => { warned++; console.log(`  \x1b[33m!\x1b[0m ${m}`); };
@@ -5138,6 +5141,37 @@ head("9. 画面の言葉");
       + "（⚠ **その分だけ外へ出続ける。**⚠ test/render/lib.mjs の ERA_TILE_IDS を直す）");
   } else {
     ok(`実描画で塞ぐ絵が、アプリの年代と揃っている（${want.length} 件を突き合わせた）`);
+  }
+}
+
+// ── 必須チェックの名前を、⚠ 名乗るジョブが居るか ──────────────────
+// ⚠ **2026-08-22 に踏んだ**（hidetzu/konjaku#190）。⚠ **実描画を matrix に分けると、
+//   ⚠ ジョブ名が `実描画 top/core` のように変わる。**⚠ **必須チェックは名前で照合するので、
+//   ⚠ 名乗る者が居なくなると、⚠ 報告が来ないまま PR が永久に待ちになる**（⚠ 落ちるのではない）。
+// ⚠ **ruleset は repo の中に無いので、⚠ 名前をここに控えて突き合わせる。**
+//   ⚠ **これは「ruleset がそうなっている」ことの検証ではない。**⚠ 片側しか見ていない。
+//   ⚠ **ruleset を変えるときは、⚠ ここも一緒に直す。**
+{
+  const yml = await readFile(join(ROOT, ".github/workflows/check.yml"), "utf8");
+  // ⚠ **`name:` の字をそのまま拾う**（⚠ ジョブの id ではない。⚠ 照合されるのは name のほう）
+  const names = [...yml.matchAll(/^\s{4}name:\s*(.+?)\s*$/gm)].map((m) => m[1]);
+  const missing = REQUIRED_CHECKS.filter((c) => !names.includes(c));
+  if (missing.length) {
+    bad(`必須チェックの名前を名乗るジョブが居ない: ${missing.join(" / ")}`
+      + "（⚠ **落ちるのではなく、⚠ 報告が来ないまま永久に待ちになる。**"
+      + "⚠ ジョブ名を変えたなら、⚠ ruleset と、⚠ この検査の一覧も直す）");
+  } else {
+    ok(`必須チェックの名前を、それぞれジョブが名乗っている（${REQUIRED_CHECKS.length} 件）`);
+  }
+  // ⚠ **門番は `always()` でないと、⚠ 上が落ちたときに黙る**（⚠ そこが永久待ちの入口）
+  const gate = /^  render:\n(?:.*\n)*?    if: >-\n((?:\s+.*\n)+?)\s{4}runs-on:/m.exec(yml);
+  if (!gate) {
+    bad("実描画の門番（jobs.render）の実行条件を読めなかった（⚠ この検査が何も見ていない）");
+  } else if (!/always\(\)/.test(gate[1])) {
+    bad("実描画の門番が always() で走らない"
+      + "（⚠ **上の段が落ちると、⚠ 必須チェックの報告が来ないまま永久に待ちになる**）");
+  } else {
+    ok("実描画の門番は、上が落ちても必ず結果を返す（always()）");
   }
 }
 
