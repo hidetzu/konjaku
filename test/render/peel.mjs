@@ -3969,6 +3969,16 @@ ${dom}
         (document.getElementById("landAll")?.textContent ?? "").replace(/\s+/g, " "));
       must(/整備対象外/.test(why),
         `明治期を段から外したのに、⚠ 理由を言っていない: ${why.slice(0, 100)}`);
+      // ⚠ **常時見える場所（ものさしの注記）でも言うこと**（2026-08-23 に踏んだ）。
+      //   ⚠ **段の有無で分岐していたので、⚠ 段を消したら断りごと消えた**
+      //     （⚠ 実測: 「空中写真 5 段 ／ 明治期はこの土地では未整備」→「空中写真 5 段」）。
+      //   ⚠ **スマホの初期画面では、⚠ ここが唯一その事実に触れる場所**
+      //     （⚠ パネルの「整備対象外」は、⚠ 小さいあいだ畳まれている）。
+      const note = await page.evaluate(() =>
+        (document.getElementById("rlNote")?.textContent ?? "").replace(/\s+/g, " ").trim());
+      must(/明治期はこの土地では未整備/.test(note),
+        `ものさしの注記が、⚠ 明治期が無いことを言っていない: 「${note}」`);
+      must(!/明治期は地図/.test(note), `データが無いのに「明治期は地図」と約束している: 「${note}」`);
       return `${labels.length} 段（${labels.join("/")}）／右端 ${labels.at(-1)}／理由は画面にある`;
     },
   },
@@ -3982,7 +3992,11 @@ ${dom}
       await settleAfterCondition(page);
       const labels = await stepLabels(page);
       must(labels.at(-1) === "明治期", `右端が明治期でない: ${labels.join("/")}`);
-      return `${labels.length} 段（右端 ${labels.at(-1)}）`;
+      // ⚠ **注記も、⚠ いままでどおり「明治期は地図」**（⚠ 対で見る。`verify` §5）
+      const note = await page.evaluate(() =>
+        (document.getElementById("rlNote")?.textContent ?? "").replace(/\s+/g, " ").trim());
+      must(/明治期は地図/.test(note), `注記が「明治期は地図」と言っていない: 「${note}」`);
+      return `${labels.length} 段（右端 ${labels.at(-1)}）／注記「${note}」`;
     },
   },
   // ⚠ **押したら地図が本当に変わること**（2026-08-23。⚠ **実際に壊れていた**）。
