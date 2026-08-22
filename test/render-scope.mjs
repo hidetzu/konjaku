@@ -8,6 +8,11 @@
 //   top core
 //   top search
 //
+// ⚠ **`--json` を付けると、⚠ CI の matrix がそのまま食べられる形で出す**
+//   （2026-08-22。hidetzu/konjaku#190）: `[{"suite":"top","group":"core"}, ...]`
+// ⚠ **`--all` は「全部回す」一覧。**⚠ **main へ取り込むときに使う。**
+//   ⚠ **以前は同じ一覧が `check.yml` にも書いてあった。**⚠ 2 か所に書くと片方だけ古くなる。
+//
 // ⚠ **何も要らないときは、⚠ 何も出さない**（⚠ 呼ぶ側は「回さない」と読む）。
 //
 // ⚠ **いちばん大事な規則: 分からなければ全部に倒す。**
@@ -34,8 +39,27 @@ const TO_SUITE = [
   [/^test\/render\/top\.mjs$/,       "top"],
 ];
 
+// ⚠ **全部回すときの一覧。**⚠ **ここ 1 か所で持つ**（2026-08-22。hidetzu/konjaku#190）。
+const ALL = ["top core", "top search", "peel core"];
+
+// ⚠ **出し方は 2 つあるが、⚠ 決め方は 1 つ。**⚠ 形を変えるだけ。
+const emit = (lines) => {
+  if (process.argv.includes("--json")) {
+    console.log(JSON.stringify(lines.map((l) => {
+      const [suite, group] = l.split(" ");
+      return { suite, group };
+    })));
+  } else {
+    console.log(lines.join("\n"));
+  }
+};
+
 // ⚠ **一覧を直接渡す口**（`--files=a,b`）。⚠ **配線を確かめるために要る。**
 //   ⚠ **判定は同じ道を通る**（⚠ 試すためだけの別経路を作らない）。
+// ⚠ **`--all` は差分を見ない。**⚠ **main へ取り込むときは、⚠ 必ず全部回す**
+//   （⚠ PR で絞ったぶんを、⚠ ここで取り戻す）。
+if (process.argv.includes("--all")) { emit(ALL); process.exit(0); }
+
 const given = (process.argv.find((a) => a.startsWith("--files=")) ?? "").split("=")[1];
 const range = process.argv[2] ?? "origin/main...HEAD";
 let files = [];
@@ -47,7 +71,7 @@ try {
     .split("\n").map((s) => s.trim()).filter(Boolean);
 } catch {
   // ⚠ **差分を読めないときは、⚠ 全部に倒す。**⚠ 黙って 0 件にしない
-  console.log("top core\ntop search\npeel core");
+  emit(ALL);
   process.exit(0);
 }
 
@@ -64,4 +88,4 @@ if (full) { need.add("top"); need.add("peel"); }
 const out = [];
 if (need.has("top")) { out.push("top core", "top search"); }
 if (need.has("peel")) out.push("peel core");   // ⚠ peel に search のケースは 0 件
-console.log(out.join("\n"));
+emit(out);
