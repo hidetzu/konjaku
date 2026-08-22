@@ -73,6 +73,17 @@
      ⚠ **畳んだ中身は innerText に出ない＝画面にも出ない**ので、
        ⚠ **「取れなかった」「未対応」「推定」は、⚠ 畳まない側に置いてある。**
      ⚠ 押せる的は 44px を割らない（`.claude/rules/css.md`）。 */
+  /* ⚠ **補足情報**（2026-08-22）。⚠ 中身が両方空なら、⚠ **節ごと出さない。** */
+  /* ⚠ **目には出さないが、⚠ 読み上げと innerText には残す**（2026-08-22）。
+     ⚠ `display:none` / `visibility:hidden` にしない（⚠ 読み上げから消える）。 */
+  .sr-only{position:absolute;width:1px;height:1px;margin:-1px;padding:0;
+    overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;border:0}
+  .sec-note{margin:0 0 12px}
+  .sec-note>.label{font-size:var(--fs-note);letter-spacing:.15em;color:var(--ink-dim);margin-bottom:4px}
+  .sec-note #est,.sec-note #tip{font-size:var(--fs-note);color:var(--ink-dim);line-height:1.6}
+  .sec-note #est::before,.sec-note #tip::before{content:"- "}
+  .sec-note #est:empty::before,.sec-note #tip:empty::before{content:""}
+  .sec-note:not(:has(#est:not(:empty))):not(:has(#tip:not(:empty))){display:none}
   .drill{margin-top:6px}
   .drill>summary{display:flex;align-items:center;gap:6px;min-height:var(--tap);
     cursor:pointer;color:var(--action);font-size:var(--fs-note);list-style:none}
@@ -167,7 +178,21 @@
   /* ⚠ 第1層は主語つき。値だけ強く（docs/DOMAIN.md §2-1） */
   .land-g1{font-size:var(--fs-note);color:var(--ink-dim)}
   .land-g1 b{font-size:var(--fs-lead);color:var(--ink);font-weight:600}
-  .land-q{font-size:var(--fs-label);color:var(--ink-dim);letter-spacing:.04em;margin-bottom:1px}
+  /* ⚠ **3 つの問いは、⚠ 画面の見出し（h1「この場所を深掘り」）と同じ大きさ**
+       （2026-08-22。Owner 判断: ⚠ **小さいと見出しだと分からない**）。
+     ⚠ **色も薄くしない。**⚠ 前は `--fs-label`（いちばん小さい字）＋ `--ink-dim` で、
+       ⚠ **答えの本文より小さかった**（実測 2026-08-22: 問い 11px / 答え 15px）。
+     ⚠ **問いが答えより小さいと、⚠ どこからどこまでが 1 つの問いか読めない。** */
+  .land-q{font-size:var(--fs-claim);color:var(--ink);letter-spacing:.05em;
+    margin:14px 0 4px;font-weight:600}
+  /* ⚠ **答えは箇条書き**（2026-08-22。Owner 判断: `tmp/tmp3.md`）。
+     ⚠ **数字は残す**（Owner 判断。掟 §6・ADR 0020: ⚠ 主張範囲の分母で書く）。
+     ⚠ **印は `-`。**⚠ `⚠` を使わない（この画面では災害リスク専用）。 */
+  #landAll .land-line,#landAll .land-den,#landAll .land-sub{position:relative;padding-left:1em}
+  #landAll .land-line::before,#landAll .land-den::before,#landAll .land-sub::before{
+    content:"-";position:absolute;left:0;color:var(--ink-dim)}
+  /* ⚠ 1 つ目の問いは、⚠ 「今の位置」のすぐ下なので余白を足さない */
+  #landAll .land-layer:first-child .land-q{margin-top:0}
   /* ⚠ 出ない層も、その層の位置に置く。⚠ 薄くするが、消さない */
   .land-miss{opacity:.8}
   /* ⚠ **畳んでも年は見える。**⚠ 見出しの行に置いてあるので、そのまま残る。 */
@@ -614,7 +639,15 @@
        トップの導線だけ変えて画面名は据え置いていたが、着いた先の名前が違うと
        押した人が同じ場所に着いたか分からない。⚠ OGP 画像・og:title・SPEC も同時に直す
        （名乗りが外へ出る面のあいだで割れないこと。npm run check が見ている）。 -->
-  <h1>この場所を深掘り</h1>
+  <!-- ⚠ **h1「この場所を深掘り」は、⚠ 目には出さない**（2026-08-22。Owner 判断）。
+       ⚠ **画面の名前は、⚠ ここへ着いた人には要らない**（⚠ 押して着いた先なので、⚠ 知っている）。
+       ⚠ **代わりに地名（`#placeName`）が先頭に立つ。**⚠ 「どこを見ているか」のほうが要る。
+     ⚠ **消さずに残す理由が 2 つある。**
+       1 ⚠ **OGP の名乗りと結ばれている**（`scripts/generate-ogp.mjs` が
+         ⚠ **`h1 === page.headline`** を見張っている。⚠ 消すと、⚠ **共有カードとの一致を誰も見なくなる**）。
+       2 ⚠ **見出しの無いページにしない**（⚠ 読み上げで、⚠ ここが何のページか分からなくなる）。
+     ⚠ **`display:none` にしない。**⚠ それだと読み上げからも消える。⚠ 見た目だけ外す。 -->
+  <h1 class="sr-only">この場所を深掘り</h1>
   <p class="lead">いまの街が、明治期の地面のどこに立っているか</p>
 
   <!-- ⚠ **ここに検索欄・クイック地点・現在地を置かない**（2026-08-18 方針）。
@@ -634,6 +667,13 @@
   <div id="result" style="display:none">
     <div class="sec">
       <div class="place" id="placeName"></div>
+      <!-- ⚠ **補足情報**（2026-08-22。Owner 判断: `tmp/tmp3.md`）。
+           ⚠ **地図の上（`#notice`）から移した。**⚠ 上の注記に、⚠ **何を引き受けたか**を書いた。
+           ⚠ **空のまま置かない**（`#est:empty` / `#tip:empty` で節ごと消える）。 -->
+      <div class="sec-note" id="noteBox">
+        <div class="label">補足情報</div>
+        <div id="est"></div><div id="tip"></div>
+      </div>
       <!-- ⚠ パネルも**層**で答える（ADR 0030）。スマホの HUD（#land）と同じ値を描く。
            ⚠ **同じ問いに 2 つの答えを持たない。**HUD だけ層にしたとき、
              PC はここが古い形のままで、豊洲で 99.6% が 2 回出ていた。
@@ -733,8 +773,14 @@
          現在の3,555棟が立ち、広島の利用者は最初の3秒「1945年の広島」だと読んだ。
          判別できた人の根拠は画面ではなく**自分の歴史知識**だった。 -->
     <div id="over"></div>
-    <!-- ⚠ 空のまま置かない。建物が立っていないときは何も書かない（無いものを説明しない） -->
-    <div id="est"></div><div id="tip"></div>
+    <!-- ⚠ **`#est` と `#tip` はパネルの「補足情報」へ移した**（2026-08-22。Owner 判断）。
+         ⚠ **移す前の実測（2026-08-15）はこう言っていた**:
+           「誤解を止める文は、⚠ **到達率の高い側にしか置けない**」。
+           ⚠ スマホはパネルが閉じて始まるので、⚠ **☰ を押すまで読めなくなる。**
+         ⚠ **実測（2026-08-22・豊洲）**: 375×667 でパネルを開くと ⚠ **`#est` は見えない**
+           （`checkVisibility()` = false）。⚠ 1280 では開いても見えていた。
+         ⚠ **その代償を Owner が引き受けた判断。**⚠ **黙って動かしたのではない。**
+         ⚠ 検査は「初期画面から読める」→「⚠ **パネルの中で、1 回だけ読める**」へ張り替えた。 -->
   </div>
 </div>
 <!-- ⚠ この画面の中心の答え（建物の何%が明治期には水の上だったか）と、その分母。

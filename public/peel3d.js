@@ -1149,8 +1149,9 @@ function showResult(){
   resultEl.style.display="";
   // ⚠ 以前は「（集計範囲: 〜）」を添える枝があった（2026-08-20 に外した）。
   //   ⚠ **土地ごとの専用の集計範囲が無くなり、中心とズレることが無くなった**ため。
-  // ⚠ **どこを見ているかを、⚠ 名乗ってから答える**（2026-08-22。Owner 判断）。
-  document.getElementById("placeName").textContent = area.title ? `今の位置: ${area.title}` : "";
+  // ⚠ **地名だけ**（2026-08-22。Owner 判断: `tmp/tmp3.md`）。
+  //   ⚠ 一度「今の位置: 」を付けたが、⚠ **モックでは地名だけ**だったので戻した。
+  document.getElementById("placeName").textContent = area.title;
   // ⚠ **パネルも層で描く。**HUD と同じ値（layersOf）を使う。
   //   ⚠ 2 か所で作ると、同じ画面で言うことが食い違う（ADR 0021）。
   //     実測（2026-08-19）: HUD だけ層にしたとき、⚠ **豊洲で 99.6% が 2 回**出ていた
@@ -1163,7 +1164,12 @@ function showResult(){
   // ⚠ **描くのはパネルの 1 か所だけ**（2026-08-21。hidetzu/konjaku#152）
   paintLand(document.getElementById("landAll"), landModel);
   // ⚠ **器を作り直したら、⚠ その場で入れ直す**（2026-08-22）。
-  //   ⚠ `paintLand` は `.prov-q` ごと作り直すので、⚠ **次の render まで空になる。**
+  //   ⚠ `paintLand` は `.prov-q` ごと作り直すので、⚠ **中身が消える。**
+  // ⚠ **`describe()` は前と同じ内容なら早期 return する**（`described` の覚え）。
+  //   ⚠ **器を作り直したことに気づけないので、⚠ 覚えを捨ててから呼ぶ。**
+  //   ⚠ 実測（2026-08-22・豊洲）: ⚠ **これが無いと 4 通り中 2 通りで材料の行が 0 行**になり、
+  //     ⚠ **「推定です」の断りごと消えていた**（掟 §1）。
+  described=null;
   render();
 
   // ⚠ **3 つ目の問いが「まだ出していない」と答えているなら、⚠ 内訳で繰り返さない**
