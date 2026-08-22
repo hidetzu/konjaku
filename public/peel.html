@@ -366,6 +366,14 @@
   .stat{display:flex;justify-content:space-between;gap:8px;font-size:var(--fs-evidence);padding:2.5px 0;
     color:var(--ink-dim);font-variant-numeric:tabular-nums}
   .stat b{color:var(--ink);font-weight:500}
+  /* ⚠ **凡例の色**（2026-08-22。Owner 判断）。
+     ⚠ **こちらで決めた飾りではない。**⚠ **国土地理院の凡例から抽出した RGB そのもの**
+       （`swale.js` の `SWALE[].rgb`。ADR 0017: ⚠ 凡例が機械可読でないものは重ねない）。
+     ⚠ **地図に出ている色と同じ。**⚠ **判定の根拠そのものを見せている。**
+     ⚠ **建物の内訳（`.swatch`）とは形を変える**（⚠ あちらは水／陸の 2 色で、⚠ 分母も違う）。
+     ⚠ **色だけで区別しない。**⚠ 区分名が必ず隣にある（`ui-ux-review`）。 */
+  .stat .legend{display:inline-block;width:10px;height:10px;margin-right:6px;
+    border-radius:2px;border:1px solid rgba(255,255,255,.22);vertical-align:baseline}
   .swatch{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px}
   .prov{font-size:var(--fs-evidence);line-height:1.55;padding:7px 9px;border-radius:6px;margin-bottom:5px}
   .prov.ok{background:rgba(126,224,165,.09);border-left:2px solid var(--evidence)}

@@ -286,12 +286,22 @@ async function buildWater(bbox){
            transparentPixels:a.transparentPixels, unknownPixels:a.unknownPixels };
 }
 
+// ⚠ **1 位だけでなく、⚠ 全部返す**（2026-08-22。Owner 判断）。
+//   ⚠ **前は `entries[0]` だけ返し、⚠ 残りを捨てていた。**
+//   ⚠ 実測（2026-08-22・静岡市）: ⚠ **8 区分ぶん数えていて、⚠ 画面に出ていたのは 1 つだけ。**
+//     田 90.0% ／ 河川・湖沼・海面 9.0% ／ 干潟・砂浜 0.5% ／ 堤防 0.5% ／
+//     砂礫地 0.1% ／ 塩田 0.0% ／ 湿地 0.0% ／ 泥炭地 0.0%
+//   ⚠ **この内訳は、⚠ 明治期の低湿地データだけから作れる。**⚠ **建物は要らない。**
+//     ⚠ **建物が未対応の土地でも出せる**（⚠ 静岡市はまさにそれ）。
+// ⚠ **分母は「区分を特定できた画素」。**⚠ 建物の件数とは別の分母（掟 §6）。
 function summarizeLand(counts, classifiedPixels){
   if(!counts || !(classifiedPixels>0)) return null;
   const entries=Object.entries(counts).filter(([,n])=>n>0).sort((a,b)=>b[1]-a[1]);
   if(!entries.length) return null;
   const [name,count]=entries[0];
-  return {name,count,classifiedPixels,pct:(count/classifiedPixels*100).toFixed(1)};
+  return {name,count,classifiedPixels,pct:(count/classifiedPixels*100).toFixed(1),
+    // ⚠ **全部の内訳。**⚠ 画面がどこまで出すかは画面が決める（⚠ ここは数と意味だけ）
+    all: entries.map(([n,c])=>({name:n,count:c,pct:(c/classifiedPixels*100).toFixed(1)}))};
 }
 
 // 建物の足元に付いた明治期区分の最多値。「該当なし」「特定できず」は
@@ -1131,7 +1141,10 @@ function paintLayer(L){
   //   ⚠ **HUD に土地の答えを出さなくなったので、⚠ 出し分ける相手が無くなった。**
   const subs=(L.subs??[]).map((sb)=>
       sb.kind==="art"   ? `<div class="land-sub">${WORD.ground1Art(esc(sb.v))}</div>`
-    : sb.kind==="top"   ? `<div class="land-sub">この範囲で最も多い区分: <b>${esc(sb.v.name)}</b>（${sb.v.pct}%）</div>`
+    // ⚠ **「最も多い区分」の 1 行は消した**（2026-08-22。Owner 判断）。
+    //   ⚠ **内訳の 1 位と、⚠ 同じ数字・同じ区分名を 2 回言っていた。**
+    //   ⚠ **消したのは繰り返しであって、⚠ 事実ではない**（⚠ 内訳の先頭がそれ）。
+    : sb.kind==="top"   ? ""
     : sb.kind==="wet"   ? `<div class="land-sub">水域だった建物: ${sb.v}%</div>`
     // ⚠ **粗さ**（2026-08-22。hidetzu/konjaku#128）。⚠ **⚠ の記号は使わない**
     //   （この画面では ⚠ を災害リスクに使っている。⚠ 精度の話に同じ印を出すと「危ない土地」に読まれる）。
@@ -1142,6 +1155,7 @@ function paintLayer(L){
   //   （⚠ 台帳は段が変わるたび、⚠ 層は場所が変わるたび。⚠ **周期が違う**）。
   return `<div class="land-layer"><div class="land-q">${L.title}</div>`
     + `<div class="land-line">${head}${what}</div>${den}${subs}`
+    + (L.n===2 ? `<div id="areaBreak"></div>` : "")
     + (L.n===3 ? `<div id="breakdown"></div>` : "")
     + `<div class="prov-q" data-q="${L.n}"></div></div>`;
 }
@@ -1180,6 +1194,47 @@ function showResult(){
   const said3 = landModel.missing.some((mi) => mi.n === 3);
   paintBreakdown(document.getElementById("breakdown"),
     breakdown(area.counts, area.total), area.bldState, said3);
+  // ⚠ **面積の内訳**（2026-08-22。Owner 判断）。⚠ **明治期の低湿地データだけから作れる。**
+  //   ⚠ **建物が未対応の土地でも出せる**（⚠ 静岡市がまさにそれ）。
+  //   ⚠ **分母は「区分を特定できた画素」。**⚠ 建物の件数（4832 件）とは別の分母（掟 §6）。
+  //     ⚠ **だから、⚠ 建物の内訳とは別の問いの下に置く。**
+  //     ⚠ 実測（2026-08-22・渋谷）: 前は「田 88.7%（面積）」と「田 605 / 4832（件数）」が
+  //       ⚠ **同じ画面に、⚠ どちらの分母か分からないまま並んでいた。**
+  paintAreaBreak(document.getElementById("areaBreak"), area.landSummary);
+}
+
+// ⚠ **面積の内訳。**⚠ **数と意味は `summarizeLand` が持つ。**⚠ ここは並べるだけ。
+function paintAreaBreak(el, sum){
+  if(!el) return;
+  if(!sum || !sum.all || sum.all.length<2){ el.innerHTML=""; return; }   // ⚠ 1 種類なら内訳にならない
+  // ⚠ **色見本は付けない。**⚠ 建物の内訳（`.swatch`）と同じ形にすると、⚠ 同じ分母に見える。
+  // ⚠ **`0.0%` と書かない**（2026-08-22）。⚠ **画素はあるのに「無い」と読まれる**（掟 §1）。
+  //   ⚠ 実測（2026-08-22・静岡市）: ⚠ **塩田 79 / 湿地 67 / 泥炭地 14 画素**あるのに、
+  //     ⚠ **3 行とも `0.0%` と出ていた。**
+  //   ⚠ **行ごと隠さない。**⚠ 隠すのは「無い」と言うのと同じ（掟 §1）。
+  //   ⚠ **「0.1% 未満」と書く。**⚠ 小さいことは言うが、⚠ **無いとは言わない。**
+  // ⚠ **色は、⚠ 判定に使っている凡例そのもの**（2026-08-22。Owner 判断）。
+  //   ⚠ **こちらで決めた飾りではない。**⚠ `swale.js` の `SWALE[].rgb` は、
+  //     ⚠ **国土地理院の凡例 `lw_legend.pdf` から抽出した 14 区分の RGB**（ADR 0017）。
+  //     ⚠ **判定はこの RGB との距離**（`TOLERANCE`）で出している。
+  //   ⚠ **だから、⚠ 色を出すことは「判定の根拠そのものを見せる」ことになる。**
+  // ⚠ **地図には既に重なっている**（`g-swale` の raster。⚠ 明治期の段で不透明度が上がる）。
+  //   ⚠ **足りなかったのは凡例。**⚠ **色が出ているのに、⚠ それが何かを言う場所が無かった。**
+  // ⚠ **建物の内訳（`.swatch`）とは形を変える。**⚠ あちらは水／陸の 2 色で、⚠ 分母も違う。
+  const rgbOf=(name)=>{
+    const c=(KonjakuSwale.SWALE??[]).find((x)=>x.name===name);
+    return c ? `rgb(${c.rgb.join(",")})` : null;
+  };
+  el.innerHTML=sum.all.map((r)=>{
+    const tiny=Number(r.pct)===0&&r.count>0;
+    const col=rgbOf(r.name);
+    return `<div class="stat">`
+      + `<span>${col?`<i class="legend" style="background:${col}"></i>`:""}${esc(r.name)}</span>`
+      + (tiny
+          ? `<b style="font-weight:400;color:var(--ink-dim)">0.1% 未満</b>`
+          : `<b>${r.pct}<span style="color:var(--ink-dim);font-weight:400">%</span></b>`)
+      + `</div>`;
+  }).join("");
 }
 
 // 内訳は「足元の判定の**分割**」。足すと、判定できた件数になる。
