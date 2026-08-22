@@ -1589,7 +1589,7 @@ export const CASES = [
     //   問題は「いつ諦めるかを決めていなかった」こと。
     // ⚠ 建物を取り込んでいない土地で見る。亀戸は豊洲の取り込み（z14 6枚）に
     //   含まれてしまい、Overpass の経路を通らなくなった
-    name: "建物が取れないとき、待たせ続けない", path: `/peel?${URAYASU}`,
+    name: "建物が取れないとき、待たせ続けない", path: `/peel?${UNSURVEYED}`,
     // ⚠ glob にしない。`**://*.overpass*/**` は overpass-api.de にも
     //   overpass.kumi.systems にも**一度もマッチしていなかった**（どちらも先頭の
     //   ラベルが overpass なので `*.` の前に置くものが無い）。
@@ -1607,22 +1607,36 @@ export const CASES = [
       // ⚠ 一瞬の状態をスナップショットで読まない。**出るべき文言そのもの**を待つ。
       //   「建物を取得中」を待ってから innerText を読むと、読んだ時点では
       //   次の状態に移っていることがある（実際に取りこぼした）。
-      await page.waitForFunction(() => /最大20秒|取れなければ/.test(document.body.innerText),
-        null, { timeout: 60000 });
+      // ⚠ **「最大20秒…」は出さなくなった**（2026-08-22。Owner 判断: ⚠ 相手先の名前は
+      //   ⚠ 利用者の問いに答えていない）。⚠ **待ち始めた合図は「建物を取得しています」。**
+      await page.waitForFunction(() => /建物を取得しています/.test(
+        document.getElementById("landAll")?.textContent ?? ""), null, { timeout: 60000 });
       const t0 = Date.now();
 
 
       // 期限内に、取れなかったと言い切ること
-      await page.waitForFunction(() => /取得できませんでした/.test(document.body.innerText),
-        null, { timeout: 60000 });
-      must(await page.locator("#status .retry-btn").count() === 1, "建物取得失敗時の再試行が出ていない");
+      await page.waitForFunction(() => /取得できませんでした/.test(
+        document.getElementById("landAll")?.textContent ?? ""), null, { timeout: 60000 });
+      // ⚠ **再試行は材料の行が持つ**（2026-08-22。⚠ `#status` から移した）。
+      //   ⚠ **主張は同じ**（⚠ 取れなかったときに、⚠ 戻る手段が 1 つある）。
+      must(await page.locator("#panel .retry-btn").count() === 1, "建物取得失敗時の再試行が出ていない");
       const ms = Date.now() - t0;
       must(ms < 30000, `諦めるのが遅い: 待ち始めてから ${ms}ms`);
       const t = (await page.evaluate(() => document.body.innerText)).replace(/\s+/g, " ");
       // 取れなかっただけで、画面は成立していること
-      must(/水域と空中写真だけで表示/.test(t), `代わりに何が見られるか書いていない: ${t.slice(0, 160)}`);
+      // ⚠ **「代わりに何が見られるか」は、⚠ 断りに添える**（2026-08-22。Owner 判断）。
+      //   ⚠ **字が変わった**（⚠ 「水域と空中写真だけで表示」→ 材料の行の断り）。
+      must(/届いていないだけで|水域と空中写真/.test(t),
+        `代わりに何が見られるか書いていない: ${t.slice(0, 160)}`);
       must(await page.locator("canvas").count() > 0, "地図まで出なくなっている");
-      for (const w of LIES) must(!t.includes(w), `建物が取れないだけで断定している: 「${w}」`);
+      // ⚠ **`LIES` は建物の話にだけ当てる**（2026-08-23）。
+      //   ⚠ **この土地は、⚠ 明治期の低湿地データが本当に整備対象外**なので、
+      //     ⚠ **画面全体に当てると、⚠ 正しい説明のほうが落ちる**（⚠ 実際に落ちた）。
+      //   ⚠ `top.mjs` に同じ注意がある（⚠ 2026-08-19 に一度踏んでいる）。
+      const t3 = await page.evaluate(() =>
+        ([...document.querySelectorAll("#landAll .land-layer")].at(-1)?.textContent ?? "")
+          .replace(/\s+/g, " "));
+      for (const w of LIES) must(!t3.includes(w), `建物が取れないだけで断定している: 「${w}」`);
       return `${Math.round(ms / 1000)} 秒で諦めて「取得できませんでした」／水域と写真は出ている`;
     },
   },
@@ -1978,7 +1992,7 @@ export const CASES = [
     },
   },
   {
-    name: "Overpass が 0 件を返したら、取れなかったと言わない", path: `/peel?${URAYASU}`,
+    name: "Overpass が 0 件を返したら、取れなかったと言わない", path: `/peel?${UNSURVEYED}`,
     setup: (page) => Promise.all([
       // 取り込み済みの経路を塞ぐ。⚠ 塞がないと静的で答えてしまい、Overpass の経路を通らない
       page.route("**/data/bl/index.json", (r) => r.abort()),
@@ -2002,7 +2016,7 @@ export const CASES = [
     },
   },
   {
-    name: "建物を待っている間は、取得中と言う", path: `/peel?${URAYASU}`,
+    name: "建物を待っている間は、取得中と言う", path: `/peel?${UNSURVEYED}`,
     setup: (page) => Promise.all([
       page.route("**/data/bl/index.json", (r) => r.abort()),
       page.route((u) => /overpass/i.test(u.href), () => { /* 無応答 */ }),
@@ -2011,20 +2025,22 @@ export const CASES = [
       // 待ち始めたことを、出るべき文言そのもので待つ（一瞬の状態をスナップショットで読まない）
       // ⚠ **`#status` はもう喋らない**（2026-08-22。Owner 判断）。⚠ **問いの側で待つ。**
       //   ⚠ **「最大20秒…」は出さなくなった**（Owner 判断）。⚠ **内訳の「取得中」で待つ。**
-      await page.waitForFunction(() => /建物を取得中/.test(
-        document.getElementById("breakdown")?.textContent ?? ""), null, { timeout: 60000 });
+      // ⚠ **待っているあいだは層 3 が `missing`** なので、⚠ **`#breakdown` は作られない。**
+      //   ⚠ **問いの側（`#landAll`）で待つ**（⚠ 「建物を取得しています」＋「建物データを取得中」）。
+      await page.waitForFunction(() => /建物を取得(中|しています)/.test(
+        document.getElementById("landAll")?.textContent ?? ""), null, { timeout: 60000 });
       // ⚠ **0 件のときは、⚠ 層 3 が `missing` になるので `#breakdown` が作られない**
       //   （2026-08-23 に踏んだ。⚠ 再試行の的を置こうとしたときと同じ理由）。
       //   ⚠ **主張は「0 件を『取れなかった』と言わない」。**⚠ **問いの側を読む。**
       const bd = await page.evaluate(() =>
         (document.getElementById("landAll")?.textContent ?? "").replace(/\s+/g, " "));
       const prov = await provText(page);
-      must(/建物を取得中/.test(bd), `待っている間に内訳が「取得中」と言っていない: ${bd.slice(0, 90)}`);
+      must(/建物を取得しています/.test(bd), `待っている間に問いが「取得しています」と言っていない: ${bd.slice(0, 90)}`);
       // ⚠ 台帳の語彙は「未取得＝読めなかった／欠落＝本当に無い」。待っている間に「欠落」は嘘
       must(!/欠落/.test(prov), `待っているだけなのに台帳が「欠落」と言っている: ${prov.slice(0, 90)}`);
       must(/建物データを取得中/.test(prov), `台帳が待っていることを言っていない: ${prov.slice(0, 90)}`);
       must(!/0 件/.test(bd), `まだ取れていないのに件数を言っている: ${bd.slice(0, 90)}`);
-      return `内訳「建物を取得中…」／台帳「未取得 建物データを取得中」`;
+      return `問い「建物を取得しています」／台帳「建物データを取得中」`;
     },
   },
   // ---- 取り込み済みの土地では、外へ出ない ----
