@@ -66,7 +66,7 @@ jobs:
       #   生死は下の2つが見る。数えるだけでも、走査そのものが壊れたら止まる
       #   （2026-08-14 に readdir で落ちたのを、マージ後まで見逃した）。
       - name: 構文・デプロイ設定・出典・OGP・外部から来た文字列
-        run: node scripts/check.mjs
+        run: node test/check.mjs
 
       # ⚠ **PR ごとに外部サイトを叩かない**方針は変えていない。
       #   叩くのは「このブランチで新しく足した URL」だけで、実測（直近12コミット）で
@@ -89,7 +89,7 @@ jobs:
         # ⚠ 万一取れていなければ check.mjs が「比べる相手を読めなかったので全部叩く」と
         #   言って 8 本叩く（掟: 取れなかったを「無い」と言わない）。
         #   **ログにその警告が出ていないこと**で、比較できていることを確かめる。
-        run: node scripts/check.mjs --links-new=origin/"$BASE"
+        run: node test/check.mjs --links-new=origin/"$BASE"
 
       # PR ごとに外部サイトを叩くのは迷惑なので、main と定期実行のときだけ。
       # ⚠ ここは既存のリンクも含めて 8 本すべてを見るので、相手先の一時的な不調が混ざる。
@@ -97,7 +97,7 @@ jobs:
       - name: 外部リンク（全部）
         if: github.event_name != 'pull_request'
         continue-on-error: true
-        run: node scripts/check.mjs --links
+        run: node test/check.mjs --links
 
       # ⚠ 住所検索APIを 42 語、1.5 秒あけて叩く（待機だけで約 63 秒）。
       #   10req/10秒の制限内に収めている。**ここは速くできない**
@@ -112,7 +112,7 @@ jobs:
       - name: 42語の回帰（1位27以上 / 3位内34以上 / 圏外0 / 誤発火0 / 決められない語で発火0）
         if: >-
           github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-        run: node scripts/search-check.mjs
+        run: node test/search-check.mjs
 
   render:
     # ⚠ **既定は 360 分（6 時間）。**実測（2026-08-18・成功した 11 回）: 5分54秒 〜 6分46秒。
@@ -192,7 +192,7 @@ jobs:
           #   ⚠ **実測（2026-08-22・`main` = `113ee90`）**: `render.mjs` が触るのは 3 つだけ。
           #     public/**（serve.js が配る中身 ＋ public/data/landform.json を直接読む）
           #     serve.js（配信そのもの）
-          #     scripts/render.mjs（検査コード自身）
+          #     test/render.mjs（検査コード自身）
           #   ⚠ **`docs/` は 1 行も読んでいない**（残っているのはコメントだけ。
           #     ⚠ hidetzu/konjaku#184 で `docs/SPEC.md` の読み取りが消えた）。
           # ⚠ **除くのは、⚠ 画面にも実行環境にも届かないものだけ。**
@@ -200,15 +200,15 @@ jobs:
           #     ⚠ 走者どうしが共有する前提（件数の数え方など）を壊しうる。
           #   ⚠ `.github/` も回す（⚠ Workflow 自身を変えたときは確かめたい）。
           #   ⚠ `package.json` / lock も回す（⚠ Playwright の版など実行環境が変わる）。
-          # ⚠ **どの suite を回すかは `scripts/render-scope.mjs` が決める**（2026-08-22）。
+          # ⚠ **どの suite を回すかは `test/render-scope.mjs` が決める**（2026-08-22）。
           #   ⚠ **判定をここに書き写さない。**⚠ 2 か所に書くと、⚠ 片方だけ古くなる（CLAUDE.md §3）。
-          #   ⚠ **手元でも同じものを使える**: `node scripts/render-scope.mjs origin/main...HEAD`
+          #   ⚠ **手元でも同じものを使える**: `node test/render-scope.mjs origin/main...HEAD`
           # ⚠ **main へ入るときは、⚠ 必ず全部回す**（⚠ PR で絞ったぶんを、⚠ ここで取り戻す）。
           if [ "$EVENT" = "push" ]; then
             plan=$(printf 'top core\ntop search\npeel core')
             echo "⚠ main への取り込みなので、⚠ 全部回す"
           else
-            plan=$(node scripts/render-scope.mjs "origin/$BASE...HEAD")
+            plan=$(node test/render-scope.mjs "origin/$BASE...HEAD")
           fi
           if [ -z "$plan" ]; then
             echo "⚠ この実行では実描画を回していない（画面にも実行環境にも届かない変更だけ）"
@@ -282,7 +282,7 @@ jobs:
       #     **アプリが正しく中断したのに検査だけが落ちる**。
       #     core が落ちたら、それは外部のせいにできない＝こちらの不具合。
       #   ⚠ search 群は render.mjs が **1 回だけ**やり直す。やり直した回数は必ず出る。
-      # ⚠ **回すものは上の段が決めている**（`scripts/render-scope.mjs`）。
+      # ⚠ **回すものは上の段が決めている**（`test/render-scope.mjs`）。
       #   ⚠ **`while read` を管でつながない**（⚠ 別の殻で走り、⚠ 落ちても気づけない）。
       #   ⚠ **走った suite と件数は、⚠ render.mjs が 1 行目で名乗る。**
       - name: ページが実際に描画されるか
@@ -294,7 +294,7 @@ jobs:
           while read -r suite group; do
             [ -z "${suite:-}" ] && continue
             echo "──── --suite=$suite --group=$group"
-            node scripts/render.mjs --suite="$suite" --group="$group"
+            node test/render.mjs --suite="$suite" --group="$group"
           done <<KONJAKU_PLAN
           $PLAN
           KONJAKU_PLAN
