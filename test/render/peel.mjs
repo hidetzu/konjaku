@@ -1643,7 +1643,11 @@ export const CASES = [
       // ⚠ 古い入れ物が残っていないこと（残っていると、また 2 つの答えになる）
       const pc = await look();
       must(pc.hero === 0, `heroNum / heroCap が残っている: ${pc.hero} 個`);
-      must(/どういう土地/.test(pc.qs[0] ?? ""), `PC で先頭が第1層でない: ${pc.qs.join(" / ")}`);
+      // ⚠ **字は `public/words.js` の 1 か所から借りる**（2026-08-23）。
+      //   ⚠ **見出しを言い直したときに、⚠ 検査のほうが落ちた**（2026-08-22 に実際に踏んだ）。
+      //   ⚠ **同じ問いに答える実装を 2 つ持たない**（`CLAUDE.md` §3）。
+      must((pc.qs[0] ?? "") === WORDS.layerTitle(1),
+        `PC で先頭が第1層でない: ${pc.qs.join(" / ")}`);
       must(pc.qs.length === 3, `PC のパネルに 3 層そろっていない: ${pc.qs.join(" / ")}`);
       must((pc.seen.match(/99\.6/g) || []).length === 1,
         `PC で 99.6% が ${(pc.seen.match(/99\.6/g) || []).length} 回出ている`);
@@ -1700,7 +1704,11 @@ export const CASES = [
           txt: (el.innerText ?? "").replace(/\s+/g, " ").trim() };
       });
       // ⚠ 第1層が先頭。ここが崩れると「できないことから書き始める」に戻る
-      must(/どういう土地/.test(r.qs[0] ?? ""), `先頭が第1層でない: ${r.qs.join(" / ")}`);
+      // ⚠ **字は `public/words.js` の 1 か所から借りる**（2026-08-23）。
+      //   ⚠ **見出しを言い直したときに、⚠ 検査のほうが落ちた**（2026-08-22 に実際に踏んだ）。
+      //   ⚠ **同じ問いに答える実装を 2 つ持たない**（`CLAUDE.md` §3）。
+      must((r.qs[0] ?? "") === WORDS.layerTitle(1),
+        `先頭が第1層でない: ${r.qs.join(" / ")}`);
       // ⚠ 内部の呼び名を出さない
       must(!/第[123]層/.test(r.txt), `内部の呼び名が画面に出ている: ${r.txt.slice(0, 60)}`);
       // ⚠ 数字を出すなら分母も出る（掟: 数字は主張範囲の分母で書く）
@@ -1733,7 +1741,11 @@ export const CASES = [
           miss: [...el.querySelectorAll(".land-miss")].map((x) => x.innerText.replace(/\s+/g, " ").trim()),
           txt: (el.innerText ?? "").replace(/\s+/g, " ").trim() };
       });
-      must(/どういう土地/.test(r.qs[0] ?? ""), `先頭が第1層でない: ${r.qs.join(" / ")}`);
+      // ⚠ **字は `public/words.js` の 1 か所から借りる**（2026-08-23）。
+      //   ⚠ **見出しを言い直したときに、⚠ 検査のほうが落ちた**（2026-08-22 に実際に踏んだ）。
+      //   ⚠ **同じ問いに答える実装を 2 つ持たない**（`CLAUDE.md` §3）。
+      must((r.qs[0] ?? "") === WORDS.layerTitle(1),
+        `先頭が第1層でない: ${r.qs.join(" / ")}`);
       must(r.miss.length === 2, `出ない層の理由が 2 つでない: ${r.miss.length} 個`);
       // ⚠ 同じ文を 2 回出さない
       must(new Set(r.miss.map((x) => x.split(" ")[0])).size === 2,
@@ -2741,7 +2753,7 @@ ${dom}
           // ⚠ 同じ画面の中で食い違わないこと（計算元は landVerdict の1か所）
           must(pc === hud, `${name}: HUD とパネルで水域割合が違う: HUD「${hud}%」/ パネル「${pc}%」`);
             // ⚠ 主見出しの区分名も、HUD とパネルで同じであること。
-            //   ⚠ **HUD は層になったので、先頭は第1層**（ここは、どういう土地？）。
+            //   ⚠ **HUD は層になったので、先頭は第1層**（⚠ 字は `words.js` の `layerTitle(1)`）。
             //     主見出しは HUD の**どこか**に、同じ語で在ればよい。
             //   ⚠ 見ている主張は変えていない: **同じ画面で 2 つの答えを出さないこと**。
             must(r.landAll.includes(r.hero),
@@ -2844,7 +2856,7 @@ ${dom}
         //     第1層が立ち、出せないのは建物の層だけ、と位置で示す）。
         //   ⚠ 見ている主張は変えていない: **範囲を限ること**（何もかも駄目ではない）。
         if (gotLf) {
-          must(/建物ごとには出せません/.test(t2) || /どういう土地/.test(t2),
+          must(/建物ごとには出せません/.test(t2) || t2.includes(WORDS.layerTitle(1)),
             `地形分類が届いたのに、答えられる範囲を示していない: ${t2.slice(0, 60)}`);
           must(!/^判定できません/.test(t2),
             `地形分類が届いたのに「判定できません」で始まっている: ${t2.slice(0, 60)}`);
@@ -3586,7 +3598,7 @@ ${dom}
               `${nm} ${w}px: パネルの初期状態が幅と合っていない（閉=${shut.hide}）`);
             if (shut.hide) {
               // ⚠ AC2: 閉じた初期画面に、⚠ 土地の答えの字が 0 か所
-              for (const word of ["ここは、どういう土地？", "いま建っている建物は、何の上？",
+              for (const word of [WORDS.layerTitle(1), WORDS.layerTitle(3),
                                   "件の足元を判定"])
                 must(!shut.txt.includes(word),
                   `${nm} ${w}px: 閉じた初期画面に土地の答えが出ている（「${word}」）`);
