@@ -7,7 +7,7 @@ description: konjaku の検査を、どの順で何を回すか決めて実行�
 
 ⚠ **この Skill は検査を作らない。**⚠ **すでにある検査の回し方を決めるだけ。**
 
-検査そのものは `scripts/check.mjs` ／ `scripts/render.mjs` ／ `scripts/search-check.mjs` に
+検査そのものは `test/check.mjs` ／ `test/render.mjs` ／ `test/search-check.mjs` に
 あり、⚠ **そちらが正**。ここに検査の中身を書き写さない（掟: 同じ問いに答える実装を2つ持たない）。
 
 ```
@@ -38,9 +38,9 @@ Verify   ← ここ
 | `npm run render -- --only=<部分一致>` | 名前が一致するケースだけ | **9 秒**（3 件のとき） |
 | `npm run render -- --group=core` | 外へ検索に出ない群だけ | — |
 | `npm run render -- --group=search` | 住所検索に寄りかかる群だけ | — |
-| `node scripts/check.mjs --links-new=<ref>` | そのブランチで足した URL だけ叩く | — |
-| `node scripts/check.mjs --links` | 外部リンク全部 | — |
-| `node scripts/search-check.mjs --offline` | ⚠ **キャッシュで回す**（`.artifacts/search-cache`・42 語ぶん） | — |
+| `node test/check.mjs --links-new=<ref>` | そのブランチで足した URL だけ叩く | — |
+| `node test/check.mjs --links` | 外部リンク全部 | — |
+| `node test/search-check.mjs --offline` | ⚠ **キャッシュで回す**（`.artifacts/search-cache`・42 語ぶん） | — |
 
 ⚠ **`npm run render --group=core` と書くと npm が引数を飲み、黙って全群が走る。**
 ⚠ **`--` を挟む。**⚠ 走った群は出力の 1 行目が名乗るので、そこを読む。
