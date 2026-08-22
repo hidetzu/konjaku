@@ -390,8 +390,17 @@ export const waitOpacity = async (page, sel, ok, timeout = 20000) => {
   return v;
 };
 
+// ⚠ **「判定が終わった」合図**（2026-08-22 に見る場所を移した）。
+//   ⚠ **前は `#status` の字を見ていた。**⚠ あそこは「建物 N 件を判定しました」を出す場所だった。
+//   ⚠ **Owner 判断で、⚠ 件数は「今建っている建物は？」の分母が言うことになり、
+//     ⚠ `#status` は取得に失敗したときだけ喋る**ようになった。
+//   ⚠ **待つ主張は変えていない**（⚠ **3 つ目の問いまで描けたこと**）。
+//     ⚠ `.prov-q[data-q="3"]` は `paintLand` が層を組み終えたときにだけ現れる。
+//   ⚠ **取得に失敗したときも進む**（⚠ `#status` にその名乗りが出る）。
 export const peelReady = (page) => page.waitForFunction(
-  () => /件|ありません|読み込めませんでした/.test(document.getElementById("status")?.textContent ?? ""),
+  () => !!document.querySelector('#landAll .prov-q[data-q="3"]')
+     || /ありません|読み込めませんでした|取得できませんでした/.test(
+          document.getElementById("status")?.textContent ?? ""),
   null, { timeout: 60000 });
 
 // ⚠ **この 2 つは「何かが起きるのを待つ」ものではない。**

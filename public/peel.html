@@ -250,32 +250,22 @@
   #toggle{min-width:var(--tap)}
   /* ⚠ **小さい状態で隠すもの。**⚠ 各問いの「答えの 1 行目」だけ残す。
      ⚠ **消したのではない。**⚠ 「▾ 広げる」で全部読める（掟 §1: 事実は消さない）。 */
-  /* ⚠ **補足情報は、⚠ 小さいときこそ出す**（2026-08-22。Owner 判断）。
-     ⚠ **「建物が消える年代は推定です」は、⚠ 建物が立っている絵と同時に読めないと意味がない**
-       （掟 §1: ⚠ 推定を実測のように見せない）。⚠ 広げると地図が隠れるので、
-       ⚠ **小さい状態＝地図が見えている状態でこそ要る。**
-     ⚠ 実測（2026-08-22・375×667・豊洲）: 隠していたとき、⚠ **小さい状態で断りが 0 件**だった。 */
+  /* ⚠ **小さい状態で出すもの／出さないもの**（2026-08-22。Owner 判断）。
+     ⚠ **見た目は変えない。**⚠ 字の大きさも並びも、⚠ 広げたときと同じ。
+       ⚠ **切り替えるのは「見出しの下の 2 行目以降を出すかどうか」だけ。**
+     ⚠ **補足情報は、⚠ 小さいときこそ出す**
+       （⚠ 「建物が消える年代は推定です」は、⚠ **建物が立っている絵と同時に読めないと意味がない**。
+        ⚠ 広げると地図が隠れるので、⚠ **小さい状態＝地図が見えている状態でこそ要る**。掟 §1）。
+     ⚠ **消したのではない。**⚠ 「▾ 広げる」で全部読める。 */
   #panel:not(.open) #status,
-  #panel:not(.open) .lead,
   #panel:not(.open) .land-den,
   #panel:not(.open) .land-layer:not(.land-miss) .land-sub,
-  /* ⚠ **答えが出ない層は、⚠ 1 行目を残す**（2026-08-22）。
-     ⚠ 実測: 隠したら、⚠ **静岡で「今建っている建物は？」が見出しだけ**になった。
-     ⚠ **問いを立てて答えないのは、⚠ 押しても何も起きない導線と同じ**（ADR 0026）。 */
-  /* ⚠ `:first-of-type` は class ではなく ⚠ **要素の種類**を見る。
-     ⚠ `.land-q` も div なので、⚠ **`.land-sub` が 2 番目の div になって消えた**（2026-08-22 に踏んだ）。
-     ⚠ **兄弟の 2 つ目以降**で書く。 */
+  /* ⚠ 答えが出ない層は、⚠ 1 行目を残す（⚠ 問いを立てて答えないのは ADR 0026）。
+     ⚠ `:first-of-type` は class ではなく **要素の種類**を見るので、⚠ 兄弟の 2 つ目以降で書く。 */
   #panel:not(.open) .land-miss .land-sub ~ .land-sub,
   #panel:not(.open) #breakdown,
   #panel:not(.open) .prov-q,
   #panel:not(.open) .sec:not(:first-of-type){display:none}
-  /* ⚠ 小さい状態では、⚠ 問いと答えを 1 行に並べる（⚠ 縦を使わない） */
-  #panel:not(.open) .land-layer{display:flex;gap:8px;align-items:baseline;justify-content:space-between}
-  #panel:not(.open) .land-q{font-size:var(--fs-note);color:var(--ink-dim);
-    margin:0;font-weight:400;flex:none}
-  #panel:not(.open) .land-line{padding-left:0;text-align:right}
-  #panel:not(.open) .land-line::before{content:""}
-  #panel:not(.open) .land-num{font-size:var(--fs-claim)}
   /* ⚠ 調べ終わった土地で、検索欄が最上段にあるのは順序として弱い。
      結果を先に出すと、いちばん遠かった「いま画面に出ているもの」が近くなる。
      実測（375×667・パネルを開いた状態）: 641px → 264px。

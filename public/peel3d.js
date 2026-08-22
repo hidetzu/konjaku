@@ -764,18 +764,18 @@ async function loadArea(lon,lat,title,opt){
     area={ title, total:0, wet:0, classified:0, unread:0, counts:{}, dated:0,
       waterRatio:w.ratio, waterRead, waterUnread, waterRects:w.rects, bldState:notYet?"notyet":"fail",
       landSummary:summarizeLand(w.classCounts,w.classifiedPixels), buildingLand:null };
+    // ⚠ **未対応のときは、⚠ ここに書かない**（2026-08-22。Owner 判断）。
+    //   ⚠ **「今建っている建物は？」が答える。**⚠ 実測（静岡市 375×667）: ⚠ **同じ字が 2 回**出ていた。
+    //   ⚠ **消えたのは繰り返しであって、⚠ 事実ではない**（⚠ 3 つ目の問いに、⚠ 3 点セットで残る）。
+    // ⚠ **取得に失敗したときは、⚠ ここが言う。**⚠ **再試行の的がここにしか無い。**
     statusEl.innerHTML=(notYet
-      // ⚠ **⚠ の記号を使わない。**この画面の外（トップ）では ⚠ を「この土地で
-      //   気をつけること」（＝災害リスク）に使っている。在庫の話に同じ印を出すと、
-      //   利用者役 2/3 が「危ない土地の警告か」と読んだ（2026-08-18）。
-      ? `<span class="err">${KonjakuProv.NOTYET}。</span>
-         <span style="color:var(--ink-dim)">${KonjakuProv.NOTYET_WHY}。</span>`
+      ? ""
       : blWhy===BL_UNKNOWN
       ? `<span class="err">建物データを取得できませんでした。</span>
          <span style="color:var(--ink-dim)">用意してあるかどうかも確かめられていません。</span>`
       : `<span class="err">建物データを取得できませんでした。</span>
          <span style="color:var(--ink-dim)">用意はしてありますが、いま読めていません。</span>`)
-      + `<span style="color:var(--ink-dim)">水域と空中写真だけで表示しています。</span> ${retryBtn(lon,lat,title)}`;
+      + (notYet ? "" : `<span style="color:var(--ink-dim)">水域と空中写真だけで表示しています。</span> ${retryBtn(lon,lat,title)}`);
     wireRetry(lon,lat,title);
     // ⚠ **台帳（#prov）も組み直す。** ここで render() を呼んでいなかったので、
     //   台帳だけ「未取得 建物データを**取得中**／まだ**届いていない**だけで」のまま残っていた。
@@ -849,7 +849,10 @@ async function loadArea(lon,lat,title,opt){
   // ⚠ **由来（水域の面数・取り込んだ日）は、ここでは言わない**（2026-08-22。hidetzu/konjaku#153）。
   //   ⚠ **ここは「いま判定できたか」を言う場所**で、⚠ **材料がどこから来たかは「表示データについて」が持つ**
   //     （`prov.js` の `sourceRow`）。⚠ **消したのではない。**⚠ 同じ画面の別の節にある。
-  statusEl.innerHTML=`<span style="color:var(--ink-dim)">${
+  // ⚠ **判定できたときは、⚠ ここに書かない**（2026-08-22。Owner 判断）。
+  //   ⚠ **件数は「今建っている建物は？」の分母（`N / M件の足元を判定`）が言う。**
+  //   ⚠ **0 件のときは残す**（⚠ **分母が立たないので、⚠ どこにも出なくなる**）。
+  statusEl.innerHTML = area.total>0 ? "" : `<span style="color:var(--ink-dim)">${
     area.total===0
       ? `この範囲に、<b>OSM に登録された建物は 0 件</b>です${WORD.bldPre(bldSource==="tiles")}。`
         + `水域と空中写真で表示しています。`
