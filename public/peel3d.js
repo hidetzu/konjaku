@@ -78,9 +78,16 @@ const LOOKAHEAD = 1;
 //   1段あたり約1.4秒しかないので、隣1段では間に合わない
 let preloadAll = false;
 
-// 全段（まだ地点が決まっていないとき用）。⚠ 段の作り方はここ1か所だけにする
-const allSteps = () => [...ALL_ERAS.map((e) => ({ ...e, tau:TAU.get(e.id), state:"ok" })),
-                        { ...MEIJI, tau:TAU_MEIJI, state:"ok" }];
+// 全段（まだ地点が決まっていないとき用）。
+// ⚠ **段の作り方は `public/eras.js` の 1 か所**（hidetzu/konjaku#170）。
+//   ⚠ **ここでは、⚠ 返ってきた段に時間座標（tau）を付けるだけ。**
+//   ⚠ **tau は `/peel` の 3D 固有**（建物が消える年・水位・フェードがこれで決まる）。
+// ⚠ **モデルは古い順に返す。**⚠ **`/peel` は新しい順**（左端が現在）なので反転する。
+const withTau = (list) => [...list].reverse()
+  .map((e) => ({ ...e, tau: e.id === MEIJI.id ? TAU_MEIJI : TAU.get(e.id) }));
+const allSteps = () => withTau(KonjakuEras.stepsOf({
+  all: Konjaku.ERAS.map((e) => ({ ...e, state:"ok", blank:false })),
+  latest: Konjaku.LATEST, meiji: MEIJI, hasMeiji: true }));
 // いま画面が持っている段。**地点ごとに loadArea() が組み直す。**
 //   steps[k] … k 段目（左端の「現在」が 0、右端が明治期）
 //   .tau     … 時間座標。段を間引いても動かない
@@ -600,20 +607,12 @@ let retryAt=null;
 // ============================================================
 // ⚠ 「現在」は判定の対象ではない（photos が答えるのは**残っている**＝過去の写真）。
 //   常に左端に置く。ここに現在を混ぜると、年代の数の意味が変わる。
+// ⚠ **段の作り方は `public/eras.js` の 1 か所**（hidetzu/konjaku#170）。
+//   ⚠ **落とし方（`unreachable` は残す／404 と白紙は出さない）も、⚠ あちらが持つ。**
+//   ⚠ **ここは時間座標を付けて、⚠ 新しい順に並べ替えるだけ。**
 function stepsFrom(ph){
-  const out=[{...ALL_ERAS[0], tau:0, state:"ok"}];
-  const byId=new Map((ph?.eras??[]).map((e)=>[e.id,e]));
-  for(const e of ALL_ERAS.slice(1)){
-    const r=byId.get(e.id);
-    if(!r) continue;
-    // 読めなかった（通信断・タイムアウト・403 などの拒否）… **段に残す**。
-    // 消すと「取れなかった」が「無い」になる（掟: 取れなかったを「無い」と言わない）
-    if(r.state==="unreachable"){ out.push({...e, tau:TAU.get(e.id), state:"unreachable"}); continue; }
-    // 404（この年代の写真は無い）と、白紙（タイルはあるが撮影範囲の外）は出さない
-    if(r.state==="ok"&&!r.blank) out.push({...e, tau:TAU.get(e.id), state:"ok"});
-  }
-  out.push({...MEIJI, tau:TAU_MEIJI, state:"ok"});
-  return out;
+  return withTau(KonjakuEras.stepsOf({
+    photos: ph, latest: Konjaku.LATEST, meiji: MEIJI, hasMeiji: true }));
 }
 // 場所を切り替えたときの取り違え防止。遅れて返った前の場所の応答で段を組み替えない
 let areaSeq=0;

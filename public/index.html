@@ -1197,6 +1197,8 @@
      HTML として実行させないための1か所。⚠ ほかより先に読む（下のインラインが使う） -->
 <script src="./esc.js"></script>
   <script src="./photos.js"></script>
+  <!-- 段の作り方（hidetzu/konjaku#170）。DOM も地図も持たない -->
+  <script src="./eras.js"></script>
   <script src="./words.js"></script>
 <!-- ⚠ verify.js / peel3d.js より**先に**読む。明治期の 14 区分と 1 画素の分類は
      ここが唯一の定義で、あとの2つはこれを借りている（掟6: 同じ問いに答える実装を2つ持たない）。 -->
@@ -1487,37 +1489,30 @@ function buildFrames(f){
   // 空の枠を並べるより、何も無いほうが正確（掟: 取れなかったを「無い」と言わない）
   if(!current||!p||!p.ok||!p.value?.length) return [];
   const t=Konjaku.tileOf(current.lon,current.lat,16), L=Konjaku.LATEST;
-  const out=[];
   // ⚠ いちばん左に明治期を置く。
   //   判定は「旧水部（＝昔は水）」なのに、残っている写真はどれも既に陸で、
   //   **主張と、目の前の写真が噛み合っていなかった**（実測: 豊洲は最古の 1936–42 が既に埋立地）。
   //   明治期の低湿地データを1コマ入れると、判定の根拠がそのまま帯の左端に並ぶ。
-  //   ⚠ 判定できたときだけ。整備対象外・通信断のときは足さない（無いものを並べない）。
+  //   ⚠ **判定できたときだけ足す**（整備対象外・通信断のときは足さない）。
   const m=f.byKey.meiji;
-  if(m?.ok&&m.value)
-    // ⚠ subBig は写真の上の見出しだけで使う。帯の 1 コマは幅が無く、入れると読めなくなる。
-    //   ⚠ 改行は自分で入れる。任せると 375px で「空中写真ではありま／せん」と語の途中で割れた
-    //     （2026-08-16 実測・豊洲）。
-    out.push({ id:"swale", label:"明治期", sub:"低湿地データ",
-      subBig:"低湿地データ<br>（空中写真ではありません）", ext:"png", min:6, max:16,
-      // 低湿地は区分の塗りだけなので、下に淡色地図を敷かないと何も見えない
-      under:"pale", px:t.px, py:t.py, meiji:true });
-  // ⚠ **読めなかった年代も並べる。**落とすと「その年代は存在しない」に読まれる。
-  //   実測（2026-08-19・出島・利用者役 3 名。⚠ 実在の利用者ではない）:
-  //     落とした版を見せると **3/3 が「1984–86 の写真は存在しない」と答えた**。
-  //     残した版では 0/3。掟: 取れなかった ≠ 無い。
-  //   ⚠ **`/peel` は最初から残していた**（peel3d.js の stepsFrom）。
-  //     同じ問いに 2 つの答えがあり、実描画が 2 回それで落ちていた。
-  //   ⚠ 404（この年代の写真は無い）と、白紙（撮影範囲の外）は、いままでどおり出さない。
-  //   ⚠ 画像の失敗を待って `.err` を付ける経路もあるが、**それ任せにしない**。
-  //     読めていないと分かっているコマは、最初からそう名乗る（検査も見られる）。
-  for(const e of (p.eras??[])){
-    if(e.state==="unreachable"){ out.push({...e, unread:true}); continue; }
-    if(p.value?.some((v)=>v.id===e.id)) out.push(p.value.find((v)=>v.id===e.id));
-  }
-  // 右端の「現在」だけは判定の材料ではないので、facts ではなくここで組み立てる
-  out.push({...L,tile:`${GSI}/${L.id}/16/${t.x}/${t.y}.${L.ext}`,px:t.px,py:t.py,now:true});
-  return out;
+  // ⚠ **ここは「どんなコマか」を作るだけ。**⚠ **足すかどうかは下の `hasMeiji` が決める。**
+  // ⚠ subBig は写真の上の見出しだけで使う。帯の 1 コマは幅が無く、入れると読めなくなる。
+  //   ⚠ 改行は自分で入れる。任せると 375px で「空中写真ではありま／せん」と語の途中で割れた
+  //     （2026-08-16 実測・豊洲）。
+  const meijiFrame = { id:"swale", label:"明治期", sub:"低湿地データ",
+    subBig:"低湿地データ<br>（空中写真ではありません）", ext:"png", min:6, max:16,
+    // 低湿地は区分の塗りだけなので、下に淡色地図を敷かないと何も見えない
+    under:"pale", px:t.px, py:t.py, meiji:true };
+  // ⚠ **段の作り方は `public/eras.js` の 1 か所**（hidetzu/konjaku#170）。
+  //   ⚠ **落とし方（`unreachable` は残す／404 と白紙は出さない）も、⚠ あちらが持つ。**
+  //   ⚠ **並びはこの画面と同じ**（明治期 → 古い順 → 現在）なので、⚠ 反転しない。
+  //   ⚠ **右端の「現在」は判定の材料ではない**ので、⚠ ここで組み立てて渡す。
+  const steps = KonjakuEras.stepsOf({
+    photos: p, meiji: meijiFrame, hasMeiji: !!(m?.ok && m.value),
+    latest: { ...L, tile: `${GSI}/${L.id}/16/${t.x}/${t.y}.${L.ext}`, px: t.px, py: t.py } });
+  // ⚠ **`unread` の印は、⚠ この画面の見た目の都合**（⚠ `.err` を最初から名乗らせる）。
+  //   ⚠ **状態そのものはモデルが持つ**（`state === "unreachable"`）。⚠ **2 か所に持たない。**
+  return steps.map((e) => e.state === "unreachable" ? { ...e, unread: true } : e);
 }
 
 // 写真の上に置く見出し。
