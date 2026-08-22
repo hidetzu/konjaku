@@ -1808,14 +1808,13 @@ const applyPanel = () => { setPanelHidden(!panelOpen);
     toggle.innerHTML = panelOpen ? '▴ <span>小さくする</span>' : '▾ <span>広げる</span>';
     toggle.title = panelOpen ? "パネルを小さくする" : "パネルを広げる";
   } };
-function setChrome(playing){ setPanelHidden(playing || !panelOpen); }
 const openPanel  = () => { panelOpen = true;  applyPanel(); };
 const closePanel = () => { panelOpen = false; applyPanel(); };
 // ⚠ **同じ的で、広げる／小さくする**（2026-08-22）。⚠ 押しても何も起きない状態を作らない。
 toggle.onclick = () => { panelOpen ? closePanel() : openPanel(); };
 applyPanel();
 function stop(){ if(raf)cancelAnimationFrame(raf); raf=null;
-  playingNow=false; syncEra(); setChrome(false); }
+  playingNow=false; syncEra(); }
 function togglePlay(){
   if(raf) return stop();
   // ⚠ 通しで送るときだけ、全年代を先に読む。**押した人だけが払う。**
@@ -1824,7 +1823,7 @@ function togglePlay(){
   // ⚠ 終点も所要時間も**段の数から出す**。8 段を決め打ちすると、
   //   広島（7 段）では端まで行かないまま止まる／速すぎる、のどちらかになる。
   preloadAll=true; render();
-  playingNow=true; syncEra(); setChrome(true);
+  playingNow=true; syncEra();
   const end=(steps.length-1)*100;
   const from=pos*100>=end-5?0:pos*100;
   const dur=DUR_PER_STEP*(steps.length-1);
