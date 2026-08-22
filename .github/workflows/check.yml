@@ -143,26 +143,19 @@ jobs:
         with:
           node-version: "22"
       - run: node test/search-live-check.mjs
+  # ⚠ **実描画は 3 つに分かれている**（2026-08-22。hidetzu/konjaku#190）。
+  #
+  #     render-plan  どれを回すか決める（⚠ ブラウザを立てない。数秒）
+  #     render-run   ⚠ **suite ごとに、⚠ 別のジョブで同時に回す**
+  #     render       ⚠ **門番。**⚠ 必須チェックの名前はこれ
+  #
+  # ⚠ **`実描画` という名前を、⚠ 門番のほうに残している。**
+  #   ⚠ **matrix のジョブは `実描画 top/core` のように名前が変わる。**
+  #   ⚠ **必須チェックは名前で照合するので、⚠ 名前が変わると報告が来ないまま永久に待ちになる。**
+  #   ⚠ **だから門番を置く。**⚠ 名前を変えるときは、⚠ ruleset も一緒に直す。
 
-  render:
-    # ⚠ **既定は 360 分（6 時間）。**実測（2026-08-18・成功した 11 回）: 5分54秒 〜 6分46秒。
-    #   最長の約 3 倍を上限にする。
-    # ⚠ **これは速さの制限ではなく、止まったまま気づかないのを防ぐもの。**
-    #   同じ日に 3 回、`npx playwright install --with-deps` の段で固まった
-    #   （71 分 / 25 分 / 22 分。いずれも人が気づいて止めた）。
-    #   ⚠ そのときテストは 1 秒も走っていない。**落ちても自分の変更を疑わない。**
-    #   ⚠ 上げるときは、何が遅くなったのかを実測してから。
-    # ⚠ 2026-08-18 に 4 回目が出たので、**下でブラウザの用意を取り直す**ようにした。
-    # ⚠ 2026-08-19 に 3 回続けて出たので、取り直しを 2 → 3 回に増やした。
-    #   実測（直近 20 実行・「ブラウザと、その依存」の段）:
-    #     通った試行  11 / 13 / 18 / 22 / 29 / 57 / 59 / 67 / 190 / 193 / 250 秒
-    #     落ちた回    720 秒（＝ 360 × 2 回とも上限に張り付き）
-    #   ⚠ **上限に張り付く試行が約 40%。**2 回だと 0.4² ＝ 16% で落ちる（実測とほぼ一致）。
-    #     3 回なら 6.4%。
-    #   ⚠ **上限 360 秒は下げない。**250 秒かかって通った回がある。
-    #   360 秒 × 3 回 ＝ 最大 18 分。実描画そのものが 7〜9 分なので、25 分では足りない。
-    timeout-minutes: 32
-    name: 実描画
+  render-plan:
+    name: 実描画の計画
     # ⚠ **fork からの PR では走らせない。** 実描画は国土地理院のタイルを実際に取りに行く。
     #   public にすると、見知らぬ人の PR から地理院へ通信が飛ぶ
     #   （掟: 地理院への負荷は自分の請求とは別に見る）。
@@ -172,6 +165,11 @@ jobs:
       github.event_name != 'pull_request' ||
       github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
+    # ⚠ **ここはブラウザを立てない。**⚠ 差分を読んで決めるだけ。
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.scope.outputs.matrix }}
+      run: ${{ steps.scope.outputs.run }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
@@ -211,51 +209,89 @@ jobs:
           elif [ "$EVENT" = "push" ]; then
             files=$(git diff --name-only "$BEFORE" HEAD 2>/dev/null || true)
           fi
-          if [ -z "$files" ]; then
-            echo "run=yes" >> "$GITHUB_OUTPUT"
-            echo "⚠ 変更の一覧を取れなかった（または比べる相手が無い）。回す"
-            exit 0
-          fi
-          echo "変更 $(echo "$files" | wc -l | tr -d ' ') ファイル:"
-          echo "$files" | sed 's/^/  /'
-          # ⚠ **線は「render.mjs が読むか」で引く**（2026-08-22。hidetzu/konjaku#187 の子）。
-          #   ⚠ **実測（2026-08-22・`main` = `113ee90`）**: `render.mjs` が触るのは 3 つだけ。
-          #     public/**（serve.js が配る中身 ＋ public/data/landform.json を直接読む）
-          #     serve.js（配信そのもの）
-          #     test/render.mjs（検査コード自身）
-          #   ⚠ **`docs/` は 1 行も読んでいない**（残っているのはコメントだけ。
-          #     ⚠ hidetzu/konjaku#184 で `docs/SPEC.md` の読み取りが消えた）。
-          # ⚠ **除くのは、⚠ 画面にも実行環境にも届かないものだけ。**
-          #   ⚠ `scripts/` は render.mjs 以外も**回す**（安全側。Owner 判断 2026-08-22）。
-          #     ⚠ 走者どうしが共有する前提（件数の数え方など）を壊しうる。
-          #   ⚠ `.github/` も回す（⚠ Workflow 自身を変えたときは確かめたい）。
-          #   ⚠ `package.json` / lock も回す（⚠ Playwright の版など実行環境が変わる）。
           # ⚠ **どの suite を回すかは `test/render-scope.mjs` が決める**（2026-08-22）。
           #   ⚠ **判定をここに書き写さない。**⚠ 2 か所に書くと、⚠ 片方だけ古くなる（CLAUDE.md §3）。
           #   ⚠ **手元でも同じものを使える**: `node test/render-scope.mjs origin/main...HEAD`
           # ⚠ **main へ入るときは、⚠ 必ず全部回す**（⚠ PR で絞ったぶんを、⚠ ここで取り戻す）。
-          if [ "$EVENT" = "push" ]; then
-            plan=$(printf 'top core\ntop search\npeel core')
+          #   ⚠ **その一覧も `render-scope.mjs` が持つ**（`--all`）。⚠ ここに書かない。
+          if [ -z "$files" ]; then
+            echo "⚠ 変更の一覧を取れなかった（または比べる相手が無い）。全部回す"
+            matrix=$(node test/render-scope.mjs --all --json)
+          elif [ "$EVENT" = "push" ]; then
+            echo "変更 $(echo "$files" | wc -l | tr -d ' ') ファイル:"
+            echo "$files" | sed 's/^/  /'
             echo "⚠ main への取り込みなので、⚠ 全部回す"
+            matrix=$(node test/render-scope.mjs --all --json)
           else
-            plan=$(node test/render-scope.mjs "origin/$BASE...HEAD")
+            echo "変更 $(echo "$files" | wc -l | tr -d ' ') ファイル:"
+            echo "$files" | sed 's/^/  /'
+            matrix=$(node test/render-scope.mjs --json "origin/$BASE...HEAD")
           fi
-          if [ -z "$plan" ]; then
+          n=$(echo "$matrix" | jq 'length')
+          if [ "$n" = "0" ]; then
             echo "⚠ この実行では実描画を回していない（画面にも実行環境にも届かない変更だけ）"
             echo "⚠ 静的検査は回っている（全追跡ファイルを走査している。docs/ も読む）"
+            echo "run=no" >> "$GITHUB_OUTPUT"
           else
-            echo "⚠ 回すもの:"; echo "$plan" | sed 's/^/  /'
+            echo "⚠ 回すもの（⚠ **$n 本を同時に回す**）:"
+            echo "$matrix" | jq -r '.[] | "  --suite=\(.suite) --group=\(.group)"'
+            echo "run=yes" >> "$GITHUB_OUTPUT"
           fi
-          {
-            echo "plan<<KONJAKU_PLAN"
-            echo "$plan"
-            echo "KONJAKU_PLAN"
-          } >> "$GITHUB_OUTPUT"
-          # ⚠ **後ろの段の `if:` は、⚠ これまでどおり run で見る**（⚠ 段を増やさない）
-          if [ -n "$plan" ]; then echo "run=yes" >> "$GITHUB_OUTPUT"; else echo "run=no" >> "$GITHUB_OUTPUT"; fi
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
 
+  # ⚠ **suite ごとに、⚠ 別のジョブで同時に回す**（2026-08-22。hidetzu/konjaku#190）。
+  #
+  # ⚠ **なぜ suite ごとか。**⚠ **ケース単位ではなく。**
+  #   ⚠ **実測（2026-08-22・手元・`main` = `bb4b0a1`）**: 外へ出る本数は suite で偏っている。
+  #     top core   91 件 / 165.8s / 2,961 本 ＝ 17.9 本/秒
+  #     peel core  67 件 / 187.9s / 6,845 本 ＝ 36.4 本/秒
+  #     top search  9 件 /  58.0s /    26 本 ＝  0.4 本/秒
+  #   ⚠ **いまの瞬間の最大は、⚠ peel の 36.4 本/秒**（直列なので 1 つずつ）。
+  #   ⚠ **3 つ同時にしても 54.7 本/秒＝ 1.5 倍**（⚠ **3 倍にならない**。⚠ 偏っているから）。
+  #   ⚠ **ケース単位で 4 並列にすると 146 本/秒＝ 4 倍。**⚠ **そちらは採らない。**
+  #   ⚠ **総量は 9,832 本で変わらない。**⚠ **変わるのは瞬間の密度だけ。**
+  #
+  # ⚠ **もう 1 つの理由: 出力が混ざらない。**
+  #   ⚠ ジョブが分かれるので、⚠ **落ちた suite のログがそのまま読める。**
+  #   ⚠ **ケース単位で並べると、⚠ 落ちた理由が混ざる**（hidetzu/konjaku#190 の止まる条件）。
+  #
+  # ⚠ **代償: ブラウザの用意が固まる機会が 3 倍になる。**
+  #   ⚠ 1 ジョブあたり 6.4%（3 回取り直しても）。⚠ **3 本なら、どれかが固まる確率は約 18%。**
+  #   ⚠ **固まったのは相手側（apt のミラー）。**⚠ **落ちても自分の変更を疑わない。**
+  #   ⚠ `fail-fast: false` にしてあるので、⚠ **1 本が固まっても、⚠ 残りは最後まで走る。**
+  render-run:
+    name: 実描画 ${{ matrix.suite }}/${{ matrix.group }}
+    needs: render-plan
+    if: needs.render-plan.outputs.run == 'yes'
+    strategy:
+      # ⚠ **1 本落ちても、⚠ 残りを止めない。**⚠ **どこまで壊れたかを知りたい。**
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.render-plan.outputs.matrix) }}
+    # ⚠ **既定は 360 分（6 時間）。**実測（2026-08-18・成功した 11 回）: 5分54秒 〜 6分46秒。
+    #   最長の約 3 倍を上限にする。
+    # ⚠ **これは速さの制限ではなく、止まったまま気づかないのを防ぐもの。**
+    #   同じ日に 3 回、`npx playwright install --with-deps` の段で固まった
+    #   （71 分 / 25 分 / 22 分。いずれも人が気づいて止めた）。
+    #   ⚠ そのときテストは 1 秒も走っていない。**落ちても自分の変更を疑わない。**
+    #   ⚠ 上げるときは、何が遅くなったのかを実測してから。
+    # ⚠ 2026-08-18 に 4 回目が出たので、**下でブラウザの用意を取り直す**ようにした。
+    # ⚠ 2026-08-19 に 3 回続けて出たので、取り直しを 2 → 3 回に増やした。
+    #   実測（直近 20 実行・「ブラウザと、その依存」の段）:
+    #     通った試行  11 / 13 / 18 / 22 / 29 / 57 / 59 / 67 / 190 / 193 / 250 秒
+    #     落ちた回    720 秒（＝ 360 × 2 回とも上限に張り付き）
+    #   ⚠ **上限に張り付く試行が約 40%。**2 回だと 0.4² ＝ 16% で落ちる（実測とほぼ一致）。
+    #     3 回なら 6.4%。
+    #   ⚠ **上限 360 秒は下げない。**250 秒かかって通った回がある。
+    #   360 秒 × 3 回 ＝ 最大 18 分。
+    #   ⚠ **1 本あたりの実描画は 3〜5 分**（⚠ 分ける前は 7〜9 分だった）。
+    timeout-minutes: 32
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
-        if: steps.scope.outputs.run == 'yes'
         with:
           node-version: "22"
       # デプロイ側の npm ci を重くしたくないので、CIでだけ入れる。
@@ -266,11 +302,9 @@ jobs:
       #   入れる版とキャッシュのキーを別々に決めると、
       #   「別の版のブラウザを、この版のキーで拾う」がいつか起きる。
       - run: npm i --no-save playwright@${{ env.PLAYWRIGHT_VERSION }}
-        if: steps.scope.outputs.run == 'yes'
       # ⚠ ブラウザの用意に 36 秒かかっていた（実測 2026-08-15）。ジョブ全体 284 秒のうち
       #   これが 13%。中身は変わらないので、版が同じなら取り直す必要がない。
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
-        if: steps.scope.outputs.run == 'yes'
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ env.PLAYWRIGHT_VERSION }}
@@ -286,9 +320,8 @@ jobs:
       #   ⚠ 直前の行までログが出て、そこから何も出ない。**落ちても自分の変更を疑わない。**
       # ⚠ 上限つきで区切って、固まったら 1 回だけ取り直す。
       #   ⚠ **取り直した回数は必ず出す**（黙って直ると、頻度が分からなくなる）。
-      #   ⚠ ジョブの timeout（32 分）より内側に収める。3 回 × 6 分 ＋ 実描画 7〜9 分 ＋ 余裕。
+      #   ⚠ ジョブの timeout（32 分）より内側に収める。3 回 × 6 分 ＋ 実描画 3〜5 分 ＋ 余裕。
       - name: ブラウザと、その依存（フォント含む）
-        if: steps.scope.outputs.run == 'yes'
         run: |
           set -u
           for i in 1 2 3; do
@@ -304,37 +337,65 @@ jobs:
           done
           echo "⚠ 3 回とも固まった。これは相手側（apt のミラー）の問題で、この変更のせいではない"
           exit 1
-      # ⚠ **2段に分ける。** 外へ出ない検査（core）を先に回し、
-      #   地理院の住所検索に寄りかかる検査（search）を後ろに置く。
-      #   ⚠ 分ける理由は速さではなく、**落ちた原因を切り分けられるようにする**こと。
+      # ⚠ **core と search を分けているのは、速さではない。**
+      #   ⚠ **落ちた原因を切り分けられるようにするため。**
       #     実測（2026-08-17）: 住所検索は速いとき 0.4 秒・遅いとき 8.2 秒。
       #     8 秒でアプリが中断する（掟のタイムアウト）ので、遅い回は
       #     **アプリが正しく中断したのに検査だけが落ちる**。
       #     core が落ちたら、それは外部のせいにできない＝こちらの不具合。
       #   ⚠ search 群は render.mjs が **1 回だけ**やり直す。やり直した回数は必ず出る。
-      # ⚠ **回すものは上の段が決めている**（`test/render-scope.mjs`）。
-      #   ⚠ **`while read` を管でつながない**（⚠ 別の殻で走り、⚠ 落ちても気づけない）。
-      #   ⚠ **走った suite と件数は、⚠ render.mjs が 1 行目で名乗る。**
+      # ⚠ **走った suite と件数は、⚠ render.mjs が 1 行目で名乗る。**
       - name: ページが実際に描画されるか
-        if: steps.scope.outputs.run == 'yes'
-        env:
-          PLAN: ${{ steps.scope.outputs.plan }}
-        run: |
-          set -eu
-          while read -r suite group; do
-            [ -z "${suite:-}" ] && continue
-            echo "──── --suite=$suite --group=$group"
-            node test/render.mjs --suite="$suite" --group="$group"
-          done <<KONJAKU_PLAN
-          $PLAN
-          KONJAKU_PLAN
+        run: node test/render.mjs --suite=${{ matrix.suite }} --group=${{ matrix.group }}
       # ⚠ 成果物は**落ちたときだけ**残す（render.mjs が失敗時のみ撮る）。
       #   以前は 75 件すべて撮っていたのに、`.artifacts/` が隠しディレクトリで
       #   upload-artifact に除外され、**1枚も保存されていなかった**。
       #   拾えなかったことが分かるように、if-no-files-found は ignore にしない。
+      # ⚠ **名前は suite ごとに変える。**⚠ 同じ名前で 2 本上げると衝突して落ちる。
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         if: failure()
         with:
-          name: screenshots
+          name: screenshots-${{ matrix.suite }}-${{ matrix.group }}
           path: artifacts/render/
           if-no-files-found: warn
+
+  # ⚠ **門番。**⚠ **必須チェックの名前は、⚠ ここが持つ。**
+  #   ⚠ **matrix のジョブは名前が `実描画 top/core` のように変わるので、⚠ 必須にできない。**
+  #   ⚠ **`if: always()` にしないと、⚠ 上が落ちたときに報告が来ないまま永久に待ちになる。**
+  #   ⚠ **fork の条件は上と同じにする。**⚠ 揃えないと、⚠ fork の PR で永久に待ちになる。
+  render:
+    name: 実描画
+    needs: [render-plan, render-run]
+    if: >-
+      always() && (github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: 実描画が全部通ったか
+        env:
+          PLAN: ${{ needs.render-plan.result }}
+          RUN: ${{ needs.render-plan.outputs.run }}
+          RESULT: ${{ needs.render-run.result }}
+        run: |
+          set -u
+          echo "計画=${PLAN} ／ 回すか=${RUN} ／ 結果=${RESULT}"
+          # ⚠ **計画そのものが立たなかったら落とす。**⚠ 黙って通さない
+          if [ "${PLAN}" != "success" ]; then
+            echo "⚠ 実描画の計画が立たなかった（${PLAN}）。⚠ 何を回すか決まっていない"
+            exit 1
+          fi
+          # ⚠ **回さないと決めたときは通す**（画面にも実行環境にも届かない変更だけ）。
+          #   ⚠ **これは「検査した」ではない。**⚠ **回す必要が無かった、という意味。**
+          if [ "${RUN}" != "yes" ]; then
+            echo "⚠ この変更では実描画を回していない（画面にも実行環境にも届かない）"
+            echo "⚠ 静的検査は回っている"
+            exit 0
+          fi
+          if [ "${RESULT}" != "success" ]; then
+            echo "⚠ 実描画のどれかが通っていない（${RESULT}）"
+            echo "⚠ どの suite かは、⚠ 上の「実描画 <suite>/<group>」を見る"
+            echo "⚠ 「ブラウザの用意が N 回目で固まった」が出ていたら相手側（apt）。やり直す"
+            exit 1
+          fi
+          echo "実描画は全部通った"
