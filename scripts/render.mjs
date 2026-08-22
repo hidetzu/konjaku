@@ -8629,6 +8629,14 @@ if (ONLY || GROUP) {
 }
 
 let retried = 0;      // 何回やり直したか。**必ず最後に出す**（黙って再試行しない）
+// ⚠ **ケースごとに「どれだけかかったか」と「外へ何本出たか」を控える**
+//   （2026-08-22。hidetzu/konjaku#189）。
+//   ⚠ **どこが遅いかも、⚠ どれが外部に出るかも、⚠ いままで推測でしか語れなかった。**
+//   ⚠ **これは hidetzu/konjaku#190（並列化）と hidetzu/konjaku#191（外部を最小限に）の前提。**
+// ⚠ **ケースの中身は 1 つも変えていない。**⚠ **外側で数えるだけ。**
+const measured = [];
+// ⚠ **外部とは「この検査が立てたサーバ以外」**。⚠ localhost は数えない
+const OUTSIDE = (u) => /^https?:\/\//.test(u) && !u.startsWith(BASE);
 for (const c of RUN) {
   // ⚠ **再試行するのは `dep` が付いたケースだけ。** 付いていないケースの失敗は、
   //   こちらの不具合なので隠さない。付いているものも **1 回だけ**。
@@ -8671,6 +8679,8 @@ async function runCase(c, attempt) {
   }
   // 「実行時に外部へ出ていないこと」を検査できるように、出た先を全部控える
   page.on("request", (r) => reqs.push(r.url()));
+  // ⚠ **ここから測る**（⚠ ページを開く前。⚠ 仕込みの時間も込みで見る）
+  const tCase = Date.now();
 
   try {
     // 通信断・無応答を作るケースは、ページを開く前に仕込む
@@ -8680,6 +8690,10 @@ async function runCase(c, attempt) {
     // 描画自体は通っても、裏でエラーが出ていれば見逃さない
     if (errors.length) throw new Error(`JSエラー: ${errors[0]}`);
     console.log(`  \x1b[32m✓\x1b[0m ${c.name} — ${detail}${attempt > 1 ? " \x1b[33m（再試行で通過）\x1b[0m" : ""}`);
+    // ⚠ **通ったケースだけ数える**（⚠ 落ちたものは時間の意味が違う）
+    measured.push({ name: c.name, ms: Date.now() - tCase,
+      out: reqs.filter(OUTSIDE).length,
+      hosts: [...new Set(reqs.filter(OUTSIDE).map((u) => { try { return new URL(u).host; } catch { return "?"; } }))] });
     // ⚠ **印と実際の通信を突き合わせる。** 印が古くなると、再試行も切り分けも効かなくなる。
     //   ⚠ 応答を差し替えているケースでも request は出るので、これは
     //     「印が付いているのに一度も検索しない」ほうだけを見る（片方向）。
@@ -8734,6 +8748,30 @@ if (!ONLY) {
   console.log(`\x1b[32m✓ 数えた（実描画 ${CASES.length} / core ${core} / search ${search}）`
     + `。⚠ この数が正。⚠ docs/SPEC.md には書かない\x1b[0m`);
 }
+// ---- ⚠ どこに時間が要ったか・どれが外へ出たか ----
+// ⚠ **推測で最適化しない。**⚠ **測った値を、⚠ その場で出す**（2026-08-22。hidetzu/konjaku#189）。
+// ⚠ **これは hidetzu/konjaku#190（外部に出ないものだけ並列）と
+//   hidetzu/konjaku#191（外部を最小限に）が、⚠ 何を対象にできるかを決める材料。**
+if (measured.length) {
+  const tot = measured.reduce((a, m) => a + m.ms, 0);
+  const outside = measured.filter((m) => m.out > 0);
+  const totOut = measured.reduce((a, m) => a + m.out, 0);
+  console.log(`\n\x1b[1m遅い順（上位 10）\x1b[0m`);
+  for (const m of [...measured].sort((a, b) => b.ms - a.ms).slice(0, 10))
+    console.log(`  ${(m.ms / 1000).toFixed(1).padStart(6)}s  外へ ${String(m.out).padStart(3)} 本  ${m.name.slice(0, 46)}`);
+  console.log(`\n\x1b[1m外部への出方\x1b[0m`);
+  console.log(`  外へ出たケース: ${outside.length} / ${measured.length} 件`
+    + `（⚠ **出ていないのは ${measured.length - outside.length} 件**）`);
+  console.log(`  外へのリクエスト合計: ${totOut} 本`
+    + `（⚠ 1 ケースあたり平均 ${(totOut / measured.length).toFixed(1)} 本）`);
+  const byHost = {};
+  for (const m of measured) for (const h of m.hosts) byHost[h] = (byHost[h] ?? 0) + 1;
+  const hosts = Object.entries(byHost).sort((a, b) => b[1] - a[1]).slice(0, 6);
+  if (hosts.length) console.log(`  相手先: ${hosts.map(([h, n]) => `${h}（${n} 件）`).join(" ／ ")}`);
+  console.log(`  ⚠ 測ったケースの合計 ${(tot / 1000).toFixed(1)}s`
+    + `（⚠ **ジョブ全体ではない**。⚠ ブラウザの用意などは含まない）`);
+}
+
 // ⚠ 回していないケースを「描画できた」と言わない（--only のとき）
 console.log(ONLY
   ? `\x1b[33m${RUN.length} 件は描画できた（⚠ 全 ${CASES.length} 件のうち --only で選んだぶんだけ）\x1b[0m`
