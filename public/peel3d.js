@@ -693,7 +693,10 @@ async function loadArea(lon,lat,title,opt){
     statusEl.innerHTML=`<span class="err">このエリアは、明治期の低湿地データで<b>水域に該当しません</b>。</span>
       <span style="color:var(--ink-dim)">空中写真の年代送りは使えます。</span>`;
   } else {
-    statusEl.innerHTML=`<span style="color:var(--ink-dim)">水域 ${w.rects} 面を判定しました。</span>`;
+    // ⚠ **水域の面数は、⚠ 材料の行が持つ**（2026-08-22。Owner 判断）。
+    //   ⚠ `prov.js` の `sourceRow`:「水面は、明治期の低湿地データから N 面を起こしたもの」
+    //   ⚠ **同じ数字を 2 か所で言わない**（掟 §6）。
+    statusEl.innerHTML="";
   }
   // 建物を待たずに、いま言えることだけで一度出す。
   // 判定できない土地では「判定できません」がここで出る。以前はここで初期値の
@@ -752,15 +755,19 @@ async function loadArea(lon,lat,title,opt){
     //   実測（2026-08-18）: 同じ「まだ提供していない」に 2 通りの文があり、
     //   20 秒のあいだに入れ替わっていた（「まだ用意できていません」→「まだ提供していません」）。
     //   ⚠ 入れ替わると、同じことを言っているのだと分からない。文は prov.js の 1 つを借りる。
-    statusEl.innerHTML+=blWhy===BL_ABSENT
-      ? `<div style="margin-top:5px"><b>${KonjakuProv.NOTYET}。</b></div>`
-      : `<div style="margin-top:5px">建物を取得中…</div>`;
+    // ⚠ **取得中は、⚠ 3 つ目の問いが言う**（2026-08-22。Owner 判断）。
+    //   ⚠ **「今建っている建物は？ → 建物を取得しています」**（`layerMissing`）。
+    //   ⚠ **ここでは言わない**（⚠ 同じことを 2 か所で言わない）。
+    //   ⚠ **相手先の名前も、⚠ 秒数も出さない**（⚠ 利用者の問いに答えていない）。
+    statusEl.innerHTML+=`<div style="margin-top:5px"></div>`;
     const line=statusEl.querySelector("div:last-of-type");
     const els=await fetchBuildings(bbox,(m)=>{
       // ⚠ 何を待っていて、**駄目だったらどうなるか**を先に言う。
       //   黙って待たせると、止まっているのか動いているのか分からない
-      line.textContent=(blWhy===BL_ABSENT?`${KonjakuProv.NOTYET}。`:"")
-        +m+"（最大20秒。取れなければ水域と写真だけで表示します）";
+      // ⚠ **進捗は出さない**（2026-08-22。Owner 判断）。
+      //   ⚠ **3 つ目の問いが「建物を取得しています」と言っている。**
+      //   ⚠ `m` は相手先の名前を含む。⚠ **利用者の問いに答えていない。**
+      line.textContent="";
     });
     if(seq!==areaSeq) return;   // 別の場所へ移った／押し直された。古い結果で上書きしない
     if(els){ feats=toGeoJSON(els).features; bldSource="overpass"; }
@@ -969,8 +976,14 @@ const WORD = {
       //   ⚠ 私が持ち込んだ「整備している範囲の外」は 2 だけだった。**新語を増やさない。**
       ? (why === "unread" ? "明治期の低湿地データを読み込めませんでした"
                           : "この範囲は明治期の低湿地データの整備対象外です")
+      // ⚠ **取得中と、⚠ 取得できなかったを分ける**（2026-08-22。Owner 判断）。
+      //   ⚠ **問いは必ず出す。**⚠ **黙って空にしない**（掟 §1）。
+      //   ⚠ **「取得中」は進行形だが、⚠ ここは本当にいま起きていること**なので使える
+      //     （`CLAUDE.md` §4-1 が禁じるのは、⚠ **状態の説明に進行形を使うこと**）。
       : (why === "unread" ? "建物の足元を読み込めませんでした"
         : why === "outside" ? "建物は出ていますが、1 件ずつの足元は判定できていません"
+        : why === "loading" ? "建物を取得しています"
+        : why === "fail" ? "建物を取得できませんでした"
                             : KonjakuProv.NOTYET),
 };
 
@@ -1048,31 +1061,32 @@ function layersOf(area, lf){
         subs: area.landSummary ? [{kind:"top", v:area.landSummary}] : [] });
   } else missing.push({ n:2, why: area.waterUnread ? "unread" : "outside" });
 
-  // ---- 第3層: いま建っている建物は、何の上？ ----
+  // ---- 第3層: 今建っている建物は？ ----
+  // ⚠ **建物の話は建物の数で言う**（2026-08-22。Owner 判断）。
+  //   ⚠ **前は「田 建物の足元は、明治期には最多でした」から始まっていた。**
+  //     ⚠ **明治期の区分名が主役**で、⚠ **建物の話に見えなかった。**
+  //     ⚠ 「4832 / 5038件の足元を判定 ／ 水域だった建物：1.4%」は
+  //       ⚠ **1 行に 2 つの主張**が入っていた。
+  //   ⚠ **総数を先に言い、⚠ 何が分かっているかを内訳で並べる。**
+  //     ⚠ **分母は 3 つとも同じ（総数）**なので、⚠ 並べても分母が食い違わない（掟 §6）。
+  //   ⚠ **明治期の区分の内訳は、⚠ 「昔はどんな土地？」が面積の分母で持つ。**
+  //     ⚠ **ここは建物の分母で、⚠ 別の問い**（⚠ 2026-08-22 に分けた）。
   if(area.classified>0){
-    const land=area.buildingLand;
-    const isWater=land&&KonjakuSwale.isWater(land.name);
     layers.push({ n:3, title:WORD.layerTitle(3),
-      head: (land&&!isWater) ? {kind:"name", v:land.name} : {kind:"pct", v:(area.wet/area.classified*100).toFixed(1)},
-      what: (land&&!isWater) ? "建物の足元は、明治期には最多でした" : "の建物が、明治期には水の上だった",
-      // ⚠ **水域だった割合は、分母と同じ行に置く。**
-      //   ⚠ 区分名が主役の土地（渋谷・上野・西新宿）では、head が「田」なので、
-      //     **水の割合がどこにも出なくなる**。実測 2026-08-19: HUD から消えていた。
-      //   ⚠ 補足に置くと HUD で畳まれて消える。**答えの一部なので、畳まない側に置く。**
-      den:`${area.classified} / ${area.total}件の足元を判定`
-        + ((land&&!isWater)?` ／ 水域だった建物：${(area.wet/area.classified*100).toFixed(1)}%`:""),
-      // ⚠ **ここにあった `kind:"share"` の補足を落とした**（2026-08-20。hidetzu/konjaku#130）。
-      //   ⚠ 出していたのは「区分を特定できた足元のうち 河川・湖沼・海面 510 / 543件（93.9%）」。
-      //   ⚠ **同じ数字・同じ区分名が、⚠ 下の「内訳」の 1 行目にもあった**
-      //     （実測 2026-08-20・1280×800・豊洲: y376 と y876。⚠ **500px 離れて 2 回**）。
-      //   ⚠ **内訳が正本。**⚠ あちらは 2 位以下も出すので、⚠ 1 位だけを別の場所で繰り返す意味が無い。
-      //   ⚠ **区分名は消えない。**⚠ 内訳の 1 行目がそれ。
-      //   ⚠ **93.9%（＝ 1 位 ÷ 判定できた件数）だけは画面から消える。**
-      //     ⚠ 生の件数（510 / 543）は内訳に残るので、⚠ 数えられる。
+      head:{kind:"name", v:`${area.total} 件`},
+      what:"の建物が、この範囲にあります",
+      // ⚠ **答えの割合は、⚠ 分母と同じ行に置く**（⚠ 別の行にすると分母が離れる）
+      den:`うち ${(area.wet/area.classified*100).toFixed(1)}% が、明治期には水の上だった`
+        + `（${area.classified} / ${area.total}件の足元を判定）`,
       subs: [] });
   } else if(area.total>0)
     missing.push({ n:3, why:"outside", note:`建物 ${area.total} 件` });
-  else if(area.bldState==="notyet") missing.push({ n:3, why:"notyet" });
+  // ⚠ **問いは必ず 3 つ出す**（2026-08-22。Owner 判断）。
+  //   ⚠ **前は `loading` / `fail` がどちらにも入らず、⚠ 問いごと消えていた。**
+  //   ⚠ **問いが消えると「その問いは無い」に読まれる**（掟 §1。
+  //     ⚠ 静岡の見出しを消さないと決めたのと同じ理由。⚠ 利用者役 2/3 がそう読んだ）。
+  //   ⚠ **取得中は、⚠ 取得中だと分かるようにする**（⚠ 黙って空にしない）。
+  else missing.push({ n:3, why: area.bldState==="notyet" ? "notyet" : area.bldState });
   return { layers, missing };
 }
 
@@ -1115,9 +1129,13 @@ function paintLand(el, m){
     //   ⚠ **字は `words.js` の 1 か所から借りる**（⚠ トップの導線と同じ幹）。
     // ⚠ **「未対応」の理由は、⚠ 材料の行が言う。**⚠ ここで同じ字を繰り返さない。
     if(M) out.push(`<div class="land-layer land-miss"><div class="land-q">${WORD.layerTitle(n)}</div>`
-      + (M.why==="notyet"
-          ? `<div class="land-sub">${KonjakuWords.canWithoutBuildings("peel")}</div>`
-          : `<div class="land-sub">${WORD.layerMissing(n, M.why)}</div>`)
+      // ⚠ **「代わりにできること」は、⚠ 断りに添える**（2026-08-22。Owner 判断）。
+      //   ⚠ **問いの答えの位置には置かない。**⚠ 実測: ⚠ **「空中写真を年代で切りかえて…」が
+      //     ⚠ 「今建っている建物は？」の答えの位置に出ていて、⚠ 問いと噛み合っていなかった。**
+      //   ⚠ **`CLAUDE.md` §4-1 は「⚠ 代わりにできることを ⚠ 断りに添えろ」と言っている。**
+      //     ⚠ **問いの答えの位置に置け、とは言っていない**（⚠ こちらが誤って適用した）。
+      //   ⚠ **未対応のときは、⚠ 材料の行（`prov.js`）が答える。**⚠ ここは見出しだけ。
+      + (M.why==="notyet" ? "" : `<div class="land-sub">${WORD.layerMissing(n, M.why)}</div>`)
       + (M.note?`<div class="land-sub">${M.note}</div>`:"")
       + `<div class="prov-q" data-q="${n}"></div></div>`);
   }
@@ -1193,7 +1211,7 @@ function showResult(){
   //   （2026-08-22。Owner 判断）。⚠ 実測（静岡市）: ⚠ **同じ字が 4 か所**に出ていた。
   const said3 = landModel.missing.some((mi) => mi.n === 3);
   paintBreakdown(document.getElementById("breakdown"),
-    breakdown(area.counts, area.total), area.bldState, said3);
+    breakdown(area.counts, area.total), area.bldState, said3, area);
   // ⚠ **面積の内訳**（2026-08-22。Owner 判断）。⚠ **明治期の低湿地データだけから作れる。**
   //   ⚠ **建物が未対応の土地でも出せる**（⚠ 静岡市がまさにそれ）。
   //   ⚠ **分母は「区分を特定できた画素」。**⚠ 建物の件数（4832 件）とは別の分母（掟 §6）。
@@ -1267,24 +1285,35 @@ function breakdown(counts,total){
 }
 
 // ここは組み立てるだけ。⚠ **何と言うかは上で決まっている**（WORD と breakdown）。
-function paintBreakdown(el,b,bldState,saidByLayer3){
+function paintBreakdown(el,b,bldState,saidByLayer3,area){
   if(!el) return;
   // ⚠ **層 3 が既に理由を言っているなら、⚠ ここは黙る**（2026-08-22。Owner 判断）。
   //   ⚠ **黙るのは「同じ字を 2 回言わない」ためで、⚠ 事実を消すためではない。**
   if(!b.total && saidByLayer3){ el.innerHTML=""; return; }
-  // ⚠ 分割の分母は「判定できた件数」。総数にすると、判定できなかった分だけ小さく見える
-  const rows=b.rows.map((r)=>
-    `<div class="stat"><span><i class="swatch" style="background:${r.water?"#8fb9dd":"#d8cfa8"}"></i>${r.name}</span>
-      <b>${r.n}<span style="color:var(--ink-dim);font-weight:400"> / ${b.classified}</span></b></div>`).join("");
-  // ⚠ 色見本を付けない。付けると分類に見える
-  const aside=[["unread",b.unread],["outside",b.outside]].filter(([,n])=>n>0).map(([k,n])=>
-    `<div class="hint">${WORD.notClassified(k,n,b.classified===0&&n===b.total)}</div>`).join("");
-  el.innerHTML = b.total
-    ? (rows+aside)
-    // ⚠ 取得中・正常に0件・未対応・取得失敗を書き分ける。
-    //   以前は2状態しか無く、**正常に0件だった土地に「建物を取得中…」**が出続けていた
-    //   （ステータスは「0 件を判定しました」と言っているのに、ここは待っている顔をしていた）。
-    : `<div class="hint">${WORD.noBuildings(bldState)}</div>`;
+  // ⚠ **建物について、⚠ 何が分かっているかを並べる**（2026-08-22。Owner 判断）。
+  //   ⚠ **分母は 3 つとも同じ（総数）。**⚠ **並べても分母が食い違わない**（掟 §6）。
+  //   ⚠ **明治期の区分の内訳は、⚠ ここには置かない。**⚠ **面積の分母で「昔はどんな土地？」が持つ。**
+  //     ⚠ 前は ⚠ **同じ区分名が、⚠ 面積の割合と建物の件数で 2 か所に並んでいた。**
+  // ⚠ **色見本は、⚠ 押したときに地図で光る色そのもの**（⚠ 照合する相手が地図にある）。
+  //   ⚠ **地図の既定の色は変えない**（⚠ 水域だったか＝答えの色。⚠ 塗り替えると答えが消える）。
+  // ⚠ **「無い」と書かない。**⚠ 0 件のときも行を出し、⚠ **0 / N** と書く（掟 §1）。
+  if(!area || !area.total){
+    el.innerHTML=`<div class="hint">${WORD.noBuildings(bldState)}</div>`;
+    return;
+  }
+  const rows=[];
+  rows.push({ label:"足元が分かる", n:b.classified, color:"#8fb9dd", peek:null,
+    note:b.outside ? `ほか ${b.outside} 件は、明治期の低湿地データを整備している範囲の外` : "" });
+  if(area.hSrc)
+    rows.push({ label:"高さが実測", n:area.hSrc.measured, color:"#d8cfa8", peek:"peekH",
+      note:`階数から換算 ${area.hSrc.levels} 件 ／ 種別ごとの既定値 ${area.hSrc.default} 件` });
+  rows.push({ label:"建てられた年が分かる", n:area.dated, color:"#e6c47a",
+    peek:area.dated?"peekY":null, note:"根拠は「足元が水なら埋立前には無い」だけ" });
+  el.innerHTML=rows.map((r)=>
+    `<div class="stat"><span><i class="legend" style="background:${r.color}"></i>${esc(r.label)}</span>`
+    + `<b>${r.n}<span style="color:var(--ink-dim);font-weight:400"> / ${area.total}</span></b></div>`
+    + (r.peek ? `<button class="peek" id="${r.peek}">地図で光らせる</button>` : "")
+    + (r.note ? `<div class="hint">${r.note}</div>` : "")).join("");
 }
 
 
