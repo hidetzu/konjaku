@@ -529,7 +529,7 @@ function showPick(p,lngLat){
 map.on("click","bld",(e)=>{
   // ⚠ 見えていない建物は押せない。明治期では全建物の高さが 0 になるが、
   //   当たり判定は残るので、海面に見えるところを押すと建物の情報が出ていた
-  if(Number(slider.value)/100 >= photoSteps()-0.02) return;
+  if(pos >= photoSteps()-0.02) return;
   const p=e.features[0].properties;
   showPick(p,e.lngLat);
   // 選んだ建物を URL に載せる。共有先が同じ建物から始まる
@@ -592,7 +592,7 @@ async function setTimeline(lon,lat,seq){
   //   「確かめられなかった」を「無い」に変えてはいけない
   steps=failed?allSteps():stepsFrom(ph);
   timelineReady=true;
-  buildTicks(); buildRuler();
+  syncEra();
   // ⚠ 段が確定してから当てる。ここで初めて「この土地にその年代は無い」と言える
   resolveWantEra(true);
   syncUrl();
@@ -643,8 +643,7 @@ async function loadArea(lon,lat,title,opt){
   // ⚠ 段が決まるまでは「現在」だけを出す（timelineReady=false）。
   //   前の場所の段のまま描くと、この地点に存在しない年代のタイルを取りに行く。
   timelineReady=false;
-  steps=allSteps(); buildTicks(); buildRuler();
-  slider.value="0";
+  steps=allSteps(); setPos(0); syncEra();
   // ⚠ 段が確定する前に、いったん仮で当てる。判定（最悪 8 秒）を待つあいだ
   //   「現在」を見せてから飛ぶと、共有先では**一度戻されたように見える**。
   //   ここではまだ「無い」とは言わない（間引く前の梯子で探しているだけ）
@@ -693,7 +692,7 @@ async function loadArea(lon,lat,title,opt){
     total:0, wet:0, classified:0, unread:0, counts:{}, dated:0,
     waterRatio:w.ratio, waterRead, waterUnread, waterRects:w.rects,
     landSummary:summarizeLand(w.classCounts,w.classifiedPixels), buildingLand:null };
-  showResult(); render(); buildRuler();
+  showResult(); render();
 
   // --- 2. 建物 ---
   // 事前計算データがある範囲では Overpass を叩かない。
@@ -862,7 +861,7 @@ async function loadArea(lon,lat,title,opt){
   if(area.unread) statusEl.innerHTML+=`<div class="err" style="margin-top:5px">
     ${area.unread} 件は明治期のデータを読み込めませんでした。 ${retryBtn(lon,lat,title)}</div>`;
   wireRetry(lon,lat,title);
-  showResult(); render(); buildRuler();
+  showResult(); render();
 }
 
 // ---- この土地の成り立ち（掟: 主題は「成り立ち」。明治期は手法のひとつ）----
@@ -1206,9 +1205,8 @@ function paintBreakdown(el,b,bldState){
 // ============================================================
 // 描画・再生
 // ============================================================
-const slider=document.getElementById("t"), timePanelEl=document.getElementById("timePanel");
-const trackEl=document.getElementById("track"), fillEl=trackEl.querySelector(".fill");
-const knobEl=trackEl.querySelector(".knob"), gradeEl=document.getElementById("grade");
+// ⚠ **年代 UI の DOM は EraControlPanel が持つ**（hidetzu/konjaku#171）。⚠ ここからは引かない。
+const gradeEl=document.getElementById("grade");
 const mapEl=document.getElementById("map"), panel=document.getElementById("panel");
 const toggle=document.getElementById("toggle");
 
@@ -1219,7 +1217,6 @@ const NARROW_Q="(max-width:680px)";
 const narrow=()=>matchMedia(NARROW_Q).matches;
 // ⚠ 幅が変わったら、閉じている側を入れ替える（画面回転・折りたたみ端末で起きる）
 matchMedia(NARROW_Q).addEventListener("change",()=>{
-  if(typeof buildRuler==="function") buildRuler();
 });
 
 // ============ 共有された状態を、URL に載せる／URL から戻す ============
@@ -1228,7 +1225,7 @@ matchMedia(NARROW_Q).addEventListener("change",()=>{
 // ⚠ スライダーは連続値だが、URL に載せるのは**段**まで。中間は「見ている途中」であって
 //   共有したい状態ではない。戻すときも段の境界に合わせる。
 function stepNow(){
-  return Math.max(0,Math.min(steps.length-1,Math.round(Number(slider.value)/100)));
+  return Math.max(0,Math.min(steps.length-1,Math.round(pos)));
 }
 const eraNow=()=>steps[stepNow()]?.id ?? null;
 // ⚠ q と ll しか無い古い URL も、これまでどおり開ける。era / b は足すだけで、必須にしない
@@ -1293,241 +1290,61 @@ function resolveWantEra(final){
   // ⚠ 段の境界ちょうどに置く。中途半端な値だと、**年代の名前は出ても場面が入りきらない**。
   //   実測（2026-08-16 / 375×667 / 豊洲）: 値 769/800 では表示も目盛りも「明治期」なのに、
   //   建物を消す条件（value/100 >= 段数-0.02）に入らず、建物が立ったままだった。
-  if(k>=0){ slider.value=String(k*100); if(final){ wantEra=null; } return; }
+  if(k>=0){ setPos(k); if(final){ wantEra=null; } return; }
   if(!final) return;
   wantEra=null;
   missEra=eraLabel(want)??want.slice(0,24);
   showMiss();
 }
 
-// ⚠ 端の文字は、目盛りの中心に置くと枠の外へ出る（中心そろえなので左右に半分ずつはみ出す）。
-//   9px のうちは偶然収まっていたが、読める大きさにしたら 375px で 3px はみ出した
-//   （実測 2026-08-15。横スクロールが出る）。端だけ内側へ寄せる印を付ける。
-//
-// ⚠ 目盛りは**地点ごとに引き直す**。段の数が場所によって変わるため
-//   （豊洲 9 段 / 広島 7 段 / 長崎 出島 4 段）。スライダーの上限も一緒に動かす。
-//   ⚠ .rail / .fill / .knob / <input> は消さない。消すと操作できなくなる。
 // ============================================================
-// 狭い幅の「ものさし」。⚠ **その地点の全段を 1 本の軸に常時描く。**
-//   直したかったのは「どこまで遡れるか分からない」ほう。実測（2026-08-19）:
-//   9 段のうち画面に入っていたのは 375 幅で 2 個・320 幅で 1 個だけだった。
-// ⚠ **右端はその地点の最終段。**「明治期」固定ではない（明治期データは 24 地点で 7/24）。
-// ⚠ **明治期は写真ではない**（低湿地データ）。刻みの形を変え、手前に仕切りを置く。
-// ⚠ **刻みは的にしない。**320 幅・9 段で 1 段 26.5px しかなく、44px を割る（掟）。
+// 年代の表示と操作は EraControlPanel が持つ（hidetzu/konjaku#171）
+//   ⚠ **ここから年代 UI の DOM を直接書かない。**⚠ 渡して、返してもらう。
+//   ⚠ 中身は `public/components/era-control/era-control.js` へ移した（⚠ **移しただけ**）。
 // ============================================================
-const rulerEl=document.getElementById("ruler");
-const rlYear=document.getElementById("rlYear"), rlSub=document.getElementById("rlSub");
-const rlLeft=document.getElementById("rlLeft"), rlRight=document.getElementById("rlRight");
-const rlTicks=document.getElementById("rlTicks"), rlKnob=document.getElementById("rlKnob");
-const rlLine=document.querySelector("#ruler .rl-line");
-const rlPrev=document.getElementById("rlPrev"), rlNext=document.getElementById("rlNext");
-const rlNote=document.getElementById("rlNote");
+// ⚠ **位置の正本は、ここが持つ**（0〜段数の連続値）。
+//   ⚠ 以前は #t の value が正本だったが、⚠ **DOM をコンポーネントへ渡したので、
+//     画面側は自分の数を持つ。**⚠ 2 か所に持たない（掟）。
+let pos = 0;
+const setPos = (v) => { pos = Math.max(0, Math.min(Math.max(0, steps.length - 1), v)); };
 
-// 段 k が軸のどこか（0..1）。⚠ 段の数が地点で変わるので、必ず steps から出す
-const rlAt=(k)=>steps.length<2?0:k/(steps.length-1);
-
-// ⚠ 狭い幅では、ものさし以外の操作部品を**到達できない**ようにする。
-//   display:none の親に入っていても、実装が変われば漏れる。⚠ **要素側でも閉じる。**
-//   実測（2026-08-19・320幅）: #timeToggle / #play / #t とドラムのボタン 9 個に
-//   ⚠ 見えないまま焦点が当たっていた（掟: 押しても何も起きない導線を置かない）。
+// ⚠ **根拠を全画面で読んでいるあいだ、地図側の操作は閉じる。**
+//   実測（2026-08-19・320幅）: パネルが覆っているのに toggle / ‹ › に焦点が当たっていた。
+//   ⚠ 見えないものを押させない（掟）。
+//   ⚠ 「← 今昔へ」「✕ 地図へ」は帯に出ているので閉じない（戻る手段は常に残す）。
+// ⚠ **panelOpen を直に読まない。**この関数は宣言より前に呼ばれる。
+//   ⚠ 2026-08-19 に TDZ で 2 回踏んだ。**クラスから読む**（DOM は初期化順に依らない）。
+const fullRead = () => narrow() && !panel.classList.contains("hide");
 function sealOldControls(){
-  const narrowNow=narrow();
-  // ⚠ **幅ごとに、使わない側を閉じる。**片方だけ閉じると、もう片方で漏れる。
-  //   ⚠ ドラムは**狭い幅の道具**なので、広い幅で閉じる。横棒・▶ はその逆。
-  //   ⚠ **これは main からある漏れでもある**（実測 2026-08-19・PC でドラムのボタン 9 個に
-  //     見えないまま焦点が当たっていた）。ものさしを入れるついでに、両側とも閉じる。
+  const full = fullRead();
   const seal=(el,off)=>{ if(!el) return;
-    // ⚠ inert は中の子まで一括で閉じる（ドラムのボタン 9 個もこれで閉じる）
     el.inert=off;
     if(off) el.setAttribute("aria-hidden","true"); else el.removeAttribute("aria-hidden"); };
-  // ⚠ **狭い幅では #bar の中を全部使わない。**ものさしに差し替えたので、ドラムも使わない。
-  //   （ドラムは 2026-08-18 に入れたが、2026-08-19 にものさしへ置き換えた）
-  for(const id of ["play","t","track","drum"]) seal(document.getElementById(id),narrowNow);
-  // ⚠ 広い幅ではドラムを使わない。**これは main からある漏れ**（実測 2026-08-19:
-  //   PC でドラムのボタン 9 個に、見えないまま焦点が当たっていた）。ここで一緒に閉じる。
-  if(!narrowNow) seal(document.getElementById("drum"),true);
-  // ⚠ **「隠したまま開いていると名乗らせない」手当ては、要らなくなった**（2026-08-22）。
-  //   ⚠ 畳みボタンそのものを消したので、⚠ **aria-expanded を持つ要素が無い。**
-  // ⚠ **逆も閉じる。** PC ではものさしを出していないので、こちらを到達不能にする。
-  //   片側だけ閉じると、広い幅で ‹ › とドラムのボタンに焦点が当たった（実測 2026-08-19）。
-  if(rulerEl){ rulerEl.inert=!narrowNow;
-    if(narrowNow) rulerEl.removeAttribute("aria-hidden"); else rulerEl.setAttribute("aria-hidden","true"); }
-  // ⚠ **根拠を全画面で読んでいるあいだ、地図側の操作は閉じる。**
-  //   実測（2026-08-19・320幅）: パネルが覆っているのに toggle / 年代の畳み / ‹ › に
-  //   焦点が当たっていた。⚠ 見えないものを押させない（掟）。
-  //   ⚠ 「← 今昔へ」「✕ 地図へ」は帯に出ているので閉じない（戻る手段は常に残す）。
-  // ⚠ **panelOpen を直に読まない。**この関数は宣言より前に呼ばれる（buildRuler の中）。
-  //   ⚠ 2026-08-19 に TDZ で 2 回踏んだ。**クラスから読む**（DOM は初期化順に依らない）。
-  const full=narrowNow&&!panel.classList.contains("hide");
-  for(const id of ["toggle","era","timePanel","land"]){
-    const el=document.getElementById(id);
-    if(el) seal(el,full);
-  }
+  // ⚠ **コンポーネントの中は、コンポーネントが閉じる**（sealed を渡す）。
+  //   ⚠ ここが閉じるのは、⚠ **画面が持っているもの**だけ。
+  for(const id of ["toggle","land"]){ const el=document.getElementById(id); if(el) seal(el,full); }
+  syncEra();
 }
 
-function buildRuler(){
-  sealOldControls();
-  if(!rulerEl||!rlTicks) return;
-  rlTicks.innerHTML="";
-  steps.forEach((s,k)=>{
-    const i=document.createElement("i");
-    i.style.left=`${rlAt(k)*100}%`;
-    // ⚠ 明治期は写真ではない。形を変える
-    if(s.meiji) i.className="rl-meiji";
-    rlTicks.appendChild(i);
-    // ⚠ 写真の終わりに仕切り。**その手前**に置く（明治期の刻みと重ねない）
-    if(s.meiji&&k>0){
-      const cut=document.createElement("i");
-      cut.className="rl-cut";
-      cut.style.left=`${(rlAt(k)+rlAt(k-1))/2*100}%`;
-      rlTicks.appendChild(cut);
-    }
+// ⚠ **コンポーネントへ渡す、ただ 1 か所。**⚠ 字は words.js、状態は画面が持つ。
+let eraControl=null, eraReadoutNow={}, eraToneNow={}, playingNow=false;
+function syncEra(){
+  eraControl?.update({
+    steps, pos, playing: playingNow,
+    narrow: narrow(), sealed: fullRead(),
+    // ⚠ **土地データそのものは渡さない。**⚠ 注記に要る 1 つの真偽値だけ
+    meijiHas: !area || area.waterRead !== false,
+    readout: eraReadoutNow, tone: eraToneNow,
   });
-  rlLeft.textContent=steps[0]?.label??"";
-  rlRight.textContent=steps[steps.length-1]?.label??"";
-  // ⚠ **できることから書く。**「写真はありません」で始めない（CLAUDE.md §4-1）
-  const photo=steps.filter((s)=>!s.meiji);
-  const hasMeiji=steps.some((s)=>s.meiji);
-  // ⚠ 1 行に収める。2 行になると 34px 使い、地図が減る（実測 2026-08-19・320幅）。
-  //   ⚠ 端のラベル（現在／明治期）が軸に出ているので、ここで年代を繰り返さない。
-  //   ⚠ **できることから書く。**「写真はありません」で始めない（CLAUDE.md §4-1）。
-  // ⚠ **「明治期は地図」と書けるのは、その土地に低湿地データがあるときだけ。**
-  //   段は整備の有無に関わらず出る（main からの挙動）。⚠ **段があること＝データがある、ではない。**
-  //   実測（2026-08-19・釧路）: 段は出るが、選ぶと「整備対象外です」と言う。
-  //   ⚠ 注記だけが「明治期は地図」と約束してしまうと、軸が嘘をつく。
-  const meijiHas = !area || area.waterRead !== false;
-  rlNote.textContent=photo.length
-    ? `空中写真 ${photo.length} 段`
-      +(hasMeiji ? (meijiHas ? " ／ 明治期は地図" : " ／ 明治期はこの土地では未整備") : "")
-    : "";
 }
-
-function syncRuler(){
-  if(!rulerEl||!rlKnob) return;
-  const pos=Number(slider.value)/100;
-  rlKnob.style.left=`${Math.max(0,Math.min(1,steps.length<2?0:pos/(steps.length-1)))*100}%`;
-  const k=Math.round(pos);
-  const s=steps[Math.max(0,Math.min(steps.length-1,k))];
-  // ⚠ **撮影種別は、年代の箱（`#era .s`）の 1 か所だけ**（2026-08-22。hidetzu/konjaku#165。Owner 判断 A）。
-  //   ⚠ **狭い幅の分担は、もともとそう決まっていた**（`peel.html`: ⚠ 年を 2 か所に出さない。
-  //     ものさしが年を答えるので、⚠ **年代の箱に残すのは「いま何の写真か」と、届かないときの名乗り**）。
-  //   ⚠ ここが分担を破って、⚠ **撮影種別を 2 回目に出していた**
-  //     （実測 2026-08-21・375×667: `#era .s` y=379 と ものさしの中 y=518 が、どちらも「最新の空中写真」）。
-  //   ⚠ **空にすれば箱ごと消える**（`#rlSub:empty{display:none}`）。⚠ 年は今までどおり出す。
-  if(s){ rlYear.textContent=s.label; rlSub.textContent=""; }
-  rlPrev.disabled=pos<=0.001;
-  rlNext.disabled=pos>=steps.length-1-0.001;
-}
-
-// ⚠ ＜＞ は 1 段ずつ。⚠ 軸のドラッグは連続（じわじわ変わる体験を残す）
-const rlStep=(d)=>{
-  const k=Math.max(0,Math.min(steps.length-1,Math.round(Number(slider.value)/100)+d));
-  setStep(k);
-};
-rlPrev?.addEventListener("click",()=>rlStep(-1));
-rlNext?.addEventListener("click",()=>rlStep(1));
-// ⚠ 軸そのものが指の面。刻みは的にしない（26.5px は 44px を割る）
-let rlDrag=false;
-const rlFromX=(x)=>{
-  const r=rlLine.getBoundingClientRect();
-  const t=Math.max(0,Math.min(1,(x-r.left)/Math.max(1,r.width)));
-  slider.value=String(t*(steps.length-1)*100);
-  slider.dispatchEvent(new Event("input",{bubbles:true}));
-};
-rlLine?.addEventListener("pointerdown",(e)=>{ rlDrag=true; rlLine.setPointerCapture(e.pointerId); rlFromX(e.clientX); });
-rlLine?.addEventListener("pointermove",(e)=>{ if(rlDrag) rlFromX(e.clientX); });
-for(const ev of ["pointerup","pointercancel"]) rlLine?.addEventListener(ev,()=>{ rlDrag=false; });
-
-function buildTicks(){
-  trackEl.querySelectorAll(".tick,.lab").forEach((el)=>el.remove());
-  const n=steps.length-1;
-  steps.forEach((s,k)=>{
-    const pc=k/n*100;
-    const edge=k===0?" at-start":k===n?" at-end":"";
-    // ⚠ **両端は必ず出す。** 中間は狭い画面で密集するので1つおきに間引くが、
-    //   端まで間引くと「このつまみを端まで送ると何になるのか」が読めなくなる。
-    //   段が固定 9 段だった頃は両端が k=0 と k=8 でどちらも偶数だったため、
-    //   `k%2===0` だけで**たまたま**成立していた。段数が地点ごとに変わるいまは、
-    //   長崎 出島（4 段）で終端が k=3 になり、「明治期」が空欄になっていた。
-    const show=k===0||k===n||k%2===0;
-    trackEl.insertAdjacentHTML("beforeend",
-      `<div class="tick" data-i="${k}" style="left:${pc}%"></div>
-       <div class="lab${edge}" data-i="${k}" style="left:${pc}%">${show?s.label:""}</div>`);
-  });
-  // スライダーの目盛りと上限を、段の数に合わせる（1段 = 100）
-  slider.max=String(n*100);
-  if(Number(slider.value)>n*100) slider.value=String(n*100);
-  buildDrum();
-}
-
-// ============================================================
-// 横ドラムロール（狭い幅）
-//   段を横に並べ、指で回して真ん中で選ぶ。
-// ⚠ **値の正本は #t のまま。**ここは #t を動かすだけ。▶ もカメラも #t を見ている。
-//   別に値を持つと、再生中とドラム操作で答えが割れる（掟: 同じ問いに答える実装を2つ持たない）。
-// ⚠ 横棒では狭くて 4 段の名前を消していたが、ここは横スクロールなので**全段に名前を出す**。
-//   実測（2026-08-18）: 段は 9 つあり、**全部に名前はあった**（表示で間引いていただけ）。
-// ============================================================
-const drumEl=document.getElementById("drum");
-let drumSelf=false, drumTimer=null;
-function buildDrum(){
-  if(!drumEl) return;
-  drumEl.innerHTML=steps.map((s,k)=>
-    `<button class="d-it" type="button" data-i="${k}">${esc(s.label)}</button>`).join("");
-  // 全体のどこにいるかの点。⚠ 押せない（位置を知らせるだけ）
-  const pos=document.getElementById("drumPos");
-  if(pos) pos.innerHTML=steps.map(()=>"<i></i>").join("");
-  // 文字を押しても選べる（回すのが苦手な人の逃げ道）
-  drumEl.querySelectorAll(".d-it").forEach((b)=>{
-    b.onclick=()=>setStep(Number(b.dataset.i));
-  });
-  syncDrum(true);
-}
-// 段を選ぶ。⚠ #t を動かして input を投げる（既存の経路に一本化する）
-function setStep(k){
-  const v=Math.max(0,Math.min(steps.length-1,k))*100;
-  if(Number(slider.value)===v) return;
-  slider.value=String(v);
-  slider.dispatchEvent(new Event("input",{bubbles:true}));
-}
-// いまの値に合わせてドラムを寄せる。⚠ 自分で動かしている間は scroll を聞き返さない
-function syncDrum(instant){
-  if(!drumEl||!drumEl.offsetParent) return;      // PC（display:none）では何もしない
-  const it=drumEl.querySelectorAll(".d-it");
-  if(!it.length) return;
-  const pos=Number(slider.value)/100;
-  const i=Math.max(0,Math.min(it.length-1,Math.round(pos)));
-  it.forEach((b,k)=>b.classList.toggle("on",k===i));
-  document.getElementById("drumPos")?.querySelectorAll("i")
-    .forEach((d,k)=>d.classList.toggle("on",k===i));
-  // ⚠ 連続値（再生中）でも追えるよう、段と段の間を按分する
-  const a=it[Math.floor(pos)]??it[i], b2=it[Math.ceil(pos)]??it[i];
-  const f=pos-Math.floor(pos);
-  const cx=(a.offsetLeft+a.offsetWidth/2)*(1-f)+(b2.offsetLeft+b2.offsetWidth/2)*f;
-  const want=Math.round(cx-drumEl.clientWidth/2);
-  if(Math.abs(drumEl.scrollLeft-want)<1) return;
-  drumSelf=true;
-  drumEl.scrollTo({left:want,behavior:instant?"auto":"smooth"});
-  clearTimeout(drumTimer);
-  drumTimer=setTimeout(()=>{ drumSelf=false; },260);
-}
-// 指で回したら、真ん中に来た段を選ぶ
-let drumStill=null;
-drumEl?.addEventListener("scroll",()=>{
-  if(drumSelf) return;
-  clearTimeout(drumStill);
-  // ⚠ 止まってから決める。動いている途中で決めると、通り過ぎた段を全部選ぶことになる
-  drumStill=setTimeout(()=>{
-    const it=drumEl.querySelectorAll(".d-it");
-    if(!it.length) return;
-    const c=drumEl.scrollLeft+drumEl.clientWidth/2;
-    let best=0,bd=Infinity;
-    it.forEach((b,k)=>{ const d=Math.abs(b.offsetLeft+b.offsetWidth/2-c);
-      if(d<bd){bd=d;best=k;} });
-    setStep(best);
-  },90);
+eraControl = createEraControl({
+  root: document.getElementById("timePanel"),
+  // ⚠ **操作は返ってくる。**⚠ 画面が位置を持ち、描き直す（一方向）
+  onChangeEra: (p) => { setPos(p); stop(); render(); const k=stepNow(); if(k!==urlStep){ urlStep=k; syncUrl(); } },
+  onTogglePlay: () => togglePlay(),
 });
-buildTicks(); buildRuler();
+// ⚠ 幅が変わったら、閉じている側を入れ替える（画面回転・折りたたみ端末で起きる）
+matchMedia(NARROW_Q).addEventListener("change", syncEra);
 
 // ============================================================
 // 地表のラスタが本当に届いたか（掟: 取れなかったを「無い」と言わない の根）
@@ -1632,7 +1449,7 @@ function rasterArrived(id){
 //   建物が消える年・水位・建物のフェードは tau（段を間引いても動かない）。
 function viewNow(){
   const nPhoto=photoSteps();
-  const pos=Number(slider.value)/100, i=Math.min(Math.floor(pos),nPhoto-1), f=pos-i;
+  const i=Math.min(Math.floor(pos),nPhoto-1), f=pos-i;
   // いま主に見えている段。明治期の段は写真ではないので near には入れない
   const sNear=f<.5?steps[i]:(steps[i+1]??null);
   const near=(sNear&&!sNear.meiji)?sNear:null;
@@ -1681,18 +1498,9 @@ function paint(v){
   gradeEl.style.opacity=String(wr*.95);
   mapEl.style.filter=`saturate(${1-wr*.42}) contrast(${1+wr*.10}) brightness(${1-wr*.10})`;
 
-  const pc=pos/nPhoto*100;
-  fillEl.style.width=pc+"%"; knobEl.style.left=pc+"%";
-  const selected=Math.max(0,Math.min(steps.length-1,Math.round(pos)));
-  trackEl.querySelectorAll(".tick").forEach((el)=>{
-    const k=Number(el.dataset.i);
-    el.classList.toggle("on",k<=pos+.5);
-    el.classList.toggle("selected",k===selected);
-  });
-  trackEl.querySelectorAll(".lab").forEach((el)=>
-    el.classList.toggle("selected",Number(el.dataset.i)===selected));
-  // ⚠ ものさしも同じ周期で追う。触るのは 2 つの要素だけ（つまみの位置と年）
-  syncRuler();
+  // ⚠ **帯・ものさし・ドラムの見た目は EraControlPanel が描く**（hidetzu/konjaku#171）。
+  //   ⚠ **式は移しただけ**（`pos/nPhoto*100`）。⚠ ここからは DOM を触らない。
+  syncEra();
 }
 
 // ⚠ 静的 HTML にあるものを、毎フレーム引き直さない。**1 度だけ引いて持つ。**
@@ -1785,18 +1593,13 @@ function describe(v){
 
   // ⚠ **いま選択中の年代は #timePanel の 1 か所**（2026-08-22。Owner 判断で #era を消した）。
   //   ⚠ **器を消しただけで、字は減らしていない。**⚠ 年・種別・接続・名乗りは同じものを出す。
-  timePanelEl.querySelector(".y").textContent=cur.label;
   const read=eraReadout(gstate, near?subOf(near):MEIJI.sub);
-  timePanelEl.querySelector(".kick").textContent=read.kick;
-  timePanelEl.querySelector(".s").textContent=read.sub;
-  // ⚠ 接続の話は**別の行**に置く。写真の話と混ぜると、どちらが事実か読めなくなる
-  const netEl=timePanelEl.querySelector(".era-net");
-  if(netEl) netEl.textContent=read.hint ?? "";
-  timePanelEl.classList.toggle("waiting",gstate.kind==="late");
-  timePanelEl.classList.toggle("failed",gstate.kind==="fail");
-  timePanelEl.classList.toggle("meiji",!near); trackEl.classList.toggle("meiji",!near);
-  slider.setAttribute("aria-valuetext",cur.label);
-  if(eraSummaryNoteEl) eraSummaryNoteEl.textContent=(bldVisible&&pos>.02)?"いまの街を重ねています":"";
+  // ⚠ **字はここで決め、⚠ 置くのは EraControlPanel**（hidetzu/konjaku#171）。
+  //   ⚠ 接続の話は**別の行**に置く。写真の話と混ぜると、どちらが事実か読めなくなる
+  eraReadoutNow={ year:cur.label, kick:read.kick, sub:read.sub, net:read.hint ?? "",
+    note:(bldVisible&&pos>.02)?"いまの街を重ねています":"" };
+  eraToneNow={ waiting:gstate.kind==="late", failed:gstate.kind==="fail", meiji:!near };
+  syncEra();
   // ⚠ 過去の年代に入ったら、年と同じ強さで「重ねている」と言う。
   //   建物は現在のもので、地面だけが過去。そこを画面が言わないと、
   //   利用者は自分の知識でしか判別できない（知識が無ければ判別できない）。
@@ -1884,62 +1687,15 @@ function wireProvPeek(){
 // ⚠ URL を書くのは**段が変わったときだけ**。input は引いているあいだ連続で飛ぶので、
 //   毎回 replaceState すると 1 回の操作で数十回書くことになる。
 //   載せたいのは段までなので、段が同じあいだは書く必要も無い。
+// ⚠ **段が変わったかは onChangeEra が見る**（hidetzu/konjaku#171 で口を 1 つにした）。
 let urlStep=null;
-slider.addEventListener("input",()=>{
-  stop(); render(); syncDrum(true);
-  const k=stepNow();
-  if(k!==urlStep){ urlStep=k; syncUrl(); }
-});
 
-// 端の年代ラベルは、見た目の中心が range の最大・最小位置からずれる。
-// そのまま押すと「明治期」と表示されても値が最大に届かず、場面が切り替わりきらないため、
-// 文字を押したときは、その段を明示的に選ぶ。
-//
-// ⚠ **既定動作を止めない。** 以前は文字だけ pointer-events:auto にして pointerdown を
-//   preventDefault/stopPropagation していたが、そうすると range がドラッグを始めないので、
-//   **文字の上から引いても値がその段に貼り付いて動かなかった**
-//   （実測 2026-08-16・375×667・豊洲: 右へ 120px 引いて 200 → 200 → 200 …。
-//    ノブの上・レールの上からは連続して動いていた）。
-//   そこで、押した点がどの文字の箱の中かだけを覚えておき、
-//   **ほとんど動かずに離したとき**＝タップのときだけ、その段へ寄せる。
-// ⚠ 引いた結果は寄せない。引き終えてから段へ吸うと、指を離した瞬間に値が飛ぶ。
-const TAP_SLOP=6;         // これ以下の移動はタップ。指で押すと数 px は動く
-let labFrom=null;
-// ⚠ 文字は pointer-events:none なので e.target には出てこない。箱で当てる。
-//   文字を間引いた（空の）ラベルは的にしない（押しても何が選ばれたのか読めない）
-// ⚠ **重なったときは、中心がいちばん近いものを選ぶ。**
-//   箱を指の大きさ（44px）まで広げたら、狭い画面で隣と重なった。
-//   DOM の順に最初の1つを返していたので、320×640 で「明治期」を押すと
-//   手前の「1945–50」が当たり、**値が 600 で止まった**（実測 2026-08-18）。
-//   ⚠ 重なりを消す方向では直せない。320px では文字の間隔が 55px しかなく、
-//     「1984–86」の字だけで 53px ある。**重なる前提で、境目を中点に置く。**
-const labAt=(x,y)=>{
-  let best=null, bestD=Infinity;
-  for(const el of trackEl.querySelectorAll(".lab")){
-    if(!el.textContent.trim()) continue;
-    const r=el.getBoundingClientRect();
-    if(x<r.left||x>r.right||y<r.top||y>r.bottom) continue;
-    const d=Math.abs(x-(r.left+r.right)/2);
-    if(d<bestD){ bestD=d; best=el; }
-  }
-  return best;
-};
-trackEl.addEventListener("pointerdown",(e)=>{
-  const mark=labAt(e.clientX,e.clientY);
-  const k=mark?Number(mark.dataset.i):NaN;
-  labFrom=Number.isFinite(k)?{x:e.clientX,y:e.clientY,k}:null;
-});
-trackEl.addEventListener("pointerup",(e)=>{
-  const f=labFrom; labFrom=null;
-  if(!f) return;
-  if(Math.hypot(e.clientX-f.x,e.clientY-f.y)>TAP_SLOP) return;   // 引いた。連続移動の結果を残す
-  slider.value=String(f.k*100);
-  slider.dispatchEvent(new Event("input",{bubbles:true}));
-});
-// 押しかけたまま取り消されたものを、次の操作へ持ち越さない
-trackEl.addEventListener("pointercancel",()=>{ labFrom=null; });
+// ⚠ **目盛りの文字タップは EraControlPanel が持つ**（hidetzu/konjaku#171 で移した）。
+//   ⚠ 経緯（既定動作を止めない／重なったら中心がいちばん近いものを選ぶ）は、
+//     ⚠ **移した先のコメントに全部ある。**⚠ ここには写さない（掟: 2 か所に書かない）。
 
-const playBtn=document.getElementById("play");
+// ⚠ **▶ の見た目は EraControlPanel が出す。**⚠ ここは押された合図を受けて、送りを回すだけ。
+//   ⚠ **カメラ送りは画面の仕事**（`map.` が要る。⚠ コンポーネントには持たせない）。
 // ⚠ **年代の説明を畳む仕掛け（#eraToggle）は消した**（2026-08-22。Owner 判断）。
 //   ⚠ 畳む相手だった #eraDetails は、⚠ **中身を #notice へ移したあと空だった。**
 //   ⚠ 空の箱を開閉するボタンは「押しても何も起きない導線」（ADR 0026）。
@@ -1989,8 +1745,8 @@ const closePanel = () => { panelOpen = false; applyPanel(); };
 document.getElementById("closePanel").onclick = closePanel;
 applyPanel();
 function stop(){ if(raf)cancelAnimationFrame(raf); raf=null;
-  playBtn.textContent="▶"; playBtn.setAttribute("aria-pressed","false"); setChrome(false); }
-playBtn.onclick=()=>{
+  playingNow=false; syncEra(); setChrome(false); }
+function togglePlay(){
   if(raf) return stop();
   // ⚠ 通しで送るときだけ、全年代を先に読む。**押した人だけが払う。**
   //   1段あたり約1.4秒しかないので、隣1段では間に合わない。
@@ -1998,16 +1754,16 @@ playBtn.onclick=()=>{
   // ⚠ 終点も所要時間も**段の数から出す**。8 段を決め打ちすると、
   //   広島（7 段）では端まで行かないまま止まる／速すぎる、のどちらかになる。
   preloadAll=true; render();
-  playBtn.textContent="❚❚"; playBtn.setAttribute("aria-pressed","true"); setChrome(true);
+  playingNow=true; syncEra(); setChrome(true);
   const end=(steps.length-1)*100;
-  const from=Number(slider.value)>=end-5?0:Number(slider.value);
+  const from=pos*100>=end-5?0:pos*100;
   const dur=DUR_PER_STEP*(steps.length-1);
   const c=map.getCenter(), z0=map.getZoom(), b0=map.getBearing(), p0=map.getPitch();
   const t0=performance.now();
   const step=(now)=>{
     const p=Math.min(1,(now-t0)/(dur*(1-from/end)));
     const e=p<.82?p/.82*.74:.74+(p-.82)/.18*.26;
-    const v=from+(end-from)*e; slider.value=String(v);
+    const v=from+(end-from)*e; setPos(v/100);
     const u=v/end;
     // ⚠ **「動きを減らす」を入れている人には、カメラを振らない。**
     //   ⚠ **消すのは動きであって、結果ではない。** 年代は最後まで送るし、所要時間も変えない。
@@ -2019,14 +1775,13 @@ playBtn.onclick=()=>{
     //     振らない版では 3/3 が「建物が減った」「地面が古くなった」と答えた。
     if(!lessMotionMQ.matches)
       map.jumpTo({center:c,zoom:z0-u*.55,bearing:b0+u*46,pitch:Math.min(78,p0+u*10)});
+    // ⚠ render() が syncEra() を呼ぶので、⚠ 帯もものさしもドラムも一緒に追う。
+    //   ⚠ 以前はドラムだけ別に追わせていた（input を投げない経路だったため）。
     render();
-    // ⚠ 再生は input を投げずに #t を直接動かすので、ドラムはここで追わせる。
-    //   追わせないと、再生し終わったあとドラムだけ前の段に取り残される。
-    syncDrum(true);
     if(p<1) raf=requestAnimationFrame(step); else stop();
   };
   raf=requestAnimationFrame(step);
-};
+}
 toggle.onclick=openPanel;
 addEventListener("keydown",(e)=>{
   // ⚠ 以前は「検索欄に入力中は除く」を見ていた。検索欄を外した（2026-08-18）ので、
@@ -2037,7 +1792,7 @@ addEventListener("keydown",(e)=>{
   const TYPE_IN=["text","search","url","email","tel","password","number"];
   const typing=(el)=>!!el&&(el.isContentEditable||el.tagName==="TEXTAREA"
     ||(el.tagName==="INPUT"&&TYPE_IN.includes(el.type)));
-  if(e.code==="Space"&&!typing(document.activeElement)){e.preventDefault();playBtn.onclick()}});
+  if(e.code==="Space"&&!typing(document.activeElement)){e.preventDefault();togglePlay()}});
 
 // ⚠ **プライバシーの 3 段。**⚠ 字は words.js の 1 か所（トップの検索欄の下と同じ文）。
 //   ⚠ 以前はこの HTML の中に直接書いていた。⚠ **写しがあると、片方だけ直せてしまう。**
