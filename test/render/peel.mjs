@@ -453,12 +453,32 @@ export const CASES = [
       //   （⚠ `.prov-q[data-q="3"]` を見る。⚠ 幅にも `#status` にも依らない）。
       await peelReady(page);
       await settleAfterCondition(page);
+      // ⚠ **「幅 0 ＋ tabIndex≥0」では足りない**（2026-08-23）。
+      //   ⚠ **`display:none` / `visibility:hidden` は、⚠ ブラウザ自身が焦点の順から外す。**
+      //   ⚠ **それを「漏れ」と数えると、⚠ 見えない＝安全なものまで落ちる**
+      //     （⚠ 実際に落ちた: ⚠ 板を小さくすると `#breakdown` ごと `display:none` になる
+      //      ⚠ `peekH` / `peekY` を、⚠ 「焦点が当たる」と報告した）。
+      //   ⚠ **実際に焦点を当てて、⚠ 当たったかで見る**（`ui-ux-review` §3）。
+      //     ⚠ **これは heuristic ではない。**⚠ **ブラウザの答えそのもの。**
+      //   ⚠ **見えているものは戻す**（⚠ 検査が焦点を動かしたまま次へ行かない）。
       const leaks = () => page.evaluate(() => {
-        const bad = [...document.querySelectorAll("button,input,a[href]")].filter((e) => {
+        const was = document.activeElement;
+        const bad = [];
+        // ⚠ **測れていない穴を、⚠ 先に書いておく**（掟: ⚠ 測っていないことを「確認済み」と書かない）。
+        //   ⚠ **見ているのは「自分の矩形が 0 なのに焦点が当たる」だけ。**
+        //   ⚠ **0×0 の `overflow:hidden` の中に押せるものを置くと、⚠ ここでは捕まらない**
+        //     （⚠ 子は自分の矩形を持つため。⚠ 2026-08-23 にわざと壊して確かめた）。
+        //   ⚠ **祖先の 0 面積まで見る案は捨てた**（⚠ 地図の帰属リンクまで拾って広すぎた）。
+        //   ⚠ **本当に強く見るなら Tab を順に押す**（`ui-ux-review` §3）。⚠ **まだやっていない。**
+        for (const e of document.querySelectorAll("button,input,a[href]")) {
           const r = e.getBoundingClientRect();
-          return e.tabIndex >= 0 && r.width === 0 && !e.closest("[inert]") && !e.inert;
-        });
-        return bad.map((e) => e.id || e.textContent.trim().slice(0, 8) || e.tagName);
+          if (r.width !== 0 && r.height !== 0) continue;   // 見えているものは対象外
+          if (e.inert || e.closest("[inert]")) continue;
+          e.focus();
+          if (document.activeElement === e) bad.push(e.id || e.textContent.trim().slice(0, 8) || e.tagName);
+        }
+        if (was instanceof HTMLElement) was.focus(); else document.activeElement?.blur?.();
+        return bad;
       });
       // ⚠ **`e.inert` は親から継いだ状態を返さない。**
       //   実測（2026-08-19）: 親（#ruler）を inert にしても、子の ‹ › は e.inert=false のままで、
@@ -1098,13 +1118,19 @@ export const CASES = [
       //   ⚠ **記号（← / ▴）を落としてから比べる。**落とさずに比べると、
       //     行き先の字が同じでも記号の差で「違う」になり、この検査は何も見ていない
       //     （2026-08-18 に壊して気づいた）。
+      // ⚠ **狭い幅では「← 今昔へ」の字を隠した**（2026-08-23。Owner 判断。⚠ 幅を空けるため）。
+      //   ⚠ **主張は「⚠ 2 つの行き先が、⚠ 押す前に区別できること」**（⚠ 利用者役 3/3 が
+      //     ⚠ 「どちらが今の場所を捨てるか分からない」「怖いので押さない」と答えたのが元）。
+      //   ⚠ **見えている字が消えたので、⚠ 名乗り（`aria-label` / `title`）で見る。**
+      //   ⚠ **記号（← / ▴）を落としてから比べる**（⚠ 落とさないと記号の差で常に「違う」になる）。
       const label = await page.evaluate(() => {
-        const word = (id) => (document.getElementById(id)?.innerText ?? "")
-          .replace(/[←✕×▴▾\s]/g, "");
+        const word = (id) => { const e = document.getElementById(id); if (!e) return "";
+          return (e.getAttribute("aria-label") || e.getAttribute("title") || e.innerText || "")
+            .replace(/[←✕×▴▾\s]/g, ""); };
         return { back: word("back"), close: word("toggle") };
       });
       must(label.back.length > 1 && label.close.length > 1,
-        `全画面で、戻る手段の行き先が字で出ていない: ← 「${label.back}」／▴ 「${label.close}」`);
+        `全画面で、戻る手段の行き先が名乗られていない: ← 「${label.back}」／▴ 「${label.close}」`);
       must(label.back !== label.close,
         `← と ✕ の行き先が同じ字になっている: どちらも「${label.back}」`);
       // (5) ⚠ **「光らせる」を押したら、光る先（地図）が見えること。**

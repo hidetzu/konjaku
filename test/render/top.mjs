@@ -1563,15 +1563,16 @@ export const CASES = [
           all: (document.getElementById("landAll")?.innerText ?? "").replace(/\s+/g, " ").trim().length,
         }));
         const a = await read();
-        must(!a.cls.includes("hide"), `PC でパネルが閉じて始まっている（${a.cls}）`);
+        must(a.cls.includes("open"), `PC でパネルが広がって始まっていない（${a.cls}）`);
         must(a.land === 0, "HUD の答え（#land）が戻っている（土地の答えはパネルの 1 か所）");
         must(a.all > 0, "PC の初期表示で、パネルに答えが書かれていない");
         // ⚠ **✕ の直後、⚠ 待たずに読む**（⚠ 例外や空白が出ないこと）
         // ⚠ **✕ は消えた**（2026-08-22）。⚠ **同じ的（`#toggle`）が小さくする。**
         await p2.click("#toggle");
         const b = await read();
-        must(b.cls.includes("hide"), `✕ でパネルが閉じていない（${b.cls}）`);
-        must(b.land === 0, "✕ で HUD の答えが復活している");
+        // ⚠ **`.hide`（閉じている）→ `.open`（広げている）**（2026-08-22。⚠ 真偽が逆）
+        must(!b.cls.includes("open"), `▴ でパネルが小さくならない（${b.cls}）`);
+        must(b.land === 0, "▴ で HUD の答えが復活している");
         must(errs.length === 0, `例外が出た: ${errs.slice(0, 2).join(" / ")}`);
         await p2.close();
 
@@ -1593,7 +1594,7 @@ export const CASES = [
         // ⚠ **▶ の直後、⚠ 待たずに読む**（⚠ 2 つめの入口）
         await p3.click("#play");
         const c = await read3();
-        must(c.cls.includes("hide"), `▶ でパネルが閉じていない（${c.cls}）`);
+        must(!c.cls.includes("open"), `▶ でパネルが小さくならない（${c.cls}）`);
         must(c.land === 0, "▶ で HUD の答えが復活している");
         await p3.click("#play");
         await settleAfterClick(p3);
