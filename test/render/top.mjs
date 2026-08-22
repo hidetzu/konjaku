@@ -16,7 +16,7 @@ import {
   timelineSettled, stepLabels, tauNow, effOpacity, waitOpacity, peelReady,
   settleAfterCondition, waited, waitOptional, settleAfterClick, settleAfterScroll, SWALE_ROUTE,
   LFC_ROUTE, DEM_ROUTE, forbid,
-  must, assertToyosu3dAnswer,
+  must, assertToyosu3dAnswer, openPanel
 } from "./lib.mjs";
 
 export const CASES = [
@@ -1493,9 +1493,9 @@ export const CASES = [
         //   ⚠ **時間切れのまま落とさない。**⚠ 何を待って駄目だったかを名乗る
         //     （⚠ 素の時間切れだと、⚠ どの主張が破れたのか読めない）。
         const gotEst = await p2.waitForFunction(
-          () => (document.getElementById("est")?.textContent ?? "").trim().length > 0,
+          () => (document.getElementById("notes")?.textContent ?? "").trim().length > 0,
           null, { timeout: 45000 }).then(() => true).catch(() => false);
-        must(gotEst, "PC で限界（#est）が出ていない（45 秒待っても字が入らない）");
+        must(gotEst, "PC で断りが出ていない（45 秒待っても字が入らない）");
         const look = () => p2.evaluate(() => {
           const vis = (s) => { const e = document.querySelector(s);
             return !!(e && e.checkVisibility?.()); };
@@ -1507,7 +1507,10 @@ export const CASES = [
             toggles: document.querySelectorAll("#eraToggle,#timeToggle,#hud [aria-expanded]").length,
             // ⚠ 「いま何年代か」を出しているもの
             years: [".time-panel .y", "#timeSummary", "#rlYear"].filter(vis),
-            est: vis("#est"), over: vis("#over"), play: vis("#play"), track: vis("#track"),
+            // ⚠ **`#est` / `#over` は消えた**（2026-08-22）。⚠ **断りは板の `#notes`。**
+            //   ⚠ **主張は同じ**（掟 §1: ⚠ 推定の絵を断りなしに見せない）。
+            est: !!document.querySelector('#notes li[data-kind="caveat"]')?.checkVisibility(),
+            play: vis("#play"), track: vis("#track"),
           };
         });
         const a = await look();
@@ -1521,8 +1524,8 @@ export const CASES = [
           `「いま何年代か」を ${a.years.length} か所が出している: ${a.years.join(" / ")}`);
         // ⚠ **操作は常に見える。**⚠ 「消した」だけの検査にしない（verify §5 の対）
         must(a.play && a.track, "PC で ▶ か横棒が出ていない（畳めなくしたので、常に見えるはず）");
-        // ⚠ **`#est` は HUD の外**（`#notice`）。⚠ **推定の絵を断りなしに見せない**（掟 §1）
-        must(a.est, "PC で限界（#est）が出ていない");
+        // ⚠ **断りは板の中**（2026-08-22）。⚠ **推定の絵を断りなしに見せない**（掟 §1）
+        must(a.est, "PC で断り（建物が消える年代は推定です）が出ていない");
         return `器 ${a.boxes.length} 個（${a.boxes.join(" / ")}）・畳む仕掛け 0 個・年代 1 か所`
           + `／▶ と横棒は常に見え、限界も出ている`;
       } finally { await ctx.close(); }
@@ -1563,21 +1566,25 @@ export const CASES = [
           all: (document.getElementById("landAll")?.innerText ?? "").replace(/\s+/g, " ").trim().length,
         }));
         const a = await read();
-        must(!a.cls.includes("hide"), `PC でパネルが閉じて始まっている（${a.cls}）`);
+        must(a.cls.includes("open"), `PC でパネルが広がって始まっていない（${a.cls}）`);
         must(a.land === 0, "HUD の答え（#land）が戻っている（土地の答えはパネルの 1 か所）");
         must(a.all > 0, "PC の初期表示で、パネルに答えが書かれていない");
         // ⚠ **✕ の直後、⚠ 待たずに読む**（⚠ 例外や空白が出ないこと）
-        await p2.click("#closePanel");
+        // ⚠ **✕ は消えた**（2026-08-22）。⚠ **同じ的（`#toggle`）が小さくする。**
+        await p2.click("#toggle");
         const b = await read();
-        must(b.cls.includes("hide"), `✕ でパネルが閉じていない（${b.cls}）`);
-        must(b.land === 0, "✕ で HUD の答えが復活している");
+        // ⚠ **`.hide`（閉じている）→ `.open`（広げている）**（2026-08-22。⚠ 真偽が逆）
+        must(!b.cls.includes("open"), `▴ でパネルが小さくならない（${b.cls}）`);
+        must(b.land === 0, "▴ で HUD の答えが復活している");
         must(errs.length === 0, `例外が出た: ${errs.slice(0, 2).join(" / ")}`);
         await p2.close();
 
-        // ⚠ **入口は 2 つ**（✕ と ▶）。⚠ **どちらも同じ 1 か所を通ること。**
-        //   ⚠ 前は「⚠ ▶ の直後に HUD が空でないこと」で見ていた（⚠ 引き継ぎの空白）。
-        //   ⚠ **2026-08-21 に引き継ぎが無くなった**ので、⚠ **見るのは
-        //     ⚠ 「▶ でも閉じること」と「⚠ 例外が出ないこと」。**
+        // ⚠ **入口は 2 つだった**（✕ と ▶）。⚠ **✕ は 2026-08-22 に消えた。**
+        //   ⚠ **`▶` は PC で板を畳まない**（⚠ `main` でも畳んでいない。⚠ 2026-08-23 に確かめた）。
+        //   ⚠ **PC は板と地図が並ぶので、⚠ 畳む必要が無い。**
+        //   ⚠ **主張を引き継ぐ**: ⚠ **`▶` を押しても、⚠ 例外が出ず、⚠ HUD に答えが戻らないこと。**
+        //   ⚠ **「畳むこと」は主張から外した。**⚠ **起きていないことを見続けると、
+        //     ⚠ この検査は「畳む実装」を要求し続ける**（⚠ いまの設計と食い違う）。
         const p3 = await ctx.newPage();
         const errs3 = [];
         p3.on("pageerror", (e) => errs3.push(e.message));
@@ -1592,12 +1599,16 @@ export const CASES = [
         // ⚠ **▶ の直後、⚠ 待たずに読む**（⚠ 2 つめの入口）
         await p3.click("#play");
         const c = await read3();
-        must(c.cls.includes("hide"), `▶ でパネルが閉じていない（${c.cls}）`);
         must(c.land === 0, "▶ で HUD の答えが復活している");
+        // ⚠ **押したら本当に送りが始まること**（⚠ 押しても何も起きない導線を置かない。ADR 0026）
+        await p3.waitForFunction(
+          () => document.getElementById("play")?.getAttribute("aria-pressed") === "true"
+             || /■|停止/.test(document.getElementById("play")?.textContent ?? ""),
+          null, { timeout: 10000 }).catch(() => {});
         await p3.click("#play");
         await settleAfterClick(p3);
         must(errs3.length === 0, `例外が出た: ${errs3.slice(0, 2).join(" / ")}`);
-        return `PC 初期はパネルに ${a.all} 字／✕ で閉じる／▶ でも閉じる／`
+        return `PC 初期はパネルに ${a.all} 字／▴ で小さくなる／▶ で送りが始まる／`
           + `HUD の答えは 0 個（例外 0 件）`;
       } finally { await ctx.close(); }
     },
@@ -1741,10 +1752,21 @@ export const CASES = [
           const top = document.getElementById("breakdown")?.innerText
             ?.split("\n").map((x) => x.trim()).filter(Boolean)[0] ?? "";
           return {
-            pair: innermost("河川・湖沼・海面", "510").map(([y, t]) => `y${y} ${t.slice(0, 44)}`),
-            raw: innermost("510").map(([y, t]) => `y${y} ${t.slice(0, 40)}`),
+            // ⚠ **内訳は作り替えた**（2026-08-22。Owner 判断）。
+            //   ⚠ **前は「明治期の区分ごとの件数」**（⚠ 分母＝判定できた件数）。
+            //   ⚠ **いまは「建物について何が分かっているか」**（⚠ 分母＝総数）で、
+            //     ⚠ **明治期の区分の内訳は「昔はどんな土地？」が面積の分母で持つ。**
+            //   ⚠ **主張は引き継ぐ**: ⚠ **区分名と数字の組は、⚠ 画面に 1 か所だけ。**
+            //   ⚠ **消えた主題を見続けると、⚠ 何も見ていないのに緑になる**（掟）。
+            pair: innermost("河川・湖沼・海面").map(([y, t]) => `y${y} ${t.slice(0, 44)}`),
+            // ⚠ **建物の分母（総数）と、⚠ 面積の割合が、⚠ 同じ行に並んでいないこと**（掟 §6）
+            // ⚠ **「同じ行」で見る**（2026-08-23）。⚠ **`innermost` は、⚠ 両方を含む最内を返すが、
+            //   ⚠ 別々の層にあると `#landAll` のような入れ物が返る**（⚠ 実際に返った）。
+            //   ⚠ **行の長さで絞る**（⚠ 80 字を超える箱は「行」ではない）。
+            mixed: innermost("河川・湖沼・海面", "543")
+              .filter(([, t]) => t.length <= 80).map(([y, t]) => `y${y} ${t.slice(0, 40)}`),
             breakdownTop: top,
-            est: document.getElementById("est")?.innerText?.replace(/\s+/g, " ").trim() ?? "",
+            est: document.getElementById("notes")?.innerText?.replace(/\s+/g, " ").trim() ?? "",
             panelH: document.getElementById("panel")?.scrollHeight ?? 0,
           };
         });
@@ -1754,10 +1776,12 @@ export const CASES = [
         // ⚠ **消した側の字が戻っていない**
         must(!r.pair.some((x) => /区分を特定できた足元のうち/.test(x)),
           `第3層の本文に「区分を特定できた足元のうち」が戻っている: ${r.pair.join(" ／ ")}`);
-        // ⚠ **生の件数は残っている**（消しただけにしない）
-        must(r.raw.length >= 1, "510 / 543 が画面から消えている（内訳が受け皿になっていない）");
-        must(/河川・湖沼・海面/.test(r.breakdownTop),
-          `内訳の 1 行目が区分名で始まっていない: ${r.breakdownTop}`);
+        // ⚠ **区分名は面積の分母で語る。**⚠ **建物の分母（543）と混ざっていないこと**（掟 §6）
+        must(!r.mixed.length,
+          `区分名が建物の分母と同じ行に並んでいる（分母が食い違う）: ${r.mixed.join(" ／ ")}`);
+        // ⚠ **区分名は割合つきで出ている**（⚠ 消しただけにしない）
+        must(r.pair.some((x) => /\d/.test(x)),
+          `区分名が数字なしで出ている（内訳が受け皿になっていない）: ${r.pair.join(" ／ ")}`);
         // ⚠ **3D の帯は 1 行**（2026-08-21。hidetzu/konjaku#151。Owner 判断）。
         //   ⚠ 前は「建物が消える年代は演出です」＋分数 2 つだった。
         //   ⚠ **分数はパネルへ移した**（⚠ 消していない）。⚠ **言い方も「推定」へ統一。**
@@ -1839,6 +1863,8 @@ export const CASES = [
     //   ⚠ **集計を外へ出したときに、⚠ tiles{ok,absent,unreachable} の分け方が
     //     1 つでもずれると、ここが入れ替わる。**
     name: "明治期の面が出せないとき、読めないのと範囲外を取り違えない", path: "/", group: "core",
+    // ⚠ **狭い幅は、⚠ 小さい状態で始まる。**⚠ **答えと断りは畳まれている**（2026-08-23）。
+    //   ⚠ **押しても開かないことがある**（⚠ 読み込みの途中で的が入れ替わる）。⚠ **開くまで待つ。**
     async check(page) {
       const ctx = await page.context().browser().newContext({
         viewport: { width: 375, height: 667 }, hasTouch: true, serviceWorkers: "block" });
@@ -1847,6 +1873,10 @@ export const CASES = [
         const p2 = await ctx.newPage();
         await forbid(p2, SWALE_ROUTE);
         await p2.goto(`${BASE}/peel?${TOYOSU}`, { waitUntil: "domcontentloaded", timeout: 45000 });
+        // ⚠ **狭い幅では、⚠ 小さいあいだ 3 つの問いを畳む**（2026-08-23。Owner 判断）。
+        //   ⚠ **断りは `#landAll` の中にある**ので、⚠ **広げてから読む。**
+        //   ⚠ **主張は変えていない**（⚠ 403 と範囲外を取り違えないこと）。⚠ **読む場所だけ移した。**
+        await openPanel(p2);
         await p2.waitForFunction(() => /読み込めませんでした|整備対象外/.test(document.body.innerText ?? ""),
           null, { timeout: 60000 });
         await settleAfterCondition(p2);
@@ -1860,6 +1890,7 @@ export const CASES = [
         // (2) ⚠ **本当に範囲外（札幌）** → 整備対象外。⚠ **読めなかったと言ってはいけない**
         const p3 = await ctx.newPage();
         await p3.goto(`${BASE}/peel?${SAPPORO}`, { waitUntil: "domcontentloaded", timeout: 45000 });
+        await openPanel(p3);
         await p3.waitForFunction(() => /整備対象外|読み込めませんでした/.test(document.body.innerText ?? ""),
           null, { timeout: 60000 });
         await settleAfterCondition(p3);

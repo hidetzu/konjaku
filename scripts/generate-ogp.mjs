@@ -149,7 +149,10 @@ function checkHtml(page) {
   const html = readFileSync(file(page.html), "utf8");
   const title = html.match(/<title>([^<]+)<\/title>/)?.[1];
   const ogTitle = html.match(/property="og:title" content="([^"]+)"/)?.[1];
-  const h1 = html.match(/<h1>([^<]+)<\/h1>/)?.[1];
+  // ⚠ **属性を許す**（2026-08-22）。⚠ `/peel` の h1 は `class="sr-only"` を持つ
+  //   （⚠ 目には出さないが、⚠ OGP の名乗りと読み上げのために残してある）。
+  // ⚠ **見ている主張は変えていない**（⚠ h1 の字と、⚠ OGP の見出しが一致すること）。
+  const h1 = html.match(/<h1[^>]*>([^<]+)<\/h1>/)?.[1];
   const ogImage = html.match(/property="og:image" content="([^"]+)"/)?.[1];
   const twitterImage = html.match(/name="twitter:image" content="([^"]+)"/)?.[1];
   const imageAlt = html.match(/property="og:image:alt" content="([^"]+)"/)?.[1];

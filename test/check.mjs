@@ -2632,6 +2632,18 @@ head("6. 外部リンク");
   if (!P) fails.push("prov.js を読み込めない（この検査が何も見ていない）");
   else {
     const ERA = { label: "1984–86" };
+    // ⚠ **答えが出せない問いには、⚠ 「詳しく見る」を出さない**（2026-08-23。Owner 判断）。
+    //   ⚠ 実測（網走市・1280×950）: ⚠ **「この範囲に明治期の低湿地データが無い」の下に出ていた。**
+    //   ⚠ **断りは消さない。**⚠ **畳んでいた実測の行だけ出さない**（掟 §1）。
+    {
+      const list = [{ q: 2, level: "no", tag: "未取得", body: "取れていない" },
+                    { q: 2, level: "ok", tag: "実測", body: "これは材料" }];
+      const on  = P.section(list, "詳しく見る", true);
+      const off = P.section(list, "詳しく見る", false);
+      yes(/詳しく見る/.test(on),   "答えがあるのに「詳しく見る」が無い");
+      yes(!/詳しく見る/.test(off), "答えが出せないのに「詳しく見る」がある（何を見るのか分からない）");
+      yes(/取れていない/.test(off), "「詳しく見る」を隠したら、断りまで消えた（掟 §1）");
+    }
     // ---- 地表。届いていないなら「実測」と言わない ----
     eq(P.groundRow(true, ERA).tag, "実測", "届いた地表");
     eq(P.groundRow(false, ERA).tag, "未取得", "届いていない地表");
@@ -2641,10 +2653,19 @@ head("6. 外部リンク");
     yes(/記録の有無は分かっていない/.test(P.groundRow(false, ERA).note ?? ""),
       "届いていない地表に「記録の有無は分かっていない」が無い");
 
-    // ---- 水面。読めなかった（未取得）と、本当に無い（欠落）を混ぜない ----
+    // ---- 水面。読めなかった（未取得）と、本当に無い（整備対象外）を混ぜない ----
     eq(P.waterRow({ waterRead: true }).tag, "実測", "読めた水面");
     eq(P.waterRow({ waterRead: false, waterUnread: true }).tag, "未取得", "読めなかった水面");
-    eq(P.waterRow({ waterRead: false, waterUnread: false }).tag, "欠落", "本当に無い水面");
+    // ⚠ **整備対象外のときは、⚠ 材料の行を出さない**（2026-08-23。Owner 判断）。
+    //   ⚠ **層の理由が既に「この範囲は明治期の低湿地データの整備対象外です」と言っている。**
+    //   ⚠ **前は 2 行目が「この範囲に明治期の低湿地データが無い」で、⚠ 言い切っていた**
+    //     （掟 §1: ⚠ **データにない ≠ 現実にない**）。
+    //   ⚠ **混ぜないという主張は変えていない。**⚠ **読めなかったときは、⚠ 上の行が残る。**
+    yes(P.waterRow({ waterRead: false, waterUnread: false }) === null,
+      "整備対象外なのに材料の行を出している（層の理由と同じことを 2 回言う）");
+    // ⚠ **`null` が並びから落ちること**（⚠ 落とし忘れると、⚠ 画面を組む側で落ちる）
+    yes(P.rows({ area: { waterRead: false, waterUnread: false }, groundArrived: true })
+      .every(Boolean), "行の並びに null が混ざっている");
 
     // ---- 建物。0 件は「読んだ結果」なので実測の側 ----
     eq(P.buildingRows({ bldState: "loading" })[0].tag, "未取得", "取得中の建物");
@@ -2688,11 +2709,13 @@ head("6. 外部リンク");
       yes(/現地に建物が無いという意味でもありません/.test(r.note ?? ""),
         "未対応に「現地に無いという意味ではない」が無い");
     }
-    // 建設年が1件も分かっていないときは、光らせるボタンを出さない（押しても何も起きない導線）
-    eq(P.buildingRows({ bldState: "ok", total: 9, dated: 0 }).at(-1).peek, null,
-      "建設年 0 件なのに光らせるボタンがある");
-    yes(P.buildingRows({ bldState: "ok", total: 9, dated: 3 }).at(-1).peek?.id === "peekY",
-      "建設年があるのに光らせるボタンが無い");
+    // ⚠ **光らせるボタンは、⚠ 内訳（`paintBreakdown`）が持つようになった**（2026-08-22。Owner 判断）。
+    //   ⚠ **主張は同じ**（⚠ 建設年が 1 件も分かっていないときは出さない。⚠ ADR 0026）。
+    //   ⚠ **見る場所が `prov.js` → 内訳へ移っただけ。**⚠ 下の breakdown の節が見ている。
+    // ⚠ **材料の行は「どうやって決めたか」だけを言う**（⚠ 件数は内訳が持つ。掟 §6）。
+    yes(!/\d+\s*\/\s*\d+/.test(
+          P.buildingRows({ bldState: "ok", total: 9, dated: 3 }).map((r)=>r.body+(r.note??"")).join("")),
+      "材料の行が件数を言っている（⚠ 内訳と同じ数字を 2 か所で言うことになる）");
 
     // ---- 全組み合わせ。⚠ ここが「ブラウザでは作れない状態」を含む ----
     const TAGS = new Set(Object.values(P.TAGS));
@@ -3343,12 +3366,27 @@ head("6. 外部リンク");
   const mw = /\nconst WORD = \{[\s\S]*?\n\};/.exec(src["peel3d.js"] ?? "");
   if (!m || !mw) bad("peel3d.js の breakdown を取り出せない（この検査が何も見ていない）");
   else {
-    const [B, W, P] = new Function("KonjakuSwale", "KonjakuProv",
+    // ⚠ **`esc` も渡す**（2026-08-22。⚠ 内訳が区分名を esc するようになった）。
+    //   ⚠ **本物と同じものを渡す**（⚠ ここで別物を作ると、⚠ 検査が本物を見ていない）。
+    // ⚠ **`retryAt` / `retryBtn` / `wireRetry` も渡す**（2026-08-22。⚠ 取得失敗のとき、
+    //   ⚠ **内訳が再試行の的を出すようになった**。⚠ 前は `#status` にしか無かった）。
+    // ⚠ **`wireProvPeek` も渡す**（2026-08-23。⚠ **繋ぐ場所を、⚠ 作る場所の直後へ移した**）。
+    //   ⚠ **ここでは何もしない関数でよい。**⚠ **地図が本当に変わるかは実描画が見る**
+    //     （⚠ listener が消えていたことは、⚠ **DOM を組み立てただけでは分からない**）。
+    const [B, W, P] = new Function("KonjakuSwale", "KonjakuProv", "esc", "retryAt", "retryBtn", "wireRetry",
+      "wireProvPeek",
       `${m[0]}${mw[0]}\nreturn [breakdown, WORD, paintBreakdown];`)(
-        globalThis.KonjakuSwale, globalThis.KonjakuProv);
+        globalThis.KonjakuSwale, globalThis.KonjakuProv,
+        (globalThis.KonjakuEsc?.esc ?? ((x) => String(x))),
+        { lon: 139, lat: 35, title: "テスト" },
+        (lon, lat, t) => `<button class="retry-btn" data-ll="${lon},${lat}" data-title="${t}">再試行</button>`,
+        () => {}, () => {});
     // ⚠ 組み立てた結果そのものを見る。**戻り値だけ見ていると、画面に出る分母を見ていない**
     //   （実測 2026-08-19: 分母を総数に戻す壊し方で、この検査が落ちなかった）
     const paint = (counts, total) => { const el = { innerHTML: "" }; P(el, B(counts, total), "ok"); return el.innerHTML; };
+    // ⚠ **area を渡す口**（2026-08-22。⚠ 内訳が「建物について何が分かっているか」になったため）
+    const paintTo = (counts, total, area) => {
+      const el = { innerHTML: "" }; P(el, B(counts, total), "ok", false, area); return el.innerHTML; };
     const fails = [];
     const yes = (c, what) => { if (!c) fails.push(what); };
 
@@ -3365,13 +3403,70 @@ head("6. 外部リンク");
     // ⚠ 分割の分母は「判定できた件数」。総数にすると、判定できた分が小さく見える。
     //   ⚠ **組み立てた HTML で見る。**戻り値だけでは、画面に出る分母を見たことにならない
     yes(un.rows.reduce((t, r) => t + r.n, 0) === un.classified, "行を足しても、判定できた件数にならない");
-    const hUn = paint({ "読み込めず": 20, "旧水部": 80 }, 100);
-    yes(/80<span[^>]*> \/ 80<\/span>/.test(hUn),
-      `画面に出る分母が「判定できた件数」になっていない: ${(/ \/ \d+</.exec(hUn) ?? ["(無し)"])[0]}`);
-    yes(!/ \/ 100</.test(hUn), "画面に出る分母が総数になっている（判定できた分が小さく見える）");
-    // ⚠ 色見本が付くのは分類の行だけ。範囲外の行に付くと「明治期は陸だった」に読める
-    yes((hUn.match(/class="swatch"/g) ?? []).length === 1,
-      "分類でない行にも色見本が付いている");
+    // ⚠ **内訳は作り直した**（2026-08-22。Owner 判断）。
+    //   ⚠ **前は明治期の区分ごとの件数**（⚠ 分母＝判定できた件数）だった。
+    //   ⚠ **いまは「建物について何が分かっているか」**（⚠ 分母＝総数）。
+    //   ⚠ **明治期の区分の内訳は、⚠ 「昔はどんな土地？」が面積の分母で持つ**
+    //     （⚠ 前は ⚠ **同じ区分名が 2 か所に、⚠ 別の分母で並んでいた**。掟 §6）。
+    // ⚠ **主張は落としていない。**⚠ 下で、⚠ **新しい形について同じことを見る。**
+    {
+      const A = { total:100, dated:3, unread:20, wet:30, classified:80,
+                  hSrc:{measured:40,levels:10,default:50} };
+      const h = paintTo({ "読み込めず": 20, "旧水部": 80 }, 100, A);
+      // ⚠ **出す数字は、⚠ 全部おなじ分母（総数）で書く**（掟 §6）。
+      //   ⚠ **個数ではなく「別の分母が混ざっていないか」を見る**
+      //     （⚠ 個数で見ていたら、⚠ **凡例を足したときに、⚠ 分母と無関係に落ちた**）。
+      const dens = h.match(/ \/ \d+</g) ?? [];
+      yes(dens.length > 0 && dens.every((d) => d === " / 100<"),
+        `別の分母が混ざっている: ${dens.join() || "(無し)"}`);
+      // ⚠ **色見本は、⚠ 地図と照合できるものだけ**（2026-08-23。Owner 判断）。
+      //   ⚠ **2 種類ある。**⚠ **どちらも地図に相手がいる。**
+      //     1. ⚠ **地図の建物の既定の色**（⚠ 水色 / 砂色。⚠ 常に地図に出ている）
+      //     2. ⚠ **押しているあいだ変わる色**（⚠ ボタンの直後）
+      //   ⚠ **前は行の見出しに付いていて、⚠ 2 つは地図に相手がいなかった。**
+      //     ⚠ `足元が分かる` の水色 = 「明治期に水だった」の色（⚠ 4832 件の色ではない）
+      //     ⚠ `高さが分かる` の砂色 = 「水でなかった」の色（⚠ 実測の建物は両方の色になる）
+      const peeks = (h.match(/class="peek"/g) ?? []).length;
+      yes(peeks > 0, "光らせるボタンが 1 つも無い（色見本の主張が空になる）");
+      // ⚠ **押したときの色見本は、⚠ ボタンの直後**（⚠ 「押すと」の説明なので）
+      const paired = (h.match(/class="peek"[^>]*>[^<]*<\/button><div class="hint"><i class="legend"/g) ?? []).length;
+      yes(paired === peeks,
+        `光らせるボタン ${peeks} 個 のうち、⚠ 直後に色見本があるのは ${paired} 個（何の色か分からない）`);
+      // ⚠ **地図の建物の既定の色の凡例**（2026-08-23。Owner 指摘で戻した）。
+      //   ⚠ **これが無いと、⚠ 地図の水色と砂色が何なのか読めない。**
+      yes(/地図の建物の色/.test(h), "地図の建物の色の凡例が無い（地図の色が読めない）");
+      yes(h.indexOf("地図の建物の色") < h.indexOf("class=\"peek\""),
+        "地図の既定の色の凡例が、押したときの色見本より後ろにある");
+      // ⚠ **砂色を「水ではなかった」と言わない**（掟 §1）。
+      //   ⚠ **`wasWater` は「水と判定できた」= 1。**⚠ **判定できなかった 20 件も砂色になる。**
+      yes(!/水ではなかった<\/span>|水でなかった<\/span>/.test(h),
+        "砂色を「水ではなかった」と言い切っている（判定できなかった分が混ざっている。掟 §1）");
+      yes(/足元を判定できなかった 20 件が含まれます/.test(h),
+        "砂色に、判定できなかった件数が混ざっていることを書いていない（掟 §1）");
+      // ⚠ **3 行は内訳ではないと、⚠ 字で言う**（⚠ 利用者役 3/4 が足し算して止まった）
+      yes(/足し算はできません/.test(h), "3 行が内訳ではないことを書いていない");
+      // ⚠ **建設年が 1 件も分かっていないときは、⚠ 光らせるボタンを出さない**（ADR 0026）
+      const h0 = paintTo({ "旧水部": 80 }, 100, { ...A, dated:0 });
+      yes(!/id="peekY"/.test(h0), "建設年 0 件なのに光らせるボタンがある");
+      yes(/id="peekY"/.test(h), "建設年があるのに光らせるボタンが無い");
+      // ⚠ **0 件でも行は出す**（⚠ 隠すのは「無い」と言うのと同じ。掟 §1）
+      yes(/建てられた年が分かる/.test(h0), "建設年 0 件のとき、行ごと消えている");
+      yes(/>0<span/.test(h0), "建設年 0 件のとき、0 / N と書いていない");
+      // ⚠ **再試行の的は、⚠ 材料の行（`prov.js`）が持つ**（2026-08-22。Owner 判断）。
+      //   ⚠ **層 3 が `missing` のとき、⚠ 内訳の器そのものが作られない**ので、
+      //     ⚠ **内訳に置くと消える**（⚠ 実測 2026-08-22。⚠ 一度そこへ置いて消えた）。
+      //   ⚠ **主張は同じ**（⚠ 取れなかったときは復帰手段を添える。掟）。⚠ **見る場所を移した。**
+      {
+        const Pr = globalThis.KonjakuProv;
+        const fail = Pr.buildingRows({ bldState: "fail" })[0];
+        yes(fail.retry === true, "取得に失敗したのに、再試行の的が無い（戻る手段が消える）");
+        yes(/class="retry-btn"/.test(Pr.html([fail])), "再試行の的が HTML に出ていない");
+        // ⚠ **未対応のときは出さない**（⚠ 押しても直らない。ADR 0026）
+        const notyet = Pr.buildingRows({ bldState: "notyet" })[0];
+        yes(!notyet.retry, "未対応なのに再試行の的がある（押しても何も起きない）");
+        yes(!/class="retry-btn"/.test(Pr.html([notyet])), "未対応の HTML に再試行の的がある");
+      }
+    }
     yes(!/swatch[^>]*>\s*(データなし|読み込めず)/.test(paint({ "データなし": 5 }, 5)),
       "資料の範囲外に色見本が付いている");
     // ⚠ 読み込めなかったのと、範囲の外は、別の箱
@@ -4119,7 +4214,11 @@ head("9. 画面の言葉");
     //   ⚠ 「建物が消える年代は**演出**です」→「建物が消える年代は**推定**です」。
     //   ⚠ **分数（建てられた年 N / M ／ 高さ N / M）はパネルへ移した**（⚠ 消していない）。
     //   ⚠ **見ている主張は同じ**: ⚠ 断りが帯に残っていること。
-    if (!/建物が消える年代は推定/.test(PJ))
+    // ⚠ **2026-08-22 に、⚠ 「推定」の語だけ色を付けた**（`<span class="k">推定</span>`）。
+    //   ⚠ **字が要素で割れたので、⚠ 連続した文字列では読めない。**
+    //   ⚠ **タグを落としてから見る。**⚠ **見ている主張は同じ**（⚠ 断りが残っていること）。
+    //   ⚠ **緩めていない。**⚠ 割ってごまかせないよう、⚠ **語の順まで見る。**
+    if (!/建物が消える年代は推定/.test(PJ.replace(/<[^>]+>/g, "")))
       bad6.push("3D の帯から「建物が消える年代は推定」が消えている"
         + "（スマホで 0 アクションで見える唯一の場所。peel3d.js の同名コメントを読む）");
     // ⚠ **言い換えが半分だけ残っていないこと**（⚠ 「演出」が画面の字として戻らない）
@@ -4155,11 +4254,31 @@ head("9. 画面の言葉");
       if (/\.\/peel\?/.test(o))
         bad8.push("根拠パネルに ./peel への導線が戻っている（導線は一覧行の 1 か所）");
     // ⚠ **字の持ち主は TOPWORD.peelLead**。⚠ 呼ぶ側が書き写していないこと
-    const OWNED = ["いまの街が、明治期の地面のどこに立っているか",
-                   "空中写真を年代で切りかえて、明治期の地面と見くらべる"];
+    const OWNED = ["いまの街が、明治期の地面のどこに立っているか"];
     for (const w of OWNED) {
       const n = IX.split(w).length - 1;
       if (n !== 1) bad8.push(`「${w.slice(0, 18)}…」が index.html に ${n} 個ある（peelLead の 1 か所だけ）`);
+    }
+    // ⚠ **建物の判定が無い土地の字は、⚠ `words.js` が持つ**（2026-08-22。hidetzu/konjaku の
+    //   パネル整理で、⚠ **`/peel` も同じ字を使うようになった**）。
+    //   ⚠ **前は index.html にべた書きで 1 個**だった。⚠ **移した先でも 1 か所であること**を見る。
+    //   ⚠ **弱めていない。**⚠ **見る場所が index.html → words.js に移っただけ。**
+    {
+      const STEM = "空中写真を年代で切りかえて、明治期の地面と見くらべ";
+      const inW = (src["words.js"] ?? "").split(STEM).length - 1;
+      const inIX = IX.split(STEM).length - 1;
+      const inPeel = ((src["peel.html"] ?? "") + (src["peel3d.js"] ?? "")).split(STEM).length - 1;
+      if (inW !== 1) bad8.push(`words.js に「${STEM.slice(0, 14)}…」が ${inW} 個ある（1 か所のはず）`);
+      if (inIX) bad8.push(`index.html が「${STEM.slice(0, 14)}…」を書き写している（${inIX} 個）`);
+      if (inPeel) bad8.push(`/peel が「${STEM.slice(0, 14)}…」を書き写している（${inPeel} 個）`);
+      // ⚠ **両方が、⚠ 同じ口を通っていること**（⚠ 死にコードにしない）
+      if (!/KonjakuWords\.canWithoutBuildings\("top"\)/.test(IX))
+        bad8.push("index.html が canWithoutBuildings を通っていない（字が 2 か所になる）");
+      // ⚠ **呼び出し元は `prov.js` へ移った**（2026-08-22。Owner 判断: ⚠ 代わりにできることは
+      //   ⚠ **断りに添える**。⚠ 問いの答えの位置には置かない）。⚠ **見る主張は同じ。**
+      if (!/canWithoutBuildings\?\.\("peel"\)|canWithoutBuildings\("peel"\)/
+            .test((src["prov.js"] ?? "") + (src["peel3d.js"] ?? "")))
+        bad8.push("/peel が canWithoutBuildings を通っていない（字が 2 か所になる）");
     }
     // ⚠ **判定カードの CTA が peelLead を通っていること**（⚠ 死にコードにしない）
     //   ⚠ **2026-08-21 に、⚠ 導線が行動一覧から判定カードの中へ移った。**
@@ -4192,8 +4311,10 @@ head("9. 画面の言葉");
     const bad7 = [];
     const PJ = seen["peel3d.js"] ?? "";
     if (!PJ) bad7.push("peel3d.js を読めていない（この検査が何も見ていない）");
-    // ⚠ **入口が 1 か所**
-    const toggles = (PJ.match(/classList\.toggle\(\s*"hide"/g) ?? []).length;
+    // ⚠ **入口が 1 か所**（2026-08-22: ⚠ **`.hide` → `.open` に変わった**）。
+    //   ⚠ **パネルは常に出す。⚠ 小さくできるだけ**（Owner 判断）。
+    //   ⚠ **見ている主張は変えていない**（⚠ 状態を切り替える場所が 1 つであること）。
+    const toggles = (PJ.match(/classList\.toggle\(\s*"open"/g) ?? []).length;
     if (toggles !== 1)
       bad7.push(`.hide を切り替えている箇所が ${toggles} 個ある（1 か所へまとめる。`
         + `⚠ ✕ と ▶ の両方が通る）`);
@@ -4295,8 +4416,8 @@ head("9. 画面の言葉");
     for (const w of ["layerTitle", "ground1Lines", "ground1Text"])
       if (!W.includes(w)) bad4.push(`words.js が ${w} を持っていない`);
     // ⚠ **呼ぶ側が書き写していないこと。**⚠ 主語も、問いの見出しも
-    const OWNED = ["この土地は ", "人の手で ", "ここは、どういう土地？", "昔は、何があった？",
-                   "いま建っている建物は、何の上？"];
+    const OWNED = ["この土地は ", "人の手で ", "ここはどんな土地？", "昔はどんな土地？",
+                   "今建っている建物は？"];
     // ⚠ **許可一覧は無い**（2026-08-20 に空にした。hidetzu/konjaku#125）。
     //   ⚠ ここには peel3d.js の landformLine() を 1 つだけ許していた。
     //   ⚠ **それは死にコードで、画面に一度も出ていなかった。**⚠ 消したので許す相手がいない。

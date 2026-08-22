@@ -162,10 +162,37 @@
   //   ⚠ 「第1層」「第2層」は内部の呼び名。**画面に出さない**。
   // ⚠ **2026-08-20 に peel3d.js の WORD から移した。**⚠ トップにも同じ見出しを出すので、
   //   ⚠ **持ち主が 2 か所になる**のを避けた（掟: 同じ問いに答える実装を2つ持たない）。
+  // ⚠ **建物ごとの判定が無い土地で、⚠ 「ここで何ができるか」を先に言う字**
+  //   （2026-08-22。Owner 判断。⚠ `CLAUDE.md` §4-1: ⚠ **できないことから書き始めない**）。
+  // ⚠ **トップと `/peel` で、⚠ 同じ字を使う。**⚠ 語尾だけ場所で変える（⚠ 幹は 1 つ）。
+  //   ⚠ **前はトップにだけ、⚠ べた書きであった**（`index.html` の `peelLead`）。
+  //   ⚠ 2026-08-18 に利用者役 3/3 で選ばれた字。⚠ **こちらで作り直さない。**
+  // ⚠ **「順に増やしています」を落とさない。**⚠ 「用意できた場所から」は止まって聞こえる、
+  //   と 2/3 が言った（⚠ また来る理由を残す）。
+  const CAN_WITHOUT_BLD = "空中写真を年代で切りかえて、明治期の地面と見くらべ";
+  const BLD_SOON = "建物ごとの判定は、対応した場所から順に増やしています";
+  //   top  … トップの導線（⚠ 押す前に断る）。⚠ 断りを括弧で添える
+  //   peel … `/peel` の 3 つ目の問いの答え。⚠ 断りは下の材料の行が言うので、⚠ ここでは添えない
+  const canWithoutBuildings = (where) => where === "top"
+    ? `${CAN_WITHOUT_BLD}る（${BLD_SOON}）`
+    : `${CAN_WITHOUT_BLD}られます`;
+
+  // ⚠ **「詳しく見る」を開く口の名前**（2026-08-22。Owner 判断: `tmp/tmp3.md`）。
+  //   ⚠ **利用者の問いから決める**（`CLAUDE.md` §4）。⚠ **内部構造の名前にしない。**
+  //   ⚠ 一度「なぜそう言える？」（トップの判定カードと同じ字）にしたが、
+  //     ⚠ **Owner のモックは「詳しく見る」**だった。⚠ **こちらを採る。**
+  //   ⚠ **トップの `#whyBtn` とは別の字になる。**⚠ あちらは「答えの根拠」を開く口、
+  //     ⚠ **こちらは「その問いの詳細」を開く口**なので、⚠ **役割が違う。**
+  const whyLabel = "詳しく見る";
+
+  // ⚠ **問いの言い回し**（2026-08-22 に short くした。Owner 判断: `tmp/tmp3.md`）。
+  //   ⚠ **トップと `/peel` の両方が、⚠ ここから借りている。**⚠ 片方だけ変えない。
+  //   ⚠ 前: 「ここは、どういう土地？」「昔は、何があった？」「いま建っている建物は、何の上？」
+  //   ⚠ **3 つを同じ形にそろえた**（⚠ 並んだときに、⚠ 同じ種類の問いだと分かるように）。
   const LAYER_TITLE = {
-    1: "ここは、どういう土地？",
-    2: "昔は、何があった？",
-    3: "いま建っている建物は、何の上？",
+    1: "ここはどんな土地？",
+    2: "昔はどんな土地？",
+    3: "今建っている建物は？",
   };
   const layerTitle = (n) => LAYER_TITLE[n] ?? "";
 
@@ -314,6 +341,6 @@
 
   g.KonjakuWords = { S, meiji, meijiBadge, GROUP, groupTitle, METHOD, EDGE, UNREAD, method, shareMiss,
                      PRIVACY_SHORT, photoSay,
-                     LAYER_TITLE, layerTitle, ground1Lines, ground1Names, ground1Text,
+                     whyLabel, canWithoutBuildings, BLD_SOON, LAYER_TITLE, layerTitle, ground1Lines, ground1Names, ground1Text,
                      GROUND_GLOSS, groundGloss, ground1Speech, eraTick };
 })(typeof window === "undefined" ? globalThis : window);
