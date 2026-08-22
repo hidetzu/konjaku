@@ -54,14 +54,12 @@
     --text-ruler-year:1.875rem;
     --text-ruler-arrow:1.25rem;
     --text-chevron:1.0625rem;
-    --text-hero-lg:3.75rem;     /* 画面が狭いときは --text-hero に落とす（下のメディアクエリ） */
 
     --fs-chevron:var(--text-chevron);        /* 但し書き */
     /* ⚠ 入力欄は 16px 未満にしない。iOS Safari は 16px 未満の入力欄に触れると
        ページごと拡大し、戻らない。index.html と同じ約束（見た目の都合で下げないこと）。 */
     --fs-hero-sm:var(--text-4xl);    /* 数字を出せないとき（「判定できません」） */
     --fs-hero:var(--text-hero);      /* 99.6% と年。この画面の主役 */
-    --fs-hero-lg:var(--text-hero-lg);
     /* ⚠ 狭い幅で年代を 1 行に収めるための大きさ。2 行に割れると 38px 損して、
          そのぶん地図が減る（実測 2026-08-19・320幅で画面の 82% が箱になっていた）。
        ⚠ 生の値をここ以外に書かない（--text-* と --fs-* の決まり）。 */
@@ -166,24 +164,37 @@
 
   /* 年代と、その読み方を1枚にまとめる。別々の板を縦に積むと、どれが同じ表示の
      説明なのか分からず地図も細切れになる。初期状態では全部を見せ、読んだ後は畳める。 */
-  #era{pointer-events:auto;width:min(580px,100%);padding:9px 12px 11px;border-radius:13px;
-    border:1px solid rgba(255,255,255,.18);background:rgba(8,12,18,.86);
-    box-shadow:0 9px 30px rgba(0,0,0,.38);backdrop-filter:blur(14px);
-    text-align:center;line-height:1;text-shadow:0 3px 24px rgba(0,0,0,.85)}
-  .era-panel-head{position:relative;min-height:80px;display:flex;align-items:center;justify-content:center}
-  .era-kicker{position:absolute;left:1px;top:3px;font-size:var(--fs-note);color:#b8c2cd;
-    letter-spacing:.08em;text-shadow:none}
-  /* ⚠ 普段は名乗らない。空のときに場所を取らせない（主役＝年代の頭が下がる） */
+  /* ⚠ **いま選択中の年代の読み。**⚠ **.time-panel の見出しの行に置く**（2026-08-22）。
+     ⚠ 以前は独立した箱（#era）だった。⚠ **器を消して、字だけ移した。**
+     ⚠ **横に並べる**（年 → 種別）。⚠ 接続の話（.era-net）だけは別の行に落とす。 */
+  .time-panel .era-readout{min-width:0;display:flex;align-items:baseline;flex-wrap:wrap;
+    column-gap:9px;row-gap:2px;justify-content:flex-start;text-align:left;line-height:1.1}
+  .era-kicker{font-size:var(--fs-note);color:#b8c2cd;letter-spacing:.08em;text-shadow:none}
+  /* ⚠ 普段は名乗らない。空のときに場所を取らせない */
   .era-kicker:empty{display:none}
   /* ⚠ 出ていないときだけ名乗る。そのときは目立ってよい（見落とされては困る） */
-  #era.failed .era-kicker{color:#f0c479}
-  #era .era-readout{display:inline-block;min-width:148px;padding:0 76px}
+  .time-panel.failed .era-kicker{color:#f0c479}
   /* ⚠ **年代は 1 行に収める。** 実測（2026-08-19・320幅）: 「1936–42」が 2 行に割れて
        38px → 76px になり、そのぶん箱が伸びて地図が減っていた（画面の 82% が箱）。
-       ⚠ ハイフンで折り返すのを止める。字を小さくして逃げるのではなく、**折らない**。
-       ⚠ それでも入らない幅では字を詰める（読めなくなるより、詰まったほうがまし）。 */
-  #era .y{font-size:var(--fs-hero-lg);letter-spacing:.02em;font-weight:200;font-variant-numeric:tabular-nums;
-    white-space:nowrap}
+       ⚠ ハイフンで折り返すのを止める。字を小さくして逃げるのではなく、**折らない**。 */
+  /* ⚠ **いま選択中の年。**⚠ 大きさは 4 段で測って決めた（2026-08-22・1280×800・豊洲）。
+       段              見出しの行   HUD
+       30px（ものさしと同じ）  57px   174px
+       ⚠ **22px（これ）**      49px   166px
+       19px                   45px   162px
+       17px                   44px   161px
+     ⚠ **19px 以下は見出しの行が下限（--tap = 44px）に当たり、⚠ それ以上小さくしても
+       HUD は 1px も縮まない。**⚠ 縮む余地は 30 → 17px で 13px しかない。
+     ⚠ **17px は採らなかった。**⚠ 目盛りの文字（12px）と近すぎて、
+       ⚠ **「いま選んでいる年」と「選べる年の一覧」が大きさで区別できない**
+       （利用者役 1/4 が実際に迷った）。
+     ⚠ **中央寄せは持ち込まない。**⚠ 3/4 が PC で「横が空いているのに真ん中に寄っている」
+       と答えたため（ものさしの中央寄せは狭さへの手当て）。
+     ⚠ **`--fs-hero-sm` は「数字を出せないときの、ヒーローの代わりの文」の名で付いている。**
+       ⚠ **年に使うと名前と用途がずれる。**⚠ 段としては合っているので借りているだけで、
+       ⚠ **意味を借りているのではない。** */
+  .time-panel .y{font-size:var(--fs-hero-sm);letter-spacing:.02em;font-weight:200;
+    font-variant-numeric:tabular-nums;white-space:nowrap;color:var(--ink)}
   /* ⚠ ものさし（狭い幅のときだけ出す。既定は隠す） */
   #ruler{display:none}
   #ruler .rl-head{display:flex;align-items:center;gap:8px}
@@ -215,32 +226,15 @@
     background:#eef3f8;box-shadow:0 2px 8px rgba(0,0,0,.5);pointer-events:none}
   #rlNote{margin-top:5px;font-size:var(--fs-note);color:#9aa7b4;text-align:center;line-height:1.4}
   #rlNote:empty{display:none}
-  #era .s{display:block;margin-top:7px;font-size:var(--fs-note);letter-spacing:.16em;color:#cbd3dc}
+  .time-panel .s{font-size:var(--fs-note);letter-spacing:.16em;color:#cbd3dc}
   /* ⚠ 接続の話は、写真の話と**別の行**に置く。混ぜるとどちらが事実か読めなくなる。
      ⚠ 既存の .hint とは別物（あちらは根拠パネルの注記）。名前を分けている。 */
-  #era .era-net{display:block;margin-top:4px;font-size:var(--fs-note);color:#f0c479}
-  #era .era-net:empty{display:none}
-  #era.failed .s{color:#f0c479}
-  #eraToggle{position:absolute;right:-5px;top:-4px;min-width:var(--tap);min-height:var(--tap);padding:0 7px;
-    border:0;border-radius:8px;background:transparent;color:#cbd3dc;font:inherit;cursor:pointer;text-shadow:none}
-  #eraToggle:hover{background:rgba(255,255,255,.08);color:var(--ink)}
-  /* ⚠ 字を出さないぶん、記号だけが的になる。⚠ 実測で利用者役が「細くて角の飾りに見える」
-       「押したら何が起きるか想像できない」と答えた（2026-08-19）。
-       → 記号を大きくし、**丸い地色を敷いて押せる顔にする**。押す範囲 44px は変えない。 */
-  #eraToggle .chevron{display:inline-flex;align-items:center;justify-content:center;
-    width:30px;height:30px;border-radius:50%;margin-left:0;font-size:var(--fs-chevron);line-height:1;
-    background:rgba(255,255,255,.10);border:1px solid var(--line);transition:transform .18s}
-  #eraToggle:hover .chevron{background:rgba(255,255,255,.18)}
-  #eraSummaryNote{display:none;font-size:var(--fs-note);color:var(--estimate);white-space:nowrap;text-shadow:none}
-  #era.collapsed{width:auto;max-width:100%;padding:0 5px 0 11px}
-  #era.collapsed .era-panel-head{min-height:var(--tap);justify-content:flex-start;gap:8px}
-  #era.collapsed .era-kicker{position:static;flex:none}
-  #era.collapsed .era-readout{min-width:0;padding:0}
-  #era.collapsed .y{font-size:var(--fs-era);font-weight:600}
-  #era.collapsed .s,#era.collapsed #eraDetails{display:none}
-  #era.collapsed #eraSummaryNote{display:inline;overflow:hidden;text-overflow:ellipsis}
-  #era.collapsed #eraToggle{position:static;flex:none;margin-left:auto}
-  #era.collapsed #eraToggle .chevron{transform:rotate(180deg)}
+  .time-panel .era-net{flex-basis:100%;font-size:var(--fs-note);color:#f0c479}
+  .time-panel .era-net:empty{display:none}
+  .time-panel.failed .s{color:#f0c479}
+  #eraSummaryNote{font-size:var(--fs-note);color:var(--estimate);white-space:nowrap;text-shadow:none}
+  #eraSummaryNote:empty{display:none}
+  /* ⚠ **畳んでも年は見える。**⚠ 見出しの行に置いてあるので、そのまま残る。 */
   /* ⚠ 建物についての但し書きは、**初期状態で見える場所**に置く。
      以前は左パネルの中にしか無く、スマホでは初期状態で1文字も見えなかった。
      今回は利用者が読んだあと自分で畳めるが、勝手には畳まず、入口と要点を残す。 */
@@ -270,35 +264,49 @@
   #tip:empty{display:none}
   #est b{color:#eef1f5;font-weight:600}
   #est .k{color:var(--estimate)}
-  #era.meiji .y{color:var(--water)}
+  .time-panel.meiji .y{color:var(--water)}
 
   /* ============ 年代の操作パネル ============ */
-  #timePanel{pointer-events:auto;width:min(720px,100%);border:1px solid rgba(255,255,255,.22);
+  /* ⚠ **カードの内側の余白は、この 1 組だけ**（2026-08-22 にまとめた）。
+     ⚠ 以前は head と body が別々の値を持ち、⚠ **左右が食い違っていた**
+       （実測 2026-08-22: PC で head 左14 右10 ／ body 左14 右14。
+         狭い幅で head 左11 右5 ／ body 左10 右10）。
+     ⚠ 右 5px は**畳みボタンがいたころの詰め**で、⚠ ボタンを消したあとも残っていた。
+     ⚠ **横は幅で変える**（狭い幅は 10px。⚠ ものさしのノブが画面の縁から 10px だと
+       端末の「戻る」スワイプと喧嘩するため。実測 2026-08-18）。⚠ **縦は共通。** */
+  .time-panel{--pad-x:10px;--pad-y:8px;
+    pointer-events:auto;width:min(720px,100%);border:1px solid rgba(255,255,255,.22);
     border-radius:14px;background:rgba(8,12,18,.88);box-shadow:0 12px 38px rgba(0,0,0,.42);
     backdrop-filter:blur(16px);overflow:hidden}
-  .time-panel-head{min-height:var(--tap);padding:0 10px 0 14px;display:flex;align-items:center;
-    justify-content:space-between;gap:10px}
-  /* 見出しの行では、名乗り → ▶ → 閉じる の順。名乗りだけが伸び縮みする */
-  .time-panel-name{flex:1}
+  /* ⚠ **中身は左に寄せる**（2026-08-22。Owner 判断）。
+     ⚠ 畳みボタンだけは右端に残す（`margin-left:auto`）。⚠ **44×44 の的と位置は変えない。** */
+  .time-panel-head{min-height:var(--tap);padding:var(--pad-y) var(--pad-x);display:flex;
+    align-items:center;justify-content:flex-start;gap:10px}
+  /* ⚠ **いまの年代は、名乗りの下に置く**（2026-08-22。Owner 判断）。
+     ⚠ 横に並べると「現在 → 昔」と「現在」が隣り合い、⚠ **利用者役 3/4 が
+       「現在が 2 回書いてある」と言った**（実測 2026-08-22・1280×800・豊洲）。
+     ⚠ 縦に分けると、上が「この帯は何か」、下が「いま何を見ているか」になる。 */
+  /* ⚠ **見出しの主役**（この帯が何か ＋ いま何を見ているか）。⚠ 畳みボタンの隣に置く。
+     ⚠ 名前は**役割**で付ける（`.claude/rules/css.md`。⚠ `stack` は構造の名前なので使わない）。 */
+  .time-panel-head > .time-panel__main{min-width:0;display:flex;flex-direction:column;gap:2px}
+  .time-panel-name{flex:none}
 
   .time-panel-name{min-width:0;display:flex;align-items:baseline;gap:9px;white-space:nowrap}
   #timePanelTitle{font-size:var(--fs-body);font-weight:600;letter-spacing:.05em;color:var(--ink)}
-  .time-axis{font-size:var(--fs-note);color:#b8c2cd;letter-spacing:.04em}
-  #timeSummary{display:none;font-size:var(--fs-body);color:var(--action);font-weight:600;
-    overflow:hidden;text-overflow:ellipsis}
-  #timeToggle{flex:none;min-width:var(--tap);min-height:var(--tap);padding:0 8px;border:0;background:transparent;
-    color:#cbd3dc;font:inherit;cursor:pointer;border-radius:8px}
-  #timeToggle:hover{background:rgba(255,255,255,.08);color:var(--ink)}
-  /* ⚠ 年代の箱と同じ作り。押せる顔にする */
-  #timeToggle .chevron{display:inline-flex;align-items:center;justify-content:center;
-    width:30px;height:30px;border-radius:50%;margin-left:0;font-size:var(--fs-chevron);line-height:1;
-    background:rgba(255,255,255,.10);border:1px solid var(--line);transition:transform .18s}
-  #timeToggle:hover .chevron{background:rgba(255,255,255,.18)}
-  #timePanel.collapsed #timePanelBody{display:none}
-  #timePanel.collapsed #timeSummary{display:inline;max-width:120px}
-  #timePanel.collapsed .time-axis{display:none}
-  #timePanel.collapsed #timeToggle .chevron{transform:rotate(180deg)}
-  #timePanelBody{border-top:1px solid rgba(255,255,255,.12);padding:7px 14px 10px}
+  /* ⚠ **カードの中身。**⚠ 余白はここと PC の 2 か所だけ（2026-08-22 にまとめた）。
+     ⚠ 以前は 4 か所に散っていて、⚠ **基底で 7px 14px 10px を置いてから、狭い幅で
+       上を 0 に、左右を 10px に上書きし、PC でまた元へ戻す**という往復をしていた。
+     ⚠ この作りは「いまどの値が効いているか」を読むのに 4 か所を追う必要がある。
+     ⚠ **このファイルはモバイルファースト**（基底＝狭い幅、min-width:681px で上書き）。
+       ⚠ だから**基底には狭い幅の値をそのまま書く**。
+       狭い幅  padding 0 10px 10px   ⚠ 上 0 … 見出しの行が padding-top:6px を持つ
+                                     ⚠ 左右 10px … 右端（明治期）のノブが画面の縁から
+                                       10px だった（実測 2026-08-18）。端から引くと
+                                       端末の「戻る」スワイプと喧嘩するので、ノブの半径ぶん空ける
+       PC      padding 7px 14px 10px  ⚠ 下の @media(min-width:681px) に 1 行だけ */
+  /* ⚠ **見た目は class**（`.claude/rules/css.md`: 新しい CSS で #id を使わない）。
+     ⚠ **id は残す。**⚠ JS（`getElementById`）と検査が掴んでいる。 */
+  .time-panel__body{border-top:1px solid rgba(255,255,255,.12);padding:var(--pad-y) var(--pad-x)}
   /* 共有された状態を復元できなかったときの1行。
      ⚠ 警告色にはしない。壊れてはいない。共有元と別のものを見ている、という断り書き */
   #stateMiss{margin:0 0 7px;padding:6px 9px;border-radius:7px;
@@ -591,12 +599,12 @@
          ⚠ **PC では 2026-08-20 から同じことをしていた。**⚠ 狭い幅にだけ届いていなかった。
          ⚠ 利用者役 3/3 が「真ん中の板と下の板は 1 つでいい」と答え、⚠ **3 名とも理由は同じ**で
            「⚠ **同じ『最新の空中写真』が 2 回**、上下に並んでいる」だった（2026-08-21）。
-         ⚠ **DOM の順は変えない**（読み上げとキーボードの順はそのまま）。 */
-    #era .y{font-size:var(--fs-hero-fit)}#hud{padding:0 12px 26px;gap:0}
-    #era,#timePanel{width:min(580px,100%)}
-    #era{border-bottom-left-radius:0;border-bottom-right-radius:0;border-bottom:0}
-    #timePanel{border-top-left-radius:0;border-top-right-radius:0;border-top:0}
-    #era{padding:7px 10px 9px}
+         ⚠ **DOM の順は変えない**（読み上げとキーボードの順はそのまま）。
+       ⚠ **上の角を落とす手当ては消した**（2026-08-22）。⚠ あれは上に別の器（#era）が
+         載っていたときに、⚠ **2 つを 1 枚に見せるためのもの**。⚠ **器が 1 つになったので、
+         上だけ角が無い箱**になっていた。⚠ 上下とも 14px（既定）に戻す。 */
+    #hud{padding:0 12px 26px;gap:0}
+    .time-panel{width:min(580px,100%)}
     /* ⚠ **狭い幅は「ものさし」に差し替える。**ドラムと横棒・▶・見出し行は出さない。
          実測（2026-08-19）: ドラムでは 9 段のうち画面に入るのが 320 幅で **1 個**だけで、
          「明治期」は x=849 と画面の外。⚠ どこまで遡れるかが**構造として**見えていなかった。
@@ -610,27 +618,21 @@
        ⚠ しかも #timeToggle は aria-expanded="true" のまま残っていた。
          読み上げには「開いている折りたたみ」があるように聞こえる。
        ⚠ display:none なら、焦点も読み上げも同時に外れる。 */
-    #timePanel .time-panel-head,#bar{display:none}
-    #timePanelBody{padding-top:0}
+    /* ⚠ **見出しの中身は消すが、⚠ 読みだけは残す。**
+       ⚠ 消すと「読み込めませんでした」「まだ出ていません」の名乗りが狭い幅で消える
+         （掟: 取れなかったことを「無い」と言わない）。 */
+    #timePanelTitle,#bar{display:none}
     /* ⚠ **年を 2 か所に出さない。**（掟: 同じ問いに答える実装を 2 つ持たない）
          ものさしが年を答えるので、年代の箱の大字は狭い幅では出さない。
          ⚠ 年代の箱に残すのは「いま何の写真か（陸軍撮影）」と、届いていないときの名乗り。
        ⚠ 実測（2026-08-19・320幅）: これで #era は 191 → 78px になる。 */
-    #era .y{display:none}
-    #era .era-readout{min-width:0;padding:0 52px}
+    .time-panel .y{display:none}
 
     /* ⚠ 60px は、年の大字（38px）＋説明（12px）を縦に積んでいたころの下限。
          狭い幅では年をものさしへ移したので、⚠ **下限は押せる大きさ（44px）でよい**。 */
-    .era-panel-head{min-height:var(--tap)}
-    #era .era-readout{min-width:128px;padding:0 68px}
-    #era.collapsed{padding:0 5px 0 10px}
-    #era.collapsed .era-readout{min-width:0;padding:0}
-      /* ⚠ 右端（明治期）のノブが**画面の縁から 10px**だった（実測 2026-08-18）。
-         端から引くと、端末の「戻る」スワイプと喧嘩する。ノブの半径ぶん空ける。 */
-    #timePanelBody{padding-left:10px;padding-right:10px}
+
 
     #timePanelTitle{font-size:var(--fs-lead)}
-    .time-panel-head{padding-left:11px;padding-right:5px}
     #chrome a span,#toggle span{display:none}
 
     /* ============ 横ドラムロール ============ */
@@ -786,16 +788,12 @@
 
     /* 年代の箱は、広い幅の大きさに戻す */
     #hud{padding:0 26px 26px}
-    #era{padding:9px 12px 11px}
-    #era .y{display:block;font-size:var(--fs-hero-lg)}
-    #era .era-readout{display:inline-block;min-width:148px;padding:0 76px}
-    #era.collapsed .era-readout{min-width:0;padding:0}
-    .era-panel-head{min-height:80px}
-    #timePanel .time-panel-head{display:flex}
+    .time-panel .y{display:inline}
+    /* ⚠ 狭い幅では見出しの中身を隠している（ものさしが年を答えるため）。⚠ **PC では戻す。** */
+    .time-panel .time-panel-head{display:flex}
+    #timePanelTitle{display:inline}
     /* ⚠ **▶ と横棒の行**（#bar）。⚠ 狭い幅ではドラムに差し替えるため隠している */
     #bar{display:flex}
-    .time-panel-head{padding:0 10px 0 14px}
-    #timePanelBody{padding:7px 14px 10px}
     #timePanelTitle{font-size:var(--fs-body)}
 
     /* 年代を選ぶ道具は、PC では横棒（狭い幅はものさし・ドラム） */
@@ -814,28 +812,21 @@
 
        ⚠ **実測（2026-08-20・main = 5210c9e・1280×800・豊洲・SW 無効）**
          #era        580×196  y429   ⚠ 別の器
-         #timePanel  720×136  y638   ⚠ 別の器
+         .time-panel  720×136  y638   ⚠ 別の器
          #eraToggle / #timeToggle    ⚠ 「閉じる ⌄」が 2 個
 
-       ⚠ **幅を揃えて隙間を消し、⚠ 角を落として 1 つの箱に見せる。**
-       ⚠ **DOM の順は変えていない**（読み上げとキーボードの順はそのまま）。 */
+       ⚠ **2026-08-22 に器そのものを 1 つにした**（Owner 判断）。⚠ `#era` を消し、
+         ⚠ **年・種別・接続を `.time-panel` の見出しの行へ移した。**
+       ⚠ 下の幅揃え・角落としは、⚠ **器が 2 つだったころの手当て**。器が 1 つになったので
+         ⚠ **`#era` 側の指定は消してある。** */
     #hud{gap:0}
-    #era,#timePanel{width:min(720px,100%)}
-    #era{border-bottom-left-radius:0;border-bottom-right-radius:0;
-      border-bottom:0;box-shadow:0 -12px 38px rgba(0,0,0,.42)}
-    #timePanel{border-top-left-radius:0;border-top-right-radius:0;border-top:0}
+    .time-panel{--pad-x:14px;width:min(720px,100%)}
 
     /* ⚠ **全体は畳まない**（Owner 決定 2）。⚠ 畳むのは「年代を動かす」操作部だけ。
        ⚠ **常時表示: 現在の年代 ／ #over ／ #est。**
        ⚠ **`#est` は、⚠ 3D を誤解しないための断り**（`peel3d.js` の同名コメントを読む）。
          ⚠ **畳んで消えると、⚠ 推定の高さで建物が立った絵を断りなしに見せることになる**（掟 §1）。
-       ⚠ だから ⚠ **年代の説明を畳む仕掛け（#eraToggle）を PC では出さない。** */
-    #eraToggle{display:none}
-
-    /* ⚠ **「いま何年代か」は 1 か所**（Owner 決定 1）。
-       ⚠ `#timeSummary` は「畳んだときの受け皿」だが、⚠ **PC では上の `.y` が常に出ている。**
-       ⚠ 実測（2026-08-20）: 帯を畳むと `.y`「現在」と `#timeSummary`「現在」が同時に出ていた。 */
-    #timePanel.collapsed #timeSummary{display:none}
+       ⚠ **年は見出しの行にあるので、⚠ 畳んでも消えない**（2026-08-22 に器を 1 つにした）。 */
   }
   /* ============ 動きを減らす ============ */
   /* ⚠ OS・ブラウザで「動きを減らす」を入れている人には、動きだけを消す。
@@ -1014,42 +1005,42 @@
        初期画面から答えが読めない」を根拠に置いていた。⚠ **その前提を Owner が変えた。**
      ⚠ 測り直し（375×667 / 320×640・豊洲と渋谷）: ⚠ **☰ を 1 回押すだけで、
        ⚠ パネルの第1層が画面内に出る**（⚠ スクロール 0）。 -->
+<!-- ⚠ **年代の箱（#era）は消した**（2026-08-22。Owner 判断）。
+     ⚠ **いま選択中の年代の情報は、年代を動かすパネル（#timePanel）の 1 か所**に出す。
+     ⚠ 経緯: 補足（#over / #est / #tip）を #notice へ出したあと、⚠ **#era に残ったのは
+       「年・種別・接続」の読み上げと、中身が空の #eraDetails を開閉するボタン**だけだった。
+       ⚠ 空の箱を開閉するボタンは「押しても何も起きない導線」（ADR 0026）。
+     ⚠ **消したのは器で、字ではない。**⚠ 年・種別・接続・名乗りは下の .era-readout が持つ。 -->
 <div id="hud">
-  <div id="era">
-    <div class="era-panel-head"><!-- ⚠ 空で始める。普段は名乗らないので、JS が消すまでの一瞬だけ「表示中」が光るのを防ぐ。
-           出ていないときは describe() が「選択中」「出せません」を入れる。 -->
-      <span class="era-kicker kick"></span>
-      <div class="era-readout"><div class="y">現在</div><span class="s">&nbsp;</span><span class="era-net"></span></div>
-      <span id="eraSummaryNote"></span>
-      <!-- ⚠ 字を出さず記号だけにする。実測（2026-08-19・320幅）: 「閉じる⌄」は 69px＝箱の 23%。
-           同じものが下の帯にもあり、2 つで幅の半分近くを使っていた。
-           ⚠ **押せる大きさ 44×44 は削らない**（掟）。見た目だけ小さくする。
-           ⚠ 目が見えない人には記号が届かないので、名乗りは aria-label に残す。 -->
-      <button id="eraToggle" type="button" aria-expanded="true" aria-controls="eraDetails"
-        aria-label="この年代の説明を閉じる">
-        <span id="eraToggleText" class="sr">閉じる</span><span class="chevron" aria-hidden="true">⌄</span></button>
-    </div>
-    <div id="eraDetails">
-    <!-- ⚠ **補足（#over / #est / #tip）はここから出した**（2026-08-22。Owner 判断）。
-         ⚠ **HUD が扱うのは「いまの年代」と「年代操作」だけ。**
-         ⚠ 「HUD」という名前のままだと、⚠ **また注意書き・建物情報・エラーが入ってくる。**
-         ⚠ 行き先は上の #notice（⚠ **土地の答えが抜けた跡**）。⚠ **消したのではない。** -->
-    </div></div>
-  <section id="timePanel" aria-labelledby="timePanelTitle">
+  <!-- ⚠ **id は振る舞い、class は見た目**（2026-08-22。Owner 判断）。
+       ⚠ `#timePanel` は JS（describe / 状態クラス）と aria が掴む。
+       ⚠ **丸み・余白・地色は `.time-panel` が持つ。**⚠ 見た目を足すときはクラス側へ。 -->
+  <section id="timePanel" class="time-panel" aria-labelledby="timePanelTitle">
     <div class="time-panel-head">
-      <div class="time-panel-name"><span id="timePanelTitle">年代を動かす</span>
-        <span class="time-axis">現在 → 昔</span><strong id="timeSummary">現在</strong></div>
-      <!-- ⚠ 年代の箱と同じ作り。記号だけにして、名乗りは aria-label に残す -->
-      <button id="timeToggle" type="button" aria-expanded="true" aria-controls="timePanelBody"
-        aria-label="年代を動かす帯を閉じる">
-        <span id="timeToggleText" class="sr">閉じる</span><span class="chevron" aria-hidden="true">⌄</span></button>
+      <div class="time-panel__main">
+        <!-- ⚠ **「現在 → 昔」は消した**（2026-08-22。Owner 判断）。
+             ⚠ 軸の向きは目盛り（左が現在・右が明治期）で読める。
+             ⚠ 実測 2026-08-22（利用者役・1280×800・豊洲）: **2 回**指摘が出ている。
+               ⚠ 横並びのとき「`現在 → 昔` と大きい `現在` のどっちが今か迷う」（1/4）、
+               ⚠ 縦積みのとき「目盛りを見れば分かるので要らない」（1/4）。 -->
+        <div class="time-panel-name"><span id="timePanelTitle">年代を動かす</span></div>
+      <!-- ⚠ **いま選択中の年代。**⚠ 畳んでも見える（見出しの行に置いてあるため）。
+           ⚠ **空で始める**（.kick）。普段は名乗らないので、JS が消すまでの一瞬だけ
+             「表示中」が光るのを防ぐ。出ていないときは describe() が名乗りを入れる。
+           ⚠ **接続の話（.era-net）は写真の話（.s）と別の行**。混ぜると、どちらが事実か読めない。 -->
+      <div class="era-readout">
+        <span class="era-kicker kick"></span>
+        <span class="y">現在</span><span class="s">&nbsp;</span><span class="era-net"></span>
+        <span id="eraSummaryNote"></span>
+      </div>
+      </div>
     </div>
-    <div id="timePanelBody">
+    <div id="timePanelBody" class="time-panel__body">
       <!-- 共有された年代・建物がこの土地に無かったときの1行。
            ⚠ **年代を動かす帯のすぐ上**に置く。読んだ人が次にすることは「別の年代を選ぶ」なので、
              選ぶ場所の隣にないと、何をすればよいか分からない。
-           ⚠ この節は畳める（#timePanel.collapsed）。畳んだ人には見えなくなるが、
-             初期状態は開いている（peel3d.js の timePanelOpen=true）。実描画で見ている。 -->
+           ⚠ **この節は畳めない**（2026-08-22。Owner 判断で畳みボタンを消した）。
+             ⚠ **常に見えている。**⚠ 隠れて読まれない心配が無くなった。 -->
       <div id="stateMiss" hidden></div>
       <!-- ⚠ **狭い幅の年代は「ものさし」**（2026-08-19）。ドラムをやめ、
            その地点の全段を 1 本の軸に**常時**描く。

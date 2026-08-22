@@ -274,7 +274,7 @@ const stepLabels = async (page) => {
     const keep = el.value;
     for (let v = 0; v <= max; v += 100) {
       el.value = String(v); el.dispatchEvent(new Event("input"));
-      out.push(document.querySelector("#era .y").textContent.trim());
+      out.push(document.querySelector("#timePanel .y").textContent.trim());
     }
     el.value = keep; el.dispatchEvent(new Event("input"));
     return out;
@@ -921,10 +921,14 @@ const CASES = [
   {
     // ⚠ **見えないものに焦点を当てない。**（掟: 押しても何も起きない導線を置かない）
     //   実測（2026-08-19）: 幅ごとに使わない側の操作が DOM に残り、キーボードで到達できた。
-    //     320 幅 … #timeToggle / #play / #t とドラムのボタン 9 個
+    //     320 幅 … 帯の畳み / #play / #t とドラムのボタン 9 個
     //     PC     … ドラムのボタン 9 個（⚠ これは main からあった漏れ）
-    //     根拠を全画面で読んでいるとき … #toggle / #eraToggle / ものさしの ‹ ›
-    //   ⚠ #timeToggle は aria-expanded="true" のまま残っていた（開いている折りたたみに聞こえる）。
+    //     根拠を全画面で読んでいるとき … #toggle / 年代の畳み / ものさしの ‹ ›
+    //   ⚠ **畳みボタンは 2026-08-22 に両方とも消した。**⚠ 上は当時の実測なので残す。
+    //     ⚠ 「隠れているのに aria-expanded と名乗らない」を見ていた 3 行は、
+    //       ⚠ **見る相手が居なくなり、⚠ 何も確かめずに必ず通る状態**だったので落とした
+    //       （Owner 判断・2026-08-22。⚠ **数だけ合わせる検査は置かない**）。
+    //     ⚠ 畳み機構が戻っていないことは、⚠ **別のケースが `[aria-expanded]` を数えて見る。**
     name: "見えない操作に、キーボードで届かない", path: `/peel?${TOYOSU}`,
     viewport: { width: 320, height: 640 }, hasTouch: true,
     async check(page) {
@@ -954,11 +958,6 @@ const CASES = [
       // ⚠ 使う側まで閉じていないこと（閉じすぎると操作できなくなる）
       const aStuck = await used(["rlPrev", "rlNext", "toggle"]);
       must(!aStuck.length, `使う操作が閉じている: ${aStuck.join("、")}`);
-      // ⚠ 隠れているのに「開いている折りたたみ」と名乗らない
-      const ae = await page.evaluate(() =>
-        document.getElementById("timeToggle")?.getAttribute("aria-expanded"));
-      must(!ae, `見えない #timeToggle が aria-expanded="${ae}" と名乗っている`);
-
       // ---- 根拠を全画面で読んでいるとき ----
       await page.click("#toggle");
       await settleAfterClick(page);
@@ -977,12 +976,16 @@ const CASES = [
     },
   },
   {
-    // ⚠ 年代の箱・年代を動かす帯の**頭**を細くする。狭い画面ほど地図が見えなくなるため。
+    // ⚠ 年代の頭を細くする。狭い画面ほど地図が見えなくなるため。
     //   実測（2026-08-19・320幅・1936–42 の段）: 箱が画面の **82%** を占めていた。
     //     年代 76px（⚠ 2 行に割れて 38px 損）／但し書き 69px／いまのもの 42px／押すと 30px
     // ⚠ **押せる大きさ 44×44 は削らない**（掟）。削るのは見た目の幅だけ。
     // ⚠ 「表示中」は消すが、**出ていないときは必ず名乗る**
     //   （「出ていないものを表示中と言わない」で入れた性質。崩さない）。
+    // ⚠ **畳む仕掛けは 2026-08-22 に無くなった**（年代の箱ごと #timePanel へ寄せ、
+    //   ⚠ 帯の畳みボタンも Owner 判断で消した）。⚠ **戻っていないことを、ここで見る。**
+    //   ⚠ **「消した」だけの検査にしない**（verify §5）。⚠ **残っている押しどころ（‹ ›）が
+    //   44px を割っていないこと**と対で見る。
     name: "年代の頭を細くしても、押せる大きさと名乗りは残る", path: `/peel?${TOYOSU}`,
     viewport: { width: 320, height: 640 }, hasTouch: true,
     async check(page) {
@@ -1004,15 +1007,14 @@ const CASES = [
             right: Math.round(r.right),
             hit: who ? (who.id || who.closest("[id]")?.id || who.tagName) : "無い" }; };
         // ⚠ 文字が本当に箱に収まっているか。**枠ではなく文字の実寸**で見る
-        const y = document.querySelector("#era .y");
+        const y = document.querySelector("#timePanel .y");
         const rng = document.createRange(); rng.selectNodeContents(y);
         const tr = rng.getBoundingClientRect();
-        const box = document.getElementById("era").getBoundingClientRect();
-        const kick = document.querySelector("#era .kick");
-        const vis = (sel) => { const e = document.querySelector(sel);
-          if (!e) return null; const r = e.getBoundingClientRect();
-          return r.height < 1 ? null : g(sel); };
-        return { y: g("#era .y"), et: g("#eraToggle"), tt: vis("#timeToggle"),
+        const box = document.getElementById("timePanel").getBoundingClientRect();
+        const kick = document.querySelector("#timePanel .kick");
+        return { y: g("#timePanel .y"), prev: g("#rlPrev"), next: g("#rlNext"),
+          // ⚠ 畳む仕掛けが**戻っていないこと**。⚠ 1 つでもあれば数に出る
+          toggles: document.querySelectorAll("#eraToggle,#timeToggle,[aria-expanded]").length,
           textW: Math.round(tr.width), boxRight: Math.round(box.right), textRight: Math.round(tr.right),
           kickText: kick ? kick.textContent.trim() : null,
           eraH: Math.round(box.height) };
@@ -1031,47 +1033,21 @@ const CASES = [
       }
       must(heights.length >= 4, `段が少なすぎて検査にならない（${heights.length}）`);
 
-      // ---- ② 開閉は細いが、押せる大きさは 44px を割らない ----
+      // ---- ② 畳む仕掛けは戻っていない。⚠ 残っている押しどころは 44px を割らない ----
       const r = await read();
-      // ⚠ **狭い幅に「帯の開閉」はもう無い。**（2026-08-19・ものさしに置き換えた）
-      //   帯は見出し行ごと畳めなくなり、代わりに ‹ › と軸で動かす。
-      //   ⚠ 守りたかったのは「開閉は細いが、押す大きさは削らない」ほうなので、
-      //     **残っている開閉（年代の箱）で見る**。消したのではなく、対象が減った。
-      //   ⚠ 帯の側は「ものさしで全体が見え、端まで届く」が別に見ている。
-      must(r.tt === null || r.tt.h === 0,
-        `狭い幅に帯の開閉が残っている（${r.tt?.w}×${r.tt?.h}）。ものさしに置き換えたはず`);
-      for (const [nm, x] of [["年代の開閉", r.et]]) {
-        must(x, `${nm} が無い`);
+      // ⚠ **畳む仕掛けは 2026-08-22 に消した。**⚠ 戻すと、また「押しても何が起きるか
+      //   分からない ⌄」が増える（利用者役 4 名で、押す前に伝わったのは 2/4 だった）。
+      //   ⚠ `[aria-expanded]` まで数えるのは、⚠ **別の id で作り直されても捕まえるため。**
+      must(r.toggles === 0,
+        `畳む仕掛けが戻っている（${r.toggles} 個）。年代の箱ごと #timePanel へ寄せ、帯の畳みも消したはず`);
+      // ⚠ **対で見る。**⚠ 「消した」だけだと、⚠ **押しどころを全部消しても緑になる**
+      for (const [nm, x] of [["‹（前の年代）", r.prev], ["›（次の年代）", r.next]]) {
+        must(x, `${nm} が無い（狭い幅の年代操作が消えている）`);
         must(x.w >= 44 && x.h >= 44, `${nm} が指で押せない（${x.w}×${x.h}）`);
-        must(x.w <= 52, `${nm} が細くなっていない（${x.w}px）。狭い画面で幅を食う`);
-        must(x.hit === "eraToggle", `${nm} を押しても、当たるのは「${x.hit}」`);
       }
-      // ⚠ 記号だけにしたぶん、**読み上げには名乗りを残す**
-      // ⚠ 帯の開閉は狭い幅に無いので、年代の箱だけ見る
-      const aria = await page.evaluate(() => [
-        document.getElementById("eraToggle").getAttribute("aria-label")]);
-      for (const a of aria) must(a && a.length > 3, `開閉ボタンの読み上げの名乗りが無い（${a}）`);
-      // ⚠ 記号の向きは CSS が回す。**JS と二重に反転させない**（一度踏んだ）
-      const before = await page.evaluate(() => {
-        const c = document.querySelector("#eraToggle .chevron");
-        return { ch: c.textContent, rot: getComputedStyle(c).transform };
-      });
-      await page.click("#eraToggle");
-      await page.waitForTimeout(400);
-      const after = await page.evaluate(() => {
-        const c = document.querySelector("#eraToggle .chevron");
-        return { ch: c.textContent, rot: getComputedStyle(c).transform,
-          expanded: document.getElementById("eraToggle").getAttribute("aria-expanded"),
-          aria: document.getElementById("eraToggle").getAttribute("aria-label") };
-      });
-      must(after.ch === before.ch,
-        `記号そのものを差し替えている（${before.ch}→${after.ch}）。回転と二重になって向きが狂う`);
-      must(after.rot !== before.rot, `閉じても記号の向きが変わっていない`);
-      must(after.expanded === "false", `閉じたのに aria-expanded が ${after.expanded}`);
-      must(/開く/.test(after.aria ?? ""), `閉じたのに読み上げが「${after.aria}」のまま`);
       return `320 幅・全 ${heights.length} 段とも年代は 1 行で箱に収まる`
-        + `／#era ${Math.min(...heights)}〜${Math.max(...heights)}px`
-        + `／年代の開閉 ${r.et.w}×${r.et.h}px（読み上げあり）／帯の開閉は無い（ものさし）`;
+        + `／#timePanel ${Math.min(...heights)}〜${Math.max(...heights)}px`
+        + `／畳む仕掛け 0 個／‹ › ${r.prev.w}×${r.prev.h}px`;
     },
   },
   {
@@ -1180,11 +1156,11 @@ const CASES = [
       // ⚠ **時間ではなく、接続の断りが出たことを待つ。**
       //   ⚠ 断りが出たことだけを待ち、⚠ **何と書いてあるかは下で確かめる**（待ちに主張を混ぜない）
       await page.waitForFunction(
-        () => (document.querySelector("#era .era-net")?.textContent.trim() ?? "") !== "",
+        () => (document.querySelector("#timePanel .era-net")?.textContent.trim() ?? "") !== "",
         null, { timeout: 30000 });
       await settleAfterCondition(page);
       const r = await page.evaluate(() => {
-        const e = document.getElementById("era");
+        const e = document.getElementById("timePanel");
         const t = (s) => e.querySelector(s)?.textContent.trim() ?? "";
         return { kick: t(".kick"), y: t(".y"), s: t(".s"), net: t(".era-net") };
       });
@@ -1208,7 +1184,7 @@ const CASES = [
     async check(page) {
       await page.waitForTimeout(3500);
       const r = await page.evaluate(() => {
-        const e = document.getElementById("era");
+        const e = document.getElementById("timePanel");
         const t = (s) => e.querySelector(s)?.textContent.trim() ?? "";
         return { kick: t(".kick"), s: t(".s"), net: t(".era-net") };
       });
@@ -1231,11 +1207,11 @@ const CASES = [
       // ⚠ **時間ではなく、接続の断りが出たことを待つ。**
       //   ⚠ 断りが出たことだけを待ち、⚠ **何と書いてあるかは下で確かめる**（待ちに主張を混ぜない）
       await page.waitForFunction(
-        () => (document.querySelector("#era .era-net")?.textContent.trim() ?? "") !== "",
+        () => (document.querySelector("#timePanel .era-net")?.textContent.trim() ?? "") !== "",
         null, { timeout: 30000 });
       await settleAfterCondition(page);
       const net = await page.evaluate(() =>
-        document.querySelector("#era .era-net")?.textContent.trim() ?? "");
+        document.querySelector("#timePanel .era-net")?.textContent.trim() ?? "");
       must(/接続していません/.test(net), `圏外なのに「${net}」に留めている`);
       return `圏外 → 「${net}」`;
     },
@@ -1257,7 +1233,7 @@ const CASES = [
     }),
     async check(page) {
       const read = () => page.evaluate(() => {
-        const e = document.getElementById("era");
+        const e = document.getElementById("timePanel");
         const t = (s) => e.querySelector(s)?.textContent.trim() ?? "";
         return { kick: t(".kick"), y: t(".y"), s: t(".s") };
       });
@@ -1278,7 +1254,7 @@ const CASES = [
       //   ⚠ 6 秒と決め打たず、⚠ **名乗りが消えたこと**（＝届いた合図）を待つ。
       //   ⚠ 説明が戻っているかは下で確かめる（待ちに主張を混ぜない）
       await page.waitForFunction(
-        () => !(document.querySelector("#era .kick")?.textContent.trim() ?? ""),
+        () => !(document.querySelector("#timePanel .kick")?.textContent.trim() ?? ""),
         null, { timeout: 30000 });
       await settleAfterCondition(page);
       const back = await read();
@@ -1300,7 +1276,7 @@ const CASES = [
     async check(page) {
       await peelReady(page);
       const seen = await page.evaluate(async () => {
-        const e = document.getElementById("era"), hit = [];
+        const e = document.getElementById("timePanel"), hit = [];
         // 段を全部送りながら、名乗りを拾い続ける
         for (let k = 0; k < 9; k++) {
           const s = document.getElementById("t");
@@ -1317,19 +1293,25 @@ const CASES = [
       must(seen.join("／") === "",
         `普通につながっているのに「${seen.join("／")}」が出た（猶予が効いていない）`);
       // 重なりを見る。⚠ 矩形だけでは足りない。その座標を誰が受け取るかで見る
+      // ⚠ **相手は「閉じる」から、⚠ カードそのものへ変わった**（2026-08-22。畳みボタンを消した）。
+      //   ⚠ 守りたいのは同じ「名乗りが何かに食われていないこと」。
+      //   ⚠ **中身がカードの内側に収まっているか**を、右端で見る。
       const lap = await page.evaluate(() => {
-        const e = document.getElementById("era");
+        const e = document.getElementById("timePanel");
         const s = e.querySelector(".s").getBoundingClientRect();
+        const card = e.getBoundingClientRect();
         const who = document.elementFromPoint(Math.round(s.x + s.width / 2), Math.round(s.y + s.height / 2));
-        const btn = document.getElementById("eraToggle").getBoundingClientRect();
         return { taken: who?.className || who?.id || who?.tagName,
-          over: !(s.right <= btn.left || btn.right <= s.left || s.bottom <= btn.top || btn.bottom <= s.top),
-          right: Math.round(s.right), W: innerWidth };
+          // ⚠ その座標を受け取るのが、⚠ **カードの中の要素であること**
+          inCard: !!who && !!who.closest("#timePanel"),
+          right: Math.round(s.right), cardRight: Math.round(card.right), W: innerWidth };
       });
-      must(!lap.over, `名乗りが「閉じる」と重なっている`);
+      must(lap.inCard, `名乗りの座標を、カードの外の「${lap.taken}」が受け取っている`);
+      must(lap.right <= lap.cardRight,
+        `名乗りがカードからはみ出している（右端 ${lap.right} / カード ${lap.cardRight}）`);
       must(lap.right <= lap.W, `名乗りが画面からはみ出している（右端 ${lap.right} / 幅 ${lap.W}）`);
       return `320 幅で段を 9 つ送っても一度も名乗らない／`
-        + `右端 ${lap.right} ≦ 幅 ${lap.W}／「閉じる」と重ならない`;
+        + `右端 ${lap.right} ≦ カード ${lap.cardRight} ≦ 幅 ${lap.W}`;
     },
   },
   {
@@ -1423,7 +1405,7 @@ const CASES = [
             s.value = String(from + (to - from) * k / n);
             s.dispatchEvent(new Event("input", { bubbles: true }));
           }
-          return { label: document.querySelector("#era .y").textContent,
+          return { label: document.querySelector("#timePanel .y").textContent,
                    knob: document.querySelector("#track .knob").style.left };
         }, [from, to, n]);
         await page.waitForTimeout(200);
@@ -2310,7 +2292,7 @@ const CASES = [
       // ⚠ ここは長いあいだ、読んで報告に印字するだけで assert が無かった。
       //   08ce46f で潰した「測っていないことを報告する」と同じ形が、
       //   いちばん重要な case に残っていた（2026-08-14 検証者の指摘）。
-      const era = (await page.locator("#era .y").textContent()).trim();
+      const era = (await page.locator("#timePanel .y").textContent()).trim();
       must(era.length > 0, "年代の見出しが空");
       // 着いたときは「現在」側。ここが別のものになったら、名前と中身が食い違っている
       must(era === "現在", `3D に着いた時点の見出しが「現在」でない: 「${era}」`);
@@ -3185,7 +3167,7 @@ const CASES = [
     //   ⚠ **PC では 2026-08-20 から同じことをしていた。**⚠ 狭い幅にだけ届いていなかった。
     //   ⚠ 利用者役 3/3 が「真ん中の板と下の板は 1 つでいい」と答え、⚠ **3 名とも理由は同じ**で
     //     「⚠ **同じ『最新の空中写真』が 2 回**、上下に並んでいる」だった（2026-08-21）。
-    // ⚠ **見た目だけの検査にしない。**⚠ 撮影種別が 1 か所であること（Owner 判断: `#era .s` に残す）と、
+    // ⚠ **見た目だけの検査にしない。**⚠ 撮影種別が 1 か所であること（Owner 判断: `#timePanel .s` に残す）と、
     //   ⚠ **押せる的が 44×44 を割らない**ことまで見る。
     name: "狭い幅でも、年代の表示と操作が 1 つの器になっている", path: `/peel?${TOYOSU}`,
     viewport: { width: 375, height: 667 }, hasTouch: true,
@@ -3198,26 +3180,31 @@ const CASES = [
         await page.setViewportSize({ width: w, height: h });
         await page.waitForTimeout(700);
         const r = await page.evaluate(() => {
-          const box = (id) => { const b = document.getElementById(id).getBoundingClientRect();
-            return { t: Math.round(b.top), b: Math.round(b.bottom), w: Math.round(b.width) }; };
-          const era = box("era"), tp = box("timePanel");
+          const vis = (e) => !!e && e.checkVisibility();
+          // ⚠ **HUD に器がいくつ立っているか。**⚠ 2 つに戻っていないことを見る
+          const boxes = [...document.querySelectorAll("#hud > *")].filter(vis)
+            .map((e) => e.id || e.className);
           const rlSub = document.getElementById("rlSub");
-          const small = [...document.querySelectorAll("#rlPrev,#rlNext,#eraToggle")]
-            .filter((e) => e.checkVisibility())
+          const small = [...document.querySelectorAll("#rlPrev,#rlNext")]
+            .filter(vis)
             .filter((e) => { const b = e.getBoundingClientRect(); return b.width < 44 || b.height < 44; })
             .map((e) => e.id);
-          return { gap: tp.t - era.b, sameWidth: era.w === tp.w,
+          return { boxes,
             kinds: (document.body.innerText.match(/最新の空中写真/g) ?? []).length,
-            subOn: !!rlSub && rlSub.checkVisibility(), small,
+            subOn: vis(rlSub), small,
+            // ⚠ 押しどころが**消えていない**こと（対で見る。verify §5）
+            ops: ["#rlPrev", "#rlNext"].filter((q) => vis(document.querySelector(q))).length,
             overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth };
         });
-        must(r.gap === 0, `${w}px: 年代の表示と操作のあいだに ${r.gap}px の隙間がある`);
-        must(r.sameWidth, `${w}px: 器の幅が違う（1 つに見えない）`);
+        // ⚠ **器は 1 つ**（2026-08-22 に #era を畳んで #timePanel へ寄せた）
+        must(r.boxes.length === 1,
+          `${w}px: HUD に器が ${r.boxes.length} 個ある（1 つにまとめたはず）: ${r.boxes.join(" / ")}`);
         must(r.kinds === 1, `${w}px: 撮影種別が画面に ${r.kinds} 回ある（1 か所にする）`);
-        must(!r.subOn, `${w}px: ものさしの下に撮影種別が出ている（#era .s に残すと決めた）`);
+        must(!r.subOn, `${w}px: ものさしの下に撮影種別が出ている（#timePanel .s に残すと決めた）`);
+        must(r.ops === 2, `${w}px: 年代を送る ‹ › が ${r.ops} 個しか見えていない`);
         must(!r.small.length, `${w}px: 44×44 を割った的がある: ${r.small.join("、")}`);
         must(!r.overflow, `${w}px: 横あふれしている`);
-        out.push(`${w}: 隙間${r.gap} 撮影種別${r.kinds}回`);
+        out.push(`${w}: 器${r.boxes.length}個 撮影種別${r.kinds}回`);
       }
       return out.join(" ／ ");
     } },
@@ -3257,45 +3244,32 @@ const CASES = [
         const look = () => p2.evaluate(() => {
           const vis = (s) => { const e = document.querySelector(s);
             return !!(e && e.checkVisibility?.()); };
-          const box = (id) => { const e = document.getElementById(id);
-            const b = e.getBoundingClientRect();
-            return { w: Math.round(b.width), t: Math.round(b.top), b: Math.round(b.bottom) }; };
-          const era = box("era"), tp = box("timePanel");
           return {
-            gap: tp.t - era.b, sameWidth: era.w === tp.w,
-            toggles: [...document.querySelectorAll("#eraToggle,#timeToggle")]
-              .filter((e) => e.checkVisibility?.()).length,
+            // ⚠ **HUD に器がいくつ立っているか**（2026-08-22 に #era を畳んで 1 つにした）
+            boxes: [...document.querySelectorAll("#hud > *")]
+              .filter((e) => e.checkVisibility?.()).map((e) => e.id || e.className),
+            // ⚠ **畳む仕掛けが戻っていないこと。**⚠ 別の id で作り直されても捕まえる
+            toggles: document.querySelectorAll("#eraToggle,#timeToggle,#hud [aria-expanded]").length,
             // ⚠ 「いま何年代か」を出しているもの
-            years: [".era-readout .y", "#timeSummary", "#rlYear"].filter(vis),
+            years: [".time-panel .y", "#timeSummary", "#rlYear"].filter(vis),
             est: vis("#est"), over: vis("#over"), play: vis("#play"), track: vis("#track"),
           };
         });
         const a = await look();
-        // ⚠ **1 つの器に見えること**（幅が同じで、隙間が無い）
-        must(a.sameWidth, "年代の表示と操作で、器の幅が違う（1 つに見えない）");
-        must(a.gap === 0, `年代の表示と操作のあいだに隙間がある（${a.gap}px）`);
-        // ⚠ **「閉じる ⌄」は 1 個**
-        must(a.toggles === 1, `PC で「閉じる」が ${a.toggles} 個ある（1 つにまとめる）`);
+        // ⚠ **器は 1 つ。**⚠ 幅と隙間で見なくてよくなった（構造として 1 つ）
+        must(a.boxes.length === 1,
+          `HUD に器が ${a.boxes.length} 個ある（1 つにまとめたはず）: ${a.boxes.join(" / ")}`);
+        // ⚠ **畳む仕掛けは無い**（2026-08-22。Owner 判断で消した）
+        must(a.toggles === 0, `畳む仕掛けが戻っている（${a.toggles} 個）`);
         // ⚠ **「いま何年代か」は 1 か所**
         must(a.years.length === 1,
           `「いま何年代か」を ${a.years.length} か所が出している: ${a.years.join(" / ")}`);
-        // ⚠ **開いているときは、操作が見える**
-        must(a.play && a.track, "PC で ▶ か横棒が出ていない");
+        // ⚠ **操作は常に見える。**⚠ 「消した」だけの検査にしない（verify §5 の対）
+        must(a.play && a.track, "PC で ▶ か横棒が出ていない（畳めなくしたので、常に見えるはず）");
+        // ⚠ **`#est` は HUD の外**（`#notice`）。⚠ **推定の絵を断りなしに見せない**（掟 §1）
         must(a.est, "PC で限界（#est）が出ていない");
-        // ⚠ **畳むと、⚠ 操作だけが隠れる**
-        await p2.click("#timeToggle");
-        await settleAfterClick(p2);
-        const b2 = await look();
-        must(!b2.play && !b2.track, "畳んだのに ▶ か横棒が残っている（畳む意味が無い）");
-        // ⚠ **2026-08-22 以降、`#est` は HUD の外**（`#notice`）にある（hidetzu/konjaku#168）。
-        //   ⚠ **畳みの影響を受けない場所へ動かした**ので、ここは以前より通りやすい。
-        //   ⚠ **それでも見る。**⚠ 場所が変わっても、⚠ **畳んで消えないこと**が主張の中身。
-        must(b2.est, "⚠ 畳むと限界（#est）が消える（推定の絵を断りなしに見せることになる）");
-        must(b2.years.length === 1,
-          `畳んだら「いま何年代か」が ${b2.years.length} か所になった: ${b2.years.join(" / ")}`);
-        must(b2.toggles === 1, `畳んだら「閉じる」が ${b2.toggles} 個になった`);
-        return `幅そろい・隙間 ${a.gap}px・閉じる 1 個・年代 1 か所`
-          + `／畳むと ▶ と横棒だけ隠れ、限界は残る`;
+        return `器 ${a.boxes.length} 個（${a.boxes.join(" / ")}）・畳む仕掛け 0 個・年代 1 か所`
+          + `／▶ と横棒は常に見え、限界も出ている`;
       } finally { await ctx.close(); }
     },
   },
@@ -6423,7 +6397,7 @@ const CASES = [
           e.value = String(v); e.dispatchEvent(new Event("input")); }, v);
         await page.waitForTimeout(1600);
         return page.evaluate(() => {
-          const y = document.querySelector("#era .y"), o = document.getElementById("over");
+          const y = document.querySelector("#timePanel .y"), o = document.getElementById("over");
           const fs = (e) => (e ? parseFloat(getComputedStyle(e).fontSize) : 0);
           return { year: y.textContent.trim(), yFs: fs(y),
             over: (o?.textContent ?? "").trim(), oFs: fs(o),
@@ -6705,12 +6679,11 @@ const CASES = [
     // ⚠ 年代を動かせることが、航空写真の上で見えなければ操作は存在しないのと同じ。
     //   文字・2px の線・14px のノブを背景へ直接置いていたときは、明るい地面でも
     //   暗い水面でも読みづらかった。板・見出し・指で分かるノブを実寸で見る。
-    // ⚠ 畳んだあとも入口と選択中の年代は残す。閉じた結果、開き方まで消してはいけない。
+    // ⚠ **畳めなくした**（2026-08-22。Owner 判断）。⚠ **年代を動かすのが /peel の主目的**で、
+    //   ⚠ その操作部を隠す仕掛けを置かない。⚠ **だから「常に見えている」ことを見る。**
     // ⚠ **PC 幅で見る**（2026-08-18 に移した）。レール・ノブの実寸は横棒の話で、
-    //   狭い幅は横ドラムロールに替わった。
-    //   ⚠ **「畳める」はスマホでも要る。**そちらは
-    //     「狭い幅の年代は、指で回して選べて、いまどこかが分かる」に足した。
-    name: "年代を動かす操作パネルが、見えて畳める（PC の横棒）",
+    //   狭い幅はものさしに替わった。
+    name: "年代を動かす操作パネルが、常に見えている（PC の横棒）",
     path: `/peel?ll=34.39500,132.45500&q=%E5%BA%83%E5%B3%B6`,
     viewport: { width: 1280, height: 800 },
     async check(page) {
@@ -6721,23 +6694,21 @@ const CASES = [
         const box = (e) => { const r = e.getBoundingClientRect();
           return { left: r.left, right: r.right, width: r.width, height: r.height }; };
         const panel = document.getElementById("timePanel");
-        const eraPanel = document.getElementById("era");
-        return { panel: box(panel), readout: box(document.querySelector("#era .era-readout")),
+        return { panel: box(panel), readout: box(document.querySelector("#timePanel .era-readout")),
           panelBg: getComputedStyle(panel).backgroundColor,
-          eraBg: getComputedStyle(eraPanel).backgroundColor,
           play: box(document.getElementById("play")),
           rail: box(document.querySelector("#track .rail")),
           knob: box(document.querySelector("#track .knob")),
           ticks: document.querySelectorAll("#track .tick").length,
           selected: document.querySelectorAll("#track .tick.selected").length,
-          expanded: document.getElementById("timeToggle").getAttribute("aria-expanded"),
+          // ⚠ **畳む仕掛けが戻っていないこと**（別の id で作り直されても捕まえる）
+          toggles: document.querySelectorAll("#eraToggle,#timeToggle,#hud [aria-expanded]").length,
           viewport: document.documentElement.clientWidth };
       });
       must(opened.panel.left >= 0 && opened.panel.right <= opened.viewport,
         `操作パネルが画面からはみ出す: ${opened.panel.left}〜${opened.panel.right}px`);
       must(opened.panel.height >= 100, `開いた操作パネルが小さすぎる: ${opened.panel.height}px`);
-      must(opened.panelBg !== "rgba(0, 0, 0, 0)" && opened.eraBg !== "rgba(0, 0, 0, 0)",
-        "年代または操作パネルに背景板が無い");
+      must(opened.panelBg !== "rgba(0, 0, 0, 0)", "操作パネルに背景板が無い");
       must(opened.rail.height >= 4, `レールが細い: ${opened.rail.height}px`);
       must(opened.knob.width >= 22 && opened.knob.height >= 22,
         `ノブが小さい: ${opened.knob.width}×${opened.knob.height}px`);
@@ -6745,28 +6716,26 @@ const CASES = [
         `再生ボタンと左端のノブが重なる: ${opened.play.right} / ${opened.knob.left}px`);
       must(opened.ticks === 7, `広島の7層と目盛りが一致しない: ${opened.ticks}本`);
       must(opened.selected === 1, `選択中の区切りが1本でない: ${opened.selected}本`);
-      must(opened.expanded === "true", "初期状態で操作パネルが開いていない");
+      // ⚠ **畳む仕掛けは無い**（2026-08-22。Owner 判断で消した）
+      must(opened.toggles === 0, `畳む仕掛けが戻っている（${opened.toggles} 個）`);
 
-      // 地点ごとに組んだ steps の3段目を選ぶ。閉じた見出しも、その層のラベルを名乗ること。
+      // ⚠ **段を動かしても、操作部と選択中の年代は出たまま。**
+      //   ⚠ 「消した」だけの検査にしない（verify §5）。⚠ **常に見えていること**が主張。
       await page.$eval("#t", (e) => { e.value = "200"; e.dispatchEvent(new Event("input")); });
-      await page.click("#timeToggle");
-      const closed = await page.evaluate(() => ({
-        height: document.getElementById("timePanel").getBoundingClientRect().height,
-        hidden: document.getElementById("timePanelBody").hidden,
-        expanded: document.getElementById("timeToggle").getAttribute("aria-expanded"),
-        action: document.getElementById("timeToggleText").textContent.trim(),
-        summary: document.getElementById("timeSummary").textContent.trim(),
+      await settleAfterClick(page);
+      const after = await page.evaluate(() => ({
+        bodyVisible: document.getElementById("timePanelBody").checkVisibility(),
+        playVisible: document.getElementById("play").checkVisibility(),
+        trackVisible: document.getElementById("track").checkVisibility(),
+        year: document.querySelector("#timePanel .y").textContent.trim(),
+        height: Math.round(document.getElementById("timePanel").getBoundingClientRect().height),
       }));
-      must(closed.hidden && closed.expanded === "false" && closed.action === "開く",
-        `畳めていない: hidden=${closed.hidden} expanded=${closed.expanded} action=${closed.action}`);
-      must(closed.height >= 44 && closed.height <= 52,
-        `畳んだ入口が指で押せる高さでない: ${closed.height}px`);
-      must(closed.summary === "1979–83",
-        `畳むと選択中の年代層が分からない: 「${closed.summary}」`);
-      await page.click("#timeToggle");
-      must(await page.locator("#timePanelBody").isVisible(), "操作パネルをもう一度開けない");
+      must(after.bodyVisible && after.playVisible && after.trackVisible,
+        `段を動かしたら操作部が消えた: body=${after.bodyVisible} ▶=${after.playVisible} 横棒=${after.trackVisible}`);
+      must(after.year === "1979–83",
+        `選択中の年代が読めない: 「${after.year}」`);
       return `広島 ${opened.ticks}層／レール ${opened.rail.height}px／ノブ ${opened.knob.width}px`
-        + `／開 ${opened.panel.height}px → 閉 ${closed.height}px（${closed.summary}）`;
+        + `／畳む仕掛け 0 個・段を動かしても操作部は出たまま（${after.year}・${after.height}px）`;
     },
   },
   {
@@ -7429,9 +7398,10 @@ const CASES = [
     //   以前は左パネルの中にしかなく、スマホは panelOpen=!isNarrow で閉じて始まるので
     //   初期状態で1文字も見えなかった。利用者役のエージェント3体のうち2体が
     //   「高さと建設年は実データだ」と思ったまま操作した（2026-08-14）。
-    //   初めから隠すのは不可。ただし読んだ利用者が地図を広くするため、自分で畳める。
+    //   ⚠ **初めから隠すのは不可。**⚠ **2026-08-22 からは畳むこともできない**
+    //     （Owner 判断で畳みボタンを消した）。⚠ 断りは、隠せない場所に置く（掟 §1）。
     //   ⚠ スマホ幅で見ること。PC ではパネルが開くので、この壊れ方は再現しない。
-    name: "建物の但し書きが、スマホで最初から見えて、あとで畳める", path: `/peel?${TOYOSU}`,
+    name: "建物の但し書きが、スマホで最初から見えて、隠せない", path: `/peel?${TOYOSU}`,
     viewport: { width: 375, height: 667 }, hasTouch: true,
     async check(page) {
       await page.waitForFunction(() => /件を判定しました/.test(document.body.innerText),
@@ -7441,20 +7411,23 @@ const CASES = [
         const e = document.getElementById("est"), rc = e?.getBoundingClientRect();
         return { text: (e?.textContent ?? "").replace(/\s+/g, " ").trim(),
           panelHidden: document.getElementById("panel")?.classList.contains("hide"),
-          eraExpanded: document.getElementById("eraToggle")?.getAttribute("aria-expanded"),
+          // ⚠ **但し書きを隠せる親がいないこと**（2026-08-22。畳みボタンを消した）。
+          //   ⚠ 以前は #eraToggle の aria-expanded を見ていたが、⚠ **その仕掛けごと無くなった。**
+          //   ⚠ **「畳まれていない」ではなく「畳めない」**を見る（より強い主張）。
+          folded: e?.closest("[hidden],[aria-expanded='false'],.collapsed")?.tagName ?? null,
           shown: !!rc && rc.height > 0 && rc.top >= 0 && rc.bottom <= innerHeight
             && getComputedStyle(e).visibility !== "hidden" && getComputedStyle(e).display !== "none" };
       });
       // 前提が崩れていたら、この検査は何も確かめていない
       must(r.panelHidden, "スマホなのにパネルが開いている（この検査の前提が消えた）");
-      must(r.eraExpanded === "true", "但し書きが初期状態から畳まれている");
+      must(!r.folded, `但し書きを畳める親がいる（<${r.folded}>）。断りは隠せない場所に置く（掟 §1）`);
       must(r.shown, `但し書きが折り返しの中に見えていない: ${JSON.stringify(r)}`);
       // ⚠ 「出ている」だけでは足りない。**読めること**。板なしで出したときは
       //   10.5px・薄い色・影だけで航空写真の上に置いており、読めるのは数字だけだった。
       //   年の見出しが 60px なのに但し書きが 10.5px で 5.7倍（UI/UX の実測）。
       const look = await page.evaluate(() => {
         const e = document.getElementById("est"), c = getComputedStyle(e);
-        const y = document.querySelector("#era .y");
+        const y = document.querySelector("#timePanel .y");
         const a = (s) => (s.match(/[\d.]+/g) ?? []).map(Number);
         // ⚠ **敷きは、祖先を辿って探す。** 以前ここは `#era` の背景を決め打ちで見ていた。
         //   いまは #est が #era の中にあるので偶然一致していたが、
@@ -7499,26 +7472,23 @@ const CASES = [
       for (const w of ["再現", "当時の街並み", "この年に建った"])
         must(!r.text.includes(w), `断定・再現を名乗る語がある: 「${w}」`);
 
-      // 過去へ動かしてから畳む。閉じても、選択年代と最低限の誤解止めは残す。
+      // ⚠ **過去へ動かしても、断りと年代と重ねの注意は消えない。**
+      //   ⚠ 以前はここで畳んで「畳んでも残る」を見ていた。⚠ **畳む仕掛けを消したので、
+      //     ⚠ 「隠す手段が無い」ほうを見る**（より強い主張）。
       await page.$eval("#t", (e) => { e.value = "500"; e.dispatchEvent(new Event("input")); });
-      await page.click("#eraToggle");
-      const closed = await page.evaluate(() => {
-        const era = document.getElementById("era"), rc = era.getBoundingClientRect();
-        return { height: rc.height, detailsHidden: document.getElementById("eraDetails").hidden,
-          expanded: document.getElementById("eraToggle").getAttribute("aria-expanded"),
-          action: document.getElementById("eraToggleText").textContent.trim(),
-          year: document.querySelector("#era .y").textContent.trim(),
-          note: document.getElementById("eraSummaryNote").textContent.trim() };
-      });
-      must(closed.detailsHidden && closed.expanded === "false" && closed.action === "開く",
-        `年代情報を畳めない: ${JSON.stringify(closed)}`);
-      must(closed.height >= 44 && closed.height <= 52,
-        `畳んだ年代情報が指で押せる高さでない: ${closed.height}px`);
-      must(closed.year.length > 0 && /いまの街/.test(closed.note),
-        `畳むと年代または重ねの注意が消える: ${closed.year} / ${closed.note}`);
-      await page.click("#eraToggle");
-      must(await page.locator("#est").isVisible(), "年代情報をもう一度開けない");
-      return `${r.text}／畳むと ${closed.height}px「${closed.year}・${closed.note}」`;
+      await settleAfterClick(page);
+      const past = await page.evaluate(() => ({
+        estVisible: document.getElementById("est").checkVisibility(),
+        // ⚠ 隠せる仕掛けが 1 つも無いこと
+        toggles: document.querySelectorAll("#eraToggle,#timeToggle,#hud [aria-expanded]").length,
+        year: document.querySelector("#timePanel .y").textContent.trim(),
+        note: document.getElementById("eraSummaryNote").textContent.trim(),
+      }));
+      must(past.estVisible, "過去の年代へ動かしたら、但し書きが消えた");
+      must(past.toggles === 0, `断りを隠せる仕掛けがある（${past.toggles} 個）`);
+      must(past.year.length > 0 && /いまの街/.test(past.note),
+        `過去へ動かすと年代または重ねの注意が消える: ${past.year} / ${past.note}`);
+      return `${r.text}／過去でも残る「${past.year}・${past.note}」／隠す仕掛け 0 個`;
     },
   },
   {
