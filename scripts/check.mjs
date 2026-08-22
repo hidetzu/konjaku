@@ -4847,6 +4847,29 @@ head("9. 画面の言葉");
     ? bad(`docs/SPEC.md に画面の寸法が書かれている（${px.length} か所）: ${px.slice(0, 3).join(" ／ ")}`
         + "。⚠ 寸法は画面を変えるたびに古くなる。⚠ **いまの姿は検査が持つ**")
     : ok("docs/SPEC.md に画面の寸法が書かれていない（⚠ いまの姿は検査が持つ）");
+  // ⚠ **`docs/adr/README.md` が、⚠ ADR を 1 本も落としていないこと**（2026-08-22）。
+  //   ⚠ **README 自身が、⚠ この失敗を書いている**: 「2026-08-19 まで、25 本中 10 本しか載せていなかった」。
+  //   ⚠ **載っていないものは「採用されていない」に読める。**⚠ だから ⚠ **一部だけを載せない。**
+  //   ⚠ **いままで誰も見ていなかった**（⚠ 見ていたのは「コードから指している ADR が実在するか」だけ）。
+  const adrDir = join(ROOT, "docs", "adr");
+  const adrFiles = (await readdir(adrDir).catch(() => []))
+    .filter((f) => /^\d{4}-.+\.md$/.test(f));
+  const readme = await readFile(join(adrDir, "README.md"), "utf8").catch(() => "");
+  const missing = adrFiles.filter((f) => !readme.includes(f));
+  if (!adrFiles.length) {
+    bad("docs/adr/ に ADR が 1 本も無い（⚠ この検査が何も見ていない）");
+  } else {
+    missing.length
+      ? bad(`docs/adr/README.md に載っていない ADR がある（${missing.length} 本）: ${missing.join(" ／ ")}`
+          + "。⚠ **一部だけを載せない。**⚠ 載っていないものは「採用されていない」に読める")
+      : ok(`docs/adr/README.md は ADR を全部載せている（${adrFiles.length} 本）`);
+    // ⚠ **本数の名乗りも合っているか。**⚠ 「27 本とも採用中」と書いたまま 28 本になる
+    const said = /全部（⚠ \*\*(\d+) 本とも採用中\*\*）|全部（⚠ (\d+) 本とも採用中）/.exec(readme);
+    const n = said ? Number(said[1] ?? said[2]) : null;
+    n === adrFiles.length
+      ? ok(`docs/adr/README.md の本数の名乗りが合っている（${n} 本）`)
+      : bad(`docs/adr/README.md が ${n ?? "?"} 本と名乗っているが、実体は ${adrFiles.length} 本`);
+  }
   // ⚠ **0 件で緑にしない。**⚠ 1 件も走っていないのに「問題なし」と言わない
   //   （⚠ 以前は SPEC との突き合わせが、⚠ 偶然この役目も果たしていた）。
   const mine = passed + 1;
