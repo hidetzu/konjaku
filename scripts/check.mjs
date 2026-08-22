@@ -21,7 +21,7 @@ import { existsSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { join, extname, basename, dirname } from "node:path";
 import { VERSION_RE, hashOf, readSw } from "./sw-hash.mjs";
-import { VERSION as BL_VERSION } from "./bl-format.mjs";
+import { VERSION as BL_VERSION, unpack as blUnpack } from "./bl-format.mjs";
 
 const ROOT = new URL("..", import.meta.url).pathname;
 const PUB = join(ROOT, "public");
@@ -4841,6 +4841,78 @@ head("9. 画面の言葉");
   mine > 1
     ? ok(`静的検査は ${mine} 件を数えた（⚠ この数が正。⚠ SPEC には書かない）`)
     : bad(`静的検査が ${mine} 件しか走っていない（⚠ 1 件も確かめていないので緑にしない）`);
+}
+
+// ⚠ **配っているデータの数を、⚠ `docs/SPEC.md` と突き合わせる**（2026-08-22。Owner 判断）。
+//   ⚠ **検査の件数とは事情が違う。**⚠ 検査の件数は ⚠ **毎 PR で変わる**ので書く場所を無くした
+//     （hidetzu/konjaku#184）。⚠ **配っているデータの数は、取り込み直したときしか変わらない**ので、
+//     ⚠ **競合しない。**⚠ 起きるのは「黙って古くなる」ほう。
+//   ⚠ **実際に踏んだ（2026-08-22）**: SPEC は 403,397件・生17.0MB と書いていたが、
+//     ⚠ **配っていたのは 499,656件・生25.8MB（1.24 倍）。**⚠ **誰も気づかなかった。**
+//   ⚠ **掟 §6 は「数字は必ず主張範囲の分母で書く」**と言うので、⚠ **SPEC から数字を消せない。**
+//     ⚠ だから ⚠ **書いたうえで、機械で突き合わせる**（`CLAUDE.md` §3）。
+//   ⚠ **数えるのは配っている現物**（`public/data/bl`）。⚠ **取り込みのログではない。**
+{
+  const dir = join(ROOT, "public", "data", "bl");
+  const files = [];
+  const walk = async (d) => {
+    for (const e of await readdir(d, { withFileTypes: true })) {
+      const p = join(d, e.name);
+      if (e.isDirectory()) await walk(p);
+      // ⚠ 索引（`index.json`）はタイルではない。⚠ 数に入れると 1 枚多くなる
+      else if (/[\\/]\d+[\\/]\d+[\\/]\d+\.json$/.test(p)) files.push(p);
+    }
+  };
+  await walk(dir).catch(() => {});
+  if (!files.length) {
+    bad("配っている建物タイルを 1 枚も読めない（⚠ この検査が何も見ていない）");
+  } else {
+    let total = 0, def = 0, dated = 0, named = 0, rawBytes = 0;
+    for (const f of files) {
+      const buf = await readFile(f);
+      rawBytes += buf.length;
+      for (const ft of blUnpack(JSON.parse(buf.toString("utf8"))).features) {
+        total++;
+        if (ft.properties.heightSource === "default") def++;
+        if (ft.properties.startDate) dated++;
+        if (ft.properties.name) named++;
+      }
+    }
+    const pct = (a) => ((a / total) * 100).toFixed(2);
+    const mb  = (rawBytes / 1e6).toFixed(1);
+    const spec = await readFile(join(ROOT, "docs", "SPEC.md"), "utf8").catch(() => "");
+    const num = (t) => Number(String(t).replace(/,/g, ""));
+    // ⚠ **周りの語で位置を決める。**⚠ 数字だけを見ると、別の主張の数字を拾う
+    const claims = [
+      ["配っている総数",   /配っている ([\d,]+)件/,                          () => total],
+      ["既定値の件数",     /\*\*([\d,]+)件（[\d.]+%）が既定値\*\*/,        () => def],
+      ["既定値の割合",     /\*\*[\d,]+件（([\d.]+)%）が既定値\*\*/,        () => pct(def)],
+      ["建設年の分母",     /([\d,]+)件中 \*\*[\d,]+件（[\d.]+%）\*\*/,     () => total],
+      ["建設年の件数",     /[\d,]+件中 \*\*([\d,]+)件（[\d.]+%）\*\*/,     () => dated],
+      ["建設年の割合",     /[\d,]+件中 \*\*[\d,]+件（([\d.]+)%）\*\*/,     () => pct(dated)],
+      ["流れの図の件数",   /\(([\d,]+)件 \/ 生[\d.]+MB/,                    () => total],
+      ["流れの図の重さ",   /\([\d,]+件 \/ 生([\d.]+)MB/,                    () => mb],
+    ];
+    const wrong = [];
+    let found = 0;
+    for (const [name, re, want] of claims) {
+      const m = re.exec(spec);
+      if (!m) { wrong.push(`${name}: ⚠ SPEC に見つからない`); continue; }
+      found++;
+      const w = String(want()), got = m[1];
+      if (num(w) !== num(got)) wrong.push(`${name}: SPEC ${got} ／ ⚠ 実物 ${w}`);
+    }
+    wrong.length
+      ? bad(`docs/SPEC.md の数字が、配っている現物と違う（${wrong.length} か所）: ${wrong.join(" ／ ")}`
+          + "。⚠ **取り込み直したら SPEC も直す。**⚠ 数えたのは public/data/bl の現物")
+      : ok(`docs/SPEC.md の数字が、配っている現物と合っている（${found} か所を突き合わせた）`);
+    // ⚠ **突き合わせた数を名乗る。**⚠ 0 か所でも緑になると、⚠ 何も見ていないのに通る
+    found === claims.length
+      ? ok(`配っている建物を数えた（タイル ${files.length} 枚 ／ ${total.toLocaleString()} 件 ／ 生 ${mb}MB`
+          + ` ／ 既定値 ${pct(def)}% ／ 建設年 ${pct(dated)}% ／ 名前 ${pct(named)}%）`)
+      : bad(`SPEC の中に、突き合わせる先が ${found} / ${claims.length} か所しか無い`
+          + "（⚠ 文を書き換えたなら、⚠ この検査の探し方も直す）");
+  }
 }
 
 console.log(`\n${"─".repeat(52)}`);
