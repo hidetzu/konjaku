@@ -30,6 +30,10 @@
   //   ⚠ **単体では動かない。**⚠ コンポーネントだけで開いて初めて分かった（2026-08-22 に実測）。
   //   ⚠ **外の宣言に頼らない**（`.claude/rules/javascript.md`: 呼び出し元と依存先を見る）。
   const { esc } = g.KonjakuEsc;
+  // ⚠ **字は自分で決めない。**⚠ 短い年の書き方は `words.js` が 1 か所で持つ
+  //   （`.claude/rules/domain.md`: 言葉は 1 か所から借りる）。
+  //   ⚠ **`esc` と同じで、⚠ 外の最上位宣言に頼らず、⚠ ここで名前を取る。**
+  const { eraTick } = g.KonjakuWords;
 
   function createEraControl({ root, onChangeEra, onTogglePlay }) {
     if (!root) throw new Error("EraControl: root が無い");
@@ -61,7 +65,7 @@
     // ============================================================
     const rulerEl=q("#ruler");
     const rlYear=q("#rlYear"), rlSub=q("#rlSub");
-    const rlLeft=q("#rlLeft"), rlRight=q("#rlRight");
+    const rlLeft=q("#rlLeft"), rlRight=q("#rlRight"), rlLabs=q(".rl-labs");
     const rlTicks=q("#rlTicks"), rlKnob=q("#rlKnob");
     const rlLine=q("#ruler .rl-line");
     const rlPrev=q("#rlPrev"), rlNext=q("#rlNext");
@@ -120,6 +124,23 @@
       });
       rlLeft.textContent=steps[0]?.label??"";
       rlRight.textContent=steps[steps.length-1]?.label??"";
+      // ⚠ **間の段にも名前を置く**（2026-08-22。hidetzu/konjaku#166。Owner 判断）。
+      //   ⚠ 前は両端しか名乗らず、⚠ **動かす前に「いつの年代が見られるか」が分からなかった**
+      //     （実測 2026-08-22・375/344/320: 名前が読めるのは 2 個。刻みは 10 本）。
+      //   ⚠ **間引かない。**⚠ 出ていない段があると「その年代は無い」と読まれる（掟 §1）。
+      //   ⚠ **両端は軸の外（`#rlLeft` / `#rlRight`）が名乗る。**⚠ ここは間だけ。
+      //     ⚠ 端まで軸の中に入れると、⚠ **`現在` がノブに重なり、320 幅で `明治` と接触する**
+      //     （実測 2026-08-22。⚠ 画像で確かめた）。
+      if(rlLabs){
+        rlLabs.innerHTML="";
+        steps.forEach((s,k)=>{
+          if(k===0||k===steps.length-1) return;
+          const t=document.createElement("span");
+          t.textContent=eraTick(s.label);
+          t.style.left=`${rlAt(k)*100}%`;
+          rlLabs.appendChild(t);
+        });
+      }
       // ⚠ **できることから書く。**「写真はありません」で始めない（CLAUDE.md §4-1）
       const photo=steps.filter((s)=>!s.meiji);
       const hasMeiji=steps.some((s)=>s.meiji);
