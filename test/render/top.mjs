@@ -1743,8 +1743,15 @@ export const CASES = [
           const top = document.getElementById("breakdown")?.innerText
             ?.split("\n").map((x) => x.trim()).filter(Boolean)[0] ?? "";
           return {
-            pair: innermost("河川・湖沼・海面", "510").map(([y, t]) => `y${y} ${t.slice(0, 44)}`),
-            raw: innermost("510").map(([y, t]) => `y${y} ${t.slice(0, 40)}`),
+            // ⚠ **内訳は作り替えた**（2026-08-22。Owner 判断）。
+            //   ⚠ **前は「明治期の区分ごとの件数」**（⚠ 分母＝判定できた件数）。
+            //   ⚠ **いまは「建物について何が分かっているか」**（⚠ 分母＝総数）で、
+            //     ⚠ **明治期の区分の内訳は「昔はどんな土地？」が面積の分母で持つ。**
+            //   ⚠ **主張は引き継ぐ**: ⚠ **区分名と数字の組は、⚠ 画面に 1 か所だけ。**
+            //   ⚠ **消えた主題を見続けると、⚠ 何も見ていないのに緑になる**（掟）。
+            pair: innermost("河川・湖沼・海面").map(([y, t]) => `y${y} ${t.slice(0, 44)}`),
+            // ⚠ **建物の分母（総数）と、⚠ 面積の割合が、⚠ 同じ行に並んでいないこと**（掟 §6）
+            mixed: innermost("河川・湖沼・海面", "543").map(([y, t]) => `y${y} ${t.slice(0, 40)}`),
             breakdownTop: top,
             est: document.getElementById("notes")?.innerText?.replace(/\s+/g, " ").trim() ?? "",
             panelH: document.getElementById("panel")?.scrollHeight ?? 0,
@@ -1756,10 +1763,12 @@ export const CASES = [
         // ⚠ **消した側の字が戻っていない**
         must(!r.pair.some((x) => /区分を特定できた足元のうち/.test(x)),
           `第3層の本文に「区分を特定できた足元のうち」が戻っている: ${r.pair.join(" ／ ")}`);
-        // ⚠ **生の件数は残っている**（消しただけにしない）
-        must(r.raw.length >= 1, "510 / 543 が画面から消えている（内訳が受け皿になっていない）");
-        must(/河川・湖沼・海面/.test(r.breakdownTop),
-          `内訳の 1 行目が区分名で始まっていない: ${r.breakdownTop}`);
+        // ⚠ **区分名は面積の分母で語る。**⚠ **建物の分母（543）と混ざっていないこと**（掟 §6）
+        must(!r.mixed.length,
+          `区分名が建物の分母と同じ行に並んでいる（分母が食い違う）: ${r.mixed.join(" ／ ")}`);
+        // ⚠ **区分名は割合つきで出ている**（⚠ 消しただけにしない）
+        must(r.pair.some((x) => /\d/.test(x)),
+          `区分名が数字なしで出ている（内訳が受け皿になっていない）: ${r.pair.join(" ／ ")}`);
         // ⚠ **3D の帯は 1 行**（2026-08-21。hidetzu/konjaku#151。Owner 判断）。
         //   ⚠ 前は「建物が消える年代は演出です」＋分数 2 つだった。
         //   ⚠ **分数はパネルへ移した**（⚠ 消していない）。⚠ **言い方も「推定」へ統一。**

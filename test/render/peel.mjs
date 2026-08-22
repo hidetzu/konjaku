@@ -92,8 +92,9 @@ export const CASES = [
         const r = await page.evaluate(() => {
           const rect = (id) => document.getElementById(id).getBoundingClientRect();
           const est = document.getElementById("notes"), hud = document.getElementById("hud");
-          const nb = rect("notice"), hb = rect("hud");
-          const row = document.querySelector("#chrome .chrome-row").getBoundingClientRect();
+          // ⚠ **`#notice` / `#chrome` は消えた**（2026-08-22）。⚠ **補足は板の中の `#notes`。**
+          const nb = rect("notes"), hb = rect("hud");
+          const row = document.querySelector("#panel .chrome-row").getBoundingClientRect();
           // ⚠ **敷きは祖先を辿って探す。**⚠ 地図そのものは敷きに数えない
           //   （body は不透明だが、その上に地図が乗っている）。
           const mapEl = document.getElementById("map");
@@ -110,8 +111,11 @@ export const CASES = [
             inHud: hud.contains(est),
             hudTxt: (hud.innerText ?? "").replace(/\s+/g, " ").trim(),
             noticeOn: document.getElementById("notes").checkVisibility(),
-            estOn: est.checkVisibility(), estH: Math.round(rect("est").height),
-            tipOn: !!document.querySelector('#notes li[data-kind="tip"]')?.checkVisibility(),
+            estOn: est.checkVisibility(), estH: Math.round(rect("notes").height),
+            // ⚠ **操作の案内は、⚠ 狭い幅で小さくしているあいだ ? の中**（2026-08-23。Owner 判断）。
+            //   ⚠ **主張は「⚠ 出す手段がある」**（⚠ 消していない）。⚠ **? か、⚠ 字そのもの。**
+            tipOn: !!document.querySelector('#notes li[data-kind="tip"]')?.checkVisibility()
+                || !!document.getElementById("noteHelp")?.checkVisibility(),
             top: Math.round(nb.top), bottom: Math.round(nb.bottom),
             center: Math.round(innerHeight / 2), bgA,
             overRow: Math.round(Math.min(nb.bottom, row.bottom) - Math.max(nb.top, row.top)),
@@ -137,6 +141,8 @@ export const CASES = [
         must(r.bgA >= 0.5, `${w}px: 補足に敷きが無い（不透明度 ${r.bgA}）`);
         // ⚠ **押せるものを塞がない／HUD とぶつからない**
         //   （実測: 別々に置いた箱が 92px 食い込んだことがある）
+        // ⚠ **補足は板の中に入った**（2026-08-22）。⚠ **帯とは同じ積み上げに並ぶ**ので、
+        //   ⚠ **重ならないこと**を見る意味は残っている（⚠ `position:sticky` の帯の下に潜らない）。
         must(r.overRow <= 0, `${w}px: 補足が「もどる」の行に ${r.overRow}px 重なっている`);
         must(r.overHud <= 0, `${w}px: 補足が HUD に ${r.overHud}px 重なっている`);
         // ⚠ **調べている地点（画面中央）を覆わない**
@@ -556,7 +562,11 @@ export const CASES = [
         const kick = document.querySelector("#timePanel .kick");
         return { y: g("#timePanel .y"), prev: g("#rlPrev"), next: g("#rlNext"),
           // ⚠ 畳む仕掛けが**戻っていないこと**。⚠ 1 つでもあれば数に出る
-          toggles: document.querySelectorAll("#eraToggle,#timeToggle,[aria-expanded]").length,
+          // ⚠ **数えるのは年代の器の中だけ**（2026-08-23）。⚠ **画面全体から数えると、
+          //   ⚠ 板の開閉（`#toggle`）と補足の ? （`#noteHelp`）まで拾う**（⚠ 実際に拾った）。
+          //   ⚠ **主題は「年代の畳み」。**⚠ **別の id で作り直されても捕まえる**ため
+          //     ⚠ `[aria-expanded]` は残す。⚠ **範囲を `#hud` に絞る。**
+          toggles: document.querySelectorAll("#eraToggle,#timeToggle,#hud [aria-expanded]").length,
           textW: Math.round(tr.width), boxRight: Math.round(box.right), textRight: Math.round(tr.right),
           kickText: kick ? kick.textContent.trim() : null,
           eraH: Math.round(box.height) };
@@ -946,7 +956,10 @@ export const CASES = [
         window.__provHits = 0;
         window.__provObs?.disconnect();
         window.__provObs = new MutationObserver((rs) => { window.__provHits += rs.length; });
-        window.__provObs.observe(document.querySelector('#panel .prov-q[data-q="3"]'),
+        // ⚠ **段で変わるのは第2層の材料**（⚠ 「地表はその年代の空中写真そのもの」）。
+        //   ⚠ **第3層（建物）は段に依らない**ので、⚠ **そちらを見ると必ず 0 回になる**
+        //     （⚠ 2026-08-23 に踏んだ。⚠ **「組み直していない」が理由もなく緑**）。
+        window.__provObs.observe(document.querySelector('#panel .prov-q[data-q="2"]'),
           { childList: true, subtree: true, characterData: true });
       });
       // ⚠ **数えるのは、動かし終えて 1 呼吸おいてから。** MutationObserver の通知は
@@ -3280,11 +3293,24 @@ ${dom}
       must(/建物が消える年代は推定/.test(r.text), `帯の但し書きが消えている: ${r.text}`);
       must(!/\d/.test(r.text), `帯に数字が残っている（分数はパネルへ移した）: ${r.text}`);
       // ⚠ **分母つきは、⚠ 同じ画面のパネルから読めること**（⚠ 消していない証拠）
+      // ⚠ **件数は内訳が持つ**（2026-08-22。Owner 判断。⚠ 台帳は「どう決めたか」だけ）。
+      //   ⚠ **主張は同じ**（⚠ 分母つきが、⚠ 同じ画面のパネルから読めること）。
+      //   ⚠ **読むのは「高さが分かる N / M」と「階数から換算 X 件 ／ 既定値 Y 件」。**
+      const bdTx = await page.evaluate(() =>
+        (document.getElementById("breakdown")?.textContent ?? "").replace(/\s+/g, " "));
+      const mh = bdTx.match(/高さが分かる(\d+) \/ (\d+)/);
+      must(mh, `高さを分母つきで言っていない: ${bdTx.slice(0, 140)}`);
+      const my = bdTx.match(/建てられた年が分かる(\d+) \/ (\d+)/);
+      must(my, `建設年を分母つきで言っていない: ${bdTx.slice(0, 140)}`);
+      // ⚠ **実測でない分は、⚠ その内訳が言う**（⚠ 足すと総数になる）
+      const me = bdTx.match(/階数から換算 (\d+) 件 ／ 種別ごとの既定値 (\d+) 件/);
+      must(me, `実測でない高さの内訳が無い: ${bdTx.slice(0, 140)}`);
+      must(+mh[1] + +me[1] + +me[2] === +mh[2],
+        `高さの内訳が総数と合わない: ${mh[1]} ＋ ${me[1]} ＋ ${me[2]} ≠ ${mh[2]}`);
+      must(+me[1] + +me[2] > 0, `推定が 0 件なのに「推定です」と言っている: ${bdTx.slice(0, 90)}`);
       const provTx = await provText(page);
-      must(/\d+ \/ \d+ 件が推定/.test(provTx), `高さの推定を分母つきで言っていない: ${provTx.slice(0, 120)}`);
-      must(/年が分かるのは \d+ \/ \d+ 件/.test(provTx), `建設年を分母つきで言っていない: ${provTx.slice(0, 120)}`);
-      const m = provTx.match(/(\d+) \/ (\d+) 件が推定/);
-      must(+m[1] > 0 && +m[1] <= +m[2], `推定の件数がおかしい: ${m[0]}`);
+      // ⚠ **台帳は「どう決めたか」を言う**（⚠ 件数は言わない）
+      must(/種別ごとの既定値/.test(provTx), `台帳が高さの決め方を言っていない: ${provTx.slice(0, 120)}`);
       for (const w of ["再現", "当時の街並み", "この年に建った"])
         must(!r.text.includes(w), `断定・再現を名乗る語がある: 「${w}」`);
 
@@ -3339,19 +3365,23 @@ ${dom}
           .map((e) => e.textContent ?? "").join(" ").replace(/\s+/g, " ").trim(),
           }));
           // ⚠ AC1: 帯は 1 行。⚠ **数字を 1 つも含まない**
-          must(r.est === "建物が消える年代は推定です。",
+          // ⚠ **句点は付けない**（2026-08-22。⚠ 箇条書きの 1 行なので、⚠ 並びの作法にそろえた）。
+          must(/^建物が消える年代は推定です。?$/.test(r.est),
             `${w}px: 帯が 1 行になっていない: 「${r.est}」`);
           must(!/[0-9]/.test(r.est), `${w}px: 帯に数字が残っている: 「${r.est}」`);
           // ⚠ AC2: HUD に分数が 0 個
           const hudFrac = (r.hud.match(/\d+ \/ \d+ 件/g) ?? []);
           must(hudFrac.length === 0, `${w}px: HUD に分数が残っている: ${hudFrac.join(" / ")}`);
           // ⚠ AC3: パネル側に、⚠ 建設年と高さが **それぞれ 1 回だけ** 分母つきで
-          const dated = (r.all.match(/建てられた年が分かるのは \d+ \/ \d+ 件/g) ?? []);
-          const hgt = (r.all.match(/\d+ \/ \d+ 件が推定/g) ?? []);
+          // ⚠ **件数は内訳が持つ**（2026-08-22。Owner 判断）。⚠ **主張は同じ**:
+          //   ⚠ **建設年と高さが、⚠ それぞれ 1 回だけ、⚠ 分母つきで出ていること。**
+          const dated = (r.all.match(/建てられた年が分かる\d+ \/ \d+/g) ?? []);
+          const hgt = (r.all.match(/高さが分かる\d+ \/ \d+/g) ?? []);
           must(dated.length === 1, `${w}px: 建設年の分母つきが ${dated.length} 回`);
           must(hgt.length === 1, `${w}px: 高さの分母つきが ${hgt.length} 回`);
-          must(/建てられた年が分かるのは/.test(r.prov), `${w}px: 建設年がパネルに無い`);
-          must(/件が推定/.test(r.prov), `${w}px: 高さがパネルに無い`);
+          // ⚠ **台帳は「どう決めたか」を言う**（⚠ 件数は言わない）
+          must(/消えるか|見込み/.test(r.prov), `${w}px: 建設年の決め方がパネルに無い`);
+          must(/種別ごとの既定値/.test(r.prov), `${w}px: 高さの決め方がパネルに無い`);
           // ⚠ AC4: 画面のどこにも「演出」が無い
           must(!/演出/.test(r.all), `${w}px: 「演出」が残っている（言い換えが半分だけ）`);
           out.push(`${w}px 帯「${r.est}」／HUD の分数 0／パネル ${dated[0]}・${hgt[0]}`);
@@ -3378,7 +3408,8 @@ ${dom}
       must(!/演出/.test(t), `画面に「演出」が残っている（言い換えが半分だけ）: ${t.slice(0, 120)}`);
       // ⚠ 言い方も1つにする。#est が「建てられた年」、#prov が「建設年」と、
       //   同じことを別の語で2回言っていた（数字が3か所にあったのと同じ話）。
-      must(/建てられた年が分かるのは \d+ \/ \d+ 件/.test(t), `分母つきで言っていない: ${t.slice(0, 120)}`);
+      // ⚠ **件数は内訳が持つ**（2026-08-22）。⚠ **主張は同じ**（⚠ 分母つきで 1 か所）。
+      must(/建てられた年が分かる\d+ \/ \d+/.test(t), `分母つきで言っていない: ${t.slice(0, 120)}`);
       // ⚠ この断りは、**パネルを開かなくても読める場所**に無いと意味がない。
       //   実測（2026-08-15）: 断りは #prov にしか無く、スマホでは
       //   ☰ を押して 254px スクロールしないと届かなかった。
@@ -3390,8 +3421,8 @@ ${dom}
       must(!/\d/.test(est), `帯に数字が残っている（分数はパネルへ移した）: ${est.slice(0, 90)}`);
       // ⚠ 同じ数字を2か所に置かない（掟: 同じ問いに答える実装を2つ持たない）。
       //   実測（2026-08-15）: 8 / 533 が #est・#prov・内訳 の 3 か所にあった（当時の分母）。
-      const dated = (t.match(/建てられた年が分かるのは (\d+) \/ (\d+) 件/) ?? [])[0];
-      const times = t.split(/建てられた年が分かるのは \d+ \/ \d+ 件/).length - 1;
+      const dated = (t.match(/建てられた年が分かる(\d+) \/ (\d+)/) ?? [])[0];
+      const times = t.split(/建てられた年が分かる\d+ \/ \d+/).length - 1;
       must(times === 1, `「${dated}」が画面に ${times} 回出ている`);
       const bare = (t.match(new RegExp(`${(dated.match(/(\d+) \/ (\d+)/) ?? [])[0]}`, "g")) ?? []).length;
       must(bare === 1, `「${(dated.match(/\d+ \/ \d+/) ?? [])[0]}」という数字が画面に ${bare} 回出ている`);
@@ -3904,10 +3935,16 @@ ${dom}
       //   ⚠ **母数つきの主張は #est の 1 か所。**⚠ 台帳は内訳（⚠ 同じ数字を持たない）。
       // ⚠ **2026-08-21 に、⚠ 分母つきは帯からパネルへ移った**（hidetzu/konjaku#151）。
       //   ⚠ **見ている主張は同じ**: ⚠ 推定を主語に、⚠ 主張範囲の分母つきで、⚠ 1 か所だけ。
-      const m = prov.replace(/\s+/g, " ").match(/(\d+) \/ (\d+) 件が推定/);
-      must(m, `推定の件数が分母つきで出ていない: ${prov.replace(/\s+/g, " ").slice(0, 120)}`);
-      must(Number(m[2]) === total,
-        `高さの分母が主張範囲と違う: ${m[2]} / 判定した件数 ${total}`);
+      // ⚠ **件数は内訳が持つ**（2026-08-22。Owner 判断）。⚠ **主張は同じ**:
+      //   ⚠ **推定の件数が、⚠ 主張範囲の分母つきで、⚠ 1 か所だけ。**
+      const bd = await page.evaluate(() =>
+        (document.getElementById("breakdown")?.textContent ?? "").replace(/\\s+/g, " "));
+      const mh = bd.match(/高さが分かる(\d+) \/ (\d+)/);
+      must(mh, `高さの件数が分母つきで出ていない: ${bd.slice(0, 120)}`);
+      must(Number(mh[2]) === total,
+        `高さの分母が主張範囲と違う: ${mh[2]} / 判定した件数 ${total}`);
+      // ⚠ **推定は「実測でない分」**（⚠ 総数 − 実測）。⚠ **半分を超えていること。**
+      const m = [null, String(Number(mh[2]) - Number(mh[1])), mh[2]];
       must(Number(m[1]) > Number(m[2]) * 0.5,
         `推定が半分以下なのに「ほとんどが既定値」と書いている: ${m[1]}/${m[2]}`);
       // ⚠ **同じ母数を、⚠ 実測を主語にしてもう一度言っていないこと**
@@ -3918,8 +3955,9 @@ ${dom}
       must(!/高さが(実測|分かる)の \d+ 件/.test(prov),
         `同じ母数を実測の側からも言っている（押す先の名前）: ${prov.replace(/\s+/g, " ").slice(0, 140)}`);
       // ⚠ **内訳は足して推定の件数になること**（⚠ 台帳が持つのは内訳だけ）
-      const mm = prov.match(/階数から換算したものが (\d+) 件、残る (\d+) 件/);
-      must(mm, `高さの内訳が読めない: ${prov.replace(/\s+/g, " ").slice(0, 160)}`);
+      // ⚠ **内訳の言い方も変わった**（2026-08-22）: 「階数から換算 X 件 ／ 種別ごとの既定値 Y 件」
+      const mm = bd.match(/階数から換算 (\d+) 件 ／ 種別ごとの既定値 (\d+) 件/);
+      must(mm, `高さの内訳が読めない: ${bd.slice(0, 160)}`);
       must(Number(mm[1]) + Number(mm[2]) === Number(m[1]),
         `内訳が推定の件数と合わない: ${mm[1]} ＋ ${mm[2]} ≠ ${m[1]}`);
       // ⚠ 内訳の表には入れない。あの表は足元の判定の**分割**（足すと総数になる）で、
