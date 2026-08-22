@@ -365,6 +365,48 @@ const DEM_ROUTE = "**://cyberjapandata.gsi.go.jp/xyz/dem*/**";
 const forbid = (page, route) => page.route(route, (r) => r.fulfill({
   status: 403, contentType: "text/html", body: "<html><body>403 Forbidden</body></html>" }));
 
+// ⚠ **EraControlPanel だけを、⚠ 地図もネットも無しで開く**（hidetzu/konjaku#171）。
+//   ⚠ **配信物を増やさない。**⚠ `page.route` で組み立てる（実ファイルを置かない）。
+//   ⚠ **DOM も token も peel.html から取る。**⚠ ここへ写すと 2 か所になって片方が古くなる（掟）。
+//   ⚠ **画面の代わりは、ここが持つ。**⚠ 返ってきた位置を `window.__pos` に置いて描き直すだけ（一方向）。
+async function openEraControl(browser, { width = 1280, height = 400 } = {}) {
+  const ctx = await browser.newContext({ viewport: { width, height }, serviceWorkers: "block" });
+  const p2 = await ctx.newPage();
+  const peel = await readFile(new URL("../public/peel.html", import.meta.url), "utf8");
+  const i = peel.indexOf('<section id="timePanel"');
+  const j = peel.indexOf("</section>", i) + "</section>".length;
+  if (i < 0 || j <= i) throw new Error("peel.html から #timePanel を切り出せない（この検査が何も見ていない）");
+  const rootCss = /:root\{([\s\S]*?)\}/.exec(peel)?.[1] ?? "";
+  if (!rootCss.includes("--text-hero")) throw new Error("peel.html の :root を読めない（この検査が何も見ていない）");
+  const html = `<!doctype html><html lang="ja"><head><meta charset="utf-8">
+<link rel="stylesheet" href="/css/tokens.css">
+<link rel="stylesheet" href="/components/era-control/era-control.css">
+<style>:root{${rootCss}} body{background:#0b0e13;margin:0;padding:20px;
+  font:14px/1.65 -apple-system,sans-serif;color:var(--ink)}</style></head><body>
+${peel.slice(i, j)}
+<script src="/esc.js"></script>
+<script src="/components/era-control/era-control.js"></script>
+<script>
+  window.__ev = []; window.__pos = 0;
+  window.__steps = [{id:"now",label:"現在"},{id:"a",label:"1984–86"},{id:"b",label:"1974–78"},
+                    {id:"c",label:"1945–50"},{id:"swale",label:"明治期",meiji:true}];
+  window.__draw = (o) => window.__c.update({ steps: window.__steps, pos: window.__pos,
+    playing: false, narrow: false, sealed: false, meijiHas: true,
+    readout: { year: "", kick: "", sub: "", net: "", note: "" }, tone: {}, ...(o ?? {}) });
+  window.__c = createEraControl({ root: document.getElementById("timePanel"),
+    onChangeEra: (p) => { window.__ev.push(["era", p]); window.__pos = p; window.__draw(); },
+    onTogglePlay: () => window.__ev.push(["play"]) });
+  window.__draw();
+</script></body></html>`;
+  const got = [], errs = [];
+  p2.on("request", (r) => got.push(new URL(r.url()).pathname));
+  p2.on("pageerror", (e) => errs.push(e.message));
+  await p2.route(`${BASE}/__era-control-probe`, (r) =>
+    r.fulfill({ status: 200, contentType: "text/html; charset=utf-8", body: html }));
+  await p2.goto(`${BASE}/__era-control-probe`, { waitUntil: "domcontentloaded", timeout: 30000 });
+  return { ctx, p2, got, errs };
+}
+
 const CASES = [
   {
     // ⚠ **HUD は「いまの年代」と「年代操作」だけを扱う**（2026-08-22。hidetzu/konjaku#168。Owner 判断）。
@@ -3676,6 +3718,198 @@ const CASES = [
   },
 
   {
+    // ⚠ **帯は、押しても引いても段が決まる**（コンポーネント単体。2026-08-22。hidetzu/konjaku#171）。
+    //
+    //   ⚠ **実描画の 4 ケースから移した。**⚠ **主張は 1 つも落としていない。**
+    //     年代帯の端の文字を押すと最後の段になる（PC の横棒）
+    //     年代帯の文字は、押せば段へ寄り、引けば連続して動く（PC の横棒）
+    //     年代の帯は、目盛りも文字もノブも押せる（PC の横棒）
+    //     つまみの両端が、何の年代かを必ず名乗る
+    //   ⚠ **移せた理由**: どれも ⚠ **地図も建物も土地データも見ていない。**
+    //     段を渡せば足りる（実データに寄りかかっていない）。
+    //   ⚠ **移さなかったもの**: 「▶ は、動かす相手（帯）のすぐそばにある」は
+    //     ⚠ **初期画面に入っているか（innerHeight）を見ている**ので、単体では測れない。
+    //
+    // ⚠ **移すときに、1 つ強くした。**
+    //   「つまみの両端が…」は **375×667** で測っていたが、⚠ **その幅では横棒が
+    //   `display:none`**（狭い幅はドラム）。⚠ **矩形が全部 0 になるので、
+    //   「はみ出さない」「重ならない」は何も見ていなかった**（2026-08-22 に気づいた）。
+    //   ⚠ ここでは ⚠ **横棒が出る幅**（681 = 出る下限 ／ 1280）で測り、
+    //   ⚠ **測る前に `checkVisibility()` で見えていることを確かめる**（同じ穴に落ちない）。
+    //
+    // ⚠ **端の文字は、中心をそのまま押す。**⚠ 枠の内側へ寄せて押さない。
+    //   ⚠ 実測（2026-08-22）: 右端から 2px の位置に丸めて押すと、⚠ **range が自力で最大へ行く**ので、
+    //     ⚠ **文字タップの処理を丸ごと消しても、この検査が緑のままだった。**
+    //
+    //   ⚠ 経緯（既定動作を止めない／重なったら中心がいちばん近いものを選ぶ／
+    //     引き終えて段へ吸い戻さない）は、⚠ **era-control.js のコメントが持つ。**⚠ 写さない。
+    name: "年代の帯は、押しても引いても段が決まる（コンポーネント単体）", path: "/", group: "core",
+    async check(page) {
+      const browser = page.context().browser();
+      const out = [];
+
+      // ---- ① 両端が名乗る／枠からはみ出さない／重ならない ----
+      // ⚠ 段の数が違うところで見る。⚠ **偶数段・奇数段の両方**（片方だけだと、また偶然で通る）
+      for (const width of [681, 1280]) {
+        for (const n of [4, 5, 7, 9]) {
+          const { ctx, p2, errs } = await openEraControl(browser, { width, height: 400 });
+          try {
+            await p2.evaluate((k) => {
+              window.__steps = Array.from({ length: k }, (_, i) => ({
+                id: String(i), label: i === 0 ? "現在" : i === k - 1 ? "明治期" : `19${40 + i * 6}年`,
+                meiji: i === k - 1 }));
+              window.__pos = 0; window.__draw();
+            }, n);
+            await p2.waitForTimeout(80);
+            const geo = await p2.evaluate(() => {
+              const box = (e) => { const r = e.getBoundingClientRect();
+                return { left: r.left, right: r.right, text: e.textContent.trim() }; };
+              const t = document.getElementById("track");
+              return { shown: t.checkVisibility(), track: box(t),
+                ticks: document.querySelectorAll("#track .tick").length,
+                labs: [...document.querySelectorAll("#track .lab")].map(box),
+                start: document.querySelector("#track .lab.at-start")?.textContent.trim() ?? "",
+                end: document.querySelector("#track .lab.at-end")?.textContent.trim() ?? "" };
+            });
+            must(!errs.length, `${width}px ${n}段: 例外が出た: ${errs[0]}`);
+            // ⚠ **見えていないものを測って「問題なし」と言わない**（移す前がこれで空振りしていた）
+            must(geo.shown && geo.track.right - geo.track.left > 0,
+              `${width}px ${n}段: 横棒が出ていない。この検査は何も見ていない`);
+            must(geo.ticks === n, `${width}px ${n}段: 目盛りが ${geo.ticks} 個`);
+            must(geo.start === "現在", `${width}px ${n}段: 開始端が現在でない: 「${geo.start}」`);
+            must(geo.end === "明治期", `${width}px ${n}段: 終了端が明治期でない: 「${geo.end}」`);
+            // ⚠ 端の文字が枠からはみ出さないこと（横スクロールが出る。一度踏んでいる）
+            const over = geo.labs.filter((l) => l.text
+              && (l.left < geo.track.left - 0.5 || l.right > geo.track.right + 0.5));
+            must(!over.length, `${width}px ${n}段: 目盛りの文字が枠の外に出ている: `
+              + over.map((l) => `${l.text}(${l.left.toFixed(0)}〜${l.right.toFixed(0)}px)`).join("、"));
+            // ⚠ 間引いたうえで、なお隣どうしが重ならないこと
+            const shown = geo.labs.filter((l) => l.text).sort((a, b) => a.left - b.left);
+            const hit = shown.filter((l, i) => i > 0 && l.left < shown[i - 1].right - 0.5);
+            must(!hit.length, `${width}px ${n}段: 目盛りの文字が重なっている: `
+              + hit.map((l) => l.text).join("、"));
+            out.push(`${width}px ${n}段「${shown.map((l) => l.text).join("/")}」`);
+          } finally { await ctx.close(); }
+        }
+      }
+
+      // ---- ② 押す・引く（⚠ 段の数は移す前と同じ 9 段。1280px の横棒）----
+      const { ctx, p2, errs } = await openEraControl(browser, { width: 1280, height: 400 });
+      try {
+        const n = 8;   // 9 段 = 最大値 8
+        await p2.evaluate((k) => {
+          window.__steps = Array.from({ length: k + 1 }, (_, i) => ({
+            id: String(i), label: i === 0 ? "現在" : i === k ? "明治期" : `19${40 + i * 6}年`,
+            meiji: i === k }));
+          window.__pos = 0; window.__draw();
+        }, n);
+        await p2.waitForTimeout(80);
+        // ⚠ **値は「画面へ返ってきた位置」から読む。**⚠ `#t.value` は見ない。
+        //   ⚠ 実測（2026-08-22）: 文字タップの処理は `slider.value` を**自分で**書いてから
+        //     画面へ返す。⚠ **`#t` を見ると、返す側を消しても気づけない**（移す前の 4 ケースが
+        //     どれも `#t` を見ていた。⚠ **返す処理を消しても 4 件とも緑のままだった**）。
+        //   ⚠ **コンポーネントの契約は、返す値のほう。**⚠ そちらを見る。
+        const val = () => p2.evaluate(() => window.__pos);
+        const set = (v) => p2.evaluate((x) => { window.__pos = x; window.__draw(); }, v);
+        const geo = await p2.evaluate(() => {
+          const t = document.getElementById("track").getBoundingClientRect();
+          const mid = (e) => { const r = e.getBoundingClientRect();
+            return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) }; };
+          return { x: Math.round(t.left), w: Math.round(t.width),
+            // ⚠ **名前の無いラベルは的にしない。**⚠ 間引いた段のラベルは `:empty` で消えていて、
+            //   ⚠ 消えた要素の矩形は 0,0 を返す（そのまま押すと画面の左上を押す）
+            lab: [...document.querySelectorAll("#track .lab")]
+              .filter((e) => e.textContent.trim())
+              .map((e) => ({ ...mid(e), t: e.textContent.trim(), i: Number(e.dataset.i) })),
+            tick: [...document.querySelectorAll("#track .tick")].map(mid),
+            knob: mid(document.querySelector("#track .knob")) };
+        });
+        must(!errs.length, `例外が出た: ${errs[0]}`);
+        must(geo.lab.length > 0 && geo.tick.length === n + 1, "目盛りも年代の文字も足りない");
+        // ⚠ **押せる面は `#t` 自身。**⚠ #track の幅とは限らない（実測でずれていた）
+        const inRight = await p2.$eval("#t", (e) => Math.round(e.getBoundingClientRect().right));
+
+        // 端の文字を押すと、最後の段になる
+        await set(0);
+        const endLab = geo.lab[geo.lab.length - 1];
+        await p2.mouse.click(endLab.x, endLab.y);
+        await p2.waitForTimeout(200);
+        must(await val() === n, `右端「${endLab.t}」を押しても最終段にならない: ${await val()} / ${n}`);
+
+        // ⚠ **中間の文字を押したら、その段ちょうどへ寄る。**
+        //   ⚠ **端では見えない主張。**⚠ 実測（2026-08-22）: 右端の文字の中心は、
+        //     range が自力で最大に達する位置にあり、⚠ **文字タップの処理を消しても最大になる。**
+        //     ⚠ **中間の文字だけが、寄せているのかどうかを見分けられる。**
+        const inner = geo.lab.filter((l) => l.i > 0 && l.i < n);
+        must(inner.length, `中間の年代の文字が無い: ${geo.lab.map((l) => l.t).join("・")}`);
+        const tap = inner[0];
+        await set(0); await p2.waitForTimeout(60);
+        await p2.mouse.click(tap.x, tap.y);
+        await p2.waitForTimeout(200);
+        const tapped = await val();
+        must(tapped === tap.i, `文字「${tap.t}」を押しても段 ${tap.i} にならない: ${tapped}`);
+
+        // ノブ中心を押しても、値が意図せず変わらない
+        const midStep = n / 2;
+        await set(midStep);
+        const knob = await p2.locator("#track .knob").boundingBox();
+        must(knob, "ノブが無い");
+        await p2.mouse.click(Math.round(knob.x + knob.width / 2), Math.round(knob.y + knob.height / 2));
+        await p2.waitForTimeout(200);
+        must(await val() === midStep, `ノブ中心の押下で値が変わった: ${await val()}`);
+
+        // ⚠ 押しても動かない的が無い（文字も目盛りも全部効く）
+        const dead = [];
+        for (const l of [...geo.lab, ...geo.tick]) {
+          const from = l.x < geo.x + geo.w / 2 ? n : 0;
+          await set(from); await p2.waitForTimeout(60);
+          // ⚠ **右端ちょうどは要素の外**（実測 2026-08-22: 最後の目盛りの中心が `#t` の
+          //   右端と同じ x で、⚠ **その 1px は隣の要素が受け取る**）。⚠ 2px 内側を押す（指なら当たる幅）。
+          //   ⚠ **端の文字（下）は寄せない。**寄せると range が自力で最大へ行き、
+          //     ⚠ **文字タップの処理を消しても気づけない。**
+          await p2.mouse.click(Math.min(l.x, inRight - 2), l.y);
+          await p2.waitForTimeout(150);
+          if (await val() === from) dead.push(l.t || `目盛り(${l.x})`);
+        }
+        must(!dead.length, `押しても動かない的がある: ${dead.join("、")}`);
+
+        // ⚠ 文字の上から引くと、連続して動く。⚠ **引き終えて段へ吸い戻さない**
+        await set(0); await p2.waitForTimeout(100);
+        const midLab = geo.lab[Math.floor(geo.lab.length / 2)];
+        await p2.mouse.move(midLab.x, midLab.y);
+        await p2.mouse.down();
+        const trace = [];
+        for (let k = 1; k <= 6; k++) {
+          await p2.mouse.move(midLab.x + k * 20, midLab.y);
+          await p2.waitForTimeout(40);
+          trace.push(await val());
+        }
+        await p2.mouse.up(); await p2.waitForTimeout(250);
+        const ended = await val();
+        const moved = new Set(trace).size;
+        must(moved >= 4, `文字の上から引いても動かない: ${trace.join(" → ")}`);
+        for (let k = 1; k < trace.length; k++)
+          must(trace[k] > trace[k - 1], `右へ引いたのに値が戻る: ${trace.join(" → ")}`);
+        must(ended === trace[trace.length - 1],
+          `引き終えてから段へ吸い戻された: ${trace[trace.length - 1]} → ${ended}`);
+
+        // ⚠ ノブを掴んで引けること
+        await set(0); await p2.waitForTimeout(100);
+        await p2.mouse.move(geo.knob.x, geo.knob.y);
+        await p2.mouse.down();
+        await p2.mouse.move(geo.knob.x + 120, geo.knob.y, { steps: 8 });
+        await p2.mouse.up(); await p2.waitForTimeout(200);
+        must(await val() !== 0, "ノブを掴んで引けない");
+
+        out.push(`9段: 文字 ${geo.lab.length} 個・目盛り ${geo.tick.length} 個・ノブ、全部効く`);
+        out.push(`文字「${tap.t}」押下 → 段 ${tapped}／引くと ${moved} 段階で吸い戻さない`);
+      } finally { await ctx.close(); }
+
+      return out.join(" ／ ");
+    },
+  },
+
+  {
     // ⚠ **EraControlPanel だけを、⚠ 地図もネットも無しで動かす**（2026-08-22。hidetzu/konjaku#171）。
     //
     //   ⚠ **なぜ要るか。**⚠ 切り出しただけでは境界は保証されない。
@@ -6730,106 +6964,6 @@ ${dom}
     },
   },
   {
-    // ⚠ 端の文字は見た目の中心が range の端からずれる。
-    //   実際の座標を押し、右端の段まで値が届くことを確認する。
-    // ⚠ **PC 幅で見る**（2026-08-18 に移した）。狭い幅は横ドラムロールに替えたので、
-    //   ここが守っている「端の文字の見た目の中心が range の端からずれる」は
-    //   **横棒が残る PC だけの問題**になった。
-    //   ⚠ 狭い幅の同じ主張（端の段を選べる）は
-    //     「狭い幅の年代は、指で回して選べて、いまどこかが分かる」が見ている。
-    name: "年代帯の端の文字を押すと最後の段になる（PC の横棒）", path: `/peel?${TOYOSU}`,
-    viewport: { width: 1280, height: 800 },
-    async check(page) {
-      await peelReady(page);
-      // ⚠ 「目盛りが2つ以上ある」では足りない。仮の段でも満たすので、
-      //   直後に段が組み直されると、掴んだラベルが外れて boundingBox() が null になる
-      //   （実測 2026-08-17: ここが「年代帯の右端ラベルが無い」で落ちていた）。
-      await timelineSettled(page);
-      const max = await page.$eval("#t", (e) => Number(e.max));
-      await page.$eval("#t", (e) => { e.value="0"; e.dispatchEvent(new Event("input")); });
-      const target = await page.locator("#track .lab.at-end").boundingBox();
-      must(target, "年代帯の右端ラベルが無い");
-      const cx=Math.round(target.x+target.width/2), cy=Math.round(target.y+target.height/2);
-      const before = await page.$eval("#t", (e) => Number(e.value));
-      await page.mouse.click(cx,cy);
-      await page.waitForTimeout(300);
-      const after = await page.$eval("#t", (e) => Number(e.value));
-      must(after===max, `右端「明治期」を押しても最大値にならない: ${before} → ${after}/${max}`);
-      // ノブ中心の押下で、現在値が意図せず変わらないこと。
-      const mid=Math.round(max/2);
-      await page.$eval("#t", (e, v) => { e.value=String(v); e.dispatchEvent(new Event("input")); }, mid);
-      const knob = await page.locator("#track .knob").boundingBox();
-      must(knob, "ノブが無い");
-      const kx=Math.round(knob.x+knob.width/2), ky=Math.round(knob.y+knob.height/2);
-      await page.mouse.click(kx,ky);
-      const kept = await page.$eval("#t", (e) => Number(e.value));
-      must(kept===mid, `ノブ中心の押下で値が変わった: ${kept}`);
-      return `右端ラベル ${cx},${cy}: ${before}→${after}／ノブ中心の値は保持`;
-    },
-  },
-  {
-    // ⚠ 年代帯の操作は <input type=range> **一本**で受けている。
-    //   ラベルだけを pointer-events:auto にして pointerdown を止めると、
-    //   range がドラッグを始めないので、文字の上から引いても値が段に貼り付いたまま動かない。
-    //   実測（2026-08-16 / 375×667・タッチ / 豊洲 max=800 / 右へ 20px ずつ）:
-    //     文字の上   200 → 200 → 200 → 200 → 200 → 200 → 200  ← 動かない
-    //     ノブの上     0 →  37 →  98 → 160 → 222 → 283 → 345
-    //     レールの上 188 → 249 → 311 → 372 → 434 → 495 → 557
-    //   「押せば段へ寄る」と「引けば連続して動く」は**同じ的の上で両方**成り立つ必要がある。
-    // ⚠ **PC 幅で見る**（2026-08-18 に移した）。狭い幅は横ドラムロールに替えたので、
-    //   「同じ的の上で、押す（段へ寄る）と引く（連続して動く）が両立する」は
-    //   **横棒が残る PC だけの主張**になった。
-    name: "年代帯の文字は、押せば段へ寄り、引けば連続して動く（PC の横棒）", path: `/peel?${TOYOSU}`,
-    viewport: { width: 1280, height: 800 },
-    async check(page) {
-      await peelReady(page);
-      // 同じ穴を残さない。仮の段の上で座標を測ると、組み直しで的がずれる
-      await timelineSettled(page);
-      // 文字は1つおきに間引かれているので、**文字のあるラベル**だけを見る
-      const labs = await page.$$eval("#track .lab", (els) => els.map((e) => {
-        const r = e.getBoundingClientRect();
-        return { i: Number(e.dataset.i), text: e.textContent.trim(),
-          cx: Math.round(r.x + r.width / 2), cy: Math.round(r.y + r.height / 2) };
-      }).filter((l) => l.text));
-      const val = () => page.$eval("#t", (e) => Number(e.value));
-      const reset = () => page.$eval("#t", (e) => { e.value = "0"; e.dispatchEvent(new Event("input")); });
-      // 端は既存ケースが見ている。ここは**中間**の文字で見る
-      const mid = labs.find((l) => l.i > 0 && l.i < Math.max(...labs.map((x) => x.i)));
-      must(mid, `中間の年代ラベルが無い: ${labs.map((l) => l.text).join("・")}`);
-
-      // ---- 押す（段へ寄る）----
-      await reset();
-      await page.mouse.click(mid.cx, mid.cy);
-      await page.waitForTimeout(250);
-      const tapped = await val();
-      must(tapped === mid.i * 100,
-        `文字「${mid.text}」を押しても段 ${mid.i} にならない: ${tapped}（期待 ${mid.i * 100}）`);
-
-      // ---- 引く（連続して動く）----
-      await reset();
-      await page.mouse.move(mid.cx, mid.cy);
-      await page.mouse.down();
-      const trace = [await val()];
-      for (let dx = 20; dx <= 120; dx += 20) {
-        await page.mouse.move(mid.cx + dx, mid.cy);
-        await page.waitForTimeout(60);
-        trace.push(await val());
-      }
-      await page.mouse.up();
-      await page.waitForTimeout(150);
-      const ended = await val();
-      // 段に貼り付いていないこと。**途中の値**が増えていく（段の値だけを飛ぶのではない）
-      const steps = new Set(trace).size;
-      must(steps >= 4, `文字の上から引いても動かない: ${trace.join(" → ")}`);
-      for (let i = 1; i < trace.length; i++)
-        must(trace[i] > trace[i - 1], `右へ引いたのに値が戻る: ${trace.join(" → ")}`);
-      // 離したあとに段へ吸い戻されないこと（引いた結果を尊重する）
-      must(ended === trace[trace.length - 1],
-        `引き終えてから段へ吸い戻された: ${trace[trace.length - 1]} → ${ended}`);
-      return `文字「${mid.text}」押下 → ${tapped}／引くと ${trace[0]} → ${ended}（${steps} 段階）`;
-    },
-  },
-  {
     // ⚠ 年代を動かせることが、航空写真の上で見えなければ操作は存在しないのと同じ。
     //   文字・2px の線・14px のノブを背景へ直接置いていたときは、明るい地面でも
     //   暗い水面でも読みづらかった。板・見出し・指で分かるノブを実寸で見る。
@@ -7158,56 +7292,6 @@ ${dom}
     },
   },
   {
-    // ⚠ **両端の文字が、段の数で消えないこと。**
-    //   中間のラベルは狭い画面で密集するので1つおきに間引いているが、
-    //   段が固定 9 段だった頃は両端が k=0 と k=8 でどちらも偶数だったため、
-    //   `k%2===0` の間引きで**たまたま**両端が残っていた。段数が地点ごとに変わると、
-    //   長崎 出島（4 段）は終端が k=3 になり「明治期」が空欄になる（レビューで指摘）。
-    //   ⚠ 大きい年代表示（#era .y）を読む検査では捕まらない。年代の切り替え自体は
-    //     正しく動いているため。**目盛りの文字そのもの**を読むこと。
-    name: "つまみの両端が、何の年代かを必ず名乗る",
-    path: `/peel?ll=32.74400,129.87300&q=%E9%95%B7%E5%B4%8E%20%E5%87%BA%E5%B3%B6`,
-    viewport: { width: 375, height: 667 }, hasTouch: true,
-    async check(page) {
-      // 段の数が違う3地点で見る（出島 4 段・広島 7 段・豊洲 9 段）。
-      // ⚠ 偶数段・奇数段の両方を通すこと。片方だけだと、また偶然で通る
-      const places = [
-        ["長崎 出島", "/peel?ll=32.74400,129.87300&q=%E9%95%B7%E5%B4%8E%20%E5%87%BA%E5%B3%B6", 4],
-        ["広島", "/peel?ll=34.39500,132.45500&q=%E5%BA%83%E5%B3%B6", 7],
-        ["豊洲", `/peel?${TOYOSU}`, 9],
-      ];
-      const out = [];
-      for (const [name, path, want] of places) {
-        if (page.url() !== BASE + path)
-          await page.goto(BASE + path, { waitUntil: "domcontentloaded", timeout: 45000 });
-        await peelReady(page);
-        await page.waitForFunction((n) => document.querySelectorAll("#track .tick").length === n,
-          want, { timeout: 60000 });
-        const geo = await page.evaluate(() => {
-          const box = (e) => { const r = e.getBoundingClientRect();
-            return { left: r.left, right: r.right, text: e.textContent.trim() }; };
-          const labs = [...document.querySelectorAll("#track .lab")].map(box);
-          return { start: document.querySelector("#track .lab.at-start")?.textContent.trim() ?? "",
-            end: document.querySelector("#track .lab.at-end")?.textContent.trim() ?? "",
-            labs, track: box(document.getElementById("track")) };
-        });
-        must(geo.start === "現在", `${name}: 開始端が現在でない: 「${geo.start}」`);
-        must(geo.end === "明治期", `${name}: 終了端が明治期でない: 「${geo.end}」`);
-        // ⚠ 端の文字が枠からはみ出さないこと（横スクロールが出る。一度踏んでいる）
-        const over = geo.labs.filter((l) => l.text
-          && (l.left < geo.track.left - 0.5 || l.right > geo.track.right + 0.5));
-        must(!over.length, `${name}: 目盛りの文字が枠の外に出ている: `
-          + over.map((l) => `${l.text}(${l.left.toFixed(0)}〜${l.right.toFixed(0)}px)`).join("、"));
-        // ⚠ 間引いたうえで、なお隣どうしが重ならないこと（375px）
-        const shown = geo.labs.filter((l) => l.text).sort((a, b) => a.left - b.left);
-        const hit = shown.filter((l, i) => i > 0 && l.left < shown[i - 1].right - 0.5);
-        must(!hit.length, `${name}: 目盛りの文字が重なっている: ${hit.map((l) => l.text).join("、")}`);
-        out.push(`${name} ${want}段「${shown.map((l) => l.text).join("/")}」`);
-      }
-      return out.join(" ／ ");
-    },
-  },
-  {
     // ⚠ 場所を変えたら段も変わる。組み直しを忘れると、前の場所の段のまま
     //   別の土地のタイルを引く（＝また存在しない年代を取りに行く）。
     // ⚠ 2026-08-18 まで、この検査は /peel の中のピンを押して場所を変えていた。
@@ -7383,60 +7467,6 @@ ${dom}
         + `／名前「${fx.text}」${fx.size}px`
         + `／${pins.sets.map(([k, n, on]) => `${k}の印 ${n} 個中 ${on} 個を強調`).join("・")}`
         + `／戻すと消える`;
-    },
-  },
-  {
-    // ⚠ 目盛りとノブは input を覆わず、ラベルは押した段へ明示選択する。
-    //   以前は飾りが input を覆って年代帯の操作を奪っていたため、役割を分けて検査する。
-    // ⚠ **PC 幅で見る**（2026-08-18 に移した）。「飾りが input を覆って操作を奪わない」は
-    //   **横棒が残る PC だけの主張**になった。狭い幅は横ドラムロールに替わり、
-    //   同じ主張（段が押せる・回せる）は
-    //   「狭い幅の年代は、指で回して選べて、いまどこかが分かる」が見ている。
-    name: "年代の帯は、目盛りも文字もノブも押せる（PC の横棒）", path: `/peel?${TOYOSU}`,
-    viewport: { width: 1280, height: 800 },
-    async check(page) {
-      await page.waitForFunction(() => /件を判定しました/.test(document.body.innerText),
-        null, { timeout: 60000 });
-      await settleAfterCondition(page);
-      const geo = await page.evaluate(() => {
-        const t = document.getElementById("track").getBoundingClientRect();
-        const mid = (e) => { const r = e.getBoundingClientRect();
-          return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) }; };
-        return { x: Math.round(t.left), w: Math.round(t.width),
-          // ⚠ **名前の無いラベルは的にしない。**間引いた段のラベルは中身が空で、
-          //   `#track .lab:empty{display:none}` で消してある（下線だけが残るのを避けるため）。
-          //   消えた要素の矩形は 0,0 を返すので、そのまま押すと画面の左上を押すことになる
-          //   （2026-08-18 に実際に踏んだ。「目盛り(0)」が 4 つ出た）。
-          //   ⚠ **同じ位置の目盛り（.tick）は下で押している**ので、抜けは出ない。
-          lab: [...document.querySelectorAll("#track .lab")]
-            .filter((e) => e.textContent.trim())
-            .map((e) => ({ ...mid(e), t: e.textContent.trim() })),
-          tick: [...document.querySelectorAll("#track .tick")].map(mid),
-          knob: mid(document.querySelector("#track .knob")) };
-      });
-      must(geo.lab.length > 0 && geo.tick.length > 0, "目盛りも年代の文字も無い");
-      const set = (v) => page.$eval("#t", (e, v) => {
-        e.value = v; e.dispatchEvent(new Event("input")); }, v);
-      const val = () => page.$eval("#t", (e) => e.value);
-      const dead = [];
-      // ⚠ 端は 0 / 800 が正解なので、反対側へ寄せてから押す
-      for (const l of [...geo.lab, ...geo.tick]) {
-        const from = l.x < geo.x + geo.w / 2 ? "800" : "0";
-        await set(from); await page.waitForTimeout(120);
-        // ⚠ 右端ちょうどは要素の外なので、2px 内側を押す（指なら当たる幅）
-        await page.mouse.click(Math.min(l.x, geo.x + geo.w - 2), l.y);
-        await page.waitForTimeout(300);
-        if (await val() === from) dead.push(l.t || `目盛り(${l.x})`);
-      }
-      must(!dead.length, `押しても動かない的がある: ${dead.join("、")}`);
-      // ノブを掴んで引けること
-      await set("0"); await page.waitForTimeout(150);
-      await page.mouse.move(geo.knob.x, geo.knob.y);
-      await page.mouse.down();
-      await page.mouse.move(geo.knob.x + 120, geo.knob.y, { steps: 8 });
-      await page.mouse.up(); await page.waitForTimeout(300);
-      must(await val() !== "0", "ノブを掴んで引けない");
-      return `年代の文字 ${geo.lab.length} 個・目盛り ${geo.tick.length} 個・ノブ、全部効く`;
     },
   },
   {
