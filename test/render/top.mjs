@@ -16,7 +16,7 @@ import {
   timelineSettled, stepLabels, tauNow, effOpacity, waitOpacity, peelReady,
   settleAfterCondition, waited, waitOptional, settleAfterClick, settleAfterScroll, SWALE_ROUTE,
   LFC_ROUTE, DEM_ROUTE, forbid,
-  must, assertToyosu3dAnswer,
+  must, assertToyosu3dAnswer, openPanel
 } from "./lib.mjs";
 
 export const CASES = [
@@ -1839,6 +1839,8 @@ export const CASES = [
     //   ⚠ **集計を外へ出したときに、⚠ tiles{ok,absent,unreachable} の分け方が
     //     1 つでもずれると、ここが入れ替わる。**
     name: "明治期の面が出せないとき、読めないのと範囲外を取り違えない", path: "/", group: "core",
+    // ⚠ **狭い幅は、⚠ 小さい状態で始まる。**⚠ **答えと断りは畳まれている**（2026-08-23）。
+    //   ⚠ **押しても開かないことがある**（⚠ 読み込みの途中で的が入れ替わる）。⚠ **開くまで待つ。**
     async check(page) {
       const ctx = await page.context().browser().newContext({
         viewport: { width: 375, height: 667 }, hasTouch: true, serviceWorkers: "block" });
@@ -1847,6 +1849,10 @@ export const CASES = [
         const p2 = await ctx.newPage();
         await forbid(p2, SWALE_ROUTE);
         await p2.goto(`${BASE}/peel?${TOYOSU}`, { waitUntil: "domcontentloaded", timeout: 45000 });
+        // ⚠ **狭い幅では、⚠ 小さいあいだ 3 つの問いを畳む**（2026-08-23。Owner 判断）。
+        //   ⚠ **断りは `#landAll` の中にある**ので、⚠ **広げてから読む。**
+        //   ⚠ **主張は変えていない**（⚠ 403 と範囲外を取り違えないこと）。⚠ **読む場所だけ移した。**
+        await openPanel(p2);
         await p2.waitForFunction(() => /読み込めませんでした|整備対象外/.test(document.body.innerText ?? ""),
           null, { timeout: 60000 });
         await settleAfterCondition(p2);
@@ -1860,6 +1866,7 @@ export const CASES = [
         // (2) ⚠ **本当に範囲外（札幌）** → 整備対象外。⚠ **読めなかったと言ってはいけない**
         const p3 = await ctx.newPage();
         await p3.goto(`${BASE}/peel?${SAPPORO}`, { waitUntil: "domcontentloaded", timeout: 45000 });
+        await openPanel(p3);
         await p3.waitForFunction(() => /整備対象外|読み込めませんでした/.test(document.body.innerText ?? ""),
           null, { timeout: 60000 });
         await settleAfterCondition(p3);

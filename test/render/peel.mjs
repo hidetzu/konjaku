@@ -14,7 +14,7 @@ import {
   timelineSettled, stepLabels, tauNow, effOpacity, waitOpacity, peelReady,
   settleAfterCondition, waited, waitOptional, settleAfterClick, settleAfterScroll, SWALE_ROUTE,
   LFC_ROUTE, DEM_ROUTE, forbid,
-  must, assertToyosu3dAnswer,
+  must, assertToyosu3dAnswer, openPanel
 } from "./lib.mjs";
 import { readFile } from "node:fs/promises";
 
@@ -155,11 +155,14 @@ export const CASES = [
     name: "/peel でも、広い区分に落ちたらそう言う", path: `/peel?${KARUIZAWA}`,
     viewport: { width: 375, height: 667 }, hasTouch: true,
     async check(page) {
-      await page.waitForFunction(() => /この土地は/.test(document.body.innerText),
+      // ⚠ **狭い幅では、⚠ 小さいあいだ 3 つの問いを畳む**（2026-08-23。Owner 判断）。
+      //   ⚠ **`document.body.innerText` には答えが入らない。**⚠ **先に広げてから待つ。**
+      //   ⚠ **主張は変えていない。**⚠ **読む場所だけ移した。**
+      await openPanel(page);
+      await page.waitForFunction(
+        () => /この土地は/.test(document.getElementById("landAll")?.innerText ?? ""),
         null, { timeout: 60000 });
       await settleAfterCondition(page);
-      await page.click("#toggle");
-      await settleAfterClick(page);
       const r = await page.evaluate(() => {
         const all = document.getElementById("landAll");
         const c = all.querySelector(".land-coarse");
@@ -186,11 +189,14 @@ export const CASES = [
     name: "詳細版がある土地では、粗いとは言わない", path: `/peel?${TOYOSU}`,
     viewport: { width: 375, height: 667 }, hasTouch: true,
     async check(page) {
-      await page.waitForFunction(() => /この土地は/.test(document.body.innerText),
+      // ⚠ **狭い幅では、⚠ 小さいあいだ 3 つの問いを畳む**（2026-08-23。Owner 判断）。
+      //   ⚠ **`document.body.innerText` には答えが入らない。**⚠ **先に広げてから待つ。**
+      //   ⚠ **主張は変えていない。**⚠ **読む場所だけ移した。**
+      await openPanel(page);
+      await page.waitForFunction(
+        () => /この土地は/.test(document.getElementById("landAll")?.innerText ?? ""),
         null, { timeout: 60000 });
       await settleAfterCondition(page);
-      await page.click("#toggle");
-      await settleAfterClick(page);
       const r = await page.evaluate(() => ({
         coarse: !!document.querySelector("#landAll .land-coarse"),
         times: (document.body.innerText.match(/詳細版/g) ?? []).length,
@@ -850,7 +856,9 @@ export const CASES = [
         // ⚠ **PC で答えを持つのは #landAll（パネル）**（2026-08-20。hidetzu/konjaku#131）。
         //   ⚠ #land は HUD で、⚠ **パネルが開いているあいだは描かれない。**
         //   ⚠ 見ている主張は変えていない: **古い呼び出しが今の答えを消さないこと**。
-        () => /件の足元を判定/.test(document.getElementById("landAll")?.textContent ?? "")
+        // ⚠ **字を変えた**（2026-08-23）: 「N / M件の足元を判定」→「足元（…）を判定できた N 件のうち」。
+        //   ⚠ **待っているものは同じ**（⚠ 建物の区分が入ったこと）。
+        () => /足元[^。]*を判定できた/.test(document.getElementById("landAll")?.textContent ?? "")
           && typeof landform !== "undefined" && landform !== null,
         null, { timeout: 60000 });
       // ⚠ **PC ではパネル（#landAll）が答えを持つ**（同上）
@@ -866,7 +874,7 @@ export const CASES = [
       await page.waitForTimeout(1000);
       const land = await page.locator("#landAll").textContent();
       const status = await page.locator("#status").textContent();
-      must(/件の足元を判定/.test(land),
+      must(/足元[^。]*を判定できた/.test(land),
         `前の場所の返事が、いまの答えを消した: ${land.replace(/\s+/g, " ").slice(0, 80)}`);
       must(land.replace(/\s+/g, "") === mid.replace(/\s+/g, ""),
         `答えが書き換わった: ${mid.replace(/\s+/g, " ").slice(0, 60)} → ${land.replace(/\s+/g, " ").slice(0, 60)}`);
@@ -1370,7 +1378,9 @@ export const CASES = [
       //   ⚠ **見ている主張は変えていない。**「事前に取り込んだ建物の区分が出る」を
       //     見たいのだから、⚠ **それが出たことを待つのが正しい。**
       await page.waitForFunction(
-        () => /件の足元を判定/.test(document.getElementById("landAll")?.textContent ?? ""),
+        // ⚠ **字を変えた**（2026-08-23）: 「N / M件の足元を判定」→「足元（…）を判定できた N 件のうち」。
+        //   ⚠ **待っているものは同じ**（⚠ 建物の区分が入ったこと）。
+        () => /足元[^。]*を判定できた/.test(document.getElementById("landAll")?.textContent ?? ""),
         null, { timeout: 60000 });
       const hero = (await page.locator("#landAll").textContent()).trim();
       must(hero.length > 0, `事前計算の建物区分が表示されていない: ${hero}`);
@@ -1396,7 +1406,9 @@ export const CASES = [
       //   ⚠ **見ている主張は変えていない。**「事前に取り込んだ建物の区分が出る」を
       //     見たいのだから、⚠ **それが出たことを待つのが正しい。**
       await page.waitForFunction(
-        () => /件の足元を判定/.test(document.getElementById("landAll")?.textContent ?? ""),
+        // ⚠ **字を変えた**（2026-08-23）: 「N / M件の足元を判定」→「足元（…）を判定できた N 件のうち」。
+        //   ⚠ **待っているものは同じ**（⚠ 建物の区分が入ったこと）。
+        () => /足元[^。]*を判定できた/.test(document.getElementById("landAll")?.textContent ?? ""),
         null, { timeout: 60000 });
       const hero = (await page.locator("#landAll").textContent()).trim();
       must(hero.length > 0, `事前計算の建物区分が表示されていない: ${hero}`);
@@ -3769,7 +3781,9 @@ ${dom}
       // ⚠ **同じ母数を、⚠ 実測を主語にしてもう一度言っていないこと**
       must(!/高さが入っているのは \d+ \/ \d+ 件/.test(prov),
         `同じ母数を実測の側からも言っている: ${prov.replace(/\s+/g, " ").slice(0, 140)}`);
-      must(!/高さが実測の \d+ 件/.test(prov),
+      // ⚠ **行の名を「高さが実測」→「高さが分かる」に変えた**（2026-08-23。Owner 判断）。
+      //   ⚠ **否定形なので、⚠ 字を古いままにすると「見ていないのに緑」になる。**
+      must(!/高さが(実測|分かる)の \d+ 件/.test(prov),
         `同じ母数を実測の側からも言っている（押す先の名前）: ${prov.replace(/\s+/g, " ").slice(0, 140)}`);
       // ⚠ **内訳は足して推定の件数になること**（⚠ 台帳が持つのは内訳だけ）
       const mm = prov.match(/階数から換算したものが (\d+) 件、残る (\d+) 件/);
@@ -3778,7 +3792,7 @@ ${dom}
         `内訳が推定の件数と合わない: ${mm[1]} ＋ ${mm[2]} ≠ ${m[1]}`);
       // ⚠ 内訳の表には入れない。あの表は足元の判定の**分割**（足すと総数になる）で、
       //   高さや建設年は**素性**なので、混ぜると足し算の合わない表になる。
-      must(!/高さが実測の建物/.test(t), "素性（高さ）が、分割の表である内訳に混ざっている");
+      must(!/高さが(実測|分かる)の建物/.test(t), "素性（高さ）が、分割の表である内訳に混ざっている");
       // ⚠ 評価語を作らない
       for (const w of ["ほぼ正確", "おおむね", "信頼度", "精度は"])
         must(!t.includes(w), `評価語が入っている: 「${w}」`);
