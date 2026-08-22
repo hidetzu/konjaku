@@ -14,7 +14,6 @@
 // 実行: node scripts/render.mjs
 //   （事前に  npm i --no-save playwright && npx playwright install chromium）
 
-import { chromium } from "playwright";
 import { spawn } from "node:child_process";
 import { mkdir, readFile } from "node:fs/promises";
 import { deflateSync } from "node:zlib";
