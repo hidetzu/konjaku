@@ -1493,7 +1493,7 @@ export const CASES = [
         //   ⚠ **時間切れのまま落とさない。**⚠ 何を待って駄目だったかを名乗る
         //     （⚠ 素の時間切れだと、⚠ どの主張が破れたのか読めない）。
         const gotEst = await p2.waitForFunction(
-          () => (document.getElementById("est")?.textContent ?? "").trim().length > 0,
+          () => (document.getElementById("notes")?.textContent ?? "").trim().length > 0,
           null, { timeout: 45000 }).then(() => true).catch(() => false);
         must(gotEst, "PC で限界（#est）が出ていない（45 秒待っても字が入らない）");
         const look = () => p2.evaluate(() => {
@@ -1567,7 +1567,8 @@ export const CASES = [
         must(a.land === 0, "HUD の答え（#land）が戻っている（土地の答えはパネルの 1 か所）");
         must(a.all > 0, "PC の初期表示で、パネルに答えが書かれていない");
         // ⚠ **✕ の直後、⚠ 待たずに読む**（⚠ 例外や空白が出ないこと）
-        await p2.click("#closePanel");
+        // ⚠ **✕ は消えた**（2026-08-22）。⚠ **同じ的（`#toggle`）が小さくする。**
+        await p2.click("#toggle");
         const b = await read();
         must(b.cls.includes("hide"), `✕ でパネルが閉じていない（${b.cls}）`);
         must(b.land === 0, "✕ で HUD の答えが復活している");
@@ -1744,7 +1745,7 @@ export const CASES = [
             pair: innermost("河川・湖沼・海面", "510").map(([y, t]) => `y${y} ${t.slice(0, 44)}`),
             raw: innermost("510").map(([y, t]) => `y${y} ${t.slice(0, 40)}`),
             breakdownTop: top,
-            est: document.getElementById("est")?.innerText?.replace(/\s+/g, " ").trim() ?? "",
+            est: document.getElementById("notes")?.innerText?.replace(/\s+/g, " ").trim() ?? "",
             panelH: document.getElementById("panel")?.scrollHeight ?? 0,
           };
         });

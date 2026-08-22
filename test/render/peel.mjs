@@ -14,7 +14,7 @@ import {
   timelineSettled, stepLabels, tauNow, effOpacity, waitOpacity, peelReady,
   settleAfterCondition, waited, waitOptional, settleAfterClick, settleAfterScroll, SWALE_ROUTE,
   LFC_ROUTE, DEM_ROUTE, forbid,
-  must, assertToyosu3dAnswer, openPanel
+  must, assertToyosu3dAnswer, openPanel, provText
 } from "./lib.mjs";
 import { readFile } from "node:fs/promises";
 
@@ -109,16 +109,16 @@ export const CASES = [
           return {
             inHud: hud.contains(est),
             hudTxt: (hud.innerText ?? "").replace(/\s+/g, " ").trim(),
-            noticeOn: document.getElementById("notice").checkVisibility(),
+            noticeOn: document.getElementById("notes").checkVisibility(),
             estOn: est.checkVisibility(), estH: Math.round(rect("est").height),
-            tipOn: document.getElementById("tip").checkVisibility(),
+            tipOn: !!document.querySelector('#notes li[data-kind="tip"]')?.checkVisibility(),
             top: Math.round(nb.top), bottom: Math.round(nb.bottom),
             center: Math.round(innerHeight / 2), bgA,
             overRow: Math.round(Math.min(nb.bottom, row.bottom) - Math.max(nb.top, row.top)),
             overHud: Math.round(Math.min(nb.bottom, hb.bottom) - Math.max(nb.top, hb.top)),
             times: (document.body.innerText.match(/建物が消える年代は推定/g) ?? []).length,
             // ⚠ **前提が崩れていたら、この検査は何も確かめていない**
-            panelOpen: !document.getElementById("panel").classList.contains("hide"),
+            panelOpen: document.getElementById("panel").classList.contains("open"),
           };
         });
         // ⚠ **その幅の初期状態になっているか**（PC は開いて始まる／狭い幅は閉じて始まる）
@@ -229,7 +229,7 @@ export const CASES = [
         //   （⚠ `.prov-q[data-q="3"]` を見る。⚠ 幅にも `#status` にも依らない）。
         await peelReady(page);
         await settleAfterCondition(page);
-        if (await page.evaluate(() => document.getElementById("panel").classList.contains("hide"))) {
+        if (await page.evaluate(() => !document.getElementById("panel").classList.contains("open"))) {
           await page.click("#toggle");
           await settleAfterClick(page);
         }
@@ -238,7 +238,7 @@ export const CASES = [
           const secs = [...panel.querySelectorAll(".sec")];
           const labels = secs.map((s) => s.querySelector(".label")?.textContent?.trim() ?? "(答え)");
           const bd = document.getElementById("breakdown").closest(".sec");
-          const pv = document.getElementById("prov").closest(".sec");
+          const pv = document.querySelector("#panel .prov-q")?.closest(".land-layer");
           const bb = bd.getBoundingClientRect(), pb = pv.getBoundingClientRect();
           return { labels, bdTop: Math.round(bb.top), pvTop: Math.round(pb.top),
             // ⚠ **中身が減っていないこと**（⚠ 並べ替えで落としていないか）
@@ -391,7 +391,7 @@ export const CASES = [
         const hud = document.getElementById("hud"), hr = hud.getBoundingClientRect();
         // ⚠ **断りは HUD の外（`#notice`）へ出した**（2026-08-22。hidetzu/konjaku#168）。
         //   ⚠ **主張は変えていない**（⚠ 画面のどこかで、⚠ **読める形で**出ていること）。
-        const nt = document.getElementById("notice");
+        const nt = document.getElementById("notes");
         const nb = nt.getBoundingClientRect();
         return { hudTop: Math.round(hr.top), hudH: Math.round(hr.height),
           scroll: hud.scrollHeight, mid: Math.round(innerHeight / 2),
@@ -470,8 +470,9 @@ export const CASES = [
 
       // ---- 地図を見ているとき ----
       const a = await leaks();
-      // ⚠ ✕ は根拠を開くと出るので、ここに居てよい（閉じているあいだは幅 0）
-      const aBad = a.filter((x) => x !== "closePanel");
+      // ⚠ **✕ は消えた**（2026-08-22。⚠ 同じ的（`#toggle`）が広げる／小さくするを兼ねる）。
+      //   ⚠ **例外にする相手がいなくなった。**⚠ **主張は同じ**（⚠ 見えないのに焦点が当たらない）。
+      const aBad = a;
       must(!aBad.length, `見えないのに焦点が当たる: ${aBad.join("、")}`);
       // ⚠ 使う側まで閉じていないこと（閉じすぎると操作できなくなる）
       const aStuck = await used(["rlPrev", "rlNext", "toggle"]);
@@ -482,11 +483,12 @@ export const CASES = [
       const b = await leaks();
       must(!b.length, `根拠を読んでいるのに、地図側の操作に焦点が当たる: ${b.join("、")}`);
       // ⚠ 戻る手段は閉じない
-      const bStuck = await used(["closePanel", "back"]);
+      // ⚠ **戻る手段は `#toggle`（▴ 地図に戻る）と `#back`（← 今昔へ）の 2 つ**（2026-08-23）。
+      const bStuck = await used(["toggle", "back"]);
       must(!bStuck.length, `戻る手段が閉じている: ${bStuck.join("、")}`);
 
-      // ---- 閉じたら元に戻る ----
-      await page.click("#closePanel");
+      // ---- 小さくしたら元に戻る ----
+      await page.click("#toggle");
       await settleAfterClick(page);
       const c = await used(["rlPrev", "rlNext", "toggle"]);
       must(!c.length, `根拠を閉じたのに、操作が閉じたまま: ${c.join("、")}`);
@@ -586,12 +588,16 @@ export const CASES = [
       //   （⚠ `.prov-q[data-q="3"]` を見る。⚠ 幅にも `#status` にも依らない）。
       await peelReady(page);
       await settleAfterCondition(page);
-      // ⚠ 地図だけ見ているときは ✕ を出さない（押しても何も起きない導線を置かない）
-      const beforeOpen = await page.evaluate(() => {
-        const e = document.getElementById("closePanel");
-        return { shown: !!e && getComputedStyle(e).display !== "none" && e.getBoundingClientRect().width > 0 };
-      });
-      must(!beforeOpen.shown, "根拠を開いていないのに「✕ 地図へ」が出ている");
+      // ⚠ **✕ は消え、⚠ 同じ的が字を変える**（2026-08-23。Owner 判断）。
+      //   ⚠ **主張を引き継ぐ**: ⚠ **地図を見ているときに「戻る」と名乗らない**
+      //     （⚠ 押しても何も起きない導線を置かない。ADR 0026）。
+      const beforeOpen = await page.evaluate(() => ({
+        label: (document.getElementById("toggle").innerText || "").replace(/\s+/g, " ").trim(),
+        expanded: document.getElementById("toggle").getAttribute("aria-expanded") }));
+      must(beforeOpen.expanded === "false",
+        `小さい状態で始まっていない: aria-expanded=${beforeOpen.expanded}`);
+      must(!/戻る/.test(beforeOpen.label),
+        `地図を見ているのに「戻る」と名乗っている: ${beforeOpen.label}`);
 
       await page.click("#toggle");
       await settleAfterClick(page);
@@ -606,14 +612,15 @@ export const CASES = [
             // ⚠ 矩形だけでは足りない。**その座標を誰が受け取るか**で見る
             hit: who ? (who.id || who.closest("[id]")?.id || who.tagName) : "無い" }; };
         const pan = document.getElementById("panel");
-        return { back: g("#back"), close: g("#closePanel"), scrollH: pan.scrollHeight, viewH: innerHeight };
+        // ⚠ **戻る的は `#toggle`（▴ 地図に戻る）**（2026-08-23。⚠ ✕ は消えた）
+        return { back: g("#back"), close: g("#toggle"), scrollH: pan.scrollHeight, viewH: innerHeight };
       });
       const a = await look();
-      must(a.close, "「✕ 地図へ」が無い");
+      must(a.close, "「▴ 地図に戻る」が無い");
       // ⚠ 指で押せる大きさ
-      for (const [nm, b] of [["← 今昔へ", a.back], ["✕ 地図へ", a.close]]) {
+      for (const [nm, b] of [["← 今昔へ", a.back], ["▴ 地図に戻る", a.close]]) {
         must(b.w >= 44 && b.h >= 44, `${nm} が指で押せない（${b.w}×${b.h}）`);
-        must(b.hit === (nm === "← 今昔へ" ? "back" : "closePanel"),
+        must(b.hit === (nm === "← 今昔へ" ? "back" : "toggle"),
           `${nm} を押しても、当たるのは「${b.hit}」`);
       }
       // ⚠ 2 つは離れていること。以前 10px まで詰まって 3/3 が苦情を出した
@@ -625,9 +632,9 @@ export const CASES = [
       await page.evaluate(() => { document.getElementById("panel").scrollTop = 400; });
       await page.waitForTimeout(400);
       const b = await look();
-      for (const [nm, x] of [["← 今昔へ", b.back], ["✕ 地図へ", b.close]]) {
+      for (const [nm, x] of [["← 今昔へ", b.back], ["▴ 地図に戻る", b.close]]) {
         must(x.inView, `スクロールしたら ${nm} が画面から出た（y=${x.y}）`);
-        must(x.hit === (nm === "← 今昔へ" ? "back" : "closePanel"),
+        must(x.hit === (nm === "← 今昔へ" ? "back" : "toggle"),
           `スクロール後に ${nm} を押しても、当たるのは「${x.hit}」`);
       }
       // ⚠ 帯が中身を覆っていないこと。**いちばん上まで戻してから**見る。
@@ -636,7 +643,8 @@ export const CASES = [
       await page.evaluate(() => { document.getElementById("panel").scrollTop = 0; });
       await page.waitForTimeout(300);
       const under = await page.evaluate(() => {
-        const bar = document.getElementById("chrome").getBoundingClientRect();
+        // ⚠ **`#chrome` は消えた**（2026-08-22）。⚠ **帯は板の中の `.chrome-row`。**
+        const bar = document.querySelector("#panel .chrome-row").getBoundingClientRect();
         const hit = [];
         for (const el of document.querySelectorAll("#panel #placeName, #panel #landAll, #panel #result")) {
           const r = el.getBoundingClientRect();
@@ -649,14 +657,14 @@ export const CASES = [
       must(!under.hit.length,
         `帯が中身を覆っている（帯の下端 ${under.barBottom} / ${under.hit.join("、")}）`);
 
-      // ⚠ ✕ を押したら本当に地図へ戻る
-      await page.click("#closePanel");
+      // ⚠ **▴ を押したら本当に地図へ戻る**（2026-08-23。⚠ ✕ は消えた）
+      await page.click("#toggle");
       await settleAfterClick(page);
       const closed = await page.evaluate(() => ({
-        hidden: document.getElementById("panel").classList.contains("hide"),
-        closeShown: getComputedStyle(document.getElementById("closePanel")).display !== "none" }));
-      must(closed.hidden, "✕ を押しても根拠が閉じない");
-      must(!closed.closeShown, "閉じたのに ✕ が残っている");
+        hidden: !document.getElementById("panel").classList.contains("open"),
+        label: (document.getElementById("toggle").innerText || "").replace(/\s+/g, " ").trim() }));
+      must(closed.hidden, "▴ を押しても小さくならない");
+      must(!/戻る/.test(closed.label), `小さくしたのに「戻る」と名乗っている: ${closed.label}`);
       return `← x=${a.back.x}..${a.back.right} ／ ✕ x=${a.close.x}..${a.close.right}（間隔 ${a.close.x - a.back.right}px）`
         + ` ／ 中身 ${a.scrollH}px を 400px スクロールしても両方 y=${b.back.y}・${b.close.y} で残る`;
     },
@@ -856,8 +864,10 @@ export const CASES = [
     }),
     async check(page) {
       // ① 札幌が、建物の問い合わせで待ち始めるまで待つ
+      // ⚠ **`#status` はもう喋らない**（2026-08-22。Owner 判断）。⚠ **問いの側で待つ。**
       await page.waitForFunction(
-        () => /建物を取得中/.test(document.getElementById("status")?.textContent ?? ""),
+        () => /建物を取得しています|建物を取得中/.test(
+          document.getElementById("landAll")?.textContent ?? ""),
         null, { timeout: 30000 });
       // ② 待っている最中に、別の場所へ移る（＝再試行を押したのと同じ形）
       await page.evaluate(() => { loadArea(139.7975, 35.6548, "東京都江東区豊洲"); });
@@ -916,7 +926,7 @@ export const CASES = [
         window.__provHits = 0;
         window.__provObs?.disconnect();
         window.__provObs = new MutationObserver((rs) => { window.__provHits += rs.length; });
-        window.__provObs.observe(document.getElementById("prov"),
+        window.__provObs.observe(document.querySelector('#panel .prov-q[data-q="3"]'),
           { childList: true, subtree: true, characterData: true });
       });
       // ⚠ **数えるのは、動かし終えて 1 呼吸おいてから。** MutationObserver の通知は
@@ -1018,7 +1028,7 @@ export const CASES = [
         const W = innerWidth, H = innerHeight;
         const pan = document.getElementById("panel");
         const pr = pan.getBoundingClientRect();
-        const open = !pan.classList.contains("hide");
+        const open = pan.classList.contains("open");
         const box = (sel) => { const e = document.querySelector(sel);
           if (!e) return null; const r = e.getBoundingClientRect();
           return { w: Math.round(r.width), h: Math.round(r.height),
@@ -1035,7 +1045,8 @@ export const CASES = [
           center: who(Math.round(W / 2), Math.round(H / 2)),
           // ⚠ **2026-08-21 に、⚠ 答えの板（#land）が無くなった**（hidetzu/konjaku#152）
           land: document.querySelectorAll("#land").length,
-          close: box("#closePanel"), back: box("#back"),
+          // ⚠ **✕ は消えた**（2026-08-22）。⚠ **戻る的は `#toggle`（▴ 地図に戻る）。**
+          close: box("#toggle"), back: box("#back"),
           zoom: box(".maplibregl-ctrl-group"),
           // ⚠ **箱があるだけでは「見えている」ではない。**その座標を自分が受け取るかまで見る
           //   （矩形は覆われていても返る。このリポジトリが何度も踏んでいる）
@@ -1071,11 +1082,11 @@ export const CASES = [
       //   パネルの下敷きにしても緑のままだった（2026-08-18 に壊して気づいた）
       must(open.backOnTop,
         "全画面で「← もどる」がパネルの下敷きになっている（戻る手段は常に見えている場所に）");
-      // (3) 閉じれば地図に戻る
-      await page.click("#closePanel");
+      // (3) 小さくすれば地図に戻る
+      await page.click("#toggle");
       await settleAfterClick(page);
       const again = await look();
-      must(!again.open, "✕ を押しても閉じない");
+      must(!again.open, "▴ を押しても小さくならない");
       must(again.center.inMap,
         `閉じたのに地図へ戻っていない（中心を受け取るのが ${again.center.name}）`);
       must(again.zoom && again.zoom.h >= 44, `閉じてもズームが押せる大きさで出ていない: ${JSON.stringify(again.zoom)}`);
@@ -1084,16 +1095,16 @@ export const CASES = [
       //   と答えた（両方とも「もどる」系の見た目だったため）。
       //   ⚠ 字が出ているだけでなく、**2 つが違う字**であること。
       await page.click("#toggle"); await page.waitForTimeout(600);
-      //   ⚠ **記号（← / ✕）を落としてから比べる。**落とさずに比べると、
+      //   ⚠ **記号（← / ▴）を落としてから比べる。**落とさずに比べると、
       //     行き先の字が同じでも記号の差で「違う」になり、この検査は何も見ていない
       //     （2026-08-18 に壊して気づいた）。
       const label = await page.evaluate(() => {
         const word = (id) => (document.getElementById(id)?.innerText ?? "")
-          .replace(/[←✕×\s]/g, "");
-        return { back: word("back"), close: word("closePanel") };
+          .replace(/[←✕×▴▾\s]/g, "");
+        return { back: word("back"), close: word("toggle") };
       });
       must(label.back.length > 1 && label.close.length > 1,
-        `全画面で、戻る手段の行き先が字で出ていない: ← 「${label.back}」／✕ 「${label.close}」`);
+        `全画面で、戻る手段の行き先が字で出ていない: ← 「${label.back}」／▴ 「${label.close}」`);
       must(label.back !== label.close,
         `← と ✕ の行き先が同じ字になっている: どちらも「${label.back}」`);
       // (5) ⚠ **「光らせる」を押したら、光る先（地図）が見えること。**
@@ -1111,7 +1122,7 @@ export const CASES = [
         await page.mouse.down();
         await page.waitForTimeout(500);
         const held = await page.evaluate(() => ({
-          open: !document.getElementById("panel").classList.contains("hide"),
+          open: document.getElementById("panel").classList.contains("open"),
           inMap: (() => { const m = document.getElementById("map");
             const e = document.elementFromPoint(Math.round(innerWidth / 2), Math.round(innerHeight / 2));
             return !!m && !!e && m.contains(e); })(),
@@ -1291,14 +1302,15 @@ export const CASES = [
       await page.waitForFunction(() => document.querySelector("#map canvas"), null, { timeout: 45000 });
       // 水域ポリゴンはタイルを読んで自前で生成する。ここが動かないと作品として成立しない
       // 水域は低湿地タイルを読んで自前で起こす。件数が画面に出るのでそれを待つ
-      await page.waitForFunction(
-        () => /水域\s*\d+\s*面|取得できませんでした|データがありません/.test(
-          document.getElementById("status")?.textContent ?? ""),
-        null, { timeout: 60000 });
+      // ⚠ **`#status` はもう喋らない**（2026-08-22。Owner 判断）。⚠ **問いの側で待つ。**
+      //   ⚠ **待っているのは「水域を起こせたこと」**。⚠ **答えが描けたことで見る。**
+      await peelReady(page);
       // 建物まで揃うのを待つ。事前計算データがある範囲なので Overpass には出ない。
       // 建物データが画面に出ることが、作品の成立条件（掟: 取れなかったを「無い」と言わない）。
+      // ⚠ **`#status` はもう喋らない**（2026-08-22。Owner 判断）。⚠ **問いの側で待つ。**
       await page.waitForFunction(
-        () => /建物\s*\d+\s*件/.test(document.getElementById("status")?.textContent ?? ""),
+        () => /\d+ 件の建物が、この範囲にあります/.test(
+          document.getElementById("landAll")?.textContent ?? ""),
         null, { timeout: 60000 });
       const ms = Math.round(await page.evaluate(() => performance.now()));
       // 事前計算データがある範囲では Overpass を叩かない。
@@ -1309,7 +1321,7 @@ export const CASES = [
       //   ⚠ **主張は変えていない**（⚠ 水域ポリゴンが実際に起こされたこと）。⚠ 読む場所だけ変えた。
       // ⚠ **判定の結果（#status）と、由来（#prov）は別の節**になった。⚠ **両方を読む。**
       const status = (await page.locator("#status").textContent()).trim();
-      const provTxt = (await page.locator("#prov").textContent()).trim();
+      const provTxt = await provText(page);
       const water = Number(provTxt.match(/(\d+)\s*面を起こしたもの/)?.[1] ?? 0);
       must(water > 0, `水域ポリゴンが生成されていない（${provTxt.slice(0, 80)}）`);
       const bld = Number(status.match(/建物\s*(\d+)\s*件/)?.[1] ?? 0);
@@ -1442,10 +1454,12 @@ export const CASES = [
     name: "さかのぼる（地表タイルだけ落とす）", path: `/peel?${TOYOSU}`,
     setup: (page) => page.route(PHOTO_ROUTE, (r) => r.abort()),
     async check(page) {
+      // ⚠ **`#status` はもう喋らない**（2026-08-22。Owner 判断）。⚠ **問いの側で待つ。**
       await page.waitForFunction(
-        () => /建物\s*\d+\s*件/.test(document.getElementById("status")?.textContent ?? ""),
+        () => /\d+ 件の建物が、この範囲にあります/.test(
+          document.getElementById("landAll")?.textContent ?? ""),
         null, { timeout: 60000 });
-      const prov = (await page.locator("#prov").textContent()).trim();
+      const prov = await provText(page);
       must(!prov.includes("そのもの"),
         `地表が届いていないのに「実測」と言っている: ${prov.replace(/\s+/g, " ").slice(0, 60)}`);
       const ground = await page.locator("#prov .prov").first();
@@ -1583,7 +1597,7 @@ export const CASES = [
       //   ⚠ **主張は消していない。**「土地ごとの例外が生えていないこと」は
       //   check.mjs の「3.5. 土地ごとの例外を作っていない」が見ている。
       const bd = (await page.locator("#breakdown").textContent()).replace(/\s+/g, " ");
-      const prov = (await page.locator("#prov").textContent()).replace(/\s+/g, " ");
+      const prov = await provText(page);
       for (const [where, t] of [["内訳", bd], ["台帳", prov]])
         for (const w of ["取得中", "取得できませんでした", "欠落"])
           must(!t.includes(w), `正常に 0 件なのに${where}が「${w}」と出している: ${t.slice(0, 90)}`);
@@ -1917,7 +1931,7 @@ export const CASES = [
       await page.waitForFunction(() => /OSM に登録された建物は 0 件/.test(
         document.getElementById("status")?.textContent ?? ""), null, { timeout: 60000 });
       const bd = (await page.locator("#breakdown").textContent()).replace(/\s+/g, " ");
-      const prov = (await page.locator("#prov").textContent()).replace(/\s+/g, " ");
+      const prov = await provText(page);
       for (const [where, t] of [["内訳", bd], ["台帳", prov]])
         for (const w of ["取得中", "取得できませんでした", "欠落"])
           must(!t.includes(w), `正常に 0 件なのに${where}が「${w}」と出している: ${t.slice(0, 90)}`);
@@ -1933,10 +1947,12 @@ export const CASES = [
     ]),
     async check(page) {
       // 待ち始めたことを、出るべき文言そのもので待つ（一瞬の状態をスナップショットで読まない）
-      await page.waitForFunction(() => /最大20秒|取れなければ/.test(
-        document.getElementById("status")?.textContent ?? ""), null, { timeout: 60000 });
+      // ⚠ **`#status` はもう喋らない**（2026-08-22。Owner 判断）。⚠ **問いの側で待つ。**
+      //   ⚠ **「最大20秒…」は出さなくなった**（Owner 判断）。⚠ **内訳の「取得中」で待つ。**
+      await page.waitForFunction(() => /建物を取得中/.test(
+        document.getElementById("breakdown")?.textContent ?? ""), null, { timeout: 60000 });
       const bd = (await page.locator("#breakdown").textContent()).replace(/\s+/g, " ");
-      const prov = (await page.locator("#prov").textContent()).replace(/\s+/g, " ");
+      const prov = await provText(page);
       must(/建物を取得中/.test(bd), `待っている間に内訳が「取得中」と言っていない: ${bd.slice(0, 90)}`);
       // ⚠ 台帳の語彙は「未取得＝読めなかった／欠落＝本当に無い」。待っている間に「欠落」は嘘
       must(!/欠落/.test(prov), `待っているだけなのに台帳が「欠落」と言っている: ${prov.slice(0, 90)}`);
@@ -2010,7 +2026,7 @@ export const CASES = [
           e.value = String(v); e.dispatchEvent(new Event("input")); }, v);
         await page.waitForTimeout(1600);
         return page.evaluate(() => {
-          const y = document.querySelector("#timePanel .y"), o = document.getElementById("over");
+          const y = document.querySelector("#timePanel .y"), o = document.getElementById("notes");
           const fs = (e) => (e ? parseFloat(getComputedStyle(e).fontSize) : 0);
           return { year: y.textContent.trim(), yFs: fs(y),
             over: (o?.textContent ?? "").trim(), oFs: fs(o),
@@ -2724,7 +2740,7 @@ ${dom}
           document.getElementById("landAll")?.textContent ?? ""),
           null, { timeout: 60000 });
         // ⚠ **パネルは閉じて始まる**（掟の外へ出ない: スマホで既定表示にはしない）
-        must(await page.locator("#panel.hide").count() === 1, `${name}: パネルが閉じて始まっていない`);
+        must(await page.locator("#panel.open").count() === 0, `${name}: パネルが小さい状態で始まっていない`);
         // ⚠ **☰ を 1 回。**⚠ それだけで答えが読めること（⚠ スクロールしない）
         await page.click("#toggle");
         await settleAfterClick(page);
@@ -2925,7 +2941,7 @@ ${dom}
       //   ⚠ 以前はここが #land を待っており、⚠ **textContent が display:none でも読めるので通っていた。**
       await page.waitForFunction(() => (document.getElementById("landAll")?.textContent ?? "").includes("%"),
         null, { timeout: 60000 });
-      must(await page.locator("#panel.hide").count() === 0, "PC でパネルが閉じて始まっている");
+      must(await page.locator("#panel.open").count() === 1, "PC でパネルが広がって始まっていない");
       // ⚠ **開いているあいだ、HUD には何も書かれていない**（hidetzu/konjaku#131 の要点）
       // ⚠ **2026-08-21 に、⚠ HUD の答え（#land）ごと無くなった**（hidetzu/konjaku#152）。
       //   ⚠ 前の主張は「⚠ 見えない HUD に土地情報を書かない」。
@@ -2935,8 +2951,8 @@ ${dom}
       const heroOpen = await effOpacity(page, "#landAll");
       must(heroOpen > 0, `パネルの答えが読めない: 実効 opacity ${heroOpen}`);
       const num = (await page.locator("#landAll .land-num").first().textContent()).trim();
-      // ⚠ **閉じたら、⚠ 答えは画面から退く**（⚠ 別の場所に写らない）
-      await page.click("#closePanel");
+      // ⚠ **小さくしたら、⚠ 答えは画面から退く**（⚠ 別の場所に写らない）
+      await page.click("#toggle");
       await settleAfterClick(page);
       // ⚠ **淡くなり切るまで待つ**（⚠ 途中を読むと、⚠ 機械の速さで結果が変わる）。
       //   ⚠ 実測: 手元 0.02 ／ ⚠ **CI 0.058**（2026-08-21 に CI で落ちた）。
@@ -3004,7 +3020,8 @@ ${dom}
         await page.waitForTimeout(1800); };
       const read = () => page.evaluate(() => ({
         est: (document.getElementById("notes")?.textContent ?? "").trim(),
-        tip: (document.getElementById("tip")?.textContent ?? "").trim() }));
+        tip: [...document.querySelectorAll('#notes li[data-kind="tip"]')]
+          .map((e) => e.textContent).join("").trim() }));
       const taps = async () => { let n = 0;
         for (const [x, y] of [[110, 260], [190, 300], [260, 240], [150, 380]]) {
           await page.evaluate(() => document.querySelectorAll(".pick-pop").forEach((e) => e.remove()));
@@ -3170,7 +3187,7 @@ ${dom}
       const r = await page.evaluate(() => {
         const e = document.getElementById("notes"), rc = e?.getBoundingClientRect();
         return { text: (e?.textContent ?? "").replace(/\s+/g, " ").trim(),
-          panelHidden: document.getElementById("panel")?.classList.contains("hide"),
+          panelHidden: !document.getElementById("panel")?.classList.contains("open"),
           // ⚠ **但し書きを隠せる親がいないこと**（2026-08-22。畳みボタンを消した）。
           //   ⚠ 以前は #eraToggle の aria-expanded を見ていたが、⚠ **その仕掛けごと無くなった。**
           //   ⚠ **「畳まれていない」ではなく「畳めない」**を見る（より強い主張）。
@@ -3224,7 +3241,7 @@ ${dom}
       must(/建物が消える年代は推定/.test(r.text), `帯の但し書きが消えている: ${r.text}`);
       must(!/\d/.test(r.text), `帯に数字が残っている（分数はパネルへ移した）: ${r.text}`);
       // ⚠ **分母つきは、⚠ 同じ画面のパネルから読めること**（⚠ 消していない証拠）
-      const provTx = (await page.locator("#prov").innerText()).replace(/\s+/g, " ");
+      const provTx = await provText(page);
       must(/\d+ \/ \d+ 件が推定/.test(provTx), `高さの推定を分母つきで言っていない: ${provTx.slice(0, 120)}`);
       must(/年が分かるのは \d+ \/ \d+ 件/.test(provTx), `建設年を分母つきで言っていない: ${provTx.slice(0, 120)}`);
       const m = provTx.match(/(\d+) \/ (\d+) 件が推定/);
@@ -3279,7 +3296,8 @@ ${dom}
             est: (document.getElementById("notes").innerText || "").replace(/\s+/g, " ").trim(),
             hud: (document.getElementById("hud").innerText || "").replace(/\s+/g, " ").trim(),
             all: (document.body.innerText || "").replace(/\s+/g, " ").trim(),
-            prov: (document.getElementById("prov")?.innerText ?? "").replace(/\s+/g, " ").trim(),
+            prov: [...document.querySelectorAll("#panel .prov-q")]
+          .map((e) => e.textContent ?? "").join(" ").replace(/\s+/g, " ").trim(),
           }));
           // ⚠ AC1: 帯は 1 行。⚠ **数字を 1 つも含まない**
           must(r.est === "建物が消える年代は推定です。",
@@ -3327,7 +3345,7 @@ ${dom}
       //   ☰ を押して 254px スクロールしないと届かなかった。
       //   #est は建物が見えているあいだ 0 アクションで読める。
       // ⚠ **2026-08-21 に、⚠ 帯は 1 行に減った**（分数はパネルへ）。⚠ 断り自体は帯に残る。
-      const est = (await page.locator("#est").innerText()).replace(/\s+/g, " ");
+      const est = (await page.locator("#notes").innerText()).replace(/\s+/g, " ");
       must(/建物が消える年代は推定/.test(est),
         `常時見える場所に断りが無い: ${est.slice(0, 90)}`);
       must(!/\d/.test(est), `帯に数字が残っている（分数はパネルへ移した）: ${est.slice(0, 90)}`);
@@ -3526,16 +3544,20 @@ ${dom}
     path: "/peel?ll=35.17090,136.88160&q=%E5%90%8D%E5%8F%A4%E5%B1%8B",
     setup: (page) => page.route((u) => /overpass/i.test(u.href), (r) => r.abort()),
     async check(page) {
+      // ⚠ **「まだ提供していません」は問いの側が言う**（2026-08-22。⚠ `#status` ではない）。
+      //   ⚠ **`textContent` で読む**（⚠ 狭い幅では畳まれている）。
       await page.waitForFunction(
         () => /まだ提供していません|取得できませんでした/.test(
-          document.getElementById("status")?.innerText ?? ""), null, { timeout: 90000 });
+          document.getElementById("landAll")?.textContent ?? ""), null, { timeout: 90000 });
       await settleAfterCondition(page);
       const t = await page.evaluate(() => ({
-        status: (document.getElementById("status")?.innerText ?? "").replace(/\s+/g, " "),
-        // ⚠ **PC で答えを持つのは #landAll（パネル）**（2026-08-20。hidetzu/konjaku#131）
-        land: (document.getElementById("landAll")?.innerText ?? "").replace(/\s+/g, " "),
+        // ⚠ **答えも断りも `#landAll` が持つ**（2026-08-22。⚠ `#status` はもう喋らない）。
+        //   ⚠ **`textContent` で読む**（⚠ 狭い幅では畳まれている。⚠ 主張は「字があること」）。
+        status: (document.getElementById("landAll")?.textContent ?? "").replace(/\s+/g, " "),
+        land: (document.getElementById("landAll")?.textContent ?? "").replace(/\s+/g, " "),
         // ⚠ 台帳はパネルの中。閉じていても DOM には入る
-        prov: (document.getElementById("prov")?.innerText ?? "").replace(/\s+/g, " "),
+        prov: [...document.querySelectorAll("#panel .prov-q")]
+          .map((e) => e.textContent ?? "").join(" ").replace(/\s+/g, " ").trim(),
       }));
       must(/まだ提供していません/.test(t.status),
         `まだ対応していない、と言っていない: ${t.status.slice(0, 110)}`);
@@ -3634,7 +3656,7 @@ ${dom}
             must(await p2.$$eval("#land", (els) => els.length) === 0,
               `${nm} ${w}px: #land が DOM に残っている`);
             const shut = await p2.evaluate(() => ({
-              hide: document.getElementById("panel").classList.contains("hide"),
+              hide: !document.getElementById("panel").classList.contains("open"),
               // ⚠ **実効 opacity まで見る**（⚠ 閉じたパネルは textContent が読める）
               txt: (() => { const seen = [];
                 for (const e of document.querySelectorAll("body *")) {
@@ -3832,7 +3854,7 @@ ${dom}
       const total = Number((t.match(/(\d+) 件の建物が、この範囲にあります/) ?? [])[1]);
       must(total > 0, `件数が読めない: ${t.slice(0, 80)}`);
       // 「いま画面に出ているもの」に高さの行があること（畳んでいないこと）
-      const prov = await page.locator("#prov").textContent();
+      const prov = await provText(page);
       must(/高さ/.test(prov), `出所の一覧に高さの行が無い: ${prov.replace(/\s+/g, " ").slice(0, 120)}`);
       must(/既定値/.test(prov), "高さが推定であることが書かれていない");
       // ⚠ **数え方は「推定」を主語に統一した**（2026-08-21。Owner 判断）。

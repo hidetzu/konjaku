@@ -488,3 +488,10 @@ export async function openPanel(page) {
     () => document.getElementById("toggle")?.getAttribute("aria-expanded") === "true",
     null, { timeout: 30000 });
 }
+
+// ⚠ **材料の台帳は、⚠ 問いごとに配られた**（2026-08-22。`.prov-q[data-q]`）。
+//   ⚠ **`#prov` という 1 つの箱はもう無い。**⚠ **全部つないで読む。**
+//   ⚠ **`textContent` で読む。**⚠ 「詳しく見る」は畳んであるので `innerText` に出ない。
+export const provText = (page) => page.evaluate(() =>
+  [...document.querySelectorAll("#panel .prov-q")]
+    .map((e) => e.textContent ?? "").join(" ").replace(/\s+/g, " ").trim());
