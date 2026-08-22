@@ -68,7 +68,8 @@ for (const f of htmlFiles) {
 // ⚠ public/ の外にも、壊れると本番が止まるコードがある。
 //   worker.js（計測の受け口）に構文エラーを入れても「問題なし」で通っていた。
 //   あとから足したサーバ側が、丸ごと無検査だった。
-for (const f of ["worker.js", "serve.js"]) {
+// ⚠ **`serve.js` は `scripts/serve.mjs` へ移した**（2026-08-22。Owner 判断）。
+for (const f of ["worker.js", "scripts/serve.mjs"]) {
   // ESM も import も含むので、Function で包むのではなく node 自身に読ませる
   try { execFileSync(process.execPath, ["--check", join(ROOT, f)], { stdio: "pipe" }); ok(f); }
   catch (e) { bad(`${f}: ${String(e.stderr ?? e.message).split("\n").slice(0, 3).join(" ")}`); }
@@ -97,7 +98,9 @@ for (const f of htmlFiles) {
   const marker = /251,\s*247,\s*176/;   // 明治期の低湿地「田」の色。表がある証拠
   // ⚠ **走査対象に、外の .js も入れる。** 以前は htmlFiles+jsFiles だけを見ていて、
   //   `build-water.js` に同じ表があることに気づけなかった（2026-08-17 に実測して寄せた）。
-  const outside = ["build-water.js", "check-tiles.js", "fetch-buildings.js", "serve.js"]
+  // ⚠ **ルート直下から `scripts/` へ移した**（2026-08-22）。⚠ **走査から落とさない。**
+  const outside = ["scripts/build-water.mjs", "scripts/check-tiles.mjs",
+    "scripts/fetch-buildings.mjs", "scripts/serve.mjs"]
     .filter((f) => existsSync(join(ROOT, f)));
   const outsideSrc = Object.fromEntries(await Promise.all(
     outside.map(async (f) => [f, await readFile(join(ROOT, f), "utf8")])));

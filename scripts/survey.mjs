@@ -59,7 +59,7 @@ if (!cands.length) console.log("  測るものがありません");
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // ---- 1・2 本物の画面から ----
-const server = spawn(process.execPath, ["serve.js"], {
+const server = spawn(process.execPath, ["scripts/serve.mjs"], {
   env: { ...process.env, PORT: String(PORT) }, stdio: "ignore",
 });
 process.on("exit", () => server.kill());

@@ -24,13 +24,13 @@ const Z = 16;
 const NAME = "toyosu";
 const BBOX = { s: 35.6480, w: 139.7880, n: 35.6620, e: 139.8060 };
 // 配信するのは public/ だけなので、そこへ直接書く（スクリプトからの相対＝cwd に依存しない）
-const OUT = new URL(`public/data/${NAME}-water.geojson`, import.meta.url);
+const OUT = new URL(`../public/data/${NAME}-water.geojson`, import.meta.url);
 
 // 凡例・許容差・1画素の分類は **public/swale.js の1か所**。ここに書き写さない。
 // ⚠ 以前ここにも同じ表があり、しかも `check.mjs` の突き合わせから**漏れていた**
 //   （走査対象の .js 一覧に build-water.js が入っていなかった。2026-08-17 に気づいて寄せた）。
 // 干潟・砂浜は満潮時に海面下になる地形なので水に含める（その印は swale.js が持つ）。
-await import("./public/swale.js");
+await import("../public/swale.js");
 const CLASSES = globalThis.KonjakuSwale.SWALE;
 const TOL = globalThis.KonjakuSwale.TOLERANCE;
 const classify = globalThis.KonjakuSwale.classify;

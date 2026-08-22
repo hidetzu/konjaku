@@ -42,7 +42,7 @@ node scripts/build-landform.mjs
 ### 3. 明治期の水域GeoJSONを生成する
 
 ```sh
-node build-water.js
+node scripts/build-water.mjs
 ```
 
 現在のスクリプトは`toyosu`のBBOXを対象にしています。別の範囲を追加する場合は、
@@ -119,7 +119,7 @@ npm run render
 - `.data/konjaku.db`は`.gitignore`対象で、取り込みを実行した環境にだけ存在します。
 - `db:init`はCloudflare D1の計測テーブルを初期化するコマンドであり、配信用データの生成や
   ローカルSQLiteの初期化ではありません。
-- 水域生成は現在`build-water.js`のBBOXが固定で、Wikidata・建物取り込みほど一括再生成の
+- 水域生成は現在`scripts/build-water.mjs`のBBOXが固定で、Wikidata・建物取り込みほど一括再生成の
   仕組みが整っていません。
 - すべての外部データを一つのSQLiteに集約する構成ではありません。SQLiteを使うのは主に
   WikidataとOSM建物の取り込み経路です。
