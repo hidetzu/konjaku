@@ -14,7 +14,6 @@ import {
   PORT, BASE, OUT, waited, kindOfRequest,
 } from "./render/lib.mjs";
 import { spawn } from "node:child_process";
-import { chromium } from "playwright";
 import { mkdir, readFile } from "node:fs/promises";
 
 // ⚠ **知らない suite を黙って無視しない**（⚠ 無視すると 0 件で緑になる）。
@@ -112,6 +111,11 @@ await new Promise((r) => setTimeout(r, 1200));
 }
 await mkdir(OUT, { recursive: true });
 
+// ⚠ **ブラウザは、⚠ 本当に回すときになってから読み込む**（2026-08-22。hidetzu/konjaku#190）。
+//   ⚠ **`--count` は数えるだけなので、⚠ Playwright を要らない。**
+//   ⚠ **最上位で読み込んでいたせいで、⚠ 静的検査のジョブが落ちた**
+//     （⚠ **そこには Playwright を入れていない。**⚠ **手元には入っているので通っていた**）。
+const { chromium } = await import("playwright");
 const browser = await chromium.launch();
 let failed = 0;
 
