@@ -40,7 +40,7 @@ Verify   ← ここ
 | `npm run render -- --group=search` | 住所検索に寄りかかる群だけ | — |
 | `node test/check.mjs --links-new=<ref>` | そのブランチで足した URL だけ叩く | — |
 | `node test/check.mjs --links` | 外部リンク全部 | — |
-| `node test/search-check.mjs --offline` | ⚠ **キャッシュで回す**（`.artifacts/search-cache`・42 語ぶん） | — |
+| `node test/search-check.mjs` | ⚠ **fixture で回す**（`test/fixtures/search/`・⚠ **外へ出ない**・42 語ぶん） | — |
 
 ⚠ **`npm run render --group=core` と書くと npm が引数を飲み、黙って全群が走る。**
 ⚠ **`--` を挟む。**⚠ 走った群は出力の 1 行目が名乗るので、そこを読む。
@@ -68,8 +68,13 @@ Verify   ← ここ
 ⚠ **ここで緑でも「通った」と言わない。**⚠ 回していないケースがある。
 `--only` のときは `render.mjs` 自身が「⚠ 全 N 件のうち --only で選んだぶんだけ」と名乗る。
 
-⚠ **`--offline` を Inner Loop で使ってよい。**ただし ⚠ **キャッシュは撮った日の応答**で、
-相手が変われば古くなる。⚠ **これで検索の並びを「確認済み」と言わない。**
+⚠ **検索の回帰は fixture で回る**（2026-08-22。hidetzu/konjaku#204）。⚠ **外へは 1 本も出ない。**
+⚠ **見ているのは「こちらの並べ替え」だけ。**⚠ **相手先がいま何を返すかは主張していない。**
+⚠ **fixture は撮った日の応答**なので、⚠ **相手が変われば古くなる**
+（⚠ 取得日は `test/fixtures/search/_meta.json`。⚠ 検査が毎回名乗る）。
+⚠ **相手先との疎通は `test/search-live-check.mjs`** が、⚠ **定期・手動で数語だけ**見る。
+⚠ **fixture を取り直すのは明示的な操作**（`node test/search-check.mjs --update-fixtures`）。
+⚠ **CI では絶対に取り直さない**（⚠ 落ちるはずの回帰が、⚠ 新しい応答で塗り替えられて通る）。
 
 ---
 
