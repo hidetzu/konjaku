@@ -3634,6 +3634,42 @@ ${dom}
       return `印 0 個／層 ${r.layers.length}（${r.layers.map((x) => x.slice(0, 5)).join("→")}）`;
     },
   },
+  // ⚠ **押したら地図が本当に変わること**（2026-08-23。⚠ **実際に壊れていた**）。
+  //   ⚠ **`wireProvPeek()` を `describe()` が呼んでいたが、⚠ ボタンを作るのは `paintBreakdown`** で、
+  //     ⚠ **そちらが後に走る。**⚠ **繋いだ直後に `#breakdown` ごと差し替えられて listener が消えていた。**
+  //   ⚠ **静的検査では捕まらない。**⚠ **DOM を組み立てただけでは、⚠ listener の有無は分からない。**
+  //   ⚠ **押す位置では測らない。**⚠ 実測（2026-08-23・1280×950）: ⚠ **的は y=1129 で画面の外**
+  //     （⚠ パネルの中で送られている）。⚠ **マウスで押すと、⚠ 直っていても外れる。**
+  {
+    name: "「地図で光らせる」を押しているあいだ、地図の塗りが変わる", path: `/peel?${TOYOSU}`,
+    async check(page) {
+      await page.waitForFunction(
+        () => document.querySelectorAll("#breakdown button.peek").length > 0,
+        null, { timeout: 60000 });
+      await settleAfterCondition(page);
+      const paint = () => page.evaluate(
+        `JSON.stringify(map.getPaintProperty("bld","fill-extrusion-color"))`);
+      const ids = await page.evaluate(
+        () => [...document.querySelectorAll("#breakdown button.peek")].map((b) => b.id));
+      must(ids.length > 0, "「地図で光らせる」が 1 つも無い");
+      const before = await paint();
+      const seen = [];
+      for (const id of ids) {
+        await page.evaluate((i) => document.getElementById(i)
+          .dispatchEvent(new PointerEvent("pointerdown", { bubbles: true })), id);
+        await settleAfterClick(page);
+        const on = await paint();
+        must(on !== before, `${id} を押しても地図の塗りが変わらない（listener が消えている）: ${on}`);
+        await page.evaluate(
+          () => dispatchEvent(new PointerEvent("pointerup", { bubbles: true })));
+        await settleAfterClick(page);
+        // ⚠ **離したら戻る**（⚠ 押しているあいだだけ、が仕様）
+        must(await paint() === before, `${id} を離しても、地図の塗りが戻らない`);
+        seen.push(id);
+      }
+      return `${seen.length} 個（${seen.join(" / ")}）が、押しているあいだだけ地図を変えた`;
+    },
+  },
   {
     name: "高さが推定であることを、主張範囲の数字で 1 か所だけ言う", path: `/peel?${TOYOSU}`,
     async check(page) {

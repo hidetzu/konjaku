@@ -1323,7 +1323,10 @@ function paintBreakdown(el,b,bldState,saidByLayer3,area){
   //   ⚠ **件数そのものは消していない。**⚠ **答えの下に「ほか N 件は判定の範囲外」として残る。**
   rows.push({ label:"足元が分かる", n:b.classified, peek:null, note:"" });
   if(area.hSrc)
-    rows.push({ label:"高さが実測", n:area.hSrc.measured, peek:"peekH", peekLabel:"高さを地図で光らせる",
+    // ⚠ **「高さが実測」→「高さが分かる」**（2026-08-23。Owner 判断）。
+    //   ⚠ **上下の行（`足元が分かる` / `建てられた年が分かる`）と言い回しをそろえる。**
+    //   ⚠ **数えているものは変えていない**（⚠ 実測の件数のまま。⚠ 残りは下の行が言う）。
+    rows.push({ label:"高さが分かる", n:area.hSrc.measured, peek:"peekH", peekLabel:"高さを地図で光らせる",
       // ⚠ **色見本は、⚠ ボタンの隣に置く**（2026-08-23。Owner 判断）。
       //   ⚠ **前は行の見出しに付いていたが、⚠ 地図に対応する相手がいない色があった。**
       //     ⚠ **`足元が分かる` の水色は「明治期に水だった」の色**で、⚠ **4832 件の色ではない。**
@@ -1337,7 +1340,26 @@ function paintBreakdown(el,b,bldState,saidByLayer3,area){
   rows.push({ label:"建てられた年が分かる", n:area.dated,
     peek:area.dated?"peekY":null, peekLabel:"建てられた年を地図で光らせる",
     peekNote:{color:"#e6c47a", text:"押すと、年が分かる建物がこの色になります"}, note:"" });
-  el.innerHTML=`<div class="hint">同じ ${area.total} 件を、3 つの見方で数えたもの（足し算はできません）</div>`
+  // ⚠ **地図の建物の色の凡例**（2026-08-23。Owner 指摘で戻した）。
+  //   ⚠ **前は行の見出しに色見本が付いていて、⚠ それが唯一の凡例だった。**
+  //     ⚠ **色見本を外したときに、⚠ 地図の色を読む手がかりごと消してしまった。**
+  //   ⚠ **今度は、⚠ 地図が実際に塗り分けている境目そのものを書く**（`BLD_COLOR`）。
+  // ⚠ **砂色を「水ではなかった」と言わない**（掟 §1）。
+  //   ⚠ **`wasWater` は「水と判定できた」= 1 で、⚠ 判定できなかった建物も 0 になる。**
+  //   ⚠ **砂色には、⚠ 判定できなかった ${area.total-area.classified} 件が混ざっている。**
+  const rest=area.total-area.wet;
+  const unknown=area.total-area.classified;
+  const mapLegend=`<div class="hint">地図の建物の色</div>`
+    + `<div class="stat"><span><i class="legend" style="background:#8fb9dd"></i>`
+    + `明治期に水だった</span><b>${area.wet}<span style="color:var(--ink-dim);font-weight:400">`
+    + ` / ${area.total}</span></b></div>`
+    + `<div class="stat"><span><i class="legend" style="background:#d8cfa8"></i>`
+    + `そのほか</span><b>${rest}<span style="color:var(--ink-dim);font-weight:400">`
+    + ` / ${area.total}</span></b></div>`
+    + (unknown ? `<div class="hint">そのほかには、足元を判定できなかった ${unknown} 件が含まれます`
+               + `（水ではなかった、という意味ではありません）</div>` : "");
+  el.innerHTML=mapLegend
+    + `<div class="hint">同じ ${area.total} 件を、3 つの見方で数えたもの（足し算はできません）</div>`
     + rows.map((r)=>
     `<div class="stat"><span>${esc(r.label)}</span>`
     + `<b>${r.n}<span style="color:var(--ink-dim);font-weight:400"> / ${area.total}</span></b></div>`
@@ -1345,6 +1367,8 @@ function paintBreakdown(el,b,bldState,saidByLayer3,area){
     + (r.peek ? `<button class="peek" id="${r.peek}">${esc(r.peekLabel)}</button>` : "")
     + (r.peek ? `<div class="hint"><i class="legend" style="background:${r.peekNote.color}"></i>`
               + `${esc(r.peekNote.text)}</div>` : "")).join("");
+  // ⚠ **作った直後に繋ぐ**（2026-08-23）。⚠ **ここが唯一の繋ぎ口。**
+  wireProvPeek();
 }
 
 
@@ -1844,7 +1868,13 @@ function describe(v){
     //     ⚠ DOM と比べると必ず「変わった」になり、⚠ 書き直して閉じてしまう。**
     if(box.dataset.html!==html){ box.dataset.html=html; box.innerHTML=html; }
   }
-  wireProvPeek();
+  // ⚠ **「地図で光らせる」をここで繋がない**（2026-08-23）。
+  //   ⚠ **ボタンを作るのは `paintBreakdown`** で、⚠ **`describe()` より後に走る。**
+  //   ⚠ **ここで繋ぐと、⚠ そのあと `#breakdown` ごと差し替えられて listener が消える。**
+  //   ⚠ 実測（2026-08-23・1280×950・渋谷）: ⚠ **押しても地図の塗りが変わらなかった**
+  //     （`["case",["==",["get","wasWater"],1],"#8fb9dd","#d8cfa8"]` のまま）。
+  //   ⚠ **繋ぐのは、⚠ 作った場所の直後 1 か所だけ**（`rules/javascript.md`:
+  //     ⚠ 同じ要素へ、⚠ 複数の場所からイベントを足さない）。
   // ⚠ **再試行は、⚠ 描き直しのたびに繋ぎ直す**（⚠ 材料の行は作り直されるため）
   if(retryAt) wireRetry(retryAt.lon,retryAt.lat,retryAt.title);
   // ⚠ **開閉したら、⚠ その場で描き直す**（2026-08-22）。
