@@ -665,6 +665,52 @@ for (const f of htmlFiles) {
   else ok(`${f}${usesOsm ? "（地理院＋OSM）" : "（地理院）"}`);
 }
 
+// ⚠ **配るデータは、商用利用できるものだけ**（2026-08-22 の Owner 判断。ADR 0032）。
+//
+// ⚠ **理由は「いつか稼ぐかもしれないから」ではない。**⚠ **いまの形と噛み合わないから。**
+//   ⚠ 非商用のデータは「**複製物の再配布を除く**」と書かれていることがある
+//     （国土数値情報の旧約款 第1条(b)）。⚠ **konjaku は public/data/ から配っている。**
+//     ⚠ **無料で運営していても引っかかる。**
+//   ⚠ しかも、あとから外すのが高い（共有カード・OGP・README まで届く。CLAUDE.md §6）。
+//
+// ⚠ **人の記憶では保たない。**⚠ 実際に LICENSES.md の表は両方向にずれていた
+//   （2026-08-22 実測: 載せ忘れ 3 件／実体の無い行 2 件）。
+//
+// ⚠ **見張るのは 3 つ。**
+//   a public/data/ の中身が、全部 LICENSES.md の表に載っている
+//   b 表に載っていて、実体が無い行が無い（消したデータの行が残らない）
+//   c 条件の欄に、禁じる語が入っていない
+{
+  const lic = await readFile(join(ROOT, "LICENSES.md"), "utf8");
+  // ⚠ **表の行だけを読む。**⚠ 本文に出てくる `data/…` を拾わない
+  const rows = [...lic.matchAll(/^\|\s*`data\/([^`]+)`\s*\|([^|]*)\|([^|]*)\|([^|]*)\|/gm)]
+    .map((m) => ({ path: m[1].replace(/\/$/, ""), what: m[2].trim(),
+                   from: m[3].trim(), terms: m[4].trim() }));
+  // ⚠ **実体。**⚠ `public/data/` の直下だけを見る（中の 1 枚ずつは表に書かない）
+  const real = (await readdir(join(PUB, "data"))).sort();
+  const listed = new Set(rows.map((r) => r.path));
+  const fails = [];
+
+  if (!rows.length) fails.push("LICENSES.md の配布データの表を読めない（この検査が何も見ていない）");
+  // a 載せ忘れ
+  for (const e of real) if (!listed.has(e)) fails.push(`${e} が LICENSES.md の表に無い`);
+  // b 実体の無い行
+  for (const r of rows) if (!real.includes(r.path)) fails.push(`LICENSES.md に ${r.path} の行があるが、実体が無い`);
+  // c ⚠ **禁じる語。**⚠ 商用利用できないものを配らない
+  //   ⚠ 「非商用」は konjaku では「配れない」と同義（再配布が除かれているため）
+  const FORBIDDEN = ["非商用", "商用不可", "商用利用不可", "NonCommercial", "non-commercial"];
+  for (const r of rows) {
+    const hit = FORBIDDEN.find((w) => r.terms.includes(w) || r.from.includes(w));
+    if (hit) fails.push(`${r.path} の条件に「${hit}」がある（配っているものは商用利用できるものだけ。ADR 0032）`);
+    if (!r.terms) fails.push(`${r.path} の条件の欄が空（何に従って配っているか分からない）`);
+    if (!r.from) fails.push(`${r.path} の出どころの欄が空（出典を書けない）`);
+  }
+  fails.length
+    ? bad(`配っているデータの条件が掟どおりでない（${fails.length} 件）: ${fails.slice(0, 5).join(" / ")}`)
+    : ok(`配っているデータ ${real.length} 件は、全部 LICENSES.md に条件つきで載っている`
+       + `（商用利用できないものは 0 件）`);
+}
+
 // ---------- 5. OGP ----------
 head("5. OGP");
 for (const f of htmlFiles) {
