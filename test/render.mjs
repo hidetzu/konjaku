@@ -13,6 +13,7 @@ import { CASES as PEEL_CASES } from "./render/peel.mjs";
 import {
   PORT, BASE, OUT, waited, kindOfRequest,
 } from "./render/lib.mjs";
+import { createShelf } from "./render/shelf.mjs";
 import { spawn } from "node:child_process";
 import { mkdir, readFile } from "node:fs/promises";
 
@@ -134,6 +135,9 @@ let retried = 0;      // 何回やり直したか。**必ず最後に出す**（
 //   ⚠ **これは hidetzu/konjaku#190（並列化）と hidetzu/konjaku#191（外部を最小限に）の前提。**
 // ⚠ **ケースの中身は 1 つも変えていない。**⚠ **外側で数えるだけ。**
 const measured = [];
+// ⚠ **同じものを外へ 2 回取りに行かない**（2026-08-22。hidetzu/konjaku#191）。
+//   ⚠ **1 回目は必ず実物。**⚠ **返ってきたものをそのまま再生する**（`test/render/shelf.mjs`）。
+const shelf = createShelf();
 // ⚠ **外部とは「この検査が立てたサーバ以外」**。⚠ localhost は数えない
 const OUTSIDE = (u) => /^https?:\/\//.test(u) && !u.startsWith(BASE);
 for (const c of RUN) {
@@ -196,7 +200,32 @@ async function runCase(c, attempt) {
 
   try {
     // 通信断・無応答を作るケースは、ページを開く前に仕込む
-    await c.setup?.(page);
+    // ⚠ **ケースの `setup` より先に置く。**⚠ Playwright は ⚠ **後から足した経路が勝つ**ので、
+  //   ⚠ ケース自身が経路を差し替えているなら（404 を返す検査など）、⚠ **そちらが勝つ。**
+  // ⚠ **GET だけ。**⚠ 送るもの（計測など）は控えない。
+  // ⚠ **切れるようにしておく**（`KONJAKU_NO_SHELF=1`）。⚠ **控えのせいかを切り分けるため。**
+  //   ⚠ **CI では切らない。**⚠ 手元で「控えを外すと直るか」を見るためだけのもの。
+  // ⚠ **`noShelf` のケースは控えを使わない**（2026-08-22。hidetzu/konjaku#191）。
+  //   ⚠ **主題が「待っているあいだの見え方」のケースは、⚠ 温まった控えから返すと意味が変わる。**
+  //   ⚠ **実測**: 「判定を待つあいだ、現在の写真を先に見せる」は、⚠ 控えを使うと
+  //     ⚠ **待機中の写真が 2/4 枚 → 4/4 枚**になった（⚠ **緑のままだが、⚠ 冷えた状態を測れていない**）。
+  if (!c.noShelf && !process.env.KONJAKU_NO_SHELF) await page.route((u) => OUTSIDE(u.href), async (route) => {
+    if (route.request().method() !== "GET") return route.fallback();
+    const key = route.request().url();
+    let rec;
+    try {
+      rec = await shelf.get(key, async () => {
+        const res = await route.fetch();
+        // ⚠ **状態も見出しも中身も、⚠ 返ってきたものをそのまま控える**
+        return { status: res.status(), headers: res.headers(), body: await res.body() };
+      });
+    } catch {
+      // ⚠ **取りに行けなかったものは控えない。**⚠ 「取れなかった」を答えに変えない（掟 §1）
+      return route.abort();
+    }
+    return route.fulfill(rec);
+  });
+  await c.setup?.(page);
     await page.goto(BASE + c.path, { waitUntil: "domcontentloaded", timeout: 45000 });
     const detail = await c.check(page, reqs);
     // 描画自体は通っても、裏でエラーが出ていれば見逃さない
@@ -305,7 +334,15 @@ if (measured.length) {
       .map(([h, n]) => `${h} ${n}`).join(" ／ ");
     if (per) console.log(`         ${per}`);
   }
-  console.log(`\n\x1b[1m外部への出方\x1b[0m`);
+  // ⚠ **控えの効き目を名乗る。**⚠ **黙って減らさない**（⚠ 減った理由が読めなくなる）
+{
+  const t = shelf.stats();
+  console.log(`\n\x1b[1m控え（同じものを 2 回取りに行かない）\x1b[0m`);
+  console.log(`  ⚠ **本当に外へ出た ${t.real} 本** ／ 控えから返した ${t.replayed} 本`
+    + `（別々の URL ${t.kept} 本）`);
+  console.log(`  ⚠ **1 回目は必ず実物。**⚠ 状態も中身もそのまま再生している（404 は 404 のまま）`);
+}
+console.log(`\n\x1b[1m外部への出方\x1b[0m`);
   console.log(`  外へ出たケース: ${outside.length} / ${measured.length} 件`
     + `（⚠ **出ていないのは ${measured.length - outside.length} 件**）`);
   console.log(`  外へのリクエスト合計: ${totOut} 本`
