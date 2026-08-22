@@ -362,7 +362,7 @@ layersOf(...) → { layers: [ Layer, ... ], missing: [ Missing, ... ] }
 ⚠ **片方を触ってもう片方を壊した実測がある**。`docs/SPEC.md` §23）。
 
 ⚠ **`/peel` の CSS を作り直すときに、一緒に直す。**⚠ **それまでは残す。**
-⚠ **ただし増やさない**（`scripts/check.mjs` が見張る）。
+⚠ **ただし増やさない**（`test/check.mjs` が見張る）。
 
 ---
 

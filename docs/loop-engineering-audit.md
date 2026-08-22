@@ -72,11 +72,11 @@ AI へ渡す様式をここへ混ぜると、**外から報告する人の負担
 
 | 何 | いま | 分類 |
 |---|---|---|
-| `npm run check`（`scripts/check.mjs`） | 静的 **151 件**。外へ出ない。実測 8 秒 | **KEEP** |
+| `npm run check`（`test/check.mjs`） | 静的 **151 件**。外へ出ない。実測 8 秒 | **KEEP** |
 | `npm run check -- --links-new=<ref>` | ⚠ **このブランチで足した URL だけ**叩く。実測 平均 0.00 本／PR | **KEEP** |
 | `npm run check -- --links` | 全部（8 本）。`main` と週次だけ | **KEEP** |
-| `npm run render`（`scripts/render.mjs`） | 実描画 **126 件**（core 117 / search 9）。実測 6〜7 分 | **KEEP** |
-| `npm run check-search`（`scripts/search-check.mjs`） | 42 語を 1.5 秒あけて叩く。⚠ 待機だけで約 63 秒 | **KEEP** |
+| `npm run render`（`test/render.mjs`） | 実描画 **126 件**（core 117 / search 9）。実測 6〜7 分 | **KEEP** |
+| `npm run check-search`（`test/search-check.mjs`） | 42 語を 1.5 秒あけて叩く。⚠ 待機だけで約 63 秒 | **KEEP** |
 | `.github/workflows/check.yml` | 2 ジョブ。⚠ 端数の切り上げを避けて束ねてある | **KEEP** |
 | ⚠ **件数が SPEC とずれても気づけない** | ⚠ **直した**（2026-08-19） | **IMPROVE 済** |
 | ⚠ **Inner Loop（速く回す部分集合）** | ⚠ **すでにある**（`--only=` ／ `--group=` ／ `--offline`） | **KEEP** |
@@ -94,7 +94,7 @@ AI へ渡す様式をここへ混ぜると、**外から報告する人の負担
 最後     npm run check / render / check-search      全部
 ```
 
-⚠ **`node scripts/search-check.mjs --offline` もある**（`.artifacts/search-cache`・42 語ぶん）。
+⚠ **`node test/search-check.mjs --offline` もある**（`.artifacts/search-cache`・42 語ぶん）。
 ⚠ **キャッシュは撮った日の応答**なので、これで「検索の並びを確認済み」と言わない。
 
 ⚠ **`npm run render --group=core` と書くと npm が引数を飲み、黙って全群が走る。**
