@@ -2652,10 +2652,19 @@ head("6. 外部リンク");
     yes(/記録の有無は分かっていない/.test(P.groundRow(false, ERA).note ?? ""),
       "届いていない地表に「記録の有無は分かっていない」が無い");
 
-    // ---- 水面。読めなかった（未取得）と、本当に無い（欠落）を混ぜない ----
+    // ---- 水面。読めなかった（未取得）と、本当に無い（整備対象外）を混ぜない ----
     eq(P.waterRow({ waterRead: true }).tag, "実測", "読めた水面");
     eq(P.waterRow({ waterRead: false, waterUnread: true }).tag, "未取得", "読めなかった水面");
-    eq(P.waterRow({ waterRead: false, waterUnread: false }).tag, "欠落", "本当に無い水面");
+    // ⚠ **整備対象外のときは、⚠ 材料の行を出さない**（2026-08-23。Owner 判断）。
+    //   ⚠ **層の理由が既に「この範囲は明治期の低湿地データの整備対象外です」と言っている。**
+    //   ⚠ **前は 2 行目が「この範囲に明治期の低湿地データが無い」で、⚠ 言い切っていた**
+    //     （掟 §1: ⚠ **データにない ≠ 現実にない**）。
+    //   ⚠ **混ぜないという主張は変えていない。**⚠ **読めなかったときは、⚠ 上の行が残る。**
+    yes(P.waterRow({ waterRead: false, waterUnread: false }) === null,
+      "整備対象外なのに材料の行を出している（層の理由と同じことを 2 回言う）");
+    // ⚠ **`null` が並びから落ちること**（⚠ 落とし忘れると、⚠ 画面を組む側で落ちる）
+    yes(P.rows({ area: { waterRead: false, waterUnread: false }, groundArrived: true })
+      .every(Boolean), "行の並びに null が混ざっている");
 
     // ---- 建物。0 件は「読んだ結果」なので実測の側 ----
     eq(P.buildingRows({ bldState: "loading" })[0].tag, "未取得", "取得中の建物");
