@@ -26,29 +26,61 @@ import { execFileSync } from "node:child_process";
 const NO_RENDER = [/^docs\//, /^\.claude\//, /^[^/]+\.md$/, /^\.github\/ISSUE_TEMPLATE\//,
   // ⚠ **検索の fixture は画面に届かない**（2026-08-22。hidetzu/konjaku#204）。
   //   ⚠ **実描画は 1 ケースも読まない。**⚠ 見るのは `test/search-check.mjs` だけ。
-  /^test\/fixtures\/search\//];
+  /^test\/fixtures\/search\//,
+  // ⚠ **実描画が読まない検査コード**（2026-08-22。hidetzu/konjaku#190）。
+  //   ⚠ **線は「`render.mjs` が読むか」で引く**（上の規則と同じ）。
+  //   ⚠ **実測（2026-08-22）**: `render.mjs` が取り込むのは
+  //     `test/render/lib.mjs` / `test/render/top.mjs` / `test/render/peel.mjs` と
+  //     `public/sw.js` だけ。⚠ **下のものは 1 行も読まない。**
+  //   ⚠ **`test/render-scope.mjs` は入れない**（⚠ **回すものを決める当人**なので、
+  //     ⚠ 変えたら実際に回して確かめる）。
+  //   ⚠ **同じコミットで `public/` も触っていれば、⚠ そちらで回る。**⚠ 見張りは外れない。
+  /^test\/check\.mjs$/, /^test\/search-check\.mjs$/,
+  /^test\/repository-check\.mjs$/, /^test\/search-live-check\.mjs$/];
 
 // ⚠ **suite を名指しできるもの。**⚠ ここに無いものは全部に倒す。
+// ⚠ **どちらの画面が読むかは、⚠ HTML を数えて決めた**（2026-08-22。hidetzu/konjaku#190）。
+//   ⚠ **憶測で足さない。**⚠ **`test/check.mjs` が、⚠ 実物と突き合わせて見張る。**
 const TO_SUITE = [
   [/^public\/peel\.html$/,           "peel"],
   [/^public\/peel3d\.js$/,           "peel"],
+  [/^public\/prov\.js$/,             "peel"],
+  [/^public\/components\/era-control\//, "peel"],
   [/^test\/render\/peel\.mjs$/,      "peel"],
   [/^public\/index\.html$/,          "top"],
   [/^public\/events\.js$/,           "top"],
   [/^public\/places\.js$/,           "top"],
+  [/^public\/gsi-address-search\.js$/, "top"],
   [/^test\/render\/top\.mjs$/,       "top"],
 ];
 
 // ⚠ **全部回すときの一覧。**⚠ **ここ 1 か所で持つ**（2026-08-22。hidetzu/konjaku#190）。
 const ALL = ["top core", "top search", "peel core"];
 
+// ⚠ **重い群は、⚠ 何本かに分けて同時に回す**（2026-08-22。hidetzu/konjaku#190）。
+//   ⚠ **実測（2026-08-22・PR hidetzu/konjaku#209 の CI）**: peel/core 5:12 ／ top/core 3:45 ／ top/search 1:23。
+//   ⚠ **2 つずつに割ると**（手元の実測から換算）:
+//     peel 2:24 / 2:48 ／ top 1:47 / 1:58 ／ search 1:23 → ⚠ **律速は 2:48。**
+//   ⚠ **3 つに割ると偏る**（peel: 1:14 / 2:31 / 1:27）。⚠ **1 本が重いままなので効かない。**
+//   ⚠ **search は割らない**（1:23 で、⚠ 割っても律速に届かない。⚠ 外へ出る口を増やさない）。
+const SHARDS = { "top core": 2, "peel core": 2 };
+
 // ⚠ **出し方は 2 つあるが、⚠ 決め方は 1 つ。**⚠ 形を変えるだけ。
 const emit = (lines) => {
   if (process.argv.includes("--json")) {
-    console.log(JSON.stringify(lines.map((l) => {
+    const out = [];
+    for (const l of lines) {
       const [suite, group] = l.split(" ");
-      return { suite, group };
-    })));
+      const n = SHARDS[l] ?? 1;
+      for (let i = 1; i <= n; i++) {
+        // ⚠ **名で見せ、⚠ id で保存する。**⚠ id に `/` を入れると成果物の名前が壊れる。
+        const shard = n > 1 ? `${i}/${n}` : "";
+        out.push({ suite, group, shard,
+          name: shard ? `${suite}/${group} ${shard}` : `${suite}/${group}`,
+          id: shard ? `${suite}-${group}-${i}of${n}` : `${suite}-${group}` });
+      }
+    }
+    console.log(JSON.stringify(out));
   } else {
     console.log(lines.join("\n"));
   }
@@ -61,7 +93,13 @@ const emit = (lines) => {
 if (process.argv.includes("--all")) { emit(ALL); process.exit(0); }
 
 const given = (process.argv.find((a) => a.startsWith("--files=")) ?? "").split("=")[1];
-const range = process.argv[2] ?? "origin/main...HEAD";
+// ⚠ **範囲は「`--` で始まらない最初の引数」**（2026-08-22 に踏んで直した）。
+//   ⚠ **前は `process.argv[2]` を範囲としていた。**
+//   ⚠ **CI は `--json "origin/main...HEAD"` と、⚠ `--json` を先に書いていたので、
+//     ⚠ 範囲が `--json` になり、⚠ `git diff --name-only --json` が失敗していた。**
+//   ⚠ **失敗すると「分からなければ全部に倒す」ので、⚠ 落ちずに、⚠ 黙って全部走っていた。**
+//   ⚠ **`--files=` と `--all --json` は試したのに、⚠ CI が使う形だけ試していなかった。**
+const range = process.argv.slice(2).find((a) => !a.startsWith("--")) ?? "origin/main...HEAD";
 let files = [];
 if (given !== undefined) files = given.split(",").filter(Boolean);
 else

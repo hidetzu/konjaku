@@ -14,7 +14,6 @@
 // 実行: node scripts/render.mjs
 //   （事前に  npm i --no-save playwright && npx playwright install chromium）
 
-import { chromium } from "playwright";
 import { spawn } from "node:child_process";
 import { mkdir, readFile } from "node:fs/promises";
 import { deflateSync } from "node:zlib";
@@ -304,11 +303,21 @@ export const kindOfRequest = (url) => {
   return "（" + seg.slice(0, 4).join("/") + "）";
 };
 
+// ⚠ **年代のタイルは塞がない**（2026-08-22 に踏んで直した。hidetzu/konjaku#191）。
+//   ⚠ **「その年代の写真があるか」は、⚠ タイルが返るかどうかで決まる**（`public/verify.js` の `photos()`）。
+//   ⚠ **塞ぐと、⚠ 実在しない年代まで「撮影されている」ことになる。**
+//   ⚠ **実測（2026-08-22）**: 48 件に当てたら、⚠ **軽井沢のバッジが
+//     ⚠ 「1974–78年から見られる（1年代）」→「1936–42年から見られる（7年代）」に化けた。**
+//     ⚠ **夢の島は 6年代 → 7年代。**⚠ **どちらも検査は緑のまま通った**（年代数を主張していないので）。
+//     ⚠ **さらに「年代を動かす操作パネル」は、⚠ 帯が変わって待ちが成立せず落ちた。**
+//   ⚠ **これは hidetzu/konjaku#199 の「白タイルで 9段→3段」と同じ事故の裏返し**（今度は増える方向）。
+//   ⚠ **`ERA_TILE_IDS` は、⚠ 数える物差しとしてだけ使う。⚠ 塞ぐ側には渡さない。**
 export const stubMapPictures = async (page) => {
   const pic = (r) => r.fulfill({ status: 200, contentType: "image/png", body: photoPng() });
+  // ⚠ **現在の空中写真**（`LATEST`）。⚠ 全国が対象なので、⚠ 有無が答えになる土地が無い。
   await page.route(PHOTO_ROUTE, pic);
-  for (const id of ERA_TILE_IDS) await page.route(eraRoute(id), pic);
-  // ⚠ **下地も絵。**⚠ **判定の材料（低湿地・地形分類）は塞がない**（⚠ 偽ると答えが変わる）。
+  // ⚠ **下地の地図。**⚠ 判定にも段にも出ない。
+  //   ⚠ **判定の材料（低湿地・地形分類）は塞がない**（⚠ 偽ると答えが変わる）。
   for (const id of BASEMAP_IDS) await page.route(eraRoute(id), pic);
 };
 

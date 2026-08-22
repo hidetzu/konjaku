@@ -13,8 +13,8 @@ import { CASES as PEEL_CASES } from "./render/peel.mjs";
 import {
   PORT, BASE, OUT, waited, kindOfRequest,
 } from "./render/lib.mjs";
+import { createShelf } from "./render/shelf.mjs";
 import { spawn } from "node:child_process";
-import { chromium } from "playwright";
 import { mkdir, readFile } from "node:fs/promises";
 
 // ⚠ **知らない suite を黙って無視しない**（⚠ 無視すると 0 件で緑になる）。
@@ -26,12 +26,55 @@ if (SUITE && !SUITES[SUITE]) {
 }
 const CASES = SUITE ? SUITES[SUITE] : [...TOP_CASES, ...PEEL_CASES];
 
+// ⚠ **1件だけ回せるようにする。**
+//   79 件を全部回すと 5 分近くかかる。検査を1つ足すたび、あるいは
+//   「わざと壊して落ちることを確かめる」たびに全件を回していては、確認が高くつき、
+//   **確かめずに済ませる誘惑が生まれる**（実際、確認1つに 5 分かけていた）。
+//   ⚠ **CI と main では必ず全件を回す。** ここは手元で1件を見るためだけのもの。
+const ONLY = process.argv.find((a) => a.startsWith("--only="))?.slice(7);
+// ⚠ **外部に寄りかかるケースだけを切り出せるようにする。**
+//   `dep:"search"` は、地理院の住所検索（msearch）の応答が返ってこないと成立しない検査。
+//   実測（2026-08-17）で、住所検索は速いとき 0.4 秒・遅いとき 8.2 秒だった。
+//   アプリは 8 秒で中断する（掟のタイムアウト）ので、遅い回はアプリが正しく中断し、
+//   候補が出ないまま検査だけが落ちる。**アプリの不具合ではなく、検査の前提が外部にある。**
+//   → `--group=core` は外へ出ない（＝落ちても外部のせいにできない）ぶんだけを回す。
+//     `--group=search` はその逆。CI は両方を回すが、切り分けができる。
+const GROUP = process.argv.find((a) => a.startsWith("--group="))?.slice(8);
+if (GROUP && !["core", "search"].includes(GROUP)) {
+  console.log(`\x1b[31m--group は core か search（来たのは ${GROUP}）\x1b[0m`); process.exit(1);
+}
+// ⚠ **同じ群を、⚠ 何本かに分けて同時に回すための口**（2026-08-22。hidetzu/konjaku#190）。
+//   ⚠ **`--shard=1/2` のように書く**（1 本目 / 全部で 2 本）。
+// ⚠ **交互に配る**（`i % n`）。⚠ **前半・後半で切らない。**
+//   ⚠ **実測（2026-08-22・手元）**: peel の 67 件は 0.9〜20.6 秒とばらつきが大きい。
+//     ⚠ 前半・後半で切ると偏るが、⚠ 交互なら 87s / 101s に収まる。
+// ⚠ **並び順に依存する。**⚠ ケースを足すと、⚠ どちらへ行くかは変わる。
+//   ⚠ **それでよい。**⚠ ケースどうしは独立していて、⚠ 順番に意味は無い
+//     （⚠ 意味があるなら、⚠ それは 1 つのケースにまとめるべきもの）。
+const SHARD = process.argv.find((a) => a.startsWith("--shard="))?.slice(8);
+let shardAt = 0, shardOf = 1;
+if (SHARD) {
+  const m = /^(\d+)\/(\d+)$/.exec(SHARD);
+  if (!m) {
+    console.log(`\x1b[31m--shard は 1/2 のように書く（来たのは ${SHARD}）\x1b[0m`); process.exit(1);
+  }
+  shardAt = Number(m[1]) - 1; shardOf = Number(m[2]);
+  if (shardAt < 0 || shardOf < 1 || shardAt >= shardOf) {
+    console.log(`\x1b[31m--shard=${SHARD} は範囲の外（1/${shardOf} 〜 ${shardOf}/${shardOf}）\x1b[0m`);
+    process.exit(1);
+  }
+}
+const RUN = CASES
+  .filter((c) => !ONLY || c.name.includes(ONLY))
+  .filter((c) => !GROUP || (GROUP === "search" ? c.dep === "search" : c.dep !== "search"))
+  .filter((c, i) => i % shardOf === shardAt);
+
 // ⚠ **走らせずに数だけ見る口**（`--count`）。⚠ **配線を確かめるために要る。**
 //   ⚠ **数えるのは「本当に回るもの」**（⚠ 別の数え方を持たない）。
+//   ⚠ **2026-08-22 まで、⚠ ここだけ別に数えていた**（`--shard` を見ておらず、
+//     ⚠ **1/2 でも 67 と名乗った**）。⚠ **いまは `RUN` をそのまま数える。**
 if (process.argv.includes("--count")) {
-  const g = (process.argv.find((a) => a.startsWith("--group=")) ?? "").split("=")[1] || null;
-  const n = CASES.filter((c) => !g || (g === "search" ? c.dep === "search" : c.dep !== "search")).length;
-  console.log(`${SUITE ?? "全部"} ${g ?? "全部"} ${n}`);
+  console.log(`${SUITE ?? "全部"} ${GROUP ?? "全部"}${SHARD ? ` ${SHARD}` : ""} ${RUN.length}`);
   process.exit(0);
 }
 // ---- ローカルサーバ ----
@@ -69,32 +112,18 @@ await new Promise((r) => setTimeout(r, 1200));
 }
 await mkdir(OUT, { recursive: true });
 
+// ⚠ **ブラウザは、⚠ 本当に回すときになってから読み込む**（2026-08-22。hidetzu/konjaku#190）。
+//   ⚠ **`--count` は数えるだけなので、⚠ Playwright を要らない。**
+//   ⚠ **最上位で読み込んでいたせいで、⚠ 静的検査のジョブが落ちた**
+//     （⚠ **そこには Playwright を入れていない。**⚠ **手元には入っているので通っていた**）。
+const { chromium } = await import("playwright");
 const browser = await chromium.launch();
 let failed = 0;
 
-// ⚠ **1件だけ回せるようにする。**
-//   79 件を全部回すと 5 分近くかかる。検査を1つ足すたび、あるいは
-//   「わざと壊して落ちることを確かめる」たびに全件を回していては、確認が高くつき、
-//   **確かめずに済ませる誘惑が生まれる**（実際、確認1つに 5 分かけていた）。
-//   ⚠ **CI と main では必ず全件を回す。** ここは手元で1件を見るためだけのもの。
-const ONLY = process.argv.find((a) => a.startsWith("--only="))?.slice(7);
-// ⚠ **外部に寄りかかるケースだけを切り出せるようにする。**
-//   `dep:"search"` は、地理院の住所検索（msearch）の応答が返ってこないと成立しない検査。
-//   実測（2026-08-17）で、住所検索は速いとき 0.4 秒・遅いとき 8.2 秒だった。
-//   アプリは 8 秒で中断する（掟のタイムアウト）ので、遅い回はアプリが正しく中断し、
-//   候補が出ないまま検査だけが落ちる。**アプリの不具合ではなく、検査の前提が外部にある。**
-//   → `--group=core` は外へ出ない（＝落ちても外部のせいにできない）ぶんだけを回す。
-//     `--group=search` はその逆。CI は両方を回すが、切り分けができる。
-const GROUP = process.argv.find((a) => a.startsWith("--group="))?.slice(8);
-if (GROUP && !["core", "search"].includes(GROUP)) {
-  console.log(`\x1b[31m--group は core か search（来たのは ${GROUP}）\x1b[0m`); process.exit(1);
-}
-const RUN = CASES
-  .filter((c) => !ONLY || c.name.includes(ONLY))
-  .filter((c) => !GROUP || (GROUP === "search" ? c.dep === "search" : c.dep !== "search"));
 if (SUITE) console.log(`\x1b[33m⚠ --suite=${SUITE}: ${CASES.length} 件だけ回す（全部ではない）\x1b[0m`);
-if (ONLY || GROUP) {
-  const how = [ONLY && `--only=${ONLY}`, GROUP && `--group=${GROUP}`].filter(Boolean).join(" ");
+if (ONLY || GROUP || SHARD) {
+  const how = [ONLY && `--only=${ONLY}`, GROUP && `--group=${GROUP}`,
+    SHARD && `--shard=${SHARD}`].filter(Boolean).join(" ");
   if (!RUN.length) { console.log(`\x1b[31m${how} に当てはまるケースが無い\x1b[0m`); process.exit(1); }
   console.log(`\x1b[33m⚠ ${how}: ${RUN.length} / ${CASES.length} 件だけ回す（全件ではない）\x1b[0m\n`);
 }
@@ -106,6 +135,9 @@ let retried = 0;      // 何回やり直したか。**必ず最後に出す**（
 //   ⚠ **これは hidetzu/konjaku#190（並列化）と hidetzu/konjaku#191（外部を最小限に）の前提。**
 // ⚠ **ケースの中身は 1 つも変えていない。**⚠ **外側で数えるだけ。**
 const measured = [];
+// ⚠ **同じものを外へ 2 回取りに行かない**（2026-08-22。hidetzu/konjaku#191）。
+//   ⚠ **1 回目は必ず実物。**⚠ **返ってきたものをそのまま再生する**（`test/render/shelf.mjs`）。
+const shelf = createShelf();
 // ⚠ **外部とは「この検査が立てたサーバ以外」**。⚠ localhost は数えない
 const OUTSIDE = (u) => /^https?:\/\//.test(u) && !u.startsWith(BASE);
 for (const c of RUN) {
@@ -168,7 +200,32 @@ async function runCase(c, attempt) {
 
   try {
     // 通信断・無応答を作るケースは、ページを開く前に仕込む
-    await c.setup?.(page);
+    // ⚠ **ケースの `setup` より先に置く。**⚠ Playwright は ⚠ **後から足した経路が勝つ**ので、
+  //   ⚠ ケース自身が経路を差し替えているなら（404 を返す検査など）、⚠ **そちらが勝つ。**
+  // ⚠ **GET だけ。**⚠ 送るもの（計測など）は控えない。
+  // ⚠ **切れるようにしておく**（`KONJAKU_NO_SHELF=1`）。⚠ **控えのせいかを切り分けるため。**
+  //   ⚠ **CI では切らない。**⚠ 手元で「控えを外すと直るか」を見るためだけのもの。
+  // ⚠ **`noShelf` のケースは控えを使わない**（2026-08-22。hidetzu/konjaku#191）。
+  //   ⚠ **主題が「待っているあいだの見え方」のケースは、⚠ 温まった控えから返すと意味が変わる。**
+  //   ⚠ **実測**: 「判定を待つあいだ、現在の写真を先に見せる」は、⚠ 控えを使うと
+  //     ⚠ **待機中の写真が 2/4 枚 → 4/4 枚**になった（⚠ **緑のままだが、⚠ 冷えた状態を測れていない**）。
+  if (!c.noShelf && !process.env.KONJAKU_NO_SHELF) await page.route((u) => OUTSIDE(u.href), async (route) => {
+    if (route.request().method() !== "GET") return route.fallback();
+    const key = route.request().url();
+    let rec;
+    try {
+      rec = await shelf.get(key, async () => {
+        const res = await route.fetch();
+        // ⚠ **状態も見出しも中身も、⚠ 返ってきたものをそのまま控える**
+        return { status: res.status(), headers: res.headers(), body: await res.body() };
+      });
+    } catch {
+      // ⚠ **取りに行けなかったものは控えない。**⚠ 「取れなかった」を答えに変えない（掟 §1）
+      return route.abort();
+    }
+    return route.fulfill(rec);
+  });
+  await c.setup?.(page);
     await page.goto(BASE + c.path, { waitUntil: "domcontentloaded", timeout: 45000 });
     const detail = await c.check(page, reqs);
     // 描画自体は通っても、裏でエラーが出ていれば見逃さない
@@ -277,7 +334,15 @@ if (measured.length) {
       .map(([h, n]) => `${h} ${n}`).join(" ／ ");
     if (per) console.log(`         ${per}`);
   }
-  console.log(`\n\x1b[1m外部への出方\x1b[0m`);
+  // ⚠ **控えの効き目を名乗る。**⚠ **黙って減らさない**（⚠ 減った理由が読めなくなる）
+{
+  const t = shelf.stats();
+  console.log(`\n\x1b[1m控え（同じものを 2 回取りに行かない）\x1b[0m`);
+  console.log(`  ⚠ **本当に外へ出た ${t.real} 本** ／ 控えから返した ${t.replayed} 本`
+    + `（別々の URL ${t.kept} 本）`);
+  console.log(`  ⚠ **1 回目は必ず実物。**⚠ 状態も中身もそのまま再生している（404 は 404 のまま）`);
+}
+console.log(`\n\x1b[1m外部への出方\x1b[0m`);
   console.log(`  外へ出たケース: ${outside.length} / ${measured.length} 件`
     + `（⚠ **出ていないのは ${measured.length - outside.length} 件**）`);
   console.log(`  外へのリクエスト合計: ${totOut} 本`

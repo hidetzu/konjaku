@@ -20,6 +20,7 @@ import { readFile, readdir } from "node:fs/promises";
 import { existsSync, readFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { join, extname, basename, dirname } from "node:path";
+import { pathToFileURL } from "node:url";
 import { VERSION_RE, hashOf, readSw } from "../scripts/sw-hash.mjs";
 import { VERSION as BL_VERSION, unpack as blUnpack } from "../scripts/bl-format.mjs";
 
@@ -5185,12 +5186,6 @@ head("9. 画面の言葉");
           + "。⚠ **本物との疎通は test/search-live-check.mjs が別に見る**")
       : bad("検索の fixture の取得日が分からない（test/fixtures/search/_meta.json の takenAt）");
   }
-  // ⚠ **0 件で緑にしない。**⚠ 1 件も走っていないのに「問題なし」と言わない
-  //   （⚠ 以前は SPEC との突き合わせが、⚠ 偶然この役目も果たしていた）。
-  const mine = passed + 1;
-  mine > 1
-    ? ok(`静的検査は ${mine} 件を数えた（⚠ この数が正。⚠ SPEC には書かない）`)
-    : bad(`静的検査が ${mine} 件しか走っていない（⚠ 1 件も確かめていないので緑にしない）`);
 }
 
 // ⚠ **配っているデータの数を、⚠ `docs/SPEC.md` と突き合わせる**（2026-08-22。Owner 判断）。
@@ -5265,32 +5260,33 @@ head("9. 画面の言葉");
   }
 }
 
-// ── 塞ぐ絵の一覧が、⚠ アプリの年代と揃っているか ──────────────────
-// ⚠ **2026-08-22 に踏んだ**（hidetzu/konjaku#191）。⚠ **`ort_USA10`（1945–50・米軍撮影）が
-//   ⚠ 塞ぐ一覧から抜けていて、⚠ 3 本が外へ出続けていた。**⚠ **検査は緑のままだった。**
-// ⚠ **見るのは向きが 1 つだけ。**⚠ **アプリが読む年代 ⊆ 塞ぐ一覧。**
-//   ⚠ 逆は見ない（⚠ 塞ぐ側が広いのは、⚠ 外へ出ないだけで害が無い）。
+// ── 年代のタイルを、⚠ 実描画が塞いでいないか ────────────────────
+// ⚠ **2026-08-22 に踏んで、⚠ 主張ごと入れ替えた**（hidetzu/konjaku#191）。
+// ⚠ **前はここで「アプリが読む年代 ⊆ 塞ぐ一覧」を見ていた**（＝全部塞げ、という主張）。
+//   ⚠ **それが間違いだった。**⚠ **「その年代の写真があるか」は、⚠ タイルが返るかで決まる**
+//     （`public/verify.js` の `photos()`）。⚠ **塞ぐと、⚠ 実在しない年代まで「ある」ことになる。**
+//   ⚠ **実測（2026-08-22・48 件に当てた）**: 軽井沢のバッジが
+//     ⚠ **「1974–78年から見られる（1年代）」→「1936–42年から見られる（7年代）」**に化けた。
+//     ⚠ **夢の島は 6年代 → 7年代。**⚠ **どちらも検査は緑のまま通った。**
+//     ⚠ **「年代を動かす操作パネル」は、⚠ 帯が変わって待ちが成立せず落ちた。**
+// ⚠ **いまの主張は逆。**⚠ **年代のタイルを、⚠ 1 つも塞いでいないこと。**
 {
   const eras = await readFile(join(ROOT, "public/verify.js"), "utf8");
   const lib  = await readFile(join(ROOT, "test/render/lib.mjs"), "utf8");
-  // `{ id: "ort_USA10", label: "1945–50", ...` の並びから id を拾う
   const block = /const ERAS = \[([\s\S]*?)\n  \];/.exec(eras);
   const ids = block ? [...block[1].matchAll(/\bid:\s*"([^"]+)"/g)].map((m) => m[1]) : [];
-  // 最新の空中写真は ERAS の外にある（⚠ そう書いてある）。⚠ **これも絵なので併せて見る。**
-  const latest = /const LATEST = \{\s*id:\s*"([^"]+)"/.exec(eras);
-  const want = latest ? [...ids, latest[1]] : ids;
-  const stub = new Set([...(/ERA_TILE_IDS = \[([\s\S]*?)\];/.exec(lib)?.[1] ?? "")
-      .matchAll(/"([^"]+)"/g)].map((m) => m[1]));
-  const photo = /PHOTO_ID = "([^"]+)"/.exec(lib);
-  if (photo) stub.add(photo[1]);
-  const miss = want.filter((id) => !stub.has(id));
-  if (!want.length) {
+  // ⚠ **塞いでいる本体だけを見る**（⚠ `ERA_TILE_IDS` は数える物差しなので、⚠ 宣言はあってよい）
+  const fn = /export const stubMapPictures = async \(page\) => \{([\s\S]*?)\n\};/.exec(lib);
+  if (!ids.length) {
     bad("public/verify.js から年代の id を 1 つも拾えなかった（⚠ この検査は何も見ていない）");
-  } else if (miss.length) {
-    bad(`アプリが読む年代のうち ${miss.length} 件が、実描画で塞ぐ一覧に無い: ${miss.join(" / ")}`
-      + "（⚠ **その分だけ外へ出続ける。**⚠ test/render/lib.mjs の ERA_TILE_IDS を直す）");
+  } else if (!fn) {
+    bad("test/render/lib.mjs の stubMapPictures を読めなかった（⚠ この検査は何も見ていない）");
+  } else if (/ERA_TILE_IDS/.test(fn[1])) {
+    bad("実描画が年代のタイルを塞いでいる"
+      + "（⚠ **塞ぐと、⚠ 実在しない年代まで「撮影されている」ことになる。**"
+      + "⚠ 実測: 軽井沢が 1年代 → 7年代 に化け、⚠ 検査は緑のまま通った）");
   } else {
-    ok(`実描画で塞ぐ絵が、アプリの年代と揃っている（${want.length} 件を突き合わせた）`);
+    ok(`実描画は年代のタイルを塞いでいない（アプリが読む ${ids.length} 年代は、実物を取りに行く）`);
   }
 }
 
@@ -5323,6 +5319,185 @@ head("9. 画面の言葉");
   } else {
     ok("実描画の門番は、上が落ちても必ず結果を返す（always()）");
   }
+}
+
+
+// ── 分けて回しても、⚠ 1 件も落ちないか ──────────────────────────
+// ⚠ **2026-08-22 に足した**（hidetzu/konjaku#190）。
+// ⚠ **`--shard=1/2` で分けたとき、⚠ 足して元に戻ることを見る。**
+//   ⚠ **落ちるのではなく、⚠ 静かに減るのが怖い**（⚠ 減ったぶんは誰も検査しないまま緑になる）。
+// ⚠ **走者に数えさせる**（`--count`）。⚠ **ここで別に数え直さない**（掟 §3）。
+{
+  const runner = join(ROOT, "test/render.mjs");
+  const count = (args) => Number(execFileSync(process.execPath, [runner, "--count", ...args],
+    { encoding: "utf8" }).trim().split(/\s+/).pop());
+  const bad3 = [];
+  let seen = 0;
+  for (const [suite, group] of [["top", "core"], ["top", "search"], ["peel", "core"]]) {
+    const whole = count([`--suite=${suite}`, `--group=${group}`]);
+    seen += whole;
+    for (const n of [2, 3]) {
+      let sum = 0;
+      for (let i = 1; i <= n; i++)
+        sum += count([`--suite=${suite}`, `--group=${group}`, `--shard=${i}/${n}`]);
+      if (sum !== whole) bad3.push(`${suite}/${group} を ${n} 分割: ${sum} 件（全部で ${whole} 件）`);
+    }
+  }
+  // ⚠ **足し算だけでは足りない**（2026-08-22 に踏んだ）。
+  //   ⚠ **全体も同じ走者が数えているので、⚠ 全体からも同じだけ減ると気づけない。**
+  //   ⚠ わざと 1 件落としてみたら、⚠ **この検査は緑のままだった。**
+  // ⚠ **だから、⚠ ケースの一覧そのものと突き合わせる**（⚠ 走者を通さない道）。
+  //   ⚠ **掟 §3 は「2 つ持つなら機械で突き合わせろ」。**⚠ これがその突き合わせ。
+  const { CASES: TOP } = await import(pathToFileURL(join(ROOT, "test/render/top.mjs")).href);
+  const { CASES: PEEL } = await import(pathToFileURL(join(ROOT, "test/render/peel.mjs")).href);
+  const declared = TOP.length + PEEL.length;
+  if (seen !== declared) {
+    bad3.push(`走者が回すのは ${seen} 件だが、⚠ 書いてあるのは ${declared} 件`);
+  }
+  if (!seen) {
+    bad("実描画のケースを 1 件も数えられなかった（⚠ この検査が何も見ていない）");
+  } else if (bad3.length) {
+    bad(`分けて回すと件数が合わない（${bad3.length} 件）: ${bad3.join(" ／ ")}`
+      + "（⚠ **落ちるのではなく、⚠ 静かに減る。**⚠ 減ったぶんは誰も検査しない）");
+  } else {
+    ok(`分けて回しても 1 件も落ちない（3 つの群 × 2 分割・3 分割 ／ 書いてある ${declared} 件と一致）`);
+  }
+}
+
+// ── 「この画面だけが読む」は、⚠ 本当か ──────────────────────────
+// ⚠ **2026-08-22 に足した**（hidetzu/konjaku#190）。
+// ⚠ **`test/render-scope.mjs` は「このファイルは top だけ／peel だけ」と決めている。**
+//   ⚠ **間違えると、⚠ 落ちるのではなく、⚠ 検査が走らないまま緑になる。**
+// ⚠ **だから、⚠ 実物の HTML と突き合わせる。**⚠ **憶測で足せないようにする。**
+{
+  const scope = await readFile(join(ROOT, "test/render-scope.mjs"), "utf8");
+  const html = {
+    top: await readFile(join(ROOT, "public/index.html"), "utf8"),
+    peel: await readFile(join(ROOT, "public/peel.html"), "utf8"),
+  };
+  // `[/^public\/prov\.js$/,  "peel"],` の並びから拾う
+  const rows = [...scope.matchAll(/\[\/\^public\\\/([^/]+?)\\?\/?\$?\/,\s*"(top|peel)"\]/g)]
+    .map((m) => ({ file: m[1].replace(/\\/g, ""), suite: m[2] }));
+  const wrong = [];
+  let seen = 0;
+  for (const { file, suite } of rows) {
+    // ⚠ HTML そのものは、⚠ 自分を読み込まない
+    if (/\.html$/.test(file)) continue;
+    const other = suite === "top" ? "peel" : "top";
+    // ⚠ **本当に読み込んでいる所だけを見る**（`<script src=…>` / `<link href=…>`）。
+    //   ⚠ **名前で探すと、⚠ コメントの中の言及まで拾う**（2026-08-22 に踏んだ）。
+    //   ⚠ 実際に `peel3d.js` と `places.js` の 2 件を、⚠ **誤って落とした**
+    //     （どちらも「読まない」と書いてあるコメントだった）。
+    const name = file.split("/").pop().replaceAll(".", "\\.");
+    const loads = (h) => new RegExp(`(src|href)=["'][^"']*${name}["']`).test(h);
+    const inOwn = loads(html[suite]);
+    const inOther = loads(html[other]);
+    seen++;
+    if (!inOwn) wrong.push(`${file}: ${suite} だけと書いてあるが、${suite} の画面が読んでいない`);
+    else if (inOther) wrong.push(`${file}: ${suite} だけと書いてあるが、${other} の画面も読んでいる`);
+  }
+  if (!seen) {
+    bad("「この画面だけが読む」ものが 1 つも無い（⚠ この検査が何も見ていない）");
+  } else if (wrong.length) {
+    bad(`実描画を回す先の決め方が、実物と食い違う（${wrong.length} 件）: ${wrong.join(" ／ ")}`
+      + "（⚠ **落ちるのではなく、⚠ 検査が走らないまま緑になる**）");
+  } else {
+    ok(`「この画面だけが読む」が、実物の HTML と合っている（${seen} 件を突き合わせた）`);
+  }
+}
+
+// ── 控えが、⚠ 返ってきたものをそのまま返すか ─────────────────────
+// ⚠ **2026-08-22 に足した**（hidetzu/konjaku#191）。
+// ⚠ **控えが状態を書き換えたら、⚠ 「その年代の写真があるか」の答えが変わる。**
+//   ⚠ **404 を 200 にしてしまうと、⚠ 実在しない年代まで「撮影されている」ことになる**
+//     （⚠ hidetzu/konjaku#211 で、⚠ 絵を偽って軽井沢が 1年代 → 7年代 に化けた）。
+// ⚠ **控えはブラウザを知らない形にしてあるので、⚠ ここで直接動かせる。**
+{
+  const { createShelf } = await import(pathToFileURL(join(ROOT, "test/render/shelf.mjs")).href);
+  const wrong4 = [];
+  {
+    // ⚠ **404 は 404 のまま**（⚠ 2 回目に別のものを渡しても、⚠ 控えが勝つ）
+    const sh = createShelf();
+    const a = await sh.get("u", async () => ({ status: 404, body: "x" }));
+    const b = await sh.get("u", async () => ({ status: 200, body: "y" }));
+    if (a.status !== 404 || b.status !== 404) wrong4.push(`404 が ${b.status} になった`);
+    if (b.body !== "x") wrong4.push("控えたはずの中身が違う");
+    const t = sh.stats();
+    if (t.real !== 1 || t.replayed !== 1) wrong4.push(`数え方が違う: ${JSON.stringify(t)}`);
+  }
+  {
+    // ⚠ **別の URL は、⚠ 別に取りに行く**（⚠ 全部を 1 つに混ぜない）
+    const sh = createShelf();
+    await sh.get("a", async () => ({ status: 200, body: "A" }));
+    const b = await sh.get("b", async () => ({ status: 200, body: "B" }));
+    if (b.body !== "B") wrong4.push("別の URL に、別のものが返っていない");
+    if (sh.stats().real !== 2) wrong4.push("別の URL を取りに行っていない");
+  }
+  {
+    // ⚠ **取りに行けなかったものは控えない**（⚠ 「取れなかった」を答えに変えない）
+    const sh = createShelf();
+    let threw = false;
+    try { await sh.get("u", async () => { throw new Error("届かなかった"); }); }
+    catch { threw = true; }
+    if (!threw) wrong4.push("届かなかったのに、控えが黙って何かを返した");
+    const after = await sh.get("u", async () => ({ status: 200, body: "後から取れた" }));
+    if (after.body !== "後から取れた") wrong4.push("届かなかったことを控えてしまっている");
+  }
+  wrong4.length
+    ? bad(`控えが、返ってきたものをそのまま返していない（${wrong4.length} 件）: ${wrong4.join(" ／ ")}`
+        + "（⚠ **状態を書き換えると、⚠ 実在しない年代まで「ある」ことになる**）")
+    : ok("控えは、返ってきたものをそのまま返す（404 のまま ／ URL ごとに別 ／ 失敗は控えない）");
+}
+
+// ── 回す先を決める口が、⚠ CI と同じ書き方で動くか ────────────────
+// ⚠ **2026-08-22 に踏んだ**（hidetzu/konjaku#190）。
+// ⚠ **`--json` を先に書くと、⚠ 範囲が `--json` だと解釈されて `git diff` が失敗し、
+//   ⚠ 「分からなければ全部に倒す」規則で ⚠ **黙って全部走っていた。**
+//   ⚠ **落ちない。**⚠ **安全な側に倒れるので、⚠ 気づけない。**
+// ⚠ **`--files=` と `--all --json` は試したのに、⚠ CI が使う形だけ試していなかった。**
+// ⚠ **だから、⚠ CI が実際に打つ形をそのまま試す。**
+{
+  const scope = join(ROOT, "test/render-scope.mjs");
+  const run = (args) => execFileSync(process.execPath, [scope, ...args],
+    { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+  const wrong5 = [];
+  // ⚠ **必ず「範囲を通る道」で試す**（2026-08-22 に 2 回踏んだ）。
+  //   ⚠ **最初は `--files=` で試していて、⚠ わざと壊しても素通りした。**
+  //   ⚠ **`--files=` は範囲を見ないので、⚠ 不具合のある道をそもそも通らない。**
+  //   ⚠ **`HEAD...HEAD` は必ず在って、⚠ 必ず空。**⚠ だから答えは「回さない」で決まる。
+  const EMPTY = "HEAD...HEAD";
+  try {
+    const out = run(["--json", EMPTY]);
+    if (out !== "[]") {
+      wrong5.push(`--json を先に書くと、⚠ 変更が無いのに「${out.slice(0, 50)}」と答える`);
+    }
+  } catch (e) { wrong5.push(`--json を先に書くと落ちる: ${String(e.message).slice(0, 60)}`); }
+  // ⚠ **順番を変えても同じ答えか**（⚠ 引数の順に寄りかからない）
+  try {
+    const a = run(["--json", EMPTY]);
+    const b = run([EMPTY, "--json"]);
+    if (a !== b) wrong5.push(`引数の順で答えが変わる: 「${a.slice(0, 40)}」と「${b.slice(0, 40)}」`);
+  } catch (e) { wrong5.push(`順を変えると落ちる: ${String(e.message).slice(0, 60)}`); }
+  wrong5.length
+    ? bad(`実描画を回す先を決める口が、CI と同じ書き方で動かない（${wrong5.length} 件）: `
+        + wrong5.join(" ／ ")
+        + "（⚠ **落ちるのではなく、⚠ 全部に倒れて黙って全部走る**）")
+    : ok("実描画を回す先を決める口は、CI と同じ書き方でも、引数の順を変えても同じ答えを返す");
+}
+
+// ── いくつ確かめたか、⚠ 最後に名乗る ────────────────────────────
+// ⚠ **0 件で緑にしない。**⚠ 1 件も走っていないのに「問題なし」と言わない
+//   （⚠ 以前は SPEC との突き合わせが、⚠ 偶然この役目も果たしていた）。
+// ⚠ **必ず、⚠ いちばん最後に置く**（2026-08-22 に踏んで移した）。
+//   ⚠ **前は検索の fixture の節の中にあり、⚠ その行までの数を名乗っていた。**
+//   ⚠ **後ろに検査を足したぶんが入らず、⚠ 実際は 206 件なのに「197 件」と言っていた。**
+//   ⚠ **`CLAUDE.md` はここを「この数が正」と指しているので、⚠ 正本が実際より少なく名乗る形だった。**
+//   ⚠ **落ちない。**⚠ **少なく言うだけなので、⚠ 気づけない。**
+{
+  const mine = passed + 1;   // ⚠ **自分もこれから 1 件になるので足す**
+  mine > 1
+    ? ok(`静的検査は ${mine} 件を数えた（⚠ この数が正。⚠ SPEC には書かない）`)
+    : bad(`静的検査が ${mine} 件しか走っていない（⚠ 1 件も確かめていないので緑にしない）`);
 }
 
 console.log(`\n${"─".repeat(52)}`);
