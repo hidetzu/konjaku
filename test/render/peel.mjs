@@ -2141,7 +2141,12 @@ export const CASES = [
           e.value = String(v); e.dispatchEvent(new Event("input")); }, v);
         await page.waitForTimeout(1600);
         return page.evaluate(() => {
-          const y = document.querySelector("#timePanel .y"), o = document.getElementById("notes");
+          // ⚠ **「重ねている」の断りは、⚠ 補足の 1 行**（2026-08-22。⚠ `#over` から移った）。
+          //   ⚠ **`#notes` を丸ごと読むと、⚠ 別の断り（「消える年代は推定」）まで拾う**
+          //     （⚠ 2026-08-23 に踏んだ）。⚠ **その 1 行だけを読む。**
+          const y = document.querySelector("#timePanel .y");
+          const o = [...document.querySelectorAll('#notes li[data-kind="caveat"]')]
+            .find((e) => /この街並みは/.test(e.textContent ?? "")) ?? null;
           const fs = (e) => (e ? parseFloat(getComputedStyle(e).fontSize) : 0);
           return { year: y.textContent.trim(), yFs: fs(y),
             over: (o?.textContent ?? "").trim(), oFs: fs(o),
@@ -2839,19 +2844,23 @@ ${dom}
       //   内陸では、足元の最多区分が水域ではないので区分名が主見出しになる。
       //   実測 2026-08-16（1280×800／375×667 とも同じ）:
       //     渋谷 田（水域だった建物 1.5%）／上野 田（1.3%）／西新宿 田（1.3%）
+      // ⚠ **層 3 は作り替えた**（2026-08-22。Owner 判断）。
+      //   ⚠ **前は「田 建物の足元は、明治期には最多でした」**（⚠ 区分名が主見出し）。
+      //   ⚠ **いまは「N 件の建物が、この範囲にあります」**（⚠ 件数が主見出し）で、
+      //     ⚠ 割合は分母を主語にした 1 行が持つ。
+      //   ⚠ **主張は変えていない**: ⚠ **☰ を 1 回で、⚠ 答えと分母が読めること。**
+      //   ⚠ **件数は書かない**（⚠ 取り込みで動く）。⚠ **形だけを見る。**
       const places = [
-        ["豊洲", `/peel?${TOYOSU}`, /^99\.\d%$/, "543 / 543件の足元を判定"],
-        ["広島", "/peel?ll=34.39500,132.45500&q=%E5%BA%83%E5%B3%B6", /^\d\.\d%$/, "3260 / 3552件の足元を判定"],
-        ["長崎 出島", "/peel?ll=32.74400,129.87300&q=%E9%95%B7%E5%B4%8E%20%E5%87%BA%E5%B3%B6",
-          /^\d\.\d%$/, "3895 / 3895件の足元を判定"],
-        ["お台場", "/peel?ll=35.63000,139.77600&q=%E3%81%8A%E5%8F%B0%E5%A0%B4",
-          /^97\.\d%$/, "103 / 103件の足元を判定"],
-        ["渋谷", "/peel?ll=35.65860,139.70160&q=%E6%B8%8B%E8%B0%B7", null, "4785 / 5017件の足元を判定"],
-        ["上野", "/peel?ll=35.71480,139.77450&q=%E4%B8%8A%E9%87%8E", null, "2731 / 5673件の足元を判定"],
-        ["西新宿", "/peel?ll=35.69050,139.69290&q=%E8%A5%BF%E6%96%B0%E5%AE%BF", null, "3402 / 4258件の足元を判定"],
+        ["豊洲", `/peel?${TOYOSU}`],
+        ["広島", "/peel?ll=34.39500,132.45500&q=%E5%BA%83%E5%B3%B6"],
+        ["長崎 出島", "/peel?ll=32.74400,129.87300&q=%E9%95%B7%E5%B4%8E%20%E5%87%BA%E5%B3%B6"],
+        ["お台場", "/peel?ll=35.63000,139.77600&q=%E3%81%8A%E5%8F%B0%E5%A0%B4"],
+        ["渋谷", "/peel?ll=35.65860,139.70160&q=%E6%B8%8B%E8%B0%B7"],
+        ["上野", "/peel?ll=35.71480,139.77450&q=%E4%B8%8A%E9%87%8E"],
+        ["西新宿", "/peel?ll=35.69050,139.69290&q=%E8%A5%BF%E6%96%B0%E5%AE%BF"],
       ];
       const out = [];
-      for (const [name, path, pctRe, den] of places) {
+      for (const [name, path] of places) {
         if (page.url() !== BASE + path)
           await page.goto(BASE + path, { waitUntil: "domcontentloaded", timeout: 45000 });
         await peelReady(page);
@@ -2899,47 +2908,21 @@ ${dom}
           heroCap: (document.getElementById("landAll")?.textContent ?? "").replace(/\s+/g, " ").trim(),
           landAll: (document.getElementById("landAll")?.textContent ?? "").replace(/\s+/g, " ").trim(),
         }));
-        const hasCategory = !!r.hero && !/[\d.]+/.test(r.hero);
-        if(hasCategory){
-          must(r.what.includes("建物の足元") && r.what.includes("最多"),
-            `${name}: 最多区分の説明が書かれていない: 「${r.what}」`);
-          must(r.heroCap.includes("水域だった建物"), `${name}: 水域割合の補足が無い: 「${r.heroCap}」`);
-          // ⚠ **小さい割合を消さない。** 主見出しを区分名にしたぶん、割合は
-          //   意味と分母を伴って残っていること（隠したり別の数字へ置き換えたりしない）。
-          const pct = (t) => t.match(/水域だった建物[：:]\s*([\d.]+)%/)?.[1] ?? null;
-          const [pc, hud] = [pct(r.heroCap), pct(r.landAll)];
-          must(pc !== null, `${name}: パネルに水域割合の数字が無い: 「${r.heroCap.slice(0, 80)}」`);
-          must(hud !== null, `${name}: HUD に水域割合の数字が無い: 「${r.landAll.slice(0, 80)}」`);
-          // ⚠ 同じ画面の中で食い違わないこと（計算元は landVerdict の1か所）
-          must(pc === hud, `${name}: HUD とパネルで水域割合が違う: HUD「${hud}%」/ パネル「${pc}%」`);
-            // ⚠ 主見出しの区分名も、HUD とパネルで同じであること。
-            //   ⚠ **HUD は層になったので、先頭は第1層**（⚠ 字は `words.js` の `layerTitle(1)`）。
-            //     主見出しは HUD の**どこか**に、同じ語で在ればよい。
-            //   ⚠ 見ている主張は変えていない: **同じ画面で 2 つの答えを出さないこと**。
-            must(r.landAll.includes(r.hero),
-              `${name}: HUD とパネルで主見出しが違う: HUD「${r.landAll.slice(0, 40)}」/ パネル「${r.hero}」`);
-        } else {
-          // ⚠ pctRe が無い地点（区分名が主見出しのはず）でここへ来たら、
-          //   規則が変わって低い割合が主見出しに戻ったということ。落とす。
-          must(pctRe && pctRe.test(r.num),
-            `${name}: 割合が主見出しになっている（区分名のはず）／読めない: 「${r.num}」`);
-          must(r.what.includes("建物が、明治期には") && r.what.includes("水の上"),
-            `${name}: 何の割合かが書かれていない: 「${r.what}」`);
-        }
-        // ⚠ **分母がその行に在ること。**完全一致は求めない。
-        //   ⚠ 区分名が主役の土地では、同じ行に「水域だった建物：X%」も入る
-        //     （head が区分名なので、割合の置き場がここしかない）。
-        //   ⚠ 見ている主張は変えていない: **数字を出すなら分母を同じ板に出す**。
-        must(r.den.includes(den), `${name}: 分母が読めない: 「${r.den}」（要る: ${den}）`);
-        // ⚠ **同じ画面の中で結果が食い違わないこと。** 計算元は landVerdict の1か所
-        if(!hasCategory) must(r.hero === r.num, `${name}: HUD とパネルで割合が違う: HUD「${r.num}」/ パネル「${r.hero}」`);
-        const [a, b] = r.den.match(/(\d+) \/ (\d+)/).slice(1);
-          // ⚠ 層になって、HUD もパネルも**同じ書き方**になった（「543 / 543件の足元を判定」）。
-          //   ⚠ 見ている主張は変えていない: **同じ画面の中で分母が食い違わないこと**。
-          must(r.heroCap.includes(`${a} / ${b} 件`) || r.heroCap.includes(`${b}件すべて`)
-            || r.heroCap.includes(`${a} / ${b}件の足元を判定`),
-          `${name}: HUD とパネルで分母が違う: HUD「${r.den}」/ パネル「${r.heroCap.slice(0, 60)}」`);
-        out.push(`${name} ${hasCategory ? r.hero : r.num}（${r.den}）`);
+        // ⚠ **層 3 の主見出しは件数**（2026-08-22）。⚠ **「N 件」の形であること。**
+        must(/^[\d,]+\s*件$/.test(r.hero), `${name}: 建物の件数が主見出しになっていない: 「${r.hero}」`);
+        must(/の建物が、この範囲にあります/.test(r.what),
+          `${name}: 何の件数かが書かれていない: 「${r.what}」`);
+        // ⚠ **分母は答えと同じ板に、⚠ 主語つきで**（掟 §6。⚠ 2026-08-23 に主語を足した）
+        const m = r.den.match(/判定できた\s*([\d,]+)\s*件のうち、\s*([\d.]+)%（([\d,]+)\s*件）/);
+        must(m, `${name}: 分母が主語つきで読めない: 「${r.den}」`);
+        const [cls, pct, wet] = [Number(m[1].replace(/,/g, "")), Number(m[2]), Number(m[3].replace(/,/g, ""))];
+        const total = Number(r.hero.replace(/[^\d]/g, ""));
+        must(cls > 0 && cls <= total, `${name}: 判定できた件数が総数を超えている: ${cls} / ${total}`);
+        must(wet <= cls, `${name}: 水の上だった件数が分母を超えている: ${wet} / ${cls}`);
+        // ⚠ **割合と件数が食い違わないこと**（⚠ 丸めのぶん 0.1 まで許す）
+        must(Math.abs(wet / cls * 100 - pct) < 0.1,
+          `${name}: 割合と件数が合わない: ${wet} / ${cls} = ${(wet / cls * 100).toFixed(1)}% ≠ ${pct}%`);
+                out.push(`${name} ${r.hero}（${pct}% ＝ ${wet} / ${cls}）`);
       }
       // ⚠ **2026-08-21 に、⚠ 答えの板（#land）が無くなった**（hidetzu/konjaku#152）。
       //   ⚠ ここは「⚠ 板が 3D と操作を覆わないこと」を見ていた。⚠ **覆う板が無い。**
