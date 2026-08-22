@@ -38,6 +38,7 @@ async function openEraControl(browser, { width = 1280, height = 400 } = {}) {
   font:14px/1.65 -apple-system,sans-serif;color:var(--ink)}</style></head><body>
 ${peel.slice(i, j)}
 <script src="/esc.js"></script>
+<script src="/words.js"></script>
 <script src="/components/era-control/era-control.js"></script>
 <script>
   window.__ev = []; window.__pos = 0;
@@ -1150,6 +1151,11 @@ export const CASES = [
           lineL: Math.round(line.left), lineR: Math.round(line.right),
           meiji: !!document.querySelector("#rlTicks i.rl-meiji"),
           cut: !!document.querySelector("#rlTicks i.rl-cut"),
+          // ⚠ **間の段の名前**（hidetzu/konjaku#166）。⚠ 端は left / right が持つ
+          inner: [...document.querySelectorAll(".rl-labs span")].map((e) => {
+            const r = e.getBoundingClientRect();
+            return { t: e.textContent.trim(), x: Math.round(r.x), right: Math.round(r.right),
+                     cut: e.scrollWidth > Math.ceil(r.width) + 1 }; }),
           W: innerWidth };
       });
       const a = await look();
@@ -1177,6 +1183,26 @@ export const CASES = [
       must(a.meiji, `明治期の印が無い（写真と同じ形に見える）`);
       must(a.cut, `写真と明治期の仕切りが無い`);
       must(/空中写真\s*\d+\s*段/.test(a.note.t), `注記に空中写真の段数が無い: ${a.note.t}`);
+
+      // ---- ③-b ⚠ **動かす前に、全段の年代が読める**（2026-08-22。hidetzu/konjaku#166）----
+      //   ⚠ **前は両端だけだった**（実測 2026-08-22・375/344/320 とも名前 2 個・刻み 10 本）。
+      //   ⚠ **間引かない。**⚠ 出ていない段があると「その年代は無い」と読まれる（掟 §1。
+      //     ⚠ 利用者役 3 名中 2 名が実際にそう読んだ）。
+      //   ⚠ **ここが見るのは「実物のページに届いているか」。**
+      //     ⚠ **段の数を変えた検査は、コンポーネント単体のほうが持つ**
+      //       （⚠ 写真を stub すると、⚠ **どの土地でも 9 段になる**ので実物では変えられない）。
+      const named = [a.left, ...a.inner, a.right];
+      must(named.length === a.nSteps,
+        `動かす前に読める年代が ${named.length} 個しかない（段は ${a.nSteps}）: `
+        + named.map((x) => x.t).join("／"));
+      must(a.inner.every((x) => x.t), `間の段に空の名前がある: ${a.inner.map((x) => x.t).join("／")}`);
+      // ⚠ 5 の再発（切れる）を、間の名前にも
+      const cutInner = a.inner.filter((x) => x.cut).map((x) => x.t);
+      must(!cutInner.length, `間の年代が切れている: ${cutInner.join("、")}`);
+      // ⚠ 隣どうしが重ならないこと（⚠ **読めなくなるのは、出ていないより悪い**）
+      const sorted = [...named].sort((x, y) => x.x - y.x);
+      const hitNames = sorted.filter((x, i) => i > 0 && x.x < sorted[i - 1].right - 0.5).map((x) => x.t);
+      must(!hitNames.length, `年代の名前が重なっている: ${hitNames.join("、")}`);
 
       // ---- ④ ‹ › で端まで届く。⚠ 1 の再発（つまみが流れる）も見る ----
       const knob0 = a.knobX;
@@ -1210,6 +1236,7 @@ export const CASES = [
       const c = await look();
       must(c.year.t === "現在", `‹ を押し続けても先頭に戻らない（いま「${c.year.t}」）`);
       return `320 幅・${a.nSteps} 段  軸 ${a.axis}px（1 段 ${Math.round(a.axis / (a.nSteps - 1))}px）`
+        + ` ／ 動かす前に読める年代 ${named.length} / ${a.nSteps} 個「${named.map((x) => x.t).join(" ")}」`
         + ` ／ 端「${a.left.t}」「${a.right.t}」とも画面内 ／ ‹ › ${a.prev.w}×${a.prev.h}（間隔 ${a.next.x - a.prev.right}px）`
         + ` ／ ${a.note.t}`;
     },
@@ -2311,6 +2338,81 @@ export const CASES = [
   },
 
   {
+    // ⚠ **ものさしは、動かす前に全段の年代を名乗る**（2026-08-22。hidetzu/konjaku#166。Owner 判断）。
+    //
+    //   ⚠ **前は両端しか名乗らなかった。**実測（2026-08-22・`main` = `8d920fd`・豊洲）:
+    //     375 / 344 / 320 のどの幅でも、⚠ **名前が読めるのは 2 個**（刻みは 10 本）。
+    //   ⚠ **間引かない。**⚠ 出ていない段があると「その年代は無い」と読まれる（掟 §1）。
+    //     実測（利用者役 3 名に画面だけを見せた。⚠ **実在の利用者ではない**）:
+    //     ⚠ **間引き案は 2 / 3 が「名前が付いている年代しか見られないのか」と読んだ。**
+    //
+    // ⚠ **段の数を変えて見る。**⚠ 4 / 5 / 7 / 9（偶数・奇数の両方）。
+    //   ⚠ **実物のページでは段の数を選べない**（その土地に何が残っているかで決まる）。
+    //   ⚠ 写真を stub すると ⚠ **どの土地でも 9 段になる**ので、⚠ **地点を並べても段の数は変わらない**
+    //     （2026-08-22 に実際に踏んだ。豊洲・広島・出島・帯広が全部 9 段と出た）。
+    //   ⚠ **だからここは、⚠ 段を渡せる単体で見る。**⚠ 実物に届いているかは、次のケースが見る。
+    //
+    // ⚠ **字はここに書かない。**⚠ 短い書き方は `words.js` の `eraTick` が 1 か所で持つ。
+    name: "ものさしは、動かす前に全段の年代を名乗る（コンポーネント単体）", path: "/", group: "core",
+    async check(page) {
+      const browser = page.context().browser();
+      const out = [];
+      for (const [w, h] of [[375, 667], [344, 882], [320, 640]]) {
+        for (const n of [4, 5, 7, 9]) {
+          const { ctx, p2, errs } = await openEraControl(browser, { width: w, height: h });
+          try {
+            await p2.evaluate((k) => {
+              window.__steps = Array.from({ length: k }, (_, i) => ({
+                id: String(i), label: i === 0 ? "現在" : i === k - 1 ? "明治期" : `19${40 + i * 6}–${42 + i * 6}`,
+                meiji: i === k - 1 }));
+              window.__pos = 0; window.__draw({ narrow: true });
+            }, n);
+            await p2.waitForTimeout(80);
+            const g = await p2.evaluate(() => {
+              const B = (e) => { const r = e.getBoundingClientRect(); return { l: r.left, r: r.right }; };
+              const labs = [...document.querySelectorAll(".rl-labs span")].map((e) => ({ t: e.textContent, ...B(e) }));
+              const L = document.getElementById("rlLeft"), R = document.getElementById("rlRight");
+              return { shown: document.getElementById("ruler").checkVisibility(),
+                line: B(document.querySelector("#ruler .rl-line")),
+                ticks: document.querySelectorAll("#rlTicks i:not(.rl-cut)").length,
+                inner: labs,
+                all: [{ t: L.textContent, ...B(L) }, ...labs, { t: R.textContent, ...B(R) }]
+                  .sort((a, c) => a.l - c.l),
+                overX: document.documentElement.scrollWidth - document.documentElement.clientWidth };
+            });
+            must(!errs.length, `${w}px ${n}段: 例外が出た: ${errs[0]}`);
+            // ⚠ **見えていないものを測って「問題なし」と言わない**
+            must(g.shown && g.line.r - g.line.l > 0,
+              `${w}px ${n}段: ものさしが出ていない。この検査は何も見ていない`);
+            must(g.ticks === n, `${w}px ${n}段: 刻みが ${g.ticks} 本`);
+            // ⚠ **これが主張の芯**: 段の数だけ名前が読める（両端 ＋ 間）
+            must(g.all.length === n,
+              `${w}px ${n}段: 名前が ${g.all.length} 個しか読めない（${g.all.map((x) => x.t).join("/")}）`);
+            must(g.all.every((x) => x.t.trim()),
+              `${w}px ${n}段: 空の名前がある（${g.all.map((x) => x.t).join("/")}）`);
+            // ⚠ 隣どうしが重ならないこと
+            const hit = g.all.filter((x, i) => i > 0 && x.l < g.all[i - 1].r - 0.5)
+              .map((x, i) => x.t);
+            must(!hit.length, `${w}px ${n}段: 名前が重なっている: ${hit.join("、")}`);
+            // ⚠ 間の名前が軸の枠から出ないこと（横スクロールが出る）
+            const over = g.inner.filter((x) => x.l < g.line.l - 0.5 || x.r > g.line.r + 0.5).map((x) => x.t);
+            must(!over.length, `${w}px ${n}段: 名前が軸の外に出ている: ${over.join("、")}`);
+            must(g.overX <= 0, `${w}px ${n}段: 横にあふれている（${g.overX}px）`);
+            // ⚠ **字は words.js のとおりか**（⚠ 検査に書き写さない）
+            const want = Array.from({ length: n }, (_, i) =>
+              WORDS.eraTick(i === 0 ? "現在" : i === n - 1 ? "明治期" : `19${40 + i * 6}–${42 + i * 6}`));
+            const got = g.all.map((x) => x.t);
+            must(JSON.stringify(got) === JSON.stringify(want),
+              `${w}px ${n}段: 字が words.js と違う（${got.join("/")} ／ 期待 ${want.join("/")}）`);
+            if (n === 9) out.push(`${w}px「${got.join(" ")}」`);
+          } finally { await ctx.close(); }
+        }
+      }
+      return out.join(" ／ ") + " ／ 4/5/7/9 段とも 重なり 0・枠の外 0";
+    },
+  },
+
+  {
     // ⚠ **EraControlPanel だけを、⚠ 地図もネットも無しで動かす**（2026-08-22。hidetzu/konjaku#171）。
     //
     //   ⚠ **なぜ要るか。**⚠ 切り出しただけでは境界は保証されない。
@@ -2347,6 +2449,7 @@ export const CASES = [
   font:14px/1.65 -apple-system,sans-serif;color:var(--ink)}</style></head><body>
 ${dom}
 <script src="/esc.js"></script>
+<script src="/words.js"></script>
 <script src="/components/era-control/era-control.js"></script>
 <script>
   window.__ev = [];

@@ -2528,6 +2528,7 @@ head("6. 外部リンク");
   // ⚠ **知らない名前には何も返さない。**⚠ こちらで作らない（掟の一行目）
   if (W?.groundGloss?.("この区分は存在しない") !== "") fails.push("知らない区分名に説明を返している");
 
+
   // ⚠ **行と区分名の対応は words.js が持つ。**⚠ 画面に数えさせない
   if (W?.ground1Names) {
     const n2 = W.ground1Names("旧水部", "盛土地･埋立地"), l2 = W.ground1Lines("旧水部", "盛土地･埋立地");
@@ -2580,6 +2581,34 @@ head("6. 外部リンク");
     : ok(`区分名の補助説明は ${Object.keys(G).length} 区分ぶん揃っている`
        + `（landform.json の ${Object.keys(cls).length} 区分と一致／${LIMIT} 字以内／`
        + `原典の丸写しなし／互いに違う／呼ぶ側に写しなし）`);
+}
+
+// ⚠ **ものさしの目盛りに置く、短い年**（2026-08-22。hidetzu/konjaku#166。Owner 判断）。
+//   ⚠ **狭い幅では「1984–86」が 53px あり、9 段で 488px 要る**（実測 2026-08-22・12px）。
+//   ⚠ **入らないから間引く、はやらない**（間引くと「その年代は無い」と読まれる。掟 §1）。
+//   ⚠ **短くして全部出す。**⚠ だから、⚠ **短くする側が壊れると画面が嘘をつく。**
+// ⚠ **DOM 無しで確かめられる**（`.claude/rules/testing.md`: Domain の変換に代表ケースを持つ）。
+{
+  const W = globalThis.KonjakuWords;
+  const fails = [];
+  if (W?.eraTick) {
+    // ⚠ **字を書き写しているのではない。**⚠ 入れた字と出た字の関係だけを見ている
+    const cases = [["1984–86", "’84"], ["1936–42", "’36"], ["現在", "現在"], ["明治期", "明治期"],
+                   ["", ""], [null, ""], [undefined, ""], ["昭和のいつか", "昭和のいつか"]];
+    for (const [inp, want] of cases) {
+      const got = W.eraTick(inp);
+      if (got !== want) fails.push(`eraTick(${JSON.stringify(inp)}) が ${JSON.stringify(got)}（期待 ${JSON.stringify(want)}）`);
+    }
+    // ⚠ **短くしても、⚠ 別の年代と同じ字にならないこと**（⚠ 同じ字だと段が見分けられない）
+    const all = ["1987–90", "1984–86", "1979–83", "1974–78", "1961–69", "1955–60", "1945–50", "1936–42"];
+    const short = all.map((t) => W.eraTick(t));
+    if (new Set(short).size !== short.length)
+      fails.push(`短くすると同じ字になる年代がある: ${short.join("、")}`);
+  } else fails.push("words.js が eraTick を持っていない（この検査が何も見ていない）");
+
+  fails.length
+    ? bad(`ものさしの短い年が壊れている（${fails.length} 件）: ${fails.slice(0, 4).join(" / ")}`)
+    : ok("ものさしの短い年は、渡された字から取り出すだけ（知らない形はそのまま／段どうしが同じ字にならない）");
 }
 
 // 「いま画面に出ているもの」（台帳）は **public/prov.js の1か所**。

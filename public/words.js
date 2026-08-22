@@ -296,8 +296,24 @@
     bld: () => "⚠ 共有された建物は、この範囲では見つかりませんでした",
   };
 
+  // ⚠ **ものさしの目盛りに置く、短い年の書き方**（2026-08-22。hidetzu/konjaku#166。Owner 判断）。
+  //   ⚠ **狭い幅では「1984–86」が 53px あり、9 段を並べると 488px 要る**
+  //     （実測 2026-08-22・12px・375 の軸は 253px）。⚠ **どの幅にも入らない。**
+  //   ⚠ **入らないからといって間引かない。**⚠ 間引くと「出ていない年代は無い」と読まれる
+  //     （実測 2026-08-22・利用者役 3 名に画面だけを見せた。⚠ **実在の利用者ではない**。
+  //      ⚠ **2 / 3 が「名前が付いている年代しか見られないのかと思った」**）。
+  //   ⚠ **短くして、全部出す。**⚠ 棒の数と名前の数が同じなら、⚠ **欠けていると読まれない。**
+  // ⚠ **範囲（1984–86）を捨てるのではない。**⚠ 選べば、ものさしの上の大きい字が範囲を答える。
+  // ⚠ **年を作らない。**⚠ 渡された字から取り出すだけ（⚠ 段の字は `verify.js` が持つ）。
+  //   ⚠ 4 桁で始まらない字（「現在」「明治期」）は、⚠ **そのまま返す。**
+  const eraTick = (label) => {
+    const s = String(label ?? "");
+    const m = /^\d{2}(\d{2})/.exec(s);
+    return m ? `’${m[1]}` : s;
+  };
+
   g.KonjakuWords = { S, meiji, meijiBadge, GROUP, groupTitle, METHOD, EDGE, UNREAD, method, shareMiss,
                      PRIVACY_SHORT, photoSay,
                      LAYER_TITLE, layerTitle, ground1Lines, ground1Names, ground1Text,
-                     GROUND_GLOSS, groundGloss, ground1Speech };
+                     GROUND_GLOSS, groundGloss, ground1Speech, eraTick };
 })(typeof window === "undefined" ? globalThis : window);
