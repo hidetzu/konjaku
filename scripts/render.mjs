@@ -19,7 +19,13 @@ await import(new URL("../public/words.js", import.meta.url).href);
 const WORDS = globalThis.KonjakuWords;
 if (!WORDS) throw new Error("public/words.js を読み込めない（一覧行のタグを確かめられない）");
 
-const PORT = 8099;
+// ⚠ **ポートは env で変えられるようにする**（2026-08-22）。
+//   ⚠ 同じ機械で別のワークツリーが実描画を回していると、⚠ **8099 を先に取られる。**
+//   ⚠ そのとき serve.js は EADDRINUSE で死ぬが、⚠ **stdio を捨てているので気づけない。**
+//   ⚠ ブラウザは**相手のワークツリーの画面**を開き、⚠ **黙って別のものを測る。**
+//   ⚠ 実際に踏んだ（2026-08-22）: 相手は `main`、こちらは画面を変えた枝。
+//     ⚠ こちらの検査が 4 件落ち続け、⚠ **原因を自分の変更だと誤認しかけた。**
+const PORT = Number(process.env.KONJAKU_RENDER_PORT ?? 8099);
 const BASE = `http://127.0.0.1:${PORT}`;
 // ⚠ 隠しディレクトリ（`.` 始まり）にしない。
 //   `.artifacts/` に置いていたので actions/upload-artifact@v4 が既定で除外し、
@@ -8566,6 +8572,31 @@ const stop = () => server.kill();
 process.on("exit", stop);
 
 await new Promise((r) => setTimeout(r, 1200));
+
+// ⚠ **自分が立てたサーバに当たっているかを、測る前に確かめる。**
+//   ⚠ ポートを他人に取られていると、⚠ **相手の画面を黙って測ることになる**（上の PORT の注記）。
+//   ⚠ 突き合わせるのは `public/sw.js` の VERSION。⚠ **この枝の中身から作られる値**なので、
+//     ⚠ 別のワークツリーが配っていれば必ず食い違う。
+{
+  const local = await readFile(new URL("../public/sw.js", import.meta.url), "utf8");
+  const want = /const VERSION\s*=\s*"([^"]+)"/.exec(local)?.[1] ?? "";
+  let got = null, err = null;
+  try {
+    const r = await fetch(`${BASE}/sw.js`, { signal: AbortSignal.timeout(5000) });
+    got = /const VERSION\s*=\s*"([^"]+)"/.exec(await r.text())?.[1] ?? "";
+  } catch (e) { err = e.name; }
+  if (!want) {
+    console.log("\x1b[31m✗ public/sw.js の VERSION を読めない（測る相手を確かめられない）\x1b[0m");
+    process.exit(1);
+  }
+  if (got !== want) {
+    console.log(`\x1b[31m✗ ポート ${PORT} に居るのは、このワークツリーのサーバではない\x1b[0m`);
+    console.log(`\x1b[31m  配られている VERSION 「${got ?? err}」／ここの public/sw.js 「${want}」\x1b[0m`);
+    console.log(`\x1b[31m  ⚠ 別のワークツリーが実描画を回している可能性がある。\x1b[0m`);
+    console.log(`\x1b[31m  ⚠ KONJAKU_RENDER_PORT=8199 npm run render のように、ポートをずらして回す。\x1b[0m`);
+    process.exit(1);
+  }
+}
 await mkdir(OUT, { recursive: true });
 
 const browser = await chromium.launch();
