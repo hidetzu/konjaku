@@ -405,13 +405,23 @@ export const waitOpacity = async (page, sel, ok, timeout = 20000) => {
 //   ⚠ **前は `#status` の字を見ていた。**⚠ あそこは「建物 N 件を判定しました」を出す場所だった。
 //   ⚠ **Owner 判断で、⚠ 件数は「今建っている建物は？」の分母が言うことになり、
 //     ⚠ `#status` は取得に失敗したときだけ喋る**ようになった。
-//   ⚠ **待つ主張は変えていない**（⚠ **3 つ目の問いまで描けたこと**）。
-//     ⚠ `.prov-q[data-q="3"]` は `paintLand` が層を組み終えたときにだけ現れる。
-//   ⚠ **取得に失敗したときも進む**（⚠ `#status` にその名乗りが出る）。
+//   ⚠ **待つ主張は変えていない**（⚠ **3 つ目の問いが決着したこと**）。
+//   ⚠ **器の有無で待ってはいけない**（2026-08-23 に CI で踏んだ）。
+//     ⚠ `.prov-q[data-q="3"]` は、⚠ **建物がまだでも `paintLand` が作る**。
+//     ⚠ **手元は速いので実際には建物が揃っていたが、⚠ CI は遅いので追い越した**
+//       （⚠ 実測: 手元 162/162 緑 ／ ⚠ CI で 10 件が「建物が出ていない」で落ちた）。
+//   ⚠ **決着した = 答えが出た／出せない理由を言い切った。**
+//     ⚠ **「建物を取得しています」は途中**なので、⚠ ここでは待ち続ける。
+//   ⚠ **取得に失敗したときも進む**（⚠ 「取得できませんでした」が出る）。
 export const peelReady = (page) => page.waitForFunction(
-  () => !!document.querySelector('#landAll .prov-q[data-q="3"]')
-     || /ありません|読み込めませんでした|取得できませんでした/.test(
-          document.getElementById("status")?.textContent ?? ""),
+  () => {
+    const L = [...document.querySelectorAll("#landAll .land-layer")].at(-1);
+    const t = L?.textContent ?? "";
+    if (!t) return false;
+    if (/建物を取得しています|建物を取得中/.test(t)) return false;   // ⚠ まだ途中
+    return /件の建物が、この範囲にあります|0 件でした|判定できていません/.test(t)
+        || /取得できませんでした|まだ提供していません|読み込めませんでした/.test(t);
+  },
   null, { timeout: 60000 });
 
 // ⚠ **この 2 つは「何かが起きるのを待つ」ものではない。**
