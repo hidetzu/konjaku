@@ -18,7 +18,7 @@
 //   一度来た人に古い `/` と `/share.js` が出続けた。しかもローカルは初回訪問なので
 //   絶対に再現せず、CI も全部通る。流入を測り始める直前に一度踏みかけた。
 //   なぜハッシュにしたかの全文は scripts/sw-hash.mjs の頭にある。
-const VERSION = "konjaku-1ca71c6e";
+const VERSION = "konjaku-cfd4862d";
 // ⚠ addAll は1件でも 404 すると install ごと reject し、キャッシュが丸ごと死ぬ。
 //   この一覧を足し引きしたときも版は変わる（一覧そのものもハッシュの材料に入れてある）。
 const SHELL = [
@@ -34,6 +34,12 @@ const SHELL = [
   //   （esc.js と同じ性質。オフラインでも画面が成り立つための最小限）。
   //   ⚠ 68 KB の地図 CSS とは別物で、実測 1,650 バイト。
   "/css/tokens.css",
+  // ⚠ **EraControlPanel**（hidetzu/konjaku#171）。⚠ **来ないと /peel の年代 UI が出ない。**
+  //   ⚠ **動的キャッシュの規則は「直下の .js」しか一致しない**（下の RUNTIME を読む）。
+  //     ⚠ components の下は一致しないので、⚠ **ここに入れないと配られない**（オフラインで落ちる）。
+  //   ⚠ CSS も同じ。⚠ **ここに角かっこを書かない**（SHELL を読む正規表現が、そこで切れる。
+  //     実測 2026-08-22: 正規表現をコメントに書いたら landform.json が SHELL から消えて見えた）。
+  "/components/era-control/era-control.js", "/components/era-control/era-control.css",
   "/data/landform.json",
   // ⚠ 地図エンジン（1,032 KB）と CSS（68 KB）は SHELL に入れない。
   //   入れると、判定しか見ない人にも丸ごと乗る。Zenn 流入はほぼ全員が初回なので効く。
