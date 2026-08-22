@@ -1381,11 +1381,16 @@ export const CASES = [
       // 通常時は地表の行が「実測」を名乗ること。タイル到達の判定を入れた副作用で
       // ここが未取得のまま固まっていないかを見る（ms の後で測り、性能の数字は汚さない）
       await page.waitForFunction(
-        () => document.querySelector("#panel .prov-q .prov")?.className.includes("ok"),
+        () => [...document.querySelectorAll('#panel .prov-q[data-q="2"] .prov')]
+          .some((e) => /地表/.test(e.textContent ?? "") && e.className.includes("ok")),
         null, { timeout: 30000 });
       const msGround = Math.round(await page.evaluate(() => performance.now()));
-      const ground = await page.locator("#panel .prov-q .prov").first().textContent();
-      must(ground.includes("実測") && ground.includes("そのもの"),
+      // ⚠ **地表は第2層の材料**（2026-08-22）。⚠ **`.prov-q .prov` の最初は第1層。**
+      //   ⚠ **札（実測 / 未取得）は消した**（Owner 判断: ⚠ 色で伝わる）。⚠ **字で見る。**
+      const ground = await page.evaluate(() =>
+        [...document.querySelectorAll('#panel .prov-q[data-q="2"] .prov')]
+          .find((e) => /地表/.test(e.textContent ?? ""))?.textContent ?? "");
+      must(/そのもの/.test(ground) && /加工なし/.test(ground),
         `地表の実測表示が出ていない: ${ground.trim().slice(0, 40)}`);
       return `${hero.trim()} ／ 建物 ${bld} 件 ／ 水域 ${water} 面 ／ 年代 ${era.trim()}`
         + ` ／ Overpass 0 回 ／ 建物が揃うまで ${ms}ms ／ 地表タイル到達 ${msGround}ms`;
@@ -1501,12 +1506,21 @@ export const CASES = [
       const prov = await provText(page);
       must(!prov.includes("そのもの"),
         `地表が届いていないのに「実測」と言っている: ${prov.replace(/\s+/g, " ").slice(0, 60)}`);
-      // ⚠ **台帳は問いごとに配られた**（2026-08-22。⚠ `#prov` は無い）
-      const ground = await page.locator("#panel .prov-q .prov").first();
-      const cls = (await ground.getAttribute("class")) ?? "";
-      const txt = (await ground.textContent()).replace(/\s+/g, " ").trim();
+      // ⚠ **台帳は問いごとに配られた**（2026-08-22。⚠ `#prov` は無い）。
+      //   ⚠ **地表は第2層の材料。**⚠ **`.prov-q .prov` の最初は第1層（区分の出どころ）**
+      //     （⚠ 2026-08-23 に踏んだ。⚠ 「`prov ok`」を見て落ちた）。
+      const g = await page.evaluate(() => {
+        const e = [...document.querySelectorAll('#panel .prov-q[data-q="2"] .prov')]
+          .find((x) => /地表/.test(x.textContent ?? ""));
+        return e ? { cls: e.className, txt: (e.textContent ?? "").replace(/\s+/g, " ").trim() }
+                 : { cls: "", txt: "" };
+      });
+      const cls = g.cls, txt = g.txt;
+      must(txt, "地表の行が第2層に無い");
       must(cls.includes("no"), `地表の行が「取れていない」表示になっていない: ${cls} / ${txt}`);
-      must(txt.includes("未取得"), `未取得のバッジが出ていない: ${txt.slice(0, 50)}`);
+      // ⚠ **札（未取得 など）は消した**（2026-08-22。Owner 判断: ⚠ 色で伝わる）。
+      //   ⚠ **主張は「⚠ 取れなかったと分かること」。**⚠ **字で言っているかを見る。**
+      must(/届いていない/.test(txt), `取れなかったことを字で言っていない: ${txt.slice(0, 60)}`);
       // 断定もしない。届かなかっただけで、その年代の写真の有無は分かっていない
       const lie = LIES.find((w) => txt.includes(w));
       must(!lie, `届いていないだけなのに「${lie}」と断定している: ${txt.slice(0, 50)}`);
@@ -2219,8 +2233,14 @@ export const CASES = [
       await page.$eval("#t", (e, v) => { e.value = String(v);
         e.dispatchEvent(new Event("input")); }, k * 100);
       await page.waitForTimeout(1200);
-      const ground = (await page.locator("#panel .prov-q .prov").first().textContent()).replace(/\s+/g, " ").trim();
-      must(ground.includes("未取得"), `読めなかった年代が「未取得」になっていない: ${ground.slice(0, 60)}`);
+      // ⚠ **地表は第2層の材料**（2026-08-22）。⚠ **`.prov-q .prov` の最初は第1層。**
+      //   ⚠ **札（実測 / 未取得）は消した**（Owner 判断: ⚠ 色で伝わる）。⚠ **字で見る。**
+      const ground = (await page.evaluate(() =>
+        [...document.querySelectorAll('#panel .prov-q[data-q="2"] .prov')]
+          .find((e) => /地表/.test(e.textContent ?? ""))?.textContent ?? ""))
+        .replace(/\s+/g, " ").trim();
+      must(/届いていない/.test(ground),
+        `読めなかった年代を、⚠ 取れなかったと言っていない: ${ground.slice(0, 60)}`);
       const lie = LIES.find((w) => ground.includes(w));
       must(!lie, `届いていないだけなのに「${lie}」と断定している: ${ground.slice(0, 60)}`);
       return `${labels.length} 段（${labels.join("/")}）／404と白紙は消え、500と通信断は残る`;
