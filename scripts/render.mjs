@@ -8686,23 +8686,22 @@ if (failed) { console.log(`\x1b[31m${failed} / ${RUN.length} 件が失敗\x1b[0m
 //   実測（2026-08-19）: 検査を足したのに SPEC が古いまま緑で出た。
 // ⚠ `--only` のときは見ない（回した数と全件が違うのは、そう指示したから）。
 if (!ONLY) {
-  const spec = await readFile(new URL("../docs/SPEC.md", import.meta.url), "utf8").catch(() => "");
-  const want = { "実描画": CASES.length,
-                 "--group=core": CASES.filter((c) => c.dep !== "search").length,
-                 "--group=search": CASES.filter((c) => c.dep === "search").length };
-  const gap = [];
-  for (const [lab, n] of Object.entries(want)) {
-    const after = (spec.split("\n").find((l) => l.includes(lab)) ?? "");
-    const m = /\*\*(\d+)件\*\*/.exec(after.slice(after.indexOf(lab) + lab.length));
-    if (!m) gap.push(`${lab}: SPEC に件数が無い`);
-    else if (Number(m[1]) !== n) gap.push(`${lab}: SPEC は ${m[1]}件・実際は ${n}件`);
-  }
-  if (gap.length) {
-    console.log(`\x1b[31m✗ docs/SPEC.md の件数が実際と違う: ${gap.join(" ／ ")}\x1b[0m`);
-    console.log(`\x1b[31m  （検査を足したら SPEC も直す。文書は誰も実行しないので気づけない）\x1b[0m`);
+  const core = CASES.filter((c) => c.dep !== "search").length;
+  const search = CASES.filter((c) => c.dep === "search").length;
+  // ⚠ **`docs/SPEC.md` に件数を書かない**（2026-08-22。hidetzu/konjaku#184。Owner 判断）。
+  //   ⚠ **前は「SPEC の件数 == 実際の数」を見ていた。**⚠ 主張は正しかったが、
+  //     ⚠ **検査を 1 件足すたびに人が同じ行を書き換える**ことになり、
+  //     ⚠ **良い変更を並行して 2 本走らせると必ず競合した**（2026-08-22 に同じ日で 3 回）。
+  //   ⚠ **競合中は CI が走らない**ので、⚠ 「CI が出ない」という形で詰まる。
+  // ⚠ **数が読めなくなったわけではない。**⚠ **ここで必ず名乗る。**⚠ この出力が正。
+  // ⚠ **書き戻されていないこと**は静的検査が見る（⚠ 書くと落ちる）。
+  // ⚠ **0 件で緑にしない**（⚠ 1 件も走っていないのに「描画できた」と言わない）。
+  if (!CASES.length) {
+    console.log(`\x1b[31m✗ 実描画のケースが 1 件も無い（この検査が何も見ていない）\x1b[0m`);
     process.exit(1);
   }
-  console.log(`\x1b[32m✓ docs/SPEC.md の件数と合っている（実描画 ${CASES.length} / core ${want["--group=core"]} / search ${want["--group=search"]}）\x1b[0m`);
+  console.log(`\x1b[32m✓ 数えた（実描画 ${CASES.length} / core ${core} / search ${search}）`
+    + `。⚠ この数が正。⚠ docs/SPEC.md には書かない\x1b[0m`);
 }
 // ⚠ 回していないケースを「描画できた」と言わない（--only のとき）
 console.log(ONLY

@@ -4594,40 +4594,24 @@ head("9. 画面の言葉");
     }
   }
 
-  // ⚠ **検査の件数が、本当に数字になっているか。**
+  // ⚠ **空の強調が残っていないか。**
   //   実測（2026-08-18）: SPEC の「静的 **N件**」が **`****`** になったまま main へ出た。
   //   置換に使ったシェル変数が空に展開されて、数字が消えていた。
   //   ⚠ **文書は誰も実行しないので、壊れても誰も気づかない。**（一度出した）
-  // ⚠ 中身の正しさ（本当に N 件か）はここでは見ない。**空と 0 だけ**を見る。
-  //   ⚠ 最初は「（静的 …）」の形だけを見ていて、`--group=core`（**0件**…）を
-  //     取りこぼした（あちらは名前が括弧の**外**にある）。名前の場所で分けない。
+  // ⚠ **2026-08-22 に、⚠ 件数そのものを SPEC から外した**（hidetzu/konjaku#184。Owner 判断）。
+  //   ⚠ **「4 つとも数字で書かれているか」は、⚠ もう見ない**（⚠ 書かないと決めたので、主張が反転した）。
+  //   ⚠ **書いてあったら落とすほう**は、上の「件数が書かれていない」検査が見る。
+  //   ⚠ **ここに残すのは、⚠ 空の強調そのもの**（⚠ 件数に限らず、⚠ 置換の失敗は今後も起こりうる）。
   {
     const spec = await readFile(join(ROOT, "docs", "SPEC.md"), "utf8").catch(() => "");
-    const holes = [];
-    if (!spec) holes.push("docs/SPEC.md を読めない");
+    if (!spec) bad("docs/SPEC.md を読めない");
     else {
-      if (/\*\*\s*\*\*/.test(spec)) holes.push(`空の強調が ${[...spec.matchAll(/\*\*\s*\*\*/g)].length} 箇所`);
-      // 検査の件数を名乗っている所を、名前の位置に関係なく拾う
-      const LABELS = ["静的", "実描画", "--group=core", "--group=search"];
-      for (const line of spec.split("\n")) {
-        for (const lab of LABELS) {
-          if (!line.includes(lab)) continue;
-          // その名前の**後ろ**にある最初の「**N件**」を見る
-          const after = line.slice(line.indexOf(lab) + lab.length);
-          const m = /\*\*(\d+)件\*\*/.exec(after);
-          if (!m) { if (/件/.test(after)) holes.push(`${lab}: 件数が **N件** の形で書かれていない`); continue; }
-          if (Number(m[1]) === 0) holes.push(`${lab}: 0件`);
-        }
-      }
-      // ⚠ 4 つとも名乗っていること（行ごと消えても気づけるように）
-      for (const lab of LABELS)
-        if (!new RegExp(`${lab.replace(/[-]/g, "\\-")}[^\\n]*\\*\\*\\d+件\\*\\*`).test(spec))
-          holes.push(`${lab} の件数が書かれていない`);
+      const empty = [...spec.matchAll(/\*\*\s*\*\*/g)].length;
+      empty
+        ? bad(`docs/SPEC.md に空の強調が ${empty} 箇所ある`
+            + "（置換に失敗しても、文書は誰も実行しないので気づけない）")
+        : ok("docs/SPEC.md に空の強調は無い");
     }
-    holes.length
-      ? bad(`docs/SPEC.md の検査の件数が壊れている: ${[...new Set(holes)].join("、")}`
-          + `（置換に失敗しても、文書は誰も実行しないので気づけない）`)
-      : ok(`docs/SPEC.md の検査の件数は、4 つとも数字で書かれている`);
   }
 
   // ⚠ **「まだ提供していない」の文を、画面の各所が書き写していないか。**
@@ -4835,17 +4819,28 @@ head("9. 画面の言葉");
 //   `--links-new` をもう一度回しており、そちらが **153 件**で落ちた。
 //   ⚠ **黙って飛ばさない。**数えなかったことを、その場で名乗る。
 {
+  // ⚠ **`docs/SPEC.md` に検査の件数を書かない**（2026-08-22。hidetzu/konjaku#184。Owner 判断）。
+  //   ⚠ **前は「SPEC の件数 == 実際の数」を見ていた。**⚠ その主張自体は正しかったが、
+  //     ⚠ **検査を 1 件足すたびに人が同じ行を書き換える**ことになり、
+  //     ⚠ **良い変更を並行して 2 本走らせると必ず競合した**（2026-08-22 に同じ日で 3 回）。
+  //   ⚠ **競合中は CI が走らない**ので、⚠ 「CI が出ない」という形で詰まる。
+  // ⚠ **守るものを置き換えた。**⚠ 「直し忘れ」は、⚠ **書く場所を無くせば起きない。**
+  //   ⚠ 代わりに ⚠ **書き戻したら落ちる**ことと、⚠ **0 件で緑にしない**ことを見る。
+  // ⚠ **走った数は、この下で必ず名乗る**（⚠ 数が読めなくなったわけではない）。
   const spec = await readFile(join(ROOT, "docs", "SPEC.md"), "utf8").catch(() => "");
-  const m = /静的[^\n]*?\*\*(\d+)件\*\*/.exec(spec);
+  const back = [/静的[^\n]*?\*\*\d+件\*\*/, /実描画[^\n]*?\*\*\d+件\*\*/,
+                /--group=(core|search)`?（\*\*\d+件\*\*/]
+    .filter((re) => re.test(spec));
+  back.length
+    ? bad(`docs/SPEC.md に検査の件数が書かれている（${back.length} か所）`
+        + "。⚠ 件数は走者が出力する。⚠ 書くと、⚠ **並行作業で必ず競合する**")
+    : ok("docs/SPEC.md に検査の件数が書かれていない（⚠ 数は走らせて数える）");
+  // ⚠ **0 件で緑にしない。**⚠ 1 件も走っていないのに「問題なし」と言わない
+  //   （⚠ 以前は SPEC との突き合わせが、⚠ 偶然この役目も果たしていた）。
   const mine = passed + 1;
-  const how = CHECK_LINKS ? "--links" : NEW_LINKS !== null ? "--links-new" : null;
-  if (how) ok(`docs/SPEC.md の件数とは突き合わせていない（${how} 付きは、その指定でしか`
-    + `走らない検査があるぶん多くなる。素の \`node scripts/check.mjs\` が見る）`);
-  else if (!m) bad("docs/SPEC.md に「静的 **N件**」が無い（この検査が何も見ていない）");
-  else if (Number(m[1]) !== mine)
-    bad(`docs/SPEC.md の静的検査が ${m[1]}件 と名乗っているが、実際は ${mine}件`
-      + `（検査を足したら SPEC も直す。⚠ 実描画の件数は render.mjs 側が見る）`);
-  else ok(`docs/SPEC.md の「静的 ${mine}件」は、実際に数えた ✓ の数と合っている`);
+  mine > 1
+    ? ok(`静的検査は ${mine} 件を数えた（⚠ この数が正。⚠ SPEC には書かない）`)
+    : bad(`静的検査が ${mine} 件しか走っていない（⚠ 1 件も確かめていないので緑にしない）`);
 }
 
 console.log(`\n${"─".repeat(52)}`);
