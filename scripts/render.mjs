@@ -222,10 +222,14 @@ const PHOTO_ROUTE = "**://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/**";
 // ⚠ 白い画像をファイルとして置かない。fixture を置くと「画素を実際に読んで判定する」
 //   という主張が、置いた画像に対する主張に化ける（CLAUDE.md の懸念そのもの）。
 //   ここで組み立てて、page.route の応答にだけ使う。
-const whitePng = (size = 256) => {
+const pngOf = (size, fill, speckle = false) => {
   const stride = size * 3 + 1;                 // 1行 = フィルタ種別1バイト + RGB
   const raw = Buffer.alloc(stride * size);
-  for (let y = 0; y < size; y++) raw.fill(0xff, y * stride + 1, (y + 1) * stride);
+  for (let y = 0; y < size; y++) raw.fill(fill, y * stride + 1, (y + 1) * stride);
+  // ⚠ **むらを入れる**（`speckle`）。⚠ 画面は「平ら＆真っ白」を撮影範囲外と読むので、
+  //   ⚠ **写真のつもりの絵には、⚠ ばらつきが要る**（判定の規則は `public/verify.js`）。
+  if (speckle) for (let y = 0; y < size; y++)
+    for (let x = (y % 3); x < size; x += 3) raw[y * stride + 1 + x * 3] = fill ^ 0x30;
   const T = (() => { const t = []; for (let n = 0; n < 256; n++) {
     let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; }
     return t; })();
@@ -243,7 +247,30 @@ const whitePng = (size = 256) => {
   return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
     chunk("IHDR", ihdr), chunk("IDAT", deflateSync(raw)), chunk("IEND", Buffer.alloc(0))]);
 };
+// ⚠ **真っ白＝撮影範囲外**。⚠ **この意味で使う所が既にある。⚠ 中身を変えない。**
+const whitePng = (size = 256) => pngOf(size, 0xff);
+// ⚠ **「写真がある」と読まれる絵**（2026-08-22。hidetzu/konjaku#191）。
+//   ⚠ **画面は `mean > 250 かつ ばらつき < 1` を撮影範囲外と読む**（`public/verify.js`）。
+//   ⚠ **白を返すと、⚠ アプリ自身がその年代を段から落とす。**
+//   ⚠ **実際に踏んだ（2026-08-22）**: 白で塞いだら、⚠ 豊洲の帯が **9 段 → 3 段**になり、
+//     ⚠ **検査は落ちずに通った**（⚠ 3 段の帯で「押せる」を見ていた）。
+const photoPng = (size = 256) => pngOf(size, 0x80, true);
 const eraRoute = (id) => `**://cyberjapandata.gsi.go.jp/xyz/${id}/**`;
+
+// ⚠ **地図の絵だけ白で返す**（2026-08-22。hidetzu/konjaku#191）。
+//   ⚠ **使ってよいのは「絵が本当に届くか」が主題でないケースだけ。**
+//     ⚠ **押せるか・並び・重なり・見えているか**を見るケースが対象。
+//   ⚠ **届くこと自体を見るケースには使わない**（⚠ 使うと、⚠ その検査は何も確かめなくなる）。
+//   ⚠ **判定は 1 つも変えない。**⚠ 減るのは外への本数だけ。
+//   ⚠ **fixture のファイルは置かない**（置くと「画素を読んで判定する」という主張が
+//     ⚠ 置いた絵の話にすり替わる）。
+// ⚠ **実測（2026-08-22・手元）**: これを当てたケースで 1151 → 415 本（−64%）。
+const ERA_TILE_IDS = ["gazo1", "gazo2", "gazo3", "gazo4", "ort_riku10", "ort_old10", "ort"];
+const stubMapPictures = async (page) => {
+  const pic = (r) => r.fulfill({ status: 200, contentType: "image/png", body: photoPng() });
+  await page.route(PHOTO_ROUTE, pic);
+  for (const id of ERA_TILE_IDS) await page.route(eraRoute(id), pic);
+};
 
 // 段が**確定する**まで待つ。
 // ⚠ `/peel` は写真の判定を待つあいだ、いったん全 9 段を仮に出す
@@ -386,8 +413,9 @@ const CASES = [
     // ⚠ **4 幅すべてで見る。**⚠ 実測（2026-08-22・1280×800・豊洲）: 狭い幅の規則がこの画面の既定なので、
     //   ⚠ **PC で打ち消し忘れて `#notice` が 0×0 になった**（字は入っているのに display:none）。
     //   ⚠ **幅を 1 つでも抜くと、この落ち方を見逃す。**
+    // ⚠ **主題は「どこに出ているか」**であって、⚠ **絵が届くかではない**（hidetzu/konjaku#191）。
     name: "補足は HUD の外に出ており、どの幅でも読める", path: `/peel?${TOYOSU}`,
-    viewport: { width: 375, height: 667 }, hasTouch: true,
+    viewport: { width: 375, height: 667 }, hasTouch: true, setup: stubMapPictures,
     async check(page) {
       await page.waitForFunction(
         () => (document.getElementById("est")?.textContent ?? "").trim().length > 0,
@@ -677,8 +705,9 @@ const CASES = [
     //   ⚠ だから ⚠ **データの話より前**に置き、⚠ 名前も「建物の足元判定」にした。
     // ⚠ **実測（2026-08-22・前の並び）**: 内訳が 375px で y=830 ＝ ⚠ **画面の外**（8 通り中 6 通り）。
     //   ⚠ 並べ替えで 4 幅とも画面内に入った。⚠ **この検査は、その並びを固定する。**
+    // ⚠ **主題は「並び」**であって、⚠ **絵が届くかではない**（hidetzu/konjaku#191）。
     name: "パネルは 答え → 建物の足元判定 → 使用しているデータ の順", path: `/peel?${TOYOSU}`,
-    viewport: { width: 375, height: 667 }, hasTouch: true,
+    viewport: { width: 375, height: 667 }, hasTouch: true, setup: stubMapPictures,
     async check(page) {
       await page.waitForFunction(() => /件を判定しました/.test(document.body.innerText),
         null, { timeout: 60000 });
@@ -5849,11 +5878,10 @@ const CASES = [
     path: `/peel?${TOYOSU}`, group: "core",
     setup: async (page) => {
       await page.emulateMedia({ reducedMotion: "reduce" });
-      await page.route(PHOTO_ROUTE, (r) => r.fulfill({
-        status: 200, contentType: "image/png", body: whitePng() }));
-      for (const id of ["gazo1", "gazo2", "gazo3", "gazo4", "ort_riku10", "ort_old10", "ort"])
-        await page.route(eraRoute(id), (r) => r.fulfill({
-          status: 200, contentType: "image/png", body: whitePng() }));
+      // ⚠ **白で塞いでいた**（hidetzu/konjaku#195）。⚠ **それは間違いだった**（2026-08-22 に気づいた）:
+      //   ⚠ **画面は真っ白なタイルを「撮影範囲の外」と読む**ので、⚠ **その年代が段から消える。**
+      //   ⚠ **豊洲の帯が 9 段 → 3 段になっていた**（⚠ 検査は落ちずに通っていた）。
+      await stubMapPictures(page);
     },
     async check(page) {
       const cam = () => page.evaluate(() => {
@@ -5900,11 +5928,9 @@ const CASES = [
     setup: async (page) => {
       await page.emulateMedia({ reducedMotion: "no-preference" });
       // ⚠ **写真のタイルだけ**。⚠ 低湿地・標高・建物は生かす（⚠ 画面が成立しなくなる）
-      await page.route(PHOTO_ROUTE, (r) => r.fulfill({
-        status: 200, contentType: "image/png", body: whitePng() }));
-      for (const id of ["gazo1", "gazo2", "gazo3", "gazo4", "ort_riku10", "ort_old10", "ort"])
-        await page.route(eraRoute(id), (r) => r.fulfill({
-          status: 200, contentType: "image/png", body: whitePng() }));
+      // ⚠ **白で塞いでいた**（hidetzu/konjaku#195）。⚠ **同じ理由で、⚠ 写真のつもりの絵に変えた。**
+      //   ⚠ **段が減ると、⚠ 再生そのものが短くなる**（⚠ 速くなった一因はこれだった）。
+      await stubMapPictures(page);
     },
     async check(page) {
       const cam = () => page.evaluate(() => {
@@ -6604,6 +6630,10 @@ const CASES = [
     // ⚠ 段を削って詰めるだけでは駄目。建物が消える年（tFromYear）・水位・建物のフェードは
     //   **時間座標**で決まっている。広島で 2 段抜いたぶんを詰めると、
     //   同じ 1945–50 の地面の上で、建物の消え方と水位が豊洲と変わってしまう。
+    // ⚠ **ここは絵を差し替えない**（2026-08-22。hidetzu/konjaku#191）。
+    //   ⚠ **段に何が並ぶか**が主題で、⚠ **それは実際のタイルの中身で決まる**
+    //     （`public/verify.js`。⚠ 撮影範囲の外は真っ白なので、⚠ その年代は段に出ない）。
+    //   ⚠ **差し替えると、⚠ 広島に無いはずの年代まで段に並ぶ。**⚠ 主張がすり替わる。
     name: "段を間引いても、時間座標が詰まらない（広島 と 豊洲）",
     path: `/peel?ll=34.39500,132.45500&q=%E5%BA%83%E5%B3%B6`,
     async check(page) {
@@ -6638,8 +6668,9 @@ const CASES = [
     //   **横棒が残る PC だけの問題**になった。
     //   ⚠ 狭い幅の同じ主張（端の段を選べる）は
     //     「狭い幅の年代は、指で回して選べて、いまどこかが分かる」が見ている。
+    // ⚠ **主題は「押した先の段」**であって、⚠ **絵が届くかではない**（hidetzu/konjaku#191）。
     name: "年代帯の端の文字を押すと最後の段になる（PC の横棒）", path: `/peel?${TOYOSU}`,
-    viewport: { width: 1280, height: 800 },
+    viewport: { width: 1280, height: 800 }, setup: stubMapPictures,
     async check(page) {
       await peelReady(page);
       // ⚠ 「目盛りが2つ以上ある」では足りない。仮の段でも満たすので、
@@ -6680,8 +6711,9 @@ const CASES = [
     // ⚠ **PC 幅で見る**（2026-08-18 に移した）。狭い幅は横ドラムロールに替えたので、
     //   「同じ的の上で、押す（段へ寄る）と引く（連続して動く）が両立する」は
     //   **横棒が残る PC だけの主張**になった。
+    // ⚠ **主題は「押した／引いたときの動き」**であって、⚠ **絵が届くかではない**（hidetzu/konjaku#191）。
     name: "年代帯の文字は、押せば段へ寄り、引けば連続して動く（PC の横棒）", path: `/peel?${TOYOSU}`,
-    viewport: { width: 1280, height: 800 },
+    viewport: { width: 1280, height: 800 }, setup: stubMapPictures,
     async check(page) {
       await peelReady(page);
       // 同じ穴を残さない。仮の段の上で座標を測ると、組み直しで的がずれる
@@ -6807,8 +6839,10 @@ const CASES = [
     //   ⚠ **Owner が「土地の答えは HUD では見せない」と決めた**（2026-08-21）。
     //   ⚠ **守りたいことは同じ**: ⚠ **答えと分母が、⚠ 読める形でそろっていること。**
     //     ⚠ 変わったのは**何手で届くか**。⚠ 測り直し: ⚠ **☰ を 1 回押すだけ**（⚠ スクロール 0）。
+    // ⚠ **主題は「1 手で読めるか」**であって、⚠ **絵が届くかではない**（hidetzu/konjaku#191）。
     name: "スマホで ☰ を 1 回押すと、土地の答えと分母が読める",
     path: `/peel?${TOYOSU}`, viewport: { width: 375, height: 667 }, hasTouch: true,
+    setup: stubMapPictures,
     async check(page) {
       // ⚠ **内陸を入れておく。** 下の hasCategory（区分名が主見出し）の分岐は
       //   前から書いてあったが、ここが埋立・デルタの3地点しか回していなかったので
@@ -7300,8 +7334,10 @@ const CASES = [
     //   **横棒が残る PC だけの主張**になった。狭い幅は横ドラムロールに替わり、
     //   同じ主張（段が押せる・回せる）は
     //   「狭い幅の年代は、指で回して選べて、いまどこかが分かる」が見ている。
+    // ⚠ **主題は「押せるか」**であって、⚠ **絵が届くかではない**（hidetzu/konjaku#191）。
+    //   ⚠ **外へいちばん出ていたケース**（実測 2026-08-22・手元: 710 本）。
     name: "年代の帯は、目盛りも文字もノブも押せる（PC の横棒）", path: `/peel?${TOYOSU}`,
-    viewport: { width: 1280, height: 800 },
+    viewport: { width: 1280, height: 800 }, setup: stubMapPictures,
     async check(page) {
       await page.waitForFunction(() => /件を判定しました/.test(document.body.innerText),
         null, { timeout: 60000 });
@@ -8710,7 +8746,20 @@ async function runCase(c, attempt) {
       console.log(`      [FAIL] +${((Date.now()-t0)/1000).toFixed(1)}s ${r.failure()?.errorText} ${c.name}`); });
   }
   // 「実行時に外部へ出ていないこと」を検査できるように、出た先を全部控える
+  // ⚠ **これは「出そうとした先」。**⚠ **`page.route` で手元で返したものも 1 本と数える。**
+  //   ⚠ **検査の主張はこれでよい**（「アプリが叩こうとしたか」を見ているため）。
   page.on("request", (r) => reqs.push(r.url()));
+  // ⚠ **本当に外へ出た本数は、⚠ 別に数える**（2026-08-22。hidetzu/konjaku#191）。
+  //   ⚠ **実際に踏んだ**: 塞いだケースの「外へ」が減って見えたが、⚠ **減っていたのは
+  //     「出そうとした数」**で、⚠ **手元で返した分まで数えていた。**
+  //   ⚠ **差し替えた応答には接続先が無い**（`serverAddr()` が `null`）。⚠ ここで分ける。
+  //   ⚠ **中断した要求は応答が来ない**ので、⚠ そもそも数に入らない。
+  const sentOut = [];
+  page.on("response", (res) => {
+    const u = res.url();
+    if (!OUTSIDE(u)) return;
+    sentOut.push(res.serverAddr().then((a) => (a ? u : null)).catch(() => null));
+  });
   // ⚠ **ここから測る**（⚠ ページを開く前。⚠ 仕込みの時間も込みで見る）
   const tCase = Date.now();
 
@@ -8723,9 +8772,11 @@ async function runCase(c, attempt) {
     if (errors.length) throw new Error(`JSエラー: ${errors[0]}`);
     console.log(`  \x1b[32m✓\x1b[0m ${c.name} — ${detail}${attempt > 1 ? " \x1b[33m（再試行で通過）\x1b[0m" : ""}`);
     // ⚠ **通ったケースだけ数える**（⚠ 落ちたものは時間の意味が違う）
+    // ⚠ **「出そうとした数」と「本当に出た数」を、⚠ 分けて持つ。**
+    const sent = (await Promise.all(sentOut)).filter(Boolean);
     measured.push({ name: c.name, ms: Date.now() - tCase,
-      out: reqs.filter(OUTSIDE).length,
-      hosts: [...new Set(reqs.filter(OUTSIDE).map((u) => { try { return new URL(u).host; } catch { return "?"; } }))] });
+      tried: reqs.filter(OUTSIDE).length, out: sent.length,
+      hosts: [...new Set(sent.map((u) => { try { return new URL(u).host; } catch { return "?"; } }))] });
     // ⚠ **印と実際の通信を突き合わせる。** 印が古くなると、再試行も切り分けも効かなくなる。
     //   ⚠ 応答を差し替えているケースでも request は出るので、これは
     //     「印が付いているのに一度も検索しない」ほうだけを見る（片方向）。
@@ -8801,6 +8852,14 @@ if (measured.length) {
     console.log(`  ⚠ 合計 ${(lost / 1000).toFixed(1)}s を待って、⚠ 届かなかった`
       + `（⚠ **相手が止まりうるのか、⚠ こちらが消えたものを待っているのか**を見る）`);
   }
+  // ⚠ **本数の順でも出す**（2026-08-22）。⚠ **時間の順だけでは、⚠ 外への出方が見えない。**
+  //   ⚠ **時間と本数は比例しない**（実測: 699 本で 9.1s ／ 0 本で 10.1s）。
+  //   ⚠ **減らす先を選ぶには、⚠ 本数の物差しが要る。**
+  console.log(`\n\x1b[1m外へ多い順（上位 10）\x1b[0m`);
+  console.log(`  ⚠ **本当に外へ出た本数**（⚠ かっこ内は「出そうとした数」。⚠ 差し替えた分を含む）`);
+  for (const m of [...measured].sort((a, b) => b.out - a.out).slice(0, 10))
+    console.log(`  ${String(m.out).padStart(5)} 本（試み ${String(m.tried).padStart(4)}）`
+      + `  ${(m.ms / 1000).toFixed(1).padStart(6)}s  ${m.name.slice(0, 40)}`);
   console.log(`\n\x1b[1m外部への出方\x1b[0m`);
   console.log(`  外へ出たケース: ${outside.length} / ${measured.length} 件`
     + `（⚠ **出ていないのは ${measured.length - outside.length} 件**）`);
