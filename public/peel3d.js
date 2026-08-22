@@ -1355,7 +1355,8 @@ const setPos = (v) => { pos = Math.max(0, Math.min(Math.max(0, steps.length - 1)
 //   ⚠ 「← 今昔へ」「✕ 地図へ」は帯に出ているので閉じない（戻る手段は常に残す）。
 // ⚠ **panelOpen を直に読まない。**この関数は宣言より前に呼ばれる。
 //   ⚠ 2026-08-19 に TDZ で 2 回踏んだ。**クラスから読む**（DOM は初期化順に依らない）。
-const fullRead = () => narrow() && !panel.classList.contains("hide");
+// ⚠ **「広げて読んでいる」＝ `.open`**（2026-08-22。⚠ 小さい状態は地図を隠さない）。
+const fullRead = () => narrow() && panel.classList.contains("open");
 function sealOldControls(){
   const full = fullRead();
   const seal=(el,off)=>{ if(!el) return;
@@ -1784,14 +1785,26 @@ let panelOpen = !isNarrow;              // スマホでは主役（3Dの絵）�
 //   ⚠ 前は「⚠ `.hide` を外すのと `#land` を描くのを同じ同期処理でやる」必要があった
 //     （⚠ HUD が表示責務を引き継ぐ瞬間に空白を見せないため）。
 //   ⚠ **土地の答えはパネルの 1 か所だけになったので、⚠ 引き継ぎそのものが無い。**
-const setPanelHidden = (hidden) => { panel.classList.toggle("hide", hidden); };
+// ⚠ **パネルは常に出す。⚠ 小さくできるだけ**（2026-08-22。Owner 判断）。
+//   ⚠ **前は `.hide`（透明・押せない）で、⚠ スマホでは ☰ を押すまで何も読めなかった。**
+//   ⚠ **`.open` が「広げた」。**⚠ 既定は小さい状態（地名 ＋ 3 つの問いの答え 1 行ずつ）。
+//   ⚠ **再生中は小さくする**（⚠ 絵を見せる操作なので、⚠ 板で覆わない）。
+const setPanelHidden = (hidden) => { panel.classList.toggle("open", !hidden); };
 const applyPanel = () => { setPanelHidden(!panelOpen);
-  // ⚠ 全画面で読むあいだ、地図側の操作を閉じる／戻す
-  if(typeof sealOldControls==="function") sealOldControls(); };
+  // ⚠ 広げているあいだ、地図側の操作を閉じる／戻す
+  if(typeof sealOldControls==="function") sealOldControls();
+  // ⚠ **押す前に、⚠ 何が起きるかを名乗る**（`aria-expanded` も合わせる）。
+  if(toggle){
+    toggle.setAttribute("aria-expanded", String(panelOpen));
+    toggle.innerHTML = panelOpen ? '▴ <span>小さくする</span>' : '▾ <span>広げる</span>';
+    toggle.title = panelOpen ? "パネルを小さくする" : "パネルを広げる";
+  } };
 function setChrome(playing){ setPanelHidden(playing || !panelOpen); }
 const openPanel  = () => { panelOpen = true;  applyPanel(); };
 const closePanel = () => { panelOpen = false; applyPanel(); };
 document.getElementById("closePanel").onclick = closePanel;
+// ⚠ **同じ的で、広げる／小さくする**（2026-08-22）。⚠ 押しても何も起きない状態を作らない。
+toggle.onclick = () => { panelOpen ? closePanel() : openPanel(); };
 applyPanel();
 function stop(){ if(raf)cancelAnimationFrame(raf); raf=null;
   playingNow=false; syncEra(); setChrome(false); }
@@ -1831,7 +1844,7 @@ function togglePlay(){
   };
   raf=requestAnimationFrame(step);
 }
-toggle.onclick=openPanel;
+// ⚠ **`toggle.onclick` は applyPanel の隣で束ねた**（2026-08-22。⚠ 2 か所に持たない）。
 addEventListener("keydown",(e)=>{
   // ⚠ 以前は「検索欄に入力中は除く」を見ていた。検索欄を外した（2026-08-18）ので、
   //   入力中の要素そのもので見る。⚠ 「入力欄が無いから素通しでよい」にしない。

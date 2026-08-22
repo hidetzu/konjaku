@@ -4208,8 +4208,10 @@ head("9. 画面の言葉");
     const bad7 = [];
     const PJ = seen["peel3d.js"] ?? "";
     if (!PJ) bad7.push("peel3d.js を読めていない（この検査が何も見ていない）");
-    // ⚠ **入口が 1 か所**
-    const toggles = (PJ.match(/classList\.toggle\(\s*"hide"/g) ?? []).length;
+    // ⚠ **入口が 1 か所**（2026-08-22: ⚠ **`.hide` → `.open` に変わった**）。
+    //   ⚠ **パネルは常に出す。⚠ 小さくできるだけ**（Owner 判断）。
+    //   ⚠ **見ている主張は変えていない**（⚠ 状態を切り替える場所が 1 つであること）。
+    const toggles = (PJ.match(/classList\.toggle\(\s*"open"/g) ?? []).length;
     if (toggles !== 1)
       bad7.push(`.hide を切り替えている箇所が ${toggles} 個ある（1 か所へまとめる。`
         + `⚠ ✕ と ▶ の両方が通る）`);
