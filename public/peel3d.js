@@ -1004,6 +1004,9 @@ const WORD = {
         : why === "outside" ? "建物は出ていますが、1 件ずつの足元は判定できていません"
         : why === "loading" ? "建物を取得しています"
         : why === "fail" ? "建物を取得できませんでした"
+        // ⚠ **読めた結果としての 0 件**（2026-08-23）。⚠ **「無い」と言い切らない**
+        //   （⚠ 断りは材料の行が言う: ⚠ 「OSM に登録が無いだけで、現地に建物が無いとは限らない」）。
+        : why === "zero" ? "OSM に登録された建物は 0 件でした"
                             : KonjakuProv.NOTYET),
 };
 
@@ -1113,6 +1116,10 @@ function layersOf(area, lf){
   //   ⚠ **問いが消えると「その問いは無い」に読まれる**（掟 §1。
   //     ⚠ 静岡の見出しを消さないと決めたのと同じ理由。⚠ 利用者役 2/3 がそう読んだ）。
   //   ⚠ **取得中は、⚠ 取得中だと分かるようにする**（⚠ 黙って空にしない）。
+  // ⚠ **読んで 0 件だったのを「まだ提供していません」に落とさない**（2026-08-23）。
+  //   ⚠ **`layerMissing(3, "ok")` が `NOTYET` に落ちていた。**⚠ **こちらの都合のせいにしている。**
+  //   ⚠ **0 件は答えである**（⚠ 読めた結果）。⚠ **`answered` を立てて、⚠ 材料を畳ませない。**
+  else if(area.bldState==="ok") missing.push({ n:3, why:"zero", answered:true });
   else missing.push({ n:3, why: area.bldState==="notyet" ? "notyet" : area.bldState });
   return { layers, missing };
 }
@@ -1164,7 +1171,9 @@ function paintLand(el, m){
       //   ⚠ **未対応のときは、⚠ 材料の行（`prov.js`）が答える。**⚠ ここは見出しだけ。
       + (M.why==="notyet" ? "" : `<div class="land-sub">${WORD.layerMissing(n, M.why)}</div>`)
       + (M.note?`<div class="land-sub">${M.note}</div>`:"")
-      + `<div class="prov-q" data-q="${n}"></div></div>`);
+      // ⚠ **答えが出せたかを印で持つ**（2026-08-23）。⚠ **`describe()` が「詳しく見る」を出すか決める。**
+      //   ⚠ **0 件は答えなので、⚠ 材料を畳ませない**（掟 §1: ⚠ 断りが消える）。
+      + `<div class="prov-q" data-q="${n}" data-answered="${M.answered?1:0}"></div></div>`);
   }
   el.innerHTML=out.join("");
 }
@@ -1896,7 +1905,10 @@ function describe(v){
     if(!box) continue;
     // ⚠ **答えが出せた問いかは、⚠ `paintLand` が付けた印で見る**（`.land-miss`）。
     //   ⚠ **同じ意味の状態を、⚠ 変数と DOM の 2 か所に持たない**（`rules/javascript.md`）。
-    const html=KonjakuProv.section(byQ[n], KonjakuWords.whyLabel, !box.closest(".land-miss"));
+    // ⚠ **答えが出せた問いかは、⚠ `paintLand` が付けた印で見る**（2026-08-23）。
+    //   ⚠ **`.land-miss` だけでは足りない。**⚠ **0 件は「層が立たない」が「答えは出ている」。**
+    const html=KonjakuProv.section(byQ[n], KonjakuWords.whyLabel,
+      box.dataset.answered!=="0");
     // ⚠ **DOM の現在値と比べない。**⚠ **前回書いた字と比べる。**
     //   ⚠ 実測（2026-08-22）: ⚠ **開くと `<details>` に `open=""` が入るので、
     //     ⚠ DOM と比べると必ず「変わった」になり、⚠ 書き直して閉じてしまう。**

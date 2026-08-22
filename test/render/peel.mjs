@@ -990,7 +990,7 @@ export const CASES = [
       // ---- ③ 組み直したあとも、押せるボタンが生きている ----
       //   ⚠ 台帳の中のボタンは組み直すたびに**新しい要素**になる。張り直しを忘れると、
       //     押しても何も起きないボタンになる（掟: 押しても何も起きない導線を置かない）。
-      const peek = await page.$("#prov .peek");
+      const peek = await page.$("#panel .prov-q .peek");
       must(peek, "台帳に「光らせる」ボタンが無い");
       const colorBefore = await page.evaluate(() =>
         JSON.stringify(map.getPaintProperty("bld", "fill-extrusion-color")));
@@ -1368,10 +1368,10 @@ export const CASES = [
       // 通常時は地表の行が「実測」を名乗ること。タイル到達の判定を入れた副作用で
       // ここが未取得のまま固まっていないかを見る（ms の後で測り、性能の数字は汚さない）
       await page.waitForFunction(
-        () => document.querySelector("#prov .prov")?.className.includes("ok"),
+        () => document.querySelector("#panel .prov-q .prov")?.className.includes("ok"),
         null, { timeout: 30000 });
       const msGround = Math.round(await page.evaluate(() => performance.now()));
-      const ground = await page.locator("#prov .prov").first().textContent();
+      const ground = await page.locator("#panel .prov-q .prov").first().textContent();
       must(ground.includes("実測") && ground.includes("そのもの"),
         `地表の実測表示が出ていない: ${ground.trim().slice(0, 40)}`);
       return `${hero.trim()} ／ 建物 ${bld} 件 ／ 水域 ${water} 面 ／ 年代 ${era.trim()}`
@@ -1488,7 +1488,8 @@ export const CASES = [
       const prov = await provText(page);
       must(!prov.includes("そのもの"),
         `地表が届いていないのに「実測」と言っている: ${prov.replace(/\s+/g, " ").slice(0, 60)}`);
-      const ground = await page.locator("#prov .prov").first();
+      // ⚠ **台帳は問いごとに配られた**（2026-08-22。⚠ `#prov` は無い）
+      const ground = await page.locator("#panel .prov-q .prov").first();
       const cls = (await ground.getAttribute("class")) ?? "";
       const txt = (await ground.textContent()).replace(/\s+/g, " ").trim();
       must(cls.includes("no"), `地表の行が「取れていない」表示になっていない: ${cls} / ${txt}`);
@@ -1622,9 +1623,13 @@ export const CASES = [
       //   ここに残しても何も主張していない**（掟: 検証していないことを確認済みと呼ばない）。
       //   ⚠ **主張は消していない。**「土地ごとの例外が生えていないこと」は
       //   check.mjs の「3.5. 土地ごとの例外を作っていない」が見ている。
-      const bd = (await page.locator("#breakdown").textContent()).replace(/\s+/g, " ");
+      // ⚠ **0 件のときは、⚠ 層 3 が `missing` になるので `#breakdown` が作られない**
+      //   （2026-08-23 に踏んだ。⚠ 再試行の的を置こうとしたときと同じ理由）。
+      //   ⚠ **主張は「0 件を『取れなかった』と言わない」。**⚠ **問いの側を読む。**
+      const bd = await page.evaluate(() =>
+        (document.getElementById("landAll")?.textContent ?? "").replace(/\s+/g, " "));
       const prov = await provText(page);
-      for (const [where, t] of [["内訳", bd], ["台帳", prov]])
+      for (const [where, t] of [["問い", bd], ["台帳", prov]])
         for (const w of ["取得中", "取得できませんでした", "欠落"])
           must(!t.includes(w), `正常に 0 件なのに${where}が「${w}」と出している: ${t.slice(0, 90)}`);
       must(/取り込み済みの建物データで/.test(prov), `台帳に 0 件の出所が無い: ${prov.slice(0, 90)}`);
@@ -1956,9 +1961,13 @@ export const CASES = [
     async check(page) {
       await page.waitForFunction(() => /OSM に登録された建物は 0 件/.test(
         document.getElementById("status")?.textContent ?? ""), null, { timeout: 60000 });
-      const bd = (await page.locator("#breakdown").textContent()).replace(/\s+/g, " ");
+      // ⚠ **0 件のときは、⚠ 層 3 が `missing` になるので `#breakdown` が作られない**
+      //   （2026-08-23 に踏んだ。⚠ 再試行の的を置こうとしたときと同じ理由）。
+      //   ⚠ **主張は「0 件を『取れなかった』と言わない」。**⚠ **問いの側を読む。**
+      const bd = await page.evaluate(() =>
+        (document.getElementById("landAll")?.textContent ?? "").replace(/\s+/g, " "));
       const prov = await provText(page);
-      for (const [where, t] of [["内訳", bd], ["台帳", prov]])
+      for (const [where, t] of [["問い", bd], ["台帳", prov]])
         for (const w of ["取得中", "取得できませんでした", "欠落"])
           must(!t.includes(w), `正常に 0 件なのに${where}が「${w}」と出している: ${t.slice(0, 90)}`);
       must(/OSM への問い合わせで/.test(prov), `台帳に 0 件の出所が無い: ${prov.slice(0, 90)}`);
@@ -1977,7 +1986,11 @@ export const CASES = [
       //   ⚠ **「最大20秒…」は出さなくなった**（Owner 判断）。⚠ **内訳の「取得中」で待つ。**
       await page.waitForFunction(() => /建物を取得中/.test(
         document.getElementById("breakdown")?.textContent ?? ""), null, { timeout: 60000 });
-      const bd = (await page.locator("#breakdown").textContent()).replace(/\s+/g, " ");
+      // ⚠ **0 件のときは、⚠ 層 3 が `missing` になるので `#breakdown` が作られない**
+      //   （2026-08-23 に踏んだ。⚠ 再試行の的を置こうとしたときと同じ理由）。
+      //   ⚠ **主張は「0 件を『取れなかった』と言わない」。**⚠ **問いの側を読む。**
+      const bd = await page.evaluate(() =>
+        (document.getElementById("landAll")?.textContent ?? "").replace(/\s+/g, " "));
       const prov = await provText(page);
       must(/建物を取得中/.test(bd), `待っている間に内訳が「取得中」と言っていない: ${bd.slice(0, 90)}`);
       // ⚠ 台帳の語彙は「未取得＝読めなかった／欠落＝本当に無い」。待っている間に「欠落」は嘘
@@ -2193,7 +2206,7 @@ export const CASES = [
       await page.$eval("#t", (e, v) => { e.value = String(v);
         e.dispatchEvent(new Event("input")); }, k * 100);
       await page.waitForTimeout(1200);
-      const ground = (await page.locator("#prov .prov").first().textContent()).replace(/\s+/g, " ").trim();
+      const ground = (await page.locator("#panel .prov-q .prov").first().textContent()).replace(/\s+/g, " ").trim();
       must(ground.includes("未取得"), `読めなかった年代が「未取得」になっていない: ${ground.slice(0, 60)}`);
       const lie = LIES.find((w) => ground.includes(w));
       must(!lie, `届いていないだけなのに「${lie}」と断定している: ${ground.slice(0, 60)}`);
