@@ -26,16 +26,31 @@ import { execFileSync } from "node:child_process";
 const NO_RENDER = [/^docs\//, /^\.claude\//, /^[^/]+\.md$/, /^\.github\/ISSUE_TEMPLATE\//,
   // ⚠ **検索の fixture は画面に届かない**（2026-08-22。hidetzu/konjaku#204）。
   //   ⚠ **実描画は 1 ケースも読まない。**⚠ 見るのは `test/search-check.mjs` だけ。
-  /^test\/fixtures\/search\//];
+  /^test\/fixtures\/search\//,
+  // ⚠ **実描画が読まない検査コード**（2026-08-22。hidetzu/konjaku#190）。
+  //   ⚠ **線は「`render.mjs` が読むか」で引く**（上の規則と同じ）。
+  //   ⚠ **実測（2026-08-22）**: `render.mjs` が取り込むのは
+  //     `test/render/lib.mjs` / `test/render/top.mjs` / `test/render/peel.mjs` と
+  //     `public/sw.js` だけ。⚠ **下のものは 1 行も読まない。**
+  //   ⚠ **`test/render-scope.mjs` は入れない**（⚠ **回すものを決める当人**なので、
+  //     ⚠ 変えたら実際に回して確かめる）。
+  //   ⚠ **同じコミットで `public/` も触っていれば、⚠ そちらで回る。**⚠ 見張りは外れない。
+  /^test\/check\.mjs$/, /^test\/search-check\.mjs$/,
+  /^test\/repository-check\.mjs$/, /^test\/search-live-check\.mjs$/];
 
 // ⚠ **suite を名指しできるもの。**⚠ ここに無いものは全部に倒す。
+// ⚠ **どちらの画面が読むかは、⚠ HTML を数えて決めた**（2026-08-22。hidetzu/konjaku#190）。
+//   ⚠ **憶測で足さない。**⚠ **`test/check.mjs` が、⚠ 実物と突き合わせて見張る。**
 const TO_SUITE = [
   [/^public\/peel\.html$/,           "peel"],
   [/^public\/peel3d\.js$/,           "peel"],
+  [/^public\/prov\.js$/,             "peel"],
+  [/^public\/components\/era-control\//, "peel"],
   [/^test\/render\/peel\.mjs$/,      "peel"],
   [/^public\/index\.html$/,          "top"],
   [/^public\/events\.js$/,           "top"],
   [/^public\/places\.js$/,           "top"],
+  [/^public\/gsi-address-search\.js$/, "top"],
   [/^test\/render\/top\.mjs$/,       "top"],
 ];
 
