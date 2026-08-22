@@ -600,6 +600,59 @@ const CASES = [
     },
   },
   {
+    // ⚠ **詳細版が無くて広い区分に落ちたら、⚠ /peel でもそう言う**（2026-08-22。hidetzu/konjaku#128）。
+    //   ⚠ **黙ると、⚠ 広い区分の答えが「この土地の分類」として読まれる**（掟: 推定を実測のように見せない）。
+    //   ⚠ **穴だった。**⚠ トップと共有カードは言っていたのに、⚠ **/peel だけ 0 件**だった。
+    // ⚠ **字は verify.js の note をそのまま出す**（⚠ 3 か所で同じ文。⚠ 写しを作らない）。
+    // ⚠ **出す土地と出さない土地の両方を見る**（下の case）。⚠ 片方だけだと「いつも出す」でも通る。
+    name: "/peel でも、広い区分に落ちたらそう言う", path: `/peel?${KARUIZAWA}`,
+    viewport: { width: 375, height: 667 }, hasTouch: true,
+    async check(page) {
+      await page.waitForFunction(() => /この土地は/.test(document.body.innerText),
+        null, { timeout: 60000 });
+      await settleAfterCondition(page);
+      await page.click("#toggle");
+      await settleAfterClick(page);
+      const r = await page.evaluate(() => {
+        const all = document.getElementById("landAll");
+        const c = all.querySelector(".land-coarse");
+        const first = all.querySelector(".land-layer");
+        const cr = c?.getBoundingClientRect(), fr = first.getBoundingClientRect();
+        return { txt: c?.textContent?.trim() ?? "",
+          inFirst: !!c && first.contains(c),
+          top: cr ? Math.round(cr.top) : -1, firstTop: Math.round(fr.top),
+          times: (document.body.innerText.match(/詳細版が整備されていない/g) ?? []).length };
+      });
+      // ⚠ **第1層の中にあること**（⚠ 「画面のどこかにある」では置き場所を守れない）
+      must(r.inFirst, "粗さの行が第1層の中に無い（置き場所は第1層の直下）");
+      must(/詳細版が整備されていないため、広い区分で答えています/.test(r.txt),
+        `粗さの断りが出ていない: ${r.txt.slice(0, 60)}`);
+      // ⚠ **⚠ の記号を使わない**（この画面の ⚠ は災害リスク。混ぜると「危ない土地」に読まれる）
+      must(!/⚠/.test(r.txt), `粗さの行に ⚠ が混ざっている: ${r.txt.slice(0, 40)}`);
+      must(r.times === 1, `粗さの断りが画面に ${r.times} 回ある`);
+      must(r.top > r.firstTop, `粗さの行が第1層の見出しより上にある（${r.top} / ${r.firstTop}）`);
+      return `軽井沢: 第1層 y=${r.firstTop} の直下 y=${r.top}`;
+    } },
+  {
+    // ⚠ **詳細版がある土地では言わない**（2026-08-22。hidetzu/konjaku#128）。
+    //   ⚠ **これが無いと、⚠ 「いつも出す」実装でも上の検査が通ってしまう。**
+    name: "詳細版がある土地では、粗いとは言わない", path: `/peel?${TOYOSU}`,
+    viewport: { width: 375, height: 667 }, hasTouch: true,
+    async check(page) {
+      await page.waitForFunction(() => /この土地は/.test(document.body.innerText),
+        null, { timeout: 60000 });
+      await settleAfterCondition(page);
+      await page.click("#toggle");
+      await settleAfterClick(page);
+      const r = await page.evaluate(() => ({
+        coarse: !!document.querySelector("#landAll .land-coarse"),
+        times: (document.body.innerText.match(/詳細版/g) ?? []).length,
+      }));
+      must(!r.coarse, "詳細版があるのに粗さの行が出ている");
+      must(r.times === 0, `詳細版があるのに「詳細版」の語が ${r.times} 回出ている`);
+      return "豊洲: 粗さの行 0 ／「詳細版」0 回";
+    } },
+  {
     // 溶接は「この土地の答え」を1枚に見せるためのもの。判定から出た語が無い土地で
     // 囲うと、どこでも同じ2行を囲んだ空箱になり、答えがあるように見える
     // ⚠ **2026-08-21 に、2 度目の書き直し。**
@@ -2182,9 +2235,13 @@ const CASES = [
       // 本番で 504／無応答が常態のものを、作品の成立条件に置かない（掟: 取れなかったを「無い」と言わない）
       const op = reqs.filter((u) => u.includes("overpass"));
       must(!op.length, `事前計算データがあるのに Overpass を叩いている: ${op[0]}`);
+      // ⚠ **水面の面数は「表示データについて」へ移った**（2026-08-22。hidetzu/konjaku#153）。
+      //   ⚠ **主張は変えていない**（⚠ 水域ポリゴンが実際に起こされたこと）。⚠ 読む場所だけ変えた。
+      // ⚠ **判定の結果（#status）と、由来（#prov）は別の節**になった。⚠ **両方を読む。**
       const status = (await page.locator("#status").textContent()).trim();
-      const water = Number(status.match(/水域\s*(\d+)\s*面/)?.[1] ?? 0);
-      must(water > 0, `水域ポリゴンが生成されていない（${status.slice(0, 60)}）`);
+      const provTxt = (await page.locator("#prov").textContent()).trim();
+      const water = Number(provTxt.match(/(\d+)\s*面を起こしたもの/)?.[1] ?? 0);
+      must(water > 0, `水域ポリゴンが生成されていない（${provTxt.slice(0, 80)}）`);
       const bld = Number(status.match(/建物\s*(\d+)\s*件/)?.[1] ?? 0);
       must(bld > 0, `建物が出ていない（${status.slice(0, 80)}）`);
       must(/事前に取り込んだデータ|事前計算データ/.test(status),
@@ -3066,6 +3123,47 @@ const CASES = [
     },
   },
 
+  {
+    // ⚠ **狭い幅でも 1 つの器に見せる**（2026-08-22。hidetzu/konjaku#165。Owner 判断）。
+    //   ⚠ **PC では 2026-08-20 から同じことをしていた。**⚠ 狭い幅にだけ届いていなかった。
+    //   ⚠ 利用者役 3/3 が「真ん中の板と下の板は 1 つでいい」と答え、⚠ **3 名とも理由は同じ**で
+    //     「⚠ **同じ『最新の空中写真』が 2 回**、上下に並んでいる」だった（2026-08-21）。
+    // ⚠ **見た目だけの検査にしない。**⚠ 撮影種別が 1 か所であること（Owner 判断: `#era .s` に残す）と、
+    //   ⚠ **押せる的が 44×44 を割らない**ことまで見る。
+    name: "狭い幅でも、年代の表示と操作が 1 つの器になっている", path: `/peel?${TOYOSU}`,
+    viewport: { width: 375, height: 667 }, hasTouch: true,
+    async check(page) {
+      await page.waitForFunction(() => document.getElementById("ruler")?.checkVisibility?.(),
+        null, { timeout: 45000 });
+      await settleAfterCondition(page);
+      const out = [];
+      for (const [w, h] of [[375, 667], [344, 882], [320, 640]]) {
+        await page.setViewportSize({ width: w, height: h });
+        await page.waitForTimeout(700);
+        const r = await page.evaluate(() => {
+          const box = (id) => { const b = document.getElementById(id).getBoundingClientRect();
+            return { t: Math.round(b.top), b: Math.round(b.bottom), w: Math.round(b.width) }; };
+          const era = box("era"), tp = box("timePanel");
+          const rlSub = document.getElementById("rlSub");
+          const small = [...document.querySelectorAll("#rlPrev,#rlNext,#eraToggle")]
+            .filter((e) => e.checkVisibility())
+            .filter((e) => { const b = e.getBoundingClientRect(); return b.width < 44 || b.height < 44; })
+            .map((e) => e.id);
+          return { gap: tp.t - era.b, sameWidth: era.w === tp.w,
+            kinds: (document.body.innerText.match(/最新の空中写真/g) ?? []).length,
+            subOn: !!rlSub && rlSub.checkVisibility(), small,
+            overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth };
+        });
+        must(r.gap === 0, `${w}px: 年代の表示と操作のあいだに ${r.gap}px の隙間がある`);
+        must(r.sameWidth, `${w}px: 器の幅が違う（1 つに見えない）`);
+        must(r.kinds === 1, `${w}px: 撮影種別が画面に ${r.kinds} 回ある（1 か所にする）`);
+        must(!r.subOn, `${w}px: ものさしの下に撮影種別が出ている（#era .s に残すと決めた）`);
+        must(!r.small.length, `${w}px: 44×44 を割った的がある: ${r.small.join("、")}`);
+        must(!r.overflow, `${w}px: 横あふれしている`);
+        out.push(`${w}: 隙間${r.gap} 撮影種別${r.kinds}回`);
+      }
+      return out.join(" ／ ");
+    } },
   {
     // ⚠ **PC では、年代の表示と年代の操作が 1 つの器**（hidetzu/konjaku#132）。
     //
@@ -6189,7 +6287,9 @@ const CASES = [
       const pct = Number((t.match(/(\d+\.\d)\s*%/) ?? [])[1]);
       must(pct >= 95, `集計範囲が広がっている（豊洲で ${pct}%。隣の街区が混ざっている）`);
       // いつ取り込んだ結果かを言うこと
-      must(/建物を取り込んだのは \d{4}-\d{2}-\d{2}/.test(t),
+      // ⚠ **場所が「表示データについて」へ移った**（2026-08-22。hidetzu/konjaku#153）。
+      //   ⚠ **主張は変えていない**（⚠ いつ取り込んだ結果かが画面にあること）。
+      must(/建物のデータは \d{4}-\d{2}-\d{2} に取り込んだもの/.test(t),
         `いつ取り込んだ結果か書かれていない: ${t.slice(0, 200)}`);
       must(/事前に取り込んだデータ/.test(t), "取り込み済みだと書かれていない");
       return `Overpass 0 件／${pct}%／取り込み日あり`;
@@ -8026,7 +8126,9 @@ const CASES = [
       // 詰めた形を読めていること。戻せていなければ建物は1つも建たない
       const n = Number((t.match(/([\d,]+)\s*件を判定しました/) ?? [])[1]?.replace(/,/g, ""));
       must(n > 0, `建物が1件も建っていない（詰めた形を戻せていない）: ${t.slice(0, 200)}`);
-      must(/建物を取り込んだのは \d{4}-\d{2}-\d{2}/.test(t),
+      // ⚠ **場所が「表示データについて」へ移った**（2026-08-22。hidetzu/konjaku#153）。
+      //   ⚠ **主張は変えていない**（⚠ いつ取り込んだ結果かが画面にあること）。
+      must(/建物のデータは \d{4}-\d{2}-\d{2} に取り込んだもの/.test(t),
         `いつ取り込んだ結果か書かれていない: ${t.slice(0, 200)}`);
       return `Overpass 0 件／タイル ${tiles.length} 枚／${n.toLocaleString()} 件を判定`;
     },

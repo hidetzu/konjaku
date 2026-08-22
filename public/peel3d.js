@@ -691,7 +691,7 @@ async function loadArea(lon,lat,title,opt){
   // 「–%」が残り、Overpass が返った瞬間に「0.0% ── 実測値」へ化けていた（掟: 取れなかったを「無い」と言わない）。
   area={ title, bldState:"loading",
     total:0, wet:0, classified:0, unread:0, counts:{}, dated:0,
-    waterRatio:w.ratio, waterRead, waterUnread,
+    waterRatio:w.ratio, waterRead, waterUnread, waterRects:w.rects,
     landSummary:summarizeLand(w.classCounts,w.classifiedPixels), buildingLand:null };
   showResult(); render(); buildRuler();
 
@@ -763,7 +763,7 @@ async function loadArea(lon,lat,title,opt){
     //   言わない（利用者役 3/3 が後者を「自分の通信のせい」と読んだ）。
     const notYet=blWhy===BL_ABSENT;
     area={ title, total:0, wet:0, classified:0, unread:0, counts:{}, dated:0,
-      waterRatio:w.ratio, waterRead, waterUnread, bldState:notYet?"notyet":"fail",
+      waterRatio:w.ratio, waterRead, waterUnread, waterRects:w.rects, bldState:notYet?"notyet":"fail",
       landSummary:summarizeLand(w.classCounts,w.classifiedPixels), buildingLand:null };
     statusEl.innerHTML=(notYet
       // ⚠ **⚠ の記号を使わない。**この画面の外（トップ）では ⚠ を「この土地で
@@ -839,7 +839,7 @@ async function loadArea(lon,lat,title,opt){
       }
       return c;
     })(),
-    waterRatio:w.ratio, waterRead, waterUnread,
+    waterRatio:w.ratio, waterRead, waterUnread, waterRects:w.rects,
     landSummary:summarizeLand(w.classCounts,w.classifiedPixels),
     buildingLand:summarizeBuildingLand(counts,classified) };
 
@@ -847,12 +847,14 @@ async function loadArea(lon,lat,title,opt){
   // ⚠ 0 件のときは「判定しました」で終わらせない。**何が 0 件なのか**を書く。
   //   「建物 0 件」だけだと「この場所に建物は無い」と読める。
   //   言えるのは **OSM に登録された建物が 0 件**であることまで（掟: データにない ≠ 現実にない）。
-  statusEl.innerHTML=`<span style="color:var(--ink-dim)">${waterRead?`水域 ${w.rects} 面 ／ `:""}${
+  // ⚠ **由来（水域の面数・取り込んだ日）は、ここでは言わない**（2026-08-22。hidetzu/konjaku#153）。
+  //   ⚠ **ここは「いま判定できたか」を言う場所**で、⚠ **材料がどこから来たかは「表示データについて」が持つ**
+  //     （`prov.js` の `sourceRow`）。⚠ **消したのではない。**⚠ 同じ画面の別の節にある。
+  statusEl.innerHTML=`<span style="color:var(--ink-dim)">${
     area.total===0
       ? `この範囲に、<b>OSM に登録された建物は 0 件</b>です${WORD.bldPre(bldSource==="tiles")}。`
         + `水域と空中写真で表示しています。`
       : `建物 ${area.total} 件を判定しました${WORD.bldPre(bldSource==="tiles")}。`}</span>${
-      blAt?`<span style="color:var(--ink-dim)"> 建物を取り込んだのは ${blAt}。</span>`:""}${
       blTrunc?`<span class="err"> この範囲は建物が多く、取りきれていない可能性があります。</span>`:""}`;
   if(!waterRead) statusEl.innerHTML = (waterUnread
     ? `<span class="err">明治期の低湿地データを<b>いま読み込めませんでした</b>。</span> `
@@ -995,8 +997,16 @@ function layersOf(area, lf){
   const layers=[], missing=[];
   // ---- 第1層: ここは、どういう土地？ ⚠ **常に見る**（全国 24 地点で 24/24）----
   if(lf && lf.ok)
+    // ⚠ **詳細版が無くて広い区分に落ちたら、⚠ それを言う**（2026-08-22。hidetzu/konjaku#128。Owner 判断: 案 B・第1層の直下）。
+    //   ⚠ **黙ると、⚠ 広い区分の答えが「この土地の分類」として読まれる**（掟: 推定を実測のように見せない）。
+    //   ⚠ **字は作らない。**⚠ `verify.js` の `landform()` が返す `note` をそのまま置く
+    //     （⚠ トップと共有カードも同じ `note` を出している。⚠ **写しを作ると 3 か所で食い違う**）。
+    //   ⚠ **`fine` が false のときだけ `note` が入る。**⚠ こちらで条件を作り直さない。
     layers.push({ n:1, title:WORD.layerTitle(1), head:{kind:"name", v:lf.value},
-      subs: lf.artificial ? [{kind:"art", v:lf.artificial}] : [] });
+      subs: [
+        ...(lf.artificial ? [{kind:"art", v:lf.artificial}] : []),
+        ...(lf.fine === false && lf.note ? [{kind:"coarse", v:lf.note}] : []),
+      ] });
   else if(lf && lf.state==="unreachable") missing.push({ n:1, why:"unread" });
   if(!area) return { layers, missing };
 
@@ -1102,7 +1112,10 @@ function paintLayer(L){
   const subs=(L.subs??[]).map((sb)=>
       sb.kind==="art"   ? `<div class="land-sub">${WORD.ground1Art(esc(sb.v))}</div>`
     : sb.kind==="top"   ? `<div class="land-sub">この範囲で最も多い区分: <b>${esc(sb.v.name)}</b>（${sb.v.pct}%）</div>`
-    : sb.kind==="wet"   ? `<div class="land-sub">水域だった建物: ${sb.v}%</div>` : "").join("");
+    : sb.kind==="wet"   ? `<div class="land-sub">水域だった建物: ${sb.v}%</div>`
+    // ⚠ **粗さ**（2026-08-22。hidetzu/konjaku#128）。⚠ **⚠ の記号は使わない**
+    //   （この画面では ⚠ を災害リスクに使っている。⚠ 精度の話に同じ印を出すと「危ない土地」に読まれる）。
+    : sb.kind==="coarse" ? `<div class="land-sub land-coarse">${esc(sb.v)}</div>` : "").join("");
   return `<div class="land-layer"><div class="land-q">${L.title}</div>`
     + `<div class="land-line">${head}${what}</div>${den}${subs}</div>`;
 }
@@ -1240,8 +1253,10 @@ function showMiss(){
   const el=document.getElementById("stateMiss");
   if(!el) return;
   const lines=[];
-  if(missEra) lines.push(`⚠ 共有された年代（${esc(missEra)}）は、この土地には残っていません`);
-  if(missBld) lines.push("⚠ 共有された建物は、この範囲では見つかりませんでした");
+  // ⚠ **字は words.js の 1 か所**（2026-08-22。hidetzu/konjaku#169）。⚠ ここで書かない。
+  //   ⚠ **esc() はここで通す**（URL 由来の文字列。⚠ words.js は受け取るだけ）。
+  if(missEra) lines.push(KonjakuWords.shareMiss.era(esc(missEra)));
+  if(missBld) lines.push(KonjakuWords.shareMiss.bld());
   el.innerHTML=lines.join("<br>");
   el.hidden=!lines.length;
 }
@@ -1398,7 +1413,13 @@ function syncRuler(){
   rlKnob.style.left=`${Math.max(0,Math.min(1,steps.length<2?0:pos/(steps.length-1)))*100}%`;
   const k=Math.round(pos);
   const s=steps[Math.max(0,Math.min(steps.length-1,k))];
-  if(s){ rlYear.textContent=s.label; rlSub.textContent=s.meiji?"":(s.sub??""); }
+  // ⚠ **撮影種別は、年代の箱（`#era .s`）の 1 か所だけ**（2026-08-22。hidetzu/konjaku#165。Owner 判断 A）。
+  //   ⚠ **狭い幅の分担は、もともとそう決まっていた**（`peel.html`: ⚠ 年を 2 か所に出さない。
+  //     ものさしが年を答えるので、⚠ **年代の箱に残すのは「いま何の写真か」と、届かないときの名乗り**）。
+  //   ⚠ ここが分担を破って、⚠ **撮影種別を 2 回目に出していた**
+  //     （実測 2026-08-21・375×667: `#era .s` y=379 と ものさしの中 y=518 が、どちらも「最新の空中写真」）。
+  //   ⚠ **空にすれば箱ごと消える**（`#rlSub:empty{display:none}`）。⚠ 年は今までどおり出す。
+  if(s){ rlYear.textContent=s.label; rlSub.textContent=""; }
   rlPrev.disabled=pos<=0.001;
   rlNext.disabled=pos>=steps.length-1-0.001;
 }
@@ -1822,7 +1843,10 @@ function describe(v){
   //   ここでは組み立てない。行を足したくなったら prov.js に足す。
   //   分けた理由: あちらは DOM も地図も見ないので、検査がブラウザ抜きで
   //   全組み合わせを回せる（掟: 取れなかったを「無い」と言わない、を字面ではなく tag で見る）。
-  provEl.innerHTML=KonjakuProv.html(KonjakuProv.rows({ groundArrived:arrived, era:near, area }));
+  // ⚠ **由来（取り込んだ日・水面の面数）も、この台帳が持つ**（2026-08-22。hidetzu/konjaku#153）。
+  //   ⚠ **値の出どころは 1 か所のまま**（`blAt` は取り込み、`waterRects` は水域の生成）。
+  provEl.innerHTML=KonjakuProv.html(KonjakuProv.rows({ groundArrived:arrived, era:near, area,
+    blAt, waterRects: area && area.waterRead ? area.waterRects : null }));
   wireProvPeek();
 }
 
