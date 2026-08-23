@@ -3944,6 +3944,46 @@ ${dom}
       return `補足 ${r.notes.length} 行とも出たまま／問い ${r.layers} 個／? は出ない`;
     },
   },
+  // ⚠ **主見出しと内訳の分母がそろっていること**（2026-08-23。Owner 判断。掟 §6）。
+  //   ⚠ **豊洲では一致するので、⚠ 豊洲だけ見ていると気づけない。**
+  //   ⚠ **整備範囲の端（渋谷）で見る**（⚠ 実測: ⚠ 範囲の 86.7% は区分が付いていない）。
+  {
+    name: "面積の内訳は、主見出しと同じ分母で、足して 100 になる",
+    path: "/peel?ll=35.65860,139.70160&q=%E6%B8%8B%E8%B0%B7", group: "core",
+    async check(page) {
+      await peelReady(page);
+      await settleAfterCondition(page);
+      const r = await page.evaluate(() => {
+        const L = [...document.querySelectorAll("#landAll .land-layer")][1];
+        const den = (L?.querySelector(".land-den")?.textContent ?? "").replace(/\s+/g, " ").trim();
+        const head = (L?.querySelector(".land-num")?.textContent ?? "").trim();
+        const rows = [...document.querySelectorAll("#areaBreak .stat")]
+          .map((e) => e.innerText.replace(/\s+/g, " ").trim());
+        return { den, head, rows };
+      });
+      must(r.rows.length > 1, `内訳が出ていない: ${r.rows.join(" / ")}`);
+      // ⚠ **範囲の大きさを言っている**（掟 §6: ⚠ どの範囲の数字かを明示する）
+      must(/\d+×\d+m/.test(r.den), `範囲の大きさを言っていない: 「${r.den}」`);
+      // ⚠ **特定できなかったぶんを、⚠ 行として出す**（掟 §1）
+      must(r.rows.some((t) => /区分が分からない/.test(t)),
+        `特定できなかったぶんを隠している: ${r.rows.join(" / ")}`);
+      // ⚠ **足して 100**（⚠ 「0.1% 未満」は 0 で数える。⚠ 丸めのぶん 1.0 まで許す）
+      const sum = r.rows.reduce((t, x) => t + Number((x.match(/([\d.]+)%/) ?? [0, 0])[1] || 0), 0);
+      must(Math.abs(sum - 100) <= 1.0,
+        `内訳が足して 100 にならない（${sum.toFixed(1)}%）: ${r.rows.join(" / ")}`);
+      // ⚠ **主見出しと、⚠ 内訳の水が食い違わない**（⚠ 同じ分母なので近いはず）。
+      //   ⚠ **水かどうかは `swale.js` が持つ**（⚠ ここで区分名を書き写さない。掟）。
+      //   ⚠ **「0.1% 未満」の行は 0 で数える**ので、⚠ そのぶん内訳のほうが小さく出る。
+      const wetNames = await page.evaluate(() =>
+        (KonjakuSwale.SWALE ?? []).filter((c) => c.water).map((c) => c.name));
+      const w = r.rows.filter((t) => wetNames.some((n) => t.startsWith(n)))
+        .reduce((t, x) => t + Number((x.match(/([\d.]+)%/) ?? [0, 0])[1] || 0), 0);
+      const head = Number(String(r.head).replace(/[^\d.]/g, ""));
+      must(Math.abs(w - head) <= 0.5,
+        `主見出し ${head}% と、⚠ 内訳の水 ${w.toFixed(1)}% が食い違う（分母が違う）`);
+      return `${head}%／内訳 ${r.rows.length} 行・合計 ${sum.toFixed(1)}%／「${r.den}」`;
+    },
+  },
   // ⚠ **明治期のデータが無い地点で、⚠ 右端を「明治期」にしない**（hidetzu/konjaku#170）。
   //   ⚠ **前は `/peel` が無条件に明治期を足していた**（⚠ トップは判定できたときだけ足していた）。
   //     ⚠ **同じ問いに 2 つの実装があり、⚠ 答えが違っていた。**

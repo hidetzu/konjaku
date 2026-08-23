@@ -290,7 +290,10 @@ async function buildWater(bbox){
   return { geojson:{type:"FeatureCollection",features:feats},
            ratio:a.ratio, tiles:a.tiles, rects:feats.length,
            classCounts:a.classCounts, classifiedPixels:a.classifiedPixels,
-           transparentPixels:a.transparentPixels, unknownPixels:a.unknownPixels };
+           transparentPixels:a.transparentPixels, unknownPixels:a.unknownPixels,
+           // ⚠ **範囲全体の画素**（2026-08-23）。⚠ **主見出し（`ratio`）と同じ分母。**
+           //   ⚠ `ratio = waterPx / (tw * th)` なので、⚠ **ここも `tw * th`。**
+           totalPixels:a.tw*a.th };
 }
 
 // ⚠ **1 位だけでなく、⚠ 全部返す**（2026-08-22。Owner 判断）。
@@ -300,15 +303,25 @@ async function buildWater(bbox){
 //     砂礫地 0.1% ／ 塩田 0.0% ／ 湿地 0.0% ／ 泥炭地 0.0%
 //   ⚠ **この内訳は、⚠ 明治期の低湿地データだけから作れる。**⚠ **建物は要らない。**
 //     ⚠ **建物が未対応の土地でも出せる**（⚠ 静岡市はまさにそれ）。
-// ⚠ **分母は「区分を特定できた画素」。**⚠ 建物の件数とは別の分母（掟 §6）。
-function summarizeLand(counts, classifiedPixels){
+// ⚠ **分母は「範囲全体の画素」**（2026-08-23。Owner 判断。⚠ **主見出しと同じ**）。
+//   ⚠ **前は「区分を特定できた画素」だった。**⚠ **主見出し（範囲全体が分母）と食い違っていた。**
+//   ⚠ 実測（2026-08-23・渋谷・`main` = `6b5daab`）:
+//     ⚠ **主見出し 1.5%（範囲全体）／ 内訳の水の合計 11.1%（特定できた 10.6% が分母）。⚠ 7.6 倍。**
+//     ⚠ **豊洲は全画素に区分が付くので一致していた**（95.3% ／ 95.2%）。⚠ **だから気づけなかった。**
+//   ⚠ **特定できなかったぶんは、⚠ 行として出す**（掟 §1: ⚠ 取れなかった ≠ 無い）。
+//     ⚠ **黙って分母から外すと、⚠ 「その範囲は全部この区分」に読まれる。**
+// ⚠ **建物の件数とは別の分母**（掟 §6）。⚠ **こちらは面積。**
+function summarizeLand(counts, classifiedPixels, totalPixels){
   if(!counts || !(classifiedPixels>0)) return null;
   const entries=Object.entries(counts).filter(([,n])=>n>0).sort((a,b)=>b[1]-a[1]);
   if(!entries.length) return null;
+  // ⚠ **渡ってこないときは、⚠ 特定できた数を分母にする**（⚠ 前と同じ挙動に落ちる）。
+  const total=totalPixels>0?totalPixels:classifiedPixels;
   const [name,count]=entries[0];
-  return {name,count,classifiedPixels,pct:(count/classifiedPixels*100).toFixed(1),
+  const rest=Math.max(0,total-classifiedPixels);
+  return {name,count,classifiedPixels,total,rest,pct:(count/total*100).toFixed(1),
     // ⚠ **全部の内訳。**⚠ 画面がどこまで出すかは画面が決める（⚠ ここは数と意味だけ）
-    all: entries.map(([n,c])=>({name:n,count:c,pct:(c/classifiedPixels*100).toFixed(1)}))};
+    all: entries.map(([n,c])=>({name:n,count:c,pct:(c/total*100).toFixed(1)}))};
 }
 
 // 建物の足元に付いた明治期区分の最多値。「該当なし」「特定できず」は
@@ -585,6 +598,18 @@ let marker=null; // 調べている地点の印
 // ⚠ **値は ground.js が持つ。**ここで別に宣言すると、トップが「下地がある」と判定する
 //   範囲と、こちらが集計する範囲がずれる（＝導線を出したのに建物が出ない場所ができる）。
 const {HALF_LON,HALF_LAT}=KonjakuGround;
+// ⚠ **集計範囲の実寸**（2026-08-23。hidetzu/konjaku#170 の次）。
+//   ⚠ 掟 §6: ⚠ **どの範囲の数字かを明示する。**⚠ トップは「白い枠の中（151×204m）」と書いている。
+//   ⚠ **緯度で東西の長さが変わる**（実測 2026-08-23: ⚠ 札幌 1464m ／ 渋谷 1628m ／ 長崎 1685m）。
+//     ⚠ **固定値を書かない。**⚠ **その地点で計算する。**
+//   ⚠ **HALF は `ground.js` が正本**（⚠ ここで持ち直さない）。
+const spanTextOf=(lat)=>{
+  const R=6378137, rad=Math.PI/180;
+  const w=Math.round(2*HALF_LON*rad*R*Math.cos(lat*rad));
+  const h=Math.round(2*HALF_LAT*rad*R);
+  // ⚠ **km で丸めない。**⚠ m のまま出す（⚠ トップと同じ作法）。
+  return `${w}×${h}m`;
+};
 
 // 再試行ボタン。取れなかったときは必ず復帰手段を添える（掟: 取れなかったを「無い」と言わない）
 // ⚠ 地名は共有された URL の q か、地理院の応答から来る。属性の中も HTML なので esc を通す
@@ -734,8 +759,8 @@ async function loadArea(lon,lat,title,opt){
   // 「–%」が残り、Overpass が返った瞬間に「0.0% ── 実測値」へ化けていた（掟: 取れなかったを「無い」と言わない）。
   area={ title, bldState:"loading",
     total:0, wet:0, classified:0, unread:0, counts:{}, dated:0,
-    waterRatio:w.ratio, waterRead, waterUnread, waterRects:w.rects,
-    landSummary:summarizeLand(w.classCounts,w.classifiedPixels), buildingLand:null };
+    waterRatio:w.ratio, waterRead, waterUnread, waterRects:w.rects, spanText:spanTextOf(lat),
+    landSummary:summarizeLand(w.classCounts,w.classifiedPixels,w.totalPixels), buildingLand:null };
   showResult(); render();
 
   // --- 2. 建物 ---
@@ -810,8 +835,8 @@ async function loadArea(lon,lat,title,opt){
     //   言わない（利用者役 3/3 が後者を「自分の通信のせい」と読んだ）。
     const notYet=blWhy===BL_ABSENT;
     area={ title, total:0, wet:0, classified:0, unread:0, counts:{}, dated:0,
-      waterRatio:w.ratio, waterRead, waterUnread, waterRects:w.rects, bldState:notYet?"notyet":"fail",
-      landSummary:summarizeLand(w.classCounts,w.classifiedPixels), buildingLand:null };
+      waterRatio:w.ratio, waterRead, waterUnread, waterRects:w.rects, spanText:spanTextOf(lat), bldState:notYet?"notyet":"fail",
+      landSummary:summarizeLand(w.classCounts,w.classifiedPixels,w.totalPixels), buildingLand:null };
     // ⚠ **未対応も取得失敗も、⚠ 3 つ目の問いが答える**（2026-08-22。Owner 判断）。
     //   ⚠ 実測（静岡市 / 渋谷）: ⚠ **同じ字が `#status` と 3 つ目の問いに 2 か所**出ていた。
     //   ⚠ **消えたのは繰り返しであって、⚠ 事実ではない。**
@@ -881,8 +906,8 @@ async function loadArea(lon,lat,title,opt){
       }
       return c;
     })(),
-    waterRatio:w.ratio, waterRead, waterUnread, waterRects:w.rects,
-    landSummary:summarizeLand(w.classCounts,w.classifiedPixels),
+    waterRatio:w.ratio, waterRead, waterUnread, waterRects:w.rects, spanText:spanTextOf(lat),
+    landSummary:summarizeLand(w.classCounts,w.classifiedPixels,w.totalPixels),
     buildingLand:summarizeBuildingLand(counts,classified) };
 
   // 水域が読めていないのに「水域 0 面を判定しました」とは書かない
@@ -1083,7 +1108,12 @@ function layersOf(area, lf){
         //   ⚠ 第2層が常に立つようになった時点で bldWhyArea は嘘になった
         //     （実測 2026-08-19: 建物のある豊洲に「建物が 0 件のため」と出た）。
         //   ⚠ 建物で答えられない理由は、**第3層の欠落**が言う。
-        what:"の面積が、明治期には水だった", den:"この範囲全体の面積で数えた割合",
+        what:"の面積が、明治期には水だった",
+        // ⚠ **範囲の大きさを書く**（2026-08-23。Owner 判断。⚠ 掟 §6: ⚠ どの範囲の数字かを明示する）。
+        //   ⚠ **トップは「白い枠の中（151×204m）」と書いている。**⚠ **作法をそろえる。**
+        //   ⚠ **緯度で東西の長さが変わる**（実測 2026-08-23: ⚠ 札幌 1464m ／ 長崎 1685m）。
+        //     ⚠ **固定値を書かない。**⚠ **その地点で計算した値を出す。**
+        den:`この範囲（${area.spanText ?? "全体"}）の面積で数えた割合`,
         subs: area.landSummary ? [{kind:"top", v:area.landSummary}] : [] });
     else
       layers.push({ n:2, title:WORD.layerTitle(2), head:{kind:"name", v:"水域なし"},
@@ -1288,9 +1318,19 @@ function paintAreaBreak(el, sum){
     const c=(KonjakuSwale.SWALE??[]).find((x)=>x.name===name);
     return c ? `rgb(${c.rgb.join(",")})` : null;
   };
-  el.innerHTML=sum.all.map((r)=>{
+  // ⚠ **分母は範囲全体**（2026-08-23。Owner 判断。⚠ **主見出しと同じ**）。
+  //   ⚠ **特定できなかったぶんを、⚠ 行として出す**（掟 §1: ⚠ 取れなかった ≠ 無い）。
+  //   ⚠ **黙って分母から外すと、⚠ 「その範囲は全部この区分」に読まれる。**
+  //   ⚠ 実測（2026-08-23・渋谷）: ⚠ **範囲の 89.4% は区分が付いていない**
+  //     （⚠ 明治期の低湿地データの整備範囲の端）。⚠ **前はそれが見えなかった。**
+  //   ⚠ **色見本は付けない**（⚠ 区分ではないので、⚠ 凡例に相手がいない）。
+  const rows=[...sum.all];
+  if(sum.rest>0)
+    rows.push({ name:"区分が分からない", count:sum.rest,
+      pct:(sum.rest/sum.total*100).toFixed(1), unknown:true });
+  el.innerHTML=rows.map((r)=>{
     const tiny=Number(r.pct)===0&&r.count>0;
-    const col=rgbOf(r.name);
+    const col=r.unknown?null:rgbOf(r.name);
     return `<div class="stat">`
       + `<span>${col?`<i class="legend" style="background:${col}"></i>`:""}${esc(r.name)}</span>`
       + (tiny
