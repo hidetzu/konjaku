@@ -133,6 +133,15 @@
     .brand .mark{width:15px;height:15px;border-radius:3.5px;flex:none;display:block}
   .brand{align-items:center}
 .brand b{font-weight:500;letter-spacing:.22em}
+  /* ⚠ **β 版であることを、⚠ サービス名の横に置く**（2026-08-23。Owner 判断）。
+     ⚠ 実測（2026-08-23・利用者役 4 名・画面だけを見せた。⚠ **実在の利用者ではない**）:
+       ⚠ **2/4 が「完成品だと思った」。**⚠ 1 名は「個人開発っぽいから、たぶん作りかけ」と
+       ⚠ **画面からではなく雰囲気で**判断していた。
+     ⚠ **説明文にしない。**⚠ H1 と検索欄が主役なので、⚠ competing させない。
+     ⚠ **`⚠` は使わない**（画面の `⚠` は災害リスク専用。CLAUDE.md §4-1）。 */
+  .brand__beta{font-size:var(--fs-badge);letter-spacing:.04em;line-height:1;
+    padding:2px 6px;border:1px solid var(--line);border-radius:999px;
+    color:var(--ink-faint);flex:none}
 
 
   /* ============ 入力（2段: 場所 → コマンド） ============ */
@@ -315,8 +324,6 @@
   #scope.on ~ .quick{display:none}
   /* ⚠ プライバシーの 3 段は、⚠ **場所を送る前だけ**出す。入力例と同じ扱い。
      ⚠ 送ったあとに残すと「これから送ります」に読める（掟: 進行形を状態の説明に使わない）。 */
-  .privacy-short{margin:10px 0 0;font-size:var(--fs-note);line-height:1.7;color:var(--ink-dim)}
-  #scope.on ~ .privacy-short{display:none}
   /* ⚠ 検索欄と**同じ強さ**で並べない。ここは主操作ではなく「何を打てばいいか」の例。
      実測（375×667）で 10 個・144px あり、枠線が判定カードと同じ var(--line) だったため、
      主ボタンが 11 個あるように見えていた。枠を外し、地の色をわずかに敷くだけにする。
@@ -876,10 +883,25 @@
   footer .f-more summary::before{content:"▸";font-size:var(--fs-label);transition:transform .15s}
   footer .f-more[open] summary::before{transform:rotate(90deg)}
   footer .f-more summary:hover{color:var(--action)}
+  footer .f-author{margin-top:10px;padding-top:8px;border-top:1px solid var(--line);
+    display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+  /* ⚠ **押せるものは 44×44 を割らない**（`.claude/rules/css.md`）。
+     ⚠ 実測（2026-08-23・375×667・main = 71349bf）: ⚠ **13 個が 44 を割っていた**
+       （例: 「国土地理院」60×20 ／ 畳みの「プライバシーについて」129×24）。
+     ⚠ **利用者役 1 名が、⚠ 国土地理院のリンクを押そうとして 2 回外した。**
+     ⚠ **指の端末だけに効かせる**（PC はポインタが細いので、⚠ 余白だけ増えても損）。
+     ⚠ この画面は「狭い幅が既定」なので、⚠ **既定に書いて、⚠ 広い幅で戻す**
+       （`css.md`。⚠ **打ち消しは同じ形のセレクタで書く**。⚠ 3 回踏んでいる）。 */
+  footer .f-main a, footer .f-author a, footer .f-more summary{
+    display:inline-flex;align-items:center;min-height:44px;min-width:44px}
   footer .f-body{margin-top:7px;padding:10px 12px;border-radius:8px;
     background:rgba(255,255,255,.03);border:1px solid var(--line);font-size:var(--fs-note);line-height:1.75}
   footer .f-body b{color:var(--ink-dim);font-weight:500}
   a{color:var(--action)}
+  @media(min-width:681px){
+    /* ⚠ **同じ形のセレクタで戻す**（上と同じ 0-0-3 / 0-1-2）。⚠ 形が違うと負ける */
+    footer .f-main a, footer .f-author a, footer .f-more summary{min-height:0;min-width:0}
+  }
   /* ============ 動きを減らす ============ */
   /* ⚠ OS・ブラウザで「動きを減らす」を入れている人には、動きだけを消す。
      ⚠ **消すのは動きであって、結果ではない。** 年代は変わるし、寄せた先へも行く。
@@ -1004,7 +1026,7 @@
 <div class="wrap">
 
 <header>
-  <div class="brand"><svg class="mark" viewBox="0 0 64 64" aria-hidden="true"><rect x="8" y="8" width="48" height="48" rx="6" fill="#2f7fc4"/><path d="M32 8h24v48H32z" fill="#e8dcc0"/><rect x="13" y="34" width="6" height="14" fill="#dce8f2"/><rect x="22" y="27" width="6" height="21" fill="#dce8f2"/><path d="M36 46c4-3 6 2 9 0s6 2 9 0" stroke="#2f7fc4" stroke-width="3" fill="none"/><path d="M36 37c4-3 6 2 9 0s6 2 9 0" stroke="#2f7fc4" stroke-width="3" fill="none" opacity=".6"/><rect x="31" y="8" width="2" height="48" fill="#0b0e13" opacity=".5"/></svg><b>今昔</b></div>
+  <div class="brand"><svg class="mark" viewBox="0 0 64 64" aria-hidden="true"><rect x="8" y="8" width="48" height="48" rx="6" fill="#2f7fc4"/><path d="M32 8h24v48H32z" fill="#e8dcc0"/><rect x="13" y="34" width="6" height="14" fill="#dce8f2"/><rect x="22" y="27" width="6" height="21" fill="#dce8f2"/><path d="M36 46c4-3 6 2 9 0s6 2 9 0" stroke="#2f7fc4" stroke-width="3" fill="none"/><path d="M36 37c4-3 6 2 9 0s6 2 9 0" stroke="#2f7fc4" stroke-width="3" fill="none" opacity=".6"/><rect x="31" y="8" width="2" height="48" fill="#0b0e13" opacity=".5"/></svg><b>今昔</b><span class="brand__beta">β</span></div>
   <!-- 何のサービスかを最初の画面で言う。
        利用者役のエージェントによる検証で「グルメ検索? 不動産?」と受け取られ、理解まで1分半かかっていた。
        書けるのは判定できることだけ（掟: 根拠のないことは書かない / 掟: 確率を出さない。実測値そのものを出す）。埋立年や「昔は海」は画素から出せないので書かない。 -->
@@ -1074,15 +1096,6 @@
 </div>
 <div class="quick" id="quick"></div>
 
-  <!-- ⚠ **プライバシーの 3 段を、場所を送る前に読める位置に置く**（2026-08-20）。
-       ⚠ 以前は畳んだフッターの中にしか無く、⚠ **利用者役 2/4 が「これは先に見たかった」**。
-       ⚠ **畳まない。**畳むと、送る前に読めるとは言えない。
-       ⚠ **検索欄より上には置かない**（場所未選択の画面は検索が主役）。
-       ⚠ **場所を選んだら消す**（`#scope.on ~` で、入力例と同じ扱い）。もう送ったあとで、
-         ここで言う意味が変わる。⚠ **詳しい説明はフッターに残り続ける。**
-       ⚠ **字は words.js の 1 か所。**/peel の情報パネルと同じ文。 -->
-  <p class="privacy-short" id="privacyShort"></p>
-
 <div id="result">
   <div class="group">
     <!-- ⚠ ここには「自前・根拠あり」のバッジがあった（2026-08-20 に消した）。
@@ -1112,9 +1125,8 @@
     出典 <a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" rel="noopener">国土地理院</a>
     ・<a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>
     ・<a href="https://www.wikidata.org/" target="_blank" rel="noopener">Wikidata</a>
-    <span class="sep">|</span>
-    作 <a href="https://github.com/hidetzu" target="_blank" rel="noopener">hidetzu</a>
   </div>
+
   <!-- ⚠ ここは畳まない。「住所を入力するのに住所を集めない」はこのサービスの性格そのもので、
        畳むと伝わらない。ただし**言い切りすぎない**: 地図やデータを取りに行く相手には、
        表示に必要な範囲の座標が渡る。「どこにも送らない」は嘘になる。 -->
@@ -1131,9 +1143,25 @@
        主語を「計測」に限定する。**言い換えで誤魔化さず、起きることを書く。**
        ⚠ 「保存しません」には弱めない。計測に関しては本当に送っていない。
        ⚠ 文言は peel.html にも同じものを置き、食い違わないことを npm run check が見る。 -->
-  <div class="f-priv" data-privacy-lead>
-    <b>利用状況の計測には、検索した地名や座標を送りません。</b>Cookie も使いません。
-  </div>
+  <!-- ⚠ **ここを、⚠ プライバシーの「畳まずに見える 1 行」の 1 か所にした**（2026-08-23。Owner 判断）。
+       ⚠ **前は 2 か所にあった**（検索欄の下の `.privacy-short` と、ここ）。
+         ⚠ 実測（2026-08-23・利用者役 4 名・画面だけを見せた。⚠ **実在の利用者ではない**）:
+         ⚠ **3/4 が「同じ話が 2 回」**と答えた（⚠ 「Cookie も使いません」が字面で 2 回出ていた）。
+         ⚠ **4/4 が、検索欄の下の版を「あとで読めばいい情報」**と答えた
+           （⚠ 「まだ何も調べていないのに、調べた場所の話をされている」）。
+       ⚠ **消したのではない。**⚠ **words.js の PRIVACY_SHORT を、⚠ ここで出す。**
+         ⚠ 前の `.f-priv` の主張（計測に地名も座標も送らない・Cookie も使わない）は、
+         ⚠ **PRIVACY_SHORT が丸ごと含んでいる**ので、⚠ **落ちる主張が無い。**
+       ⚠ **2026-08-20 に「畳んだフッターの中にしか無い」を直した経緯がある**
+         （⚠ 利用者役 2/4 が「これは先に見たかった」）。⚠ **そこへ戻していない。**
+         ⚠ **ここは `<details>` の外**で、⚠ **4 幅とも、⚠ スクロールなしで見える**
+         （⚠ 実測 2026-08-23・この変更後: ⚠ フッターの上端 y は
+          375=334 ／ 344=354 ／ 320=408 ／ 1280=320。⚠ **どれも viewport より上。**
+          ⚠ 数字は固定しない。⚠ **実描画が測り直す。**）⚠ **畳まれてはいない。**
+       ⚠ **場所を選んでも消さない**（⚠ 前は `#scope.on ~` で消していた）。
+         ⚠ フッターは常時あるので、⚠ 消す理由が無くなった。
+       ⚠ **字は words.js の 1 か所。**/peel の情報パネルと同じ文。 -->
+  <p class="f-priv" id="privacyShort" data-privacy-lead></p>
   <details class="f-more">
     <summary>プライバシーについて</summary>
     <div class="f-body" data-privacy-body>
@@ -1190,6 +1218,18 @@
       <b>建物</b>：© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a>（ODbL）
     </div>
   </details>
+  <!-- ⚠ **作者は、⚠ フッターのいちばん下**（2026-08-23。Owner 判断）。
+       ⚠ **「作」をやめて `©` にした。**⚠ 前は「出典 … | 作 hidetzu」と同じ行にあり、
+         ⚠ **作者も出典の 1 つに読めた。**⚠ 出典は「使う条件」、⚠ 作者は「誰が作ったか」で、
+         ⚠ **別のこと。**
+       ⚠ **「GitHub」と書く。**⚠ 前は「hidetzu」だけで、⚠ **GitHub へのリンクだと分からなかった。**
+       ⚠ 実測（2026-08-23・利用者役 4 名・画面だけを見せた。⚠ **実在の利用者ではない**）:
+         ⚠ **0/4 が「作者情報が目立つ」と答えた。**⚠ 下げても失うものが無い。 -->
+  <div class="f-author">
+    © 2026 <a href="https://github.com/hidetzu" target="_blank" rel="noopener">hidetzu</a>
+    <span class="sep">·</span>
+    <a href="https://github.com/hidetzu/konjaku" target="_blank" rel="noopener">GitHub</a>
+  </div>
 </footer>
 </div>
 

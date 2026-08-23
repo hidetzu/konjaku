@@ -1015,10 +1015,36 @@ for (const f of htmlFiles) {
   const idx = await readFile(join(PUB, "index.html"), "utf8");
   const peel = await readFile(join(PUB, "peel.html"), "utf8");
   // 畳まずに見える1行（トップ）。⚠ /peel は 2026-08-18 に**短い版**へ替えた（下）
+  // ⚠ **2026-08-23 に、⚠ 見る対象を変えた**（Owner 判断）。
+  //   ⚠ **前は「その箱に字がべた書きされていること」を見ていた。**
+  //   ⚠ いまは中身が \`words.js\` の \`PRIVACY_SHORT\` から実行時に入るので、
+  //     ⚠ **字は静的には読めない**（⚠ 読めないものを「確認済み」と呼ばない。CLAUDE.md §1）。
+  //   ⚠ **だから、⚠ 静的に確かめられることだけを主張する**（⚠ 3 つ）:
+  //     1) 箱がある  2) ⚠ **\`<details>\` の中に入っていない**  3) そこへ \`PRIVACY_SHORT\` を入れている
+  //   ⚠ **2) は前より強い。**⚠ 前は「畳まずに見える」と名乗りながら、⚠ **畳みの中でも通った。**
+  //   ⚠ **字が本当に出ているかは、⚠ 実描画（\`footer .f-priv\`）が見る。**
   {
-    const a = grab(idx, "data-privacy-lead");
-    if (!a) bad("index.html に畳まずに見える1行（data-privacy-lead）が無い（この検査が何も見ていない）");
-    else ok("index.html に畳まずに見える1行がある");
+    const fails = [];
+    // ⚠ **コメントを先に落とす**（CLAUDE.md §5）。⚠ **落とさないと、⚠ この検査を説明する
+    //   コメントに書いた \`<details>\` を、⚠ 検査自身が数える**（⚠ 2026-08-23 に実際に踏んだ）。
+    const idxNoC = idx.replace(/<!--[\s\S]*?-->/g, "");
+    const m = /<[a-z]+[^>]*\bdata-privacy-lead\b[^>]*>/.exec(idxNoC);
+    if (!m) fails.push("箱（data-privacy-lead）が無い");
+    else {
+      // ⚠ **その箱より前にある \`<details>\` が、⚠ 箱より前に閉じているか**を数える。
+      //   ⚠ 開いたままなら、⚠ **畳みの中にいる。**
+      const before = idxNoC.slice(0, m.index);
+      const opens = (before.match(/<details\b/g) ?? []).length;
+      const closes = (before.match(/<\/details>/g) ?? []).length;
+      if (opens > closes) fails.push("箱が <details> の中にある（畳むと、送る前に読めるとは言えない）");
+      // ⚠ **そこへ PRIVACY_SHORT を入れているか**（⚠ 箱だけ残ると余白が増える）
+      const id = /\bid="([^"]+)"/.exec(m[0])?.[1];
+      if (!id) fails.push("箱に id が無い（入れる側と結びつかない）");
+      else if (!new RegExp(`${id}[\\s\\S]{0,300}PRIVACY_SHORT`).test(idxNoC))
+        fails.push(`箱（#${id}）へ PRIVACY_SHORT を入れていない`);
+    }
+    if (fails.length) bad(`index.html の畳まずに見える1行: ${fails.join(" / ")}`);
+    else ok("index.html の畳まずに見える1行は、<details> の外にあり、PRIVACY_SHORT を入れている");
   }
   // ⚠ **/peel は短い版だが、3 段を落とさない。**
   //   2026-08-18 に、この画面から「サイト全体の情報」（作者・プライバシーの詳しい説明・

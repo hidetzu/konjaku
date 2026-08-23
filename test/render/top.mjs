@@ -2292,6 +2292,55 @@ export const CASES = [
   },
 
   {
+    // ⚠ **β 版であることが画面から分かり、⚠ フッターの押せるものが 44 を割らないこと**
+    //   （2026-08-23。Owner 判断。β 版リリース前の整理）。
+    //   ⚠ 実測（2026-08-23・利用者役 4 名・画面だけを見せた。⚠ **実在の利用者ではない**）:
+    //     ⚠ **2/4 が「完成品だと思った」**（⚠ 当時、画面に β の表記が無かった）。
+    //     ⚠ 1 名は「個人開発っぽいから、たぶん作りかけ」と ⚠ **画面ではなく雰囲気で**判断していた。
+    //     ⚠ **1 名が、⚠ 国土地理院のリンクを押そうとして 2 回外した**（⚠ 当時 60×20px）。
+    //   ⚠ **44×44 は指の端末の基準**（\`.claude/rules/css.md\`・\`ui-ux-review\` §3）。
+    //     ⚠ **PC では見ない**（⚠ ポインタが細いので、⚠ 余白だけ増えても損）。
+    //   ⚠ **件数を書かない。**⚠ **0 個であること**を見る（⚠ 数は走らせて数える）。
+    name: "β 版だと分かり、フッターの押せるものが 44 を割らない", path: "/",
+    async check(page) {
+      const out = [];
+      for (const [w, h] of [[375, 667], [344, 882], [320, 640]]) {
+        await page.setViewportSize({ width: w, height: h });
+        await settleAfterCondition(page);
+        const r = await page.evaluate(() => {
+          // ⚠ **サービス名の横にあること**（⚠ 「どこかに β がある」では弱い）
+          const brand = document.querySelector(".brand");
+          const beta = brand?.querySelector(".brand__beta");
+          const small = [...document.querySelectorAll("footer a, footer summary")]
+            .filter((e) => {
+              if (!e.checkVisibility?.()) return false;
+              const q = e.getBoundingClientRect();
+              return q.width < 44 || q.height < 44;
+            })
+            .map((e) => {
+              const q = e.getBoundingClientRect();
+              return `「${e.textContent.trim().slice(0, 10)}」${Math.round(q.width)}×${Math.round(q.height)}`;
+            });
+          return { beta: (beta?.textContent ?? "").trim(),
+                   betaSeen: beta?.checkVisibility?.() ?? false,
+                   inBrand: !!beta,
+                   // ⚠ **災害リスクの印を流用していないこと**（CLAUDE.md §4-1）
+                   warnMark: /⚠/.test(beta?.textContent ?? ""),
+                   small };
+        });
+        must(r.inBrand, `${w}px: β の印がサービス名の横に無い`);
+        must(r.betaSeen, `${w}px: β の印が見えていない`);
+        must(/β/.test(r.beta), `${w}px: β の印の字が違う:「${r.beta}」`);
+        must(!r.warnMark, `${w}px: β の印に ⚠ を使っている（⚠ は災害リスク専用）`);
+        must(!r.small.length,
+          `${w}px: フッターに 44 を割る的がある（${r.small.length} 個）: ${r.small.join(" ")}`);
+        out.push(`${w}: 「${r.beta}」・44 割れ 0`);
+      }
+      return out.join(" / ");
+    },
+  },
+
+  {
     // ⚠ **プライバシーの 3 段は、場所を送る前に読めること。**
     //   ⚠ 以前は畳んだフッターの中にしかなく、⚠ **利用者役 2/4 が「これは先に見たかった」**。
     //   ⚠ **「見えている」だけでなく「畳まれていない」「画面内」まで見る。**
@@ -2333,17 +2382,32 @@ export const CASES = [
       const sums = await page.$$eval("footer summary", (es) => es.map((e) => e.textContent.trim()));
       must(sums.some((t) => /プライバシー/.test(t)),
         `畳んである詳しい説明が消えている: ${sums.join("・")}`);
-      // ⚠ **場所を選んだら消える。**送ったあとに残すと「これから送ります」に読める
+      // ⚠ **場所を選んでも、⚠ フッターに残っている**（2026-08-23。Owner 判断で変えた）。
+      //   ⚠ **前は「場所を選んだら消える」ことを見ていた**（\`#scope.on ~ .privacy-short\`）。
+      //     ⚠ 理由は「送ったあとに残すと『これから送ります』に読める」。
+      //   ⚠ **置き場所がフッターへ移ったので、⚠ その理由が当たらなくなった。**
+      //     ⚠ フッターは常時ある場所で、⚠ **書いてあるのは、⚠ いつでも成り立つ事実**
+      //     （調べた場所は URL に入る／開くと配信元へ届く／こちらの記録には残らない）。
+      //     ⚠ **「これから送ります」とは書いていない。**
+      //   ⚠ **消えないことを見る。**⚠ 消えると、⚠ **判定したあとに読み返せない。**
       await page.setViewportSize({ width: 375, height: 667 });
       await page.goto(`${page.url().split("?")[0]}?q=%E8%B1%8A%E6%B4%B2&ll=35.6548,139.7975`);
       await page.waitForFunction(
         () => /旧水部|土地/.test(document.getElementById("verdict")?.textContent ?? ""),
         null, { timeout: 60000 });
       await settleAfterCondition(page);
-      const still = await page.evaluate(() =>
-        document.getElementById("privacyShort")?.checkVisibility() ?? false);
-      must(!still, "場所を選んだあとも、送る前の案内が出たままになっている");
-      return `4 幅すべてで畳まず画面内（${out.join(" / ")}）／3 段そろい／詳しい説明は残る／場所を選ぶと消える`;
+      const after = await page.evaluate(() => {
+        const e = document.getElementById("privacyShort");
+        return { seen: e?.checkVisibility() ?? false, inDetails: !!e?.closest("details"),
+                 inFooter: !!e?.closest("footer"),
+                 txt: (e?.textContent ?? "").replace(/\s+/g, " ").trim() };
+      });
+      must(after.seen, "場所を選んだあと、プライバシーの記述が消えている（判定後に読み返せない）");
+      must(after.inFooter, "プライバシーの記述がフッターの外にある（常時ある場所に置く）");
+      must(!after.inDetails, "場所を選んだあと、プライバシーの記述が畳んだ中にある");
+      const gone = NEED.filter(([re]) => !re.test(after.txt)).map(([, n]) => n);
+      must(!gone.length, `場所を選んだあと、段が落ちている（${gone.join("・")}）: ${after.txt.slice(0, 60)}`);
+      return `4 幅すべてで畳まず画面内（${out.join(" / ")}）／3 段そろい／詳しい説明は残る／場所を選んでもフッターに残り、3 段そろったまま`;
     },
   },
   {
@@ -3272,7 +3336,12 @@ export const CASES = [
       //   見たいのは「4 つのことが書いてあるか」。
       const facts = [
         // ⚠ **「地名か座標」で通さない。** 片方だけ書いても通っていた（2026-08-15 に指摘）。
-        [/計測に[はも、]?[^。]*地名[^。]*座標[^。]*送りません/, "計測に地名と座標の両方を送らないこと"],
+        // ⚠ **「送りません」の字面に縛らない**（2026-08-23）。⚠ **見るのは主張のほう。**
+        //   ⚠ フッターの 1 行は words.js の \`PRIVACY_SHORT\` になり、⚠ そこは「送らず」と書く。
+        //   ⚠ **「送らない」と言っていれば通す。**⚠ ただし ⚠ **地名と座標の両方**は外さない
+        //     （⚠ 片方だけ書いても通っていたことがある。2026-08-15 に指摘）。
+        [/計測に[はも、]?[^。]*地名[^。]*座標[^。]*送(りません|らず|っていません)/,
+          "計測に地名と座標の両方を送らないこと"],
         // ⚠ 配信元には届く。ここを書かないと、上の1行が言い切りすぎになる。
         [/IP/, "接続元の IP が配信元に届くこと"],
         [/URL|アドレス欄/, "調べた場所が URL に載ること"],
@@ -3290,7 +3359,7 @@ export const CASES = [
       //   残りは details に入れてよいが、**これは開かなくても読めること**。
       const shown = (await page.locator("footer .f-priv").textContent()).replace(/\s+/g, " ");
       must(await page.locator("footer .f-priv").isVisible(), "プライバシーの記述が畳まれている");
-      must(/計測に[はも、]?[^。]*地名[^。]*座標[^。]*送りません/.test(shown),
+      must(/計測に[はも、]?[^。]*地名[^。]*座標[^。]*送(りません|らず|っていません)/.test(shown),
         `畳まずに見える場所から、いちばん強い約束が消えている: ${shown}`);
       must(/Cookie/.test(shown), `Cookie を使わないことが、畳まずに見える場所に無い: ${shown}`);
       // ⚠ 「保存しません」に弱めない。計測に関しては、そもそも送っていない（/t は固定文字列だけ）
