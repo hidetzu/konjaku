@@ -3620,11 +3620,11 @@ head("6. 外部リンク");
   }
 
   // ============================================================
-  // 場所の指定の読み方は 1 か所（public/place-arg.js）
+  // 場所の指定の読み書きは 1 か所（public/place-arg.js）
   // ============================================================
   // ⚠ **hidetzu/konjaku#221。**⚠ `/peel` とトップが、⚠ **同じ答えから引く。**
   //   ⚠ **2 か所に形の判定を持つと、⚠ 「深掘りできる」と「戻す」の判断がずれる。**
-  head("2.8. 場所の指定の読み方は 1 か所");
+  head("2.8. 場所の指定の読み書きは 1 か所");
   {
     const fails = [];
     const yes = (c, what) => { if (!c) fails.push(what); };
@@ -3659,10 +3659,59 @@ head("6. 外部リンク");
       yes(!/[?&]b=/.test(u("q=x&b=1,2", "none")), `建物の鍵をトップへ持って行っている: ${u("q=x&b=1,2", "none")}`);
     } else fails.push("place-arg.js が topUrlFor を出していない");
 
-    // ⚠ **形の判定を、⚠ /peel が持ち直していないこと**（⚠ 2 か所になると必ずずれる）
-    const pj = src["peel3d.js"].replace(/\/\/[^\n]*/g, "").replace(/\/\*[\s\S]*?\*\//g, "");
-    const dup = (pj.match(/\^-\?\[\\d\.\]\+,-\?\[\\d\.\]\+\$/g) ?? []).length;
-    yes(dup === 0, `peel3d.js が座標の形を持ち直している（${dup} か所）。place-arg.js が正本`);
+    // ⚠ **URL を組むのも 1 か所**（2026-08-23）。⚠ **読む側と対で見る。**
+    //   ⚠ 実測: ⚠ 組み立てが **4 か所**にあった（トップ 3・`/peel` 1）。
+    if (P?.placeQuery) {
+      const Q = P.placeQuery;
+      const a = { title: "東京都江東区豊洲", lat: 35.6548, lon: 139.7975 };
+      // ⚠ **往復で見る。**⚠ **書いたものが、⚠ そのまま読み戻せること。**
+      //   ⚠ 片方だけ直すと、⚠ **自分で書いた URL を、⚠ 自分で読めなくなる。**
+      const back = P.readPlace(new URLSearchParams(Q(a)));
+      yes(back.state === "ok", `書いた URL を読み戻せない: ${Q(a)}`);
+      yes(back.q === a.title, `往復で地名が変わった: ${back.q}`);
+      yes(Math.abs(back.lat - a.lat) < 1e-5 && Math.abs(back.lon - a.lon) < 1e-5,
+        `往復で座標が変わった: ${back.lat},${back.lon}`);
+      // ⚠ **並びは lat,lon**（⚠ 逆にすると、⚠ 黙って別の場所になる）
+      yes(new URLSearchParams(Q(a)).get("ll").startsWith("35."),
+        `ll の並びが lat,lon ではない: ${new URLSearchParams(Q(a)).get("ll")}`);
+      // ⚠ **年代と建物は、⚠ 渡したときだけ載る**（⚠ 勝手に足さない・勝手に落とさない）
+      yes(!/[?&]era=/.test(Q(a)), `年代を渡していないのに era が載っている: ${Q(a)}`);
+      yes(/[?&]era=swale/.test(Q({ ...a, era: "swale" })), "era を渡しても載っていない");
+      yes(!/[?&]b=/.test(Q(a)), `建物を渡していないのに b が載っている: ${Q(a)}`);
+      yes(/[?&]b=/.test(Q({ ...a, bld: "1,2" })), "建物を渡しても載っていない");
+      // ⚠ **座標が読めないときは組まない**（⚠ NaN を載せた URL を共有させない）
+      yes(Q({ title: "x" }) === null, "座標が無いのに URL を組んでいる");
+      yes(Q({ title: "x", lat: 999, lon: 0 }) === null, "地球の外なのに URL を組んでいる");
+      // ⚠ **読む側が `bad` と言う値では、⚠ 書く側も組まないこと。**
+      //   ⚠ **判定を 2 つ持つと、⚠ 書けるのに読めない URL が作れる。**
+      for (const ll of ["999,0", "0,999", "abc"]) {
+        const [la, lo] = ll.split(",").map(Number);
+        yes(P.readPlace({ ll }).state === "bad" && Q({ title: "x", lat: la, lon: lo }) === null,
+          `読む側と書く側で判定が食い違う: ${ll}`);
+      }
+    } else fails.push("place-arg.js が placeQuery を出していない");
+
+    // ⚠ **形も組み立ても、⚠ どの画面も持ち直していないこと**（⚠ 2 か所になると必ずずれる）。
+    //   ⚠ **コメントを先に落とす**（`CLAUDE.md` §5。⚠ 落とさないと、⚠ 説明の字面を自分で拾う）。
+    //   ⚠ **`https://` の `//` は残す**（⚠ 落とすと行末まで消えて、⚠ 見張りが素通りする）。
+    const bare = (f) => src[f]
+      .replace(/<!--[\s\S]*?-->/g, "")
+      .replace(/(^|[^:])\/\/[^\n]*/g, "$1")
+      .replace(/\/\*[\s\S]*?\*\//g, "");
+    const pj = bare("peel3d.js");
+    // ⚠ **トップも見る**（2026-08-23）。⚠ **以前は `/peel` しか見ておらず、
+    //   ⚠ `index.html` が同じ正規表現を直書きしていたのを素通りさせていた。**
+    for (const f of ["index.html", "peel3d.js"]) {
+      const b = bare(f);
+      const shape = (b.match(/\^-\?\[\\d\.\]\+,-\?\[\\d\.\]\+\$/g) ?? []).length;
+      yes(shape === 0, `${f} が座標の形を持ち直している（${shape} か所）。place-arg.js が正本`);
+      // ⚠ **組み立ての印**（⚠ `&ll=` を差し込んでいたら、⚠ そこで URL を作っている）
+      const built = (b.match(/&ll=\$\{/g) ?? []).length;
+      yes(built === 0, `${f} が URL を組み直している（${built} か所）。place-arg.js が正本`);
+      // ⚠ **座標の桁**（⚠ `land.js` の控えの鍵は別の問いなので、⚠ ここでは見ない）
+      const dig = (b.match(/toFixed\(5\)/g) ?? []).length;
+      yes(dig === 0, `${f} が座標の桁を持ち直している（${dig} か所）。place-arg.js の DIGITS が正本`);
+    }
     // ⚠ **既定の座標へ黙って落ちる道が残っていないこと**（⚠ これが元の不具合）
     yes(!/loadArea\(139\.7975,\s*35\.6548/.test(pj),
       "peel3d.js に、既定の豊洲へ黙って落ちる道が残っている（hidetzu/konjaku#221 の不具合そのもの）");
@@ -3687,7 +3736,7 @@ head("6. 外部リンク");
       `読めなかったときに、読めなかったと言っていない: ${np.bad}`);
 
     if (fails.length) bad(`場所の指定の読み方（${fails.length} 件）: ${fails.join(" / ")}`);
-    else ok("場所の指定は place-arg.js の 1 か所（ok / 指定なし / 読めない を分ける・既定へ落ちない）");
+    else ok("場所の指定は place-arg.js の 1 か所（読み: ok/指定なし/読めない ／ 書き: 往復・年代と建物は任意・地球の外は組まない）");
   }
 
   // ============================================================

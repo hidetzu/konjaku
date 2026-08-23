@@ -21,6 +21,82 @@ import {
 
 export const CASES = [
   {
+    // ⚠ **トップの URL の座標が読めないとき、⚠ 黙って別の場所を出さない**（2026-08-24）。
+    //
+    // ⚠ **`/peel` は hidetzu/konjaku#221 で直っていたが、⚠ トップは取り残されていた。**
+    //   ⚠ **既存の検査も `peel3d.js` しか見張っていなかったので、⚠ 素通りしていた。**
+    //
+    // ⚠ **前の姿**（実測 2026-08-23・`main` = `384e4ef`・375×667）:
+    //   `?q=名古屋&ll=999,0`  → ⚠ URL が `?q=名古屋&ll=999.00000,0.00000` に書き換わり、
+    //                            ⚠ **緯度 999 で地図を開いていた。**⚠ 断りは無し。
+    //   `?ll=999,0`           → ⚠ URL が `?q=999.0000%2C%200.0000&ll=999.00000,0.00000`。
+    //                            ⚠ **在りもしない地名を作って URL に載せていた**（掟 §1）。
+    //                            ⚠ **共有されると、⚠ その嘘がそのまま相手に届く。**
+    //
+    // ⚠ **対照を必ず含める**（⚠ 読める座標は、⚠ いままでどおり地図が開く）。
+    //   ⚠ 対照が無いと、⚠ **全部を断る実装でも緑になる。**
+    // ⚠ **`none` は黙る**（Owner 判断 2026-08-23）。⚠ 何も指定していない人に言うことは無い。
+    name: "トップの URL の座標が読めないとき、黙って別の場所を出さない",
+    path: "/", group: "core",
+    async check(page) {
+      const base = new URL(page.url()).origin;
+      const out = [];
+      const CASES = [
+        // 名前              開く URL                                  断り   検索欄に残る字
+        // ⚠ **単純なものから並べる。**⚠ 先に複雑なケースを置くと、⚠ そこで止まって
+        //   ⚠ **後ろの主張に一度も到達しない**（⚠ 2026-08-24 に、⚠ わざと壊して気づいた）。
+        ["対照",            "/?q=%E8%B1%8A%E6%B4%B2&ll=35.6548,139.7975", null, null],
+        ["地球の外 のみ",   "/?ll=999,0",                                 "bad", null],
+        ["読めない ll",     "/?ll=abc",                                   "bad", null],
+        ["地球の外 + 地名", "/?q=%E5%90%8D%E5%8F%A4%E5%B1%8B&ll=999,0",   "bad", "名古屋"],
+        ["指定なし",        "/",                                          null, null],
+      ];
+      for (const [name, path, why, keepQ] of CASES) {
+        await page.goto(base + path, { waitUntil: "domcontentloaded", timeout: 60000 });
+        await page.waitForTimeout(3000);
+        const r = await page.evaluate(() => ({
+          search: location.search,
+          flash: (document.querySelector(".flashnote__text")?.textContent ?? "").trim(),
+          qval: document.getElementById("q")?.value ?? "",
+          hint: (document.querySelector(".hint")?.textContent ?? "").trim(),
+        }));
+        if (why === null) {
+          // ⚠ **読める座標と、⚠ 何も指定していないときは、⚠ 断らない**
+          must(!r.flash, `${name}: 断りが出ている（出すべきではない）: ${r.flash}`);
+          // ⚠ **対照は地図が開く**（⚠ `syncUrl` が走って 5 桁へ正規化される）
+          if (/ll=/.test(path)) {
+            must(/ll=35\.65480,139\.79750/.test(r.search),
+              `${name}: 読める座標なのに地図が開いていない（${r.search}）`);
+            out.push(`${name}: 開く・${r.search.slice(0, 40)}`);
+          } else out.push(`${name}: 黙ってトップ`);
+          continue;
+        }
+        // ⚠ **字は `words.js` の 1 か所**（⚠ ここで書かない）
+        const want = KonjakuWords.noPlace[why];
+        must(r.flash === want, `${name}: 断りの字が違う\n  出た  「${r.flash}」\n  期待  「${want}」`);
+        // ⚠ **地図を開かない**（⚠ 開いたら座標が URL に書き戻される）
+        must(!/ll=\d+\.\d{5}/.test(r.search),
+          `${name}: 読めない座標なのに地図を開いている（${r.search}）`);
+        // ⚠ **在りもしない地名を作らない。**⚠ **これが元の不具合の核心**（掟 §1）。
+        //   ⚠ 利用者が `q` を渡していないのに、⚠ こちらが `q` を書き足さない。
+        if (!keepQ) must(!/[?&]q=/.test(r.search),
+          `${name}: 渡されていない地名を URL に書き足している（${r.search}）`);
+        // ⚠ **利用者が入れた地名は落とさない**
+        if (keepQ) must(r.qval === keepQ, `${name}: 地名が消えている（「${r.qval}」）`);
+        // ⚠ **「存在しません」と読める字を出さない**（⚠ 読めなかっただけ。掟 §1）
+        must(!/存在しません|ありません(。|$)/.test(r.flash),
+          `${name}: その場所が無いと読める字が出ている: ${r.flash}`);
+        // ⚠ **`⚠` は災害リスク専用**（`CLAUDE.md` §4）
+        must(!/⚠/.test(r.flash), `${name}: 断りに ⚠ を使っている: ${r.flash}`);
+        // ⚠ **手がかりは常時ある**（ADR 0026）
+        must(/地名/.test(r.hint), `${name}: 次に何をするかの手がかりが無い: ${r.hint}`);
+        out.push(`${name}: ${why}`);
+      }
+      return out.join(" ／ ");
+    },
+  },
+
+  {
     name: "ランチャー（水域）", path: `/?${TOYOSU}`,
     async check(page) {
       // 「判定中…」のまま読むと素通りしてしまうので、確定するまで待つ
