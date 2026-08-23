@@ -5760,6 +5760,39 @@ head("9. 画面の言葉");
         + "（⚠ 本物の git ／ ⚠ `core.quotepath=true` を押しつけて確認）");
 }
 
+// ── README の名乗りが、⚠ 画面と割れていないか ────────────────────
+// ⚠ **2026-08-23 に踏んだ。**⚠ **画面は hidetzu/konjaku#225 で β を名乗り始めたのに、
+//   ⚠ README は「プロトタイプです」と言い続けていた。**
+// ⚠ **README は共有先まで届く**（`CLAUDE.md` §6）。⚠ **画面より遠くへ行く。**
+// ⚠ **看板と共有カードは上で突き合わせているが、⚠ README は入っていなかった。**
+// ⚠ **段の名乗り（α / β / 正式版 / プロトタイプ）だけを見る。**
+//   ⚠ **README の書き方までは縛らない**（⚠ 文の形は自由）。
+{
+  const idxHtml = await readFile(join(PUB, "index.html"), "utf8");
+  const rdme = await readFile(join(ROOT, "README.md"), "utf8");
+  // ⚠ **コメントを先に落とす**（⚠ 落とさないと、⚠ この決まりを説明した字面を拾う）。
+  const bare = idxHtml.replace(/<!--[\s\S]*?-->/g, "");
+  const STAGE = ["プロトタイプ", "α 版", "α版", "β 版", "β版", "正式版"];
+  // ⚠ **画面は `今昔 β` のように、⚠ 「版」を付けずに名乗ることがある。**⚠ 単独の β も拾う
+  const onScreen = new Set(STAGE.filter((w) => bare.includes(w)));
+  if (/[^A-Za-zα-ωΑ-Ω]β[^A-Za-zα-ωΑ-Ω]/.test(bare)) onScreen.add("β 版");
+  const inReadme = new Set(STAGE.filter((w) => rdme.includes(w)));
+  const norm = (set) => new Set([...set].map((w) => w.replace(/\s*版$/, "")));
+  const a = norm(onScreen), b = norm(inReadme);
+  const only = (x, y) => [...x].filter((w) => !y.has(w));
+  if (!a.size) {
+    bad("画面が段を名乗っていない（⚠ この検査が何も見ていない）");
+  } else if (!b.size) {
+    bad(`README が段を名乗っていない（⚠ 画面は「${[...a].join("・")}」）`
+      + "。⚠ **README は共有先まで届く**（`CLAUDE.md` §6）");
+  } else if (only(a, b).length || only(b, a).length) {
+    bad(`段の名乗りが割れている: 画面「${[...a].join("・")}」/ README「${[...b].join("・")}」`
+      + "。⚠ **片方だけ直すと、⚠ 遠くへ行くほうが古いまま配られる**");
+  } else {
+    ok(`画面と README の段の名乗りが揃っている（${[...a].join("・")}）`);
+  }
+}
+
 // ── いくつ確かめたか、⚠ 最後に名乗る ────────────────────────────
 // ⚠ **0 件で緑にしない。**⚠ 1 件も走っていないのに「問題なし」と言わない
 //   （⚠ 以前は SPEC との突き合わせが、⚠ 偶然この役目も果たしていた）。
