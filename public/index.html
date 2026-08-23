@@ -3933,7 +3933,16 @@ if(!navigator.geolocation){
 // ⚠ **URL から `noplace` を落とす。**⚠ 残すと、⚠ 共有した先でも同じ断りが出る。
 {
   const sp0=new URLSearchParams(location.search);
-  const why=sp0.get("noplace");
+  // ⚠ **`/peel` から戻されたときの理由**（`?noplace=`）。
+  //   ⚠ **それだけを見ていた**ので、⚠ **壊れた URL をトップで直接開いた人には
+  //     何も言っていなかった**（2026-08-24 に実測して直した）。
+  //   ⚠ 実測（`main` = `384e4ef`・375×667）: ⚠ `?ll=999,0` は断りが出ないどころか、
+  //     ⚠ **`?q=999.0000, 0.0000` という在りもしない地名を作って URL に載せていた。**
+  // ⚠ **`bad`（指定はあったが読めない）だけを足す。**
+  //   ⚠ **`none`（何も指定していない）は足さない。**⚠ 何も指定していない人に言うことは無い
+  //     （Owner 判断 2026-08-23。`place-arg.js` の `topUrlFor` と同じ判断）。
+  const why=sp0.get("noplace")
+    ?? (KonjakuPlaceArg.readPlace(sp0).state==="bad" ? "bad" : null);
   const el=document.getElementById("flashNote");
   const say=KonjakuWords?.noPlace?.[why];
   // ⚠ **知らない値は黙って捨てる**（⚠ 内部状態をそのまま画面に出さない。CLAUDE.md §4）
@@ -3966,7 +3975,9 @@ if(!navigator.geolocation){
   }
   // ⚠ **`noplace` を URL から落とす**（⚠ 出したあと。⚠ 出す前に落とすと読めない）。
   //   ⚠ **`q` と `era` は残す。**⚠ 下の「URL から復元」がそれを使う。
-  if(why!==null){
+  // ⚠ **落とすのは、⚠ 実際に `noplace` が載っていたときだけ**（⚠ `why` は上で足しているので、
+  //   ⚠ `why!==null` で見ると、⚠ `?ll=abc` のときに何も落とさない書き換えが走る）。
+  if(sp0.has("noplace")){
     sp0.delete("noplace");
     const rest=sp0.toString();
     history.replaceState(null,"",rest ? `./?${rest}` : "./");
