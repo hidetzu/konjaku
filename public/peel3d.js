@@ -137,6 +137,26 @@ const yf2lat=(y)=>{const n=Math.PI-2*Math.PI*y/2**Z;return 180/Math.PI*Math.atan
 const raster=(l)=>({type:"raster",tiles:[`${GSI}/${l.id}/{z}/{x}/{y}.${l.ext}`],
   tileSize:256,minzoom:l.min,maxzoom:l.max,attribution:ATTR});
 
+// ============================================================
+// ⚠ ここへ来た時点で、⚠ **場所の座標は読めている**（hidetzu/konjaku#221）
+// ============================================================
+// ⚠ **門番は `peel.html` にある**（⚠ このファイルを読み込む前に返している）。
+//   ⚠ **ここに二重で置かない**（掟: 同じ問いに答える実装を 2 つ持たない）。
+// ⚠ **形の判定は `place-arg.js` が正本。**⚠ このファイルで書き直さない。
+// ⚠ **前は、黙って豊洲を出していた。**⚠ URL も `?q=東京都江東区豊洲&ll=…` に書き換わり、
+//   ⚠ **共有した人と見た人が違う場所を見ていても、⚠ どちらも気づかなかった。**
+//   ⚠ 実測（2026-08-23・`main` = `71349bf`）: ⚠ `?q=名古屋` `?ll=abc` `/peel` の 3 通りとも、
+//     ⚠ **断り無しで豊洲**。⚠ しかも `era=swale` が `seamlessphoto` に捨てられていた。
+//
+// ⚠ **場所を決めるのはトップの責務**（`docs/adr/` の /peel は「探す口を持たない」）。
+//   ⚠ **だから、⚠ ここで断るのではなく、⚠ 決められる場所へ返す**（Owner 判断 2026-08-23。B 案）。
+//
+// ⚠ **地図を組む前に返す。**⚠ 組んでから返すと、⚠ **豊洲が一瞬見えてしまう**
+//   （⚠ 「その場所が存在した」と読まれる）。⚠ **タイルも無駄に取りに行く。**
+//
+// ⚠ **引数がまったく無い `/peel` は、⚠ 黙って返す**（Owner 判断 2026-08-23）。
+//   ⚠ 利用者は何も指定していないので、⚠ **「読み取れなかった」と言うのは嘘。**
+//
 // ⚠ **false に戻さない。** 戻すと利用条件を満たさなくなる（検査が落ちる）
 const map = new maplibregl.Map({ container:"map", attributionControl:{compact:true}, maxPitch:80,
   center:[139.7975,35.6548], zoom:15.05, pitch:56, bearing:-20,
@@ -456,15 +476,13 @@ map.on("load",()=>{
   render();
   // URL から復元。共有できることがループの前提（掟: 唯一の指標は共有率 差分1）
   const sp=new URLSearchParams(location.search);
-  const ll=sp.get("ll"), q=sp.get("q");
   // ⚠ era / b が無い古い URL（q と ll だけ）も、これまでどおり開ける。既定の状態で始まるだけ
   const opt={ era:sp.get("era"), bld:sp.get("b") };
-  if(ll && /^-?[\d.]+,-?[\d.]+$/.test(ll)){
-    const [la,lo]=ll.split(",").map(Number);
-    loadArea(lo,la,q||`${la.toFixed(4)}, ${lo.toFixed(4)}`,opt);
-  } else {
-    loadArea(139.7975,35.6548,"東京都江東区豊洲");   // 既定
-  }
+  // ⚠ **既定へ落ちる道はもう無い**（hidetzu/konjaku#221）。⚠ ここへ来た時点で座標は読めている
+  //   （⚠ 読めなければ、⚠ 上の門番がトップへ返している）。
+  // ⚠ **形の判定を、⚠ ここで書き直さない**（⚠ `place-arg.js` が正本。⚠ 2 か所に持つと必ずずれる）。
+  const arg=KonjakuPlaceArg.readPlace(sp);
+  loadArea(arg.lon,arg.lat,arg.q||`${arg.lat.toFixed(4)}, ${arg.lon.toFixed(4)}`,opt);
 });
 
 // 建物を押したとき。

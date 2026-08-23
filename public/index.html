@@ -933,6 +933,27 @@
      ⚠ **focus の輪郭は消さない**（⚠ キーボードで辿れなくなる）。 */
   footer a{color:var(--ink-dim)}
   footer a:hover, footer a:focus-visible{color:var(--action)}
+  /* ============ 深掘りの URL に場所が無かったときの 1 行 ============ */
+  /* ⚠ **hidetzu/konjaku#221。**⚠ Owner 判断（2026-08-23）で「自然に閉じる」形にした。
+     ⚠ **消えるのはこれだけ。**⚠ 「次に何をすればいいか」は、⚠ **下の `.hint` が常時言っている**
+       （⚠ ADR 0026: ⚠ 正しい但し書きを見えない場所に置くのは、書いていないのとほぼ同じ）。
+     ⚠ **警告色にしない**（⚠ `/peel` の `#stateMiss` と同じ考え。⚠ 壊れてはいない）。
+     ⚠ **`⚠` の記号も使わない**（画面の `⚠` は災害リスク専用）。
+     ⚠ **新しい CSS なので class で組む**（`.claude/rules/css.md`）。 */
+  .flashnote{display:flex;align-items:flex-start;gap:8px;
+    margin:0 0 10px;padding:9px 10px;border-radius:8px;
+    border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.05);
+    color:var(--ink-dim);font-size:var(--fs-note);line-height:1.6}
+  .flashnote__text{flex:1;min-width:0}
+  /* ⚠ **自動で閉じるものにも、⚠ 手で閉じる道を残す。**⚠ 44×44 を割らない */
+  .flashnote__close{flex:none;display:inline-flex;align-items:center;justify-content:center;
+    width:var(--tap);height:var(--tap);margin:-9px -10px -9px 0;
+    border:0;background:transparent;color:var(--ink-dim);font:inherit;
+    font-size:var(--fs-badge);cursor:pointer;border-radius:8px}
+  .flashnote__close:hover{color:var(--action)}
+  /* ⚠ **出るときだけ動かす。**⚠ 消えるときは、⚠ 読んでいる途中で動くと追えない */
+  .flashnote{animation:flashnote-in .18s ease-out}
+  @keyframes flashnote-in{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
   a{color:var(--action)}
   @media(min-width:681px){
     /* ⚠ **同じ形のセレクタで戻す**（上と同じ 0-0-3 / 0-1-2）。⚠ 形が違うと負ける */
@@ -1087,6 +1108,17 @@
          （原則4「説明より操作」）。根拠の入口は判定カードの ? とフッターにある。 -->
   <p class="lead">場所を検索して、その土地の時間をさかのぼる。</p>
 </header>
+
+<!-- ⚠ 深掘りの URL に場所が無かったときの 1 行（hidetzu/konjaku#221）。
+     ⚠ **既定では空**（高さ 0）。⚠ 中身を入れるのはスクリプトの 1 か所だけ。
+     ⚠ **`role="status"` にする**（⚠ `alert` にしない。⚠ 危険ではない）。
+     ⚠ **検索欄より上に置く**（2026-08-23 に測って決めた）。
+       ⚠ **前は入力例の下に置いていた。**⚠ `?q=` で検索が成功すると、
+         ⚠ **候補と結果が上に積まれて、⚠ y=359 → 1166 へ押し出された**
+         （⚠ 375×667。⚠ **画面の外**）。⚠ **見えていない注釈は無いのと同じ**（ADR 0026）。
+       ⚠ **ここなら、⚠ 下に何が積まれても動かない。**
+     ⚠ **「場所を選ぶと深掘りできます」と言うので、⚠ 選ぶ場所のすぐ上に置く。** -->
+<div id="flashNote" role="status" aria-live="polite"></div>
 
 <div class="scope" id="scope">
   <div class="chip"><span class="nm" id="chipName"></span><button class="x" id="chipX" title="場所を変える"><i>✕</i></button></div>
@@ -1275,6 +1307,9 @@
   <script src="./photos.js"></script>
   <!-- 段の作り方（hidetzu/konjaku#170）。DOM も地図も持たない -->
   <script src="./eras.js"></script>
+  <!-- ⚠ URL の「場所の指定」を読む 1 か所（hidetzu/konjaku#221）。DOM も地図も持たない。
+       ⚠ **`/peel` は「深掘りできるか」を、⚠ トップは「なぜ戻ってきたか」を、同じ答えから引く。** -->
+  <script src="./place-arg.js"></script>
   <script src="./words.js"></script>
 <!-- ⚠ verify.js / peel3d.js より**先に**読む。明治期の 14 区分と 1 画素の分類は
      ここが唯一の定義で、あとの2つはこれを借りている（掟6: 同じ問いに答える実装を2つ持たない）。 -->
@@ -3884,6 +3919,58 @@ if(!navigator.geolocation){
       },
       { enableHighAccuracy:true, timeout:12000, maximumAge:60000 });
   };
+}
+
+// ============ 深掘りの URL に場所が無かったとき ============
+// ⚠ **hidetzu/konjaku#221。**⚠ `/peel` は場所が読めないとき、⚠ ここへ返してくる。
+//   ⚠ **`/peel` が黙って豊洲を出すのをやめた**ので、⚠ **なぜトップにいるのかをここで言う。**
+//
+// ⚠ **数秒で自然に閉じる**（Owner 判断 2026-08-23）。⚠ **ただし消えるのはこの 1 行だけ。**
+//   ⚠ **「次に何をすればいいか」は、⚠ 下の `.hint` が常時言っている**（ADR 0026）。
+//
+// ⚠ **読んでいる途中で消さない。**⚠ hover 中・中にフォーカスがあるあいだは止める。
+// ⚠ **動きを止めている人には、⚠ 待たずに消さない**（⚠ 勝手に画面が変わるのを避ける）。
+// ⚠ **URL から `noplace` を落とす。**⚠ 残すと、⚠ 共有した先でも同じ断りが出る。
+{
+  const sp0=new URLSearchParams(location.search);
+  const why=sp0.get("noplace");
+  const el=document.getElementById("flashNote");
+  const say=KonjakuWords?.noPlace?.[why];
+  // ⚠ **知らない値は黙って捨てる**（⚠ 内部状態をそのまま画面に出さない。CLAUDE.md §4）
+  if(el && say){
+    // ⚠ **字は words.js の 1 か所。**⚠ 外から来た文字列は 1 文字も混ぜない
+    //   （⚠ `noplace` の値そのものは出さない。⚠ 出すなら esc.js を通すこと）。
+    el.innerHTML=`<div class="flashnote"><span class="flashnote__text">${esc(say)}</span>`
+      + `<button type="button" class="flashnote__close" aria-label="この案内を閉じる">✕</button></div>`;
+    const box=el.firstElementChild;
+    const shut=()=>{ el.innerHTML=""; };
+    box.querySelector(".flashnote__close").addEventListener("click",shut);
+    // ⚠ **地名を入れてほしいので、⚠ 検索欄へフォーカスを送る**（Owner 判断）。
+    //   ⚠ **`autofocus` は既に付いているが、⚠ 戻ってきた直後に確実に当てる。**
+    try{ document.getElementById("q")?.focus(); }catch{}
+    // ⚠ **自然に閉じる**（Owner 判断 2026-08-23）。⚠ **10 秒。**
+    //   ⚠ **6 秒では足りなかった。**⚠ 利用者役 4 名に触ってもらった結果、
+    //     ⚠ **2/4 が「読み終わる前に消えた」**（⚠ 実在の利用者ではない）。
+    //   ⚠ **見つける 3 秒 ＋ 読む 7 秒**（⚠ この文は 40 字。⚠ 黙読を 6 字/秒として約 7 秒）。
+    //   ⚠ **hover とフォーカスでも止まるが、⚠ 指の端末に hover は無い。**
+    //     ⚠ **だから、⚠ 止められない人に合わせて長さを決める。**
+    //   ⚠ **邪魔なら `✕` で閉じられる**（⚠ 44×44）。
+    let t=null;
+    const stop=()=>{ if(t){ clearTimeout(t); t=null; } };
+    const go=()=>{ stop(); t=setTimeout(shut,10000); };
+    box.addEventListener("pointerenter",stop);
+    box.addEventListener("pointerleave",go);
+    box.addEventListener("focusin",stop);
+    box.addEventListener("focusout",go);
+    go();
+  }
+  // ⚠ **`noplace` を URL から落とす**（⚠ 出したあと。⚠ 出す前に落とすと読めない）。
+  //   ⚠ **`q` と `era` は残す。**⚠ 下の「URL から復元」がそれを使う。
+  if(why!==null){
+    sp0.delete("noplace");
+    const rest=sp0.toString();
+    history.replaceState(null,"",rest ? `./?${rest}` : "./");
+  }
 }
 
 // ============ URL から復元 ============
