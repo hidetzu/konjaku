@@ -105,8 +105,23 @@ if (given !== undefined) files = given.split(",").filter(Boolean);
 else
 
 try {
-  if (!given) files = execFileSync("git", ["diff", "--name-only", range], { encoding: "utf8" })
-    .split("\n").map((s) => s.trim()).filter(Boolean);
+  // ⚠ **`-z` で受け取る**（2026-08-23 に踏んで直した。hidetzu/konjaku#222 で発覚）。
+  //   ⚠ **`git diff --name-only` は、⚠ 非 ASCII のパスを C 形式で引用して返す**
+  //     （`core.quotepath` の既定が `true`）:
+  //
+  //       "…/0020-\346\225\260\345\255\227….md"
+  //        ↑ ⚠ **先頭が二重引用符**
+  //   ⚠ **ここに実在するファイル名を書かない**（⚠ ADR の実在を見る検査が、⚠ この字面を拾う）。
+  //
+  //   ⚠ **すると下の `/^docs\//` に一致せず、⚠ 「知らないもの」として全部に倒れる。**
+  //   ⚠ **`docs/adr/` はほぼ全部が日本語名**なので、⚠ **ADR を触るたびに 5 本走っていた。**
+  //   ⚠ **落ちない。**⚠ **多く回す向きに倒れるので、⚠ CI は緑のまま。**
+  //   ⚠ **手元では気づけない**（⚠ `core.quotepath=false` を個人設定にしている人がいる）。
+  //   ⚠ **`-c core.quotepath=false` ではなく `-z` を使う。**
+  //     ⚠ あちらは非 ASCII の引用だけを止めるので、⚠ **`"` や改行を含むパスは引用されたまま。**
+  //     ⚠ **`-z` は何があっても引用しない。**
+  if (!given) files = execFileSync("git", ["diff", "--name-only", "-z", range], { encoding: "utf8" })
+    .split("\0").map((s) => s.trim()).filter(Boolean);
 } catch {
   // ⚠ **差分を読めないときは、⚠ 全部に倒す。**⚠ 黙って 0 件にしない
   emit(ALL);
