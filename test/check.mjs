@@ -3620,6 +3620,77 @@ head("6. 外部リンク");
   }
 
   // ============================================================
+  // 場所の指定の読み方は 1 か所（public/place-arg.js）
+  // ============================================================
+  // ⚠ **hidetzu/konjaku#221。**⚠ `/peel` とトップが、⚠ **同じ答えから引く。**
+  //   ⚠ **2 か所に形の判定を持つと、⚠ 「深掘りできる」と「戻す」の判断がずれる。**
+  head("2.8. 場所の指定の読み方は 1 か所");
+  {
+    const fails = [];
+    const yes = (c, what) => { if (!c) fails.push(what); };
+    await import(`file://${join(PUB, "place-arg.js")}`);
+    const P = globalThis.KonjakuPlaceArg;
+    yes(P?.readPlace, "place-arg.js が readPlace を出していない（この検査が何も見ていない）");
+    if (P?.readPlace) {
+      const r = (q) => P.readPlace(new URLSearchParams(q));
+      // ⚠ **3 つを分ける**（⚠ 混ぜると、⚠ 何も指定していない人に「読み取れなかった」と言う）
+      yes(r("ll=35.65,139.79").state === "ok", "読める座標を ok にしていない");
+      yes(r("q=名古屋").state === "none", "座標の指定が無いのを none にしていない");
+      yes(r("").state === "none", "引数なしを none にしていない");
+      yes(r("ll=").state === "none", "空の ll を none にしていない（指定が無いのと同じ）");
+      yes(r("ll=abc").state === "bad", "読めない座標を bad にしていない");
+      // ⚠ **形は通るが数にならないもの**（⚠ 緩いと、⚠ 地図が別の場所を出す）
+      yes(r("ll=1e999,0").state === "bad", "数にならない座標を bad にしていない");
+      yes(r("ll=999,0").state === "bad", "地球の外の緯度を bad にしていない");
+      yes(r("ll=0,999").state === "bad", "地球の外の経度を bad にしていない");
+      // ⚠ **q を落とさない**（⚠ 落とすと、⚠ 利用者が入れた地名まで消える）
+      yes(r("q=名古屋").q === "名古屋", "座標が無いときに q を落としている");
+    }
+    if (P?.topUrlFor) {
+      const u = (q, st) => P.topUrlFor(new URLSearchParams(q), st);
+      // ⚠ **何も指定が無ければ黙る**（Owner 判断 2026-08-23）
+      yes(u("", "none") === "./", `引数なしで断っている: ${u("", "none")}`);
+      // ⚠ **指定があれば言う**
+      yes(/noplace=none/.test(u("q=x", "none")), "q だけのときに理由を渡していない");
+      yes(/noplace=bad/.test(u("ll=abc", "bad")), "壊れた ll のときに理由を渡していない");
+      // ⚠ **era を捨てない**（⚠ Issue の AC 2: ⚠ 黙って別の年代に差し替わらない）
+      yes(/era=swale/.test(u("q=x&era=swale", "none")), "era を黙って捨てている");
+      // ⚠ **b（建物）は持って行かない**（⚠ トップに建物を選ぶ画面が無い。ADR 0026）
+      yes(!/[?&]b=/.test(u("q=x&b=1,2", "none")), `建物の鍵をトップへ持って行っている: ${u("q=x&b=1,2", "none")}`);
+    } else fails.push("place-arg.js が topUrlFor を出していない");
+
+    // ⚠ **形の判定を、⚠ /peel が持ち直していないこと**（⚠ 2 か所になると必ずずれる）
+    const pj = src["peel3d.js"].replace(/\/\/[^\n]*/g, "").replace(/\/\*[\s\S]*?\*\//g, "");
+    const dup = (pj.match(/\^-\?\[\\d\.\]\+,-\?\[\\d\.\]\+\$/g) ?? []).length;
+    yes(dup === 0, `peel3d.js が座標の形を持ち直している（${dup} か所）。place-arg.js が正本`);
+    // ⚠ **既定の座標へ黙って落ちる道が残っていないこと**（⚠ これが元の不具合）
+    yes(!/loadArea\(139\.7975,\s*35\.6548/.test(pj),
+      "peel3d.js に、既定の豊洲へ黙って落ちる道が残っている（hidetzu/konjaku#221 の不具合そのもの）");
+
+    // ⚠ **断りの字が、⚠ 検索欄と同じ語を別の意味で使っていないこと**（2026-08-23）。
+    //   ⚠ **検索欄は「地名・住所を入力」。**⚠ 断りで「共有された住所」と書くと、
+    //     ⚠ **同じ画面で「住所」が URL と 街の住所 の 2 つを指す。**
+    await import(`file://${join(PUB, "words.js")}`);
+    const np = globalThis.KonjakuWords?.noPlace ?? {};
+    yes(np.none && np.bad, "words.js に noPlace（指定なし／読めない）が無い");
+    for (const [k, t] of Object.entries(np)) {
+      yes(!/住所/.test(t), `noPlace.${k} が「住所」を使っている（検索欄と意味が食い違う）: ${t}`);
+      yes(!/⚠/.test(t), `noPlace.${k} が ⚠ を使っている（災害リスク専用）: ${t}`);
+      yes(!/存在しません/.test(t), `noPlace.${k} が「存在しません」と言っている: ${t}`);
+      // ⚠ **できないことから書き始めない**（CLAUDE.md §4-1）。⚠ 先に何ができるか
+      yes(/^場所を選ぶと/.test(t), `noPlace.${k} が、できることから始まっていない: ${t}`);
+    }
+    // ⚠ **2 つを取り違えていないこと**（⚠ 何も指定していない人に「読み取れない」と言わない）
+    yes(np.none && !/読み取れ/.test(np.none),
+      `指定が無いときに「読み取れません」と言っている: ${np.none}`);
+    yes(np.bad && /読み取れ/.test(np.bad),
+      `読めなかったときに、読めなかったと言っていない: ${np.bad}`);
+
+    if (fails.length) bad(`場所の指定の読み方（${fails.length} 件）: ${fails.join(" / ")}`);
+    else ok("場所の指定は place-arg.js の 1 か所（ok / 指定なし / 読めない を分ける・既定へ落ちない）");
+  }
+
+  // ============================================================
   // 段の作り方は 1 か所（public/eras.js）
   // ============================================================
   // ⚠ **同じ問い（この地点で選べる段はどれか）に、⚠ 2 つの実装が答えていた**

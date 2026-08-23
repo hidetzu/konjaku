@@ -1091,6 +1091,30 @@
   <script src="./photos.js"></script>
   <!-- 段の作り方（hidetzu/konjaku#170）。DOM も地図も持たない -->
   <script src="./eras.js"></script>
+  <!-- ⚠ URL の「場所の指定」を読む 1 か所（hidetzu/konjaku#221）。DOM も地図も持たない。
+       ⚠ **`/peel` は「深掘りできるか」を、⚠ トップは「なぜ戻ってきたか」を、同じ答えから引く。** -->
+  <script src="./place-arg.js"></script>
+  <!-- ⚠ **場所の指定が無い／読めないときは、⚠ ここでトップへ返す**（hidetzu/konjaku#221。Owner 判断）。
+       ⚠ **前は、黙って豊洲を出していた。**⚠ URL も `?q=東京都江東区豊洲&ll=…` に書き換わり、
+         ⚠ **共有した人と見た人が違う場所を見ていても、⚠ どちらも気づかなかった。**
+       ⚠ **場所を決めるのはトップの責務。**⚠ だから断るのではなく、⚠ 決められる場所へ返す。
+       ⚠ **`peel3d.js` を読み込む前に返す。**⚠ あとにすると、
+         ⚠ **豊洲が一瞬見えてしまい**（「その場所が存在した」と読まれる）、
+         ⚠ **地図の JS とタイルを無駄に取りに行く。**
+       ⚠ **`throw` で止めない**（⚠ コンソールに JS エラーとして出る。2026-08-23 に実際に出した）。
+         ⚠ **後ろのスクリプトを読み込まない形にする。** -->
+  <script>
+  (function(){
+    var arg = KonjakuPlaceArg.readPlace(new URLSearchParams(location.search));
+    if (arg.state === "ok") return;
+    // ⚠ **`replace` を使う。**⚠ `assign` だと「戻る」で同じ URL に戻り、⚠ 環になる。
+    location.replace(KonjakuPlaceArg.topUrlFor(new URLSearchParams(location.search), arg.state));
+    // ⚠ **`window.stop()` は使わない**（2026-08-23 に実測）。
+    //   ⚠ **読み込みが「終わらない」状態になり、⚠ 60 秒待っても着かなかった。**
+    // ⚠ **`location.replace` を解析中に呼ぶと、⚠ 後ろの `<script>` は取りに行かれない。**
+    //   ⚠ **実測で確かめる**（⚠ 下の検査が、⚠ `peel3d.js` を要求していないことを見る）。
+  })();
+  </script>
   <script src="./words.js"></script>
 <!-- タイル取得（タイムアウト・3状態）は検証器に集約している。
      「取れなかった」を「無い」と書かないための判定は、1か所にしか置かない（掟: 取れなかったを「無い」と言わない） -->
