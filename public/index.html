@@ -135,7 +135,7 @@
      ⚠ **H1 を越えさせない。**⚠ 主役は検索で、⚠ **名前は主役ではない**（`ui-ux-review` §1-2）。
        ⚠ 15px は H1 19px の 79%。⚠ **名前だと分かる大きさで、⚠ 見出しを食わない。**
      ⚠ **大きくしたぶん、⚠ 字間を締める**（.22em のままだと散って読みにくい）。 */
-  .brand{display:inline-flex;align-items:center;gap:7px;font-size:var(--fs-claim);letter-spacing:.1em;
+  .brand{display:inline-flex;align-items:center;gap:7px;font-size:var(--fs-brand);letter-spacing:.08em;
     color:var(--ink-dim);text-decoration:none;
     /* ⚠ **この箱は `inline-flex` なので、⚠ `margin-bottom` は次の行を押し下げない**
        （2026-08-23 に実測して分かった。⚠ **元の `margin-bottom:6px` も効いていなかった**）。
@@ -149,7 +149,10 @@
          ⚠ **「重ねる」が画面の外へ出た**（641 / 640）。 */
     .brand .mark{width:16px;height:16px;border-radius:4px;flex:none;display:block}
   .brand{align-items:center}
-.brand b{font-weight:500;letter-spacing:.12em}
+/* ⚠ **色は上げない**（2026-08-23）。⚠ 大きさと太さだけで段を付ける。
+   ⚠ **`--ink` にすると H1 と同じ明るさになり、⚠ 見出しと競う**（実測 コントラスト 16.59）。
+   ⚠ **主役は検索。**⚠ 名前は主役ではない（`ui-ux-review` §1-2）。 */
+.brand b{font-weight:600;letter-spacing:.1em}
   /* ⚠ **β 版であることを、⚠ サービス名の横に置く**（2026-08-23。Owner 判断）。
      ⚠ 実測（2026-08-23・利用者役 4 名・画面だけを見せた。⚠ **実在の利用者ではない**）:
        ⚠ **2/4 が「完成品だと思った」。**⚠ 1 名は「個人開発っぽいから、たぶん作りかけ」と
@@ -160,9 +163,11 @@
      （⚠ 変更前は β 12.5px ＞ 名前 12px で、⚠ **付属物のほうが大きかった**）。
      ⚠ **色は \`--ink-faint\` をやめた。**⚠ 実測（2026-08-23）: ⚠ **コントラスト 4.18**で、
        ⚠ **WCAG AA の 4.5 を割っていた**（⚠ 小さい字ほど効く）。⚠ \`--ink-dim\` で 5.29。 */
-  .brand__beta{font-size:var(--fs-label);letter-spacing:.04em;line-height:1;
-    padding:3px 7px;border:1px solid var(--line);border-radius:999px;
-    color:var(--ink-dim);flex:none}
+  .brand__beta{font-size:var(--fs-brand-tag);letter-spacing:.04em;line-height:1;
+    padding:2px 6px;border:1px solid var(--line);border-radius:999px;
+    color:var(--ink-dim);flex:none;
+    /* ⚠ **名前と同じ高さに揃えない。**⚠ 揃えると同格に見える（Owner 判断 2026-08-23）。 */
+    align-self:center;position:relative;top:1px}
 
 
   /* ============ 入力（2段: 場所 → コマンド） ============ */
@@ -918,6 +923,16 @@
   footer .f-body{margin-top:7px;padding:10px 12px;border-radius:8px;
     background:rgba(255,255,255,.03);border:1px solid var(--line);font-size:var(--fs-note);line-height:1.75}
   footer .f-body b{color:var(--ink-dim);font-weight:500}
+  /* ⚠ **フッターのリンクは、⚠ 通常はグレー**（2026-08-23。Owner 判断）。
+     ⚠ 実測（2026-08-23・375×667）: ⚠ **出典リンクのコントラストが 10.06 で、⚠ 画面で最大**
+       だった（⚠ プライバシーの 1 行 5.29 ／ サービス名 6.43）。
+     ⚠ 利用者役 4 名に画面だけを見せた（⚠ **実在の利用者ではない**）:
+       ⚠ **2/4 が「本文より出典のほうが目立っている」。**⚠ **2/4 は「目立ってよい」で割れた。**
+     ⚠ **消すのではない。**⚠ 押せることは、⚠ **下線で分かる**（下線は残す）。
+     ⚠ **hover と focus では、⚠ アクセント色に戻す**（⚠ 押せると分かる手がかりを減らさない）。
+     ⚠ **focus の輪郭は消さない**（⚠ キーボードで辿れなくなる）。 */
+  footer a{color:var(--ink-dim)}
+  footer a:hover, footer a:focus-visible{color:var(--action)}
   a{color:var(--action)}
   @media(min-width:681px){
     /* ⚠ **同じ形のセレクタで戻す**（上と同じ 0-0-3 / 0-1-2）。⚠ 形が違うと負ける */
@@ -3794,14 +3809,16 @@ function loadQuickPlaces(){
 }
 loadQuickPlaces();
 
-// ⚠ **プライバシーの 3 段を、検索欄の下に出す**（2026-08-20）。
+// ⚠ **いちばん強い約束 2 つを、⚠ フッターの畳まずに見える場所に出す**（2026-08-23。Owner 判断）。
+//   ⚠ **3 段（載る → 届く → 残らない）は、⚠ すぐ下の「▸ プライバシーについて」にある。**
+//   ⚠ **何が弱くなったかは words.js の PRIVACY_LEAD に書いた。**⚠ ここには写さない。
 //   ⚠ 中身は words.js の定数 1 つだけ。⚠ **外から来た文字列は 1 文字も混ぜない**
 //     （だから innerHTML でよい。混ぜるようになったら esc.js を通すこと）。
 //   ⚠ 出せなかったときに黙って空にしない。⚠ **空なら、そこに何かあるはずだと誰も気づけない。**
 {
   const el = document.getElementById("privacyShort");
   if (el) {
-    if (KonjakuWords?.PRIVACY_SHORT) el.innerHTML = KonjakuWords.PRIVACY_SHORT;
+    if (KonjakuWords?.PRIVACY_LEAD) el.innerHTML = KonjakuWords.PRIVACY_LEAD;
     else el.remove();   // ⚠ 空の箱を残さない（余白だけが増える）
   }
 }
