@@ -1576,16 +1576,16 @@ const eraLabel=(id)=>id==="swale" ? "明治期"
 // ⚠ q と ll しか無い古い URL も、これまでどおり開ける。era は足すだけで、必須にしない。
 // ⚠ まだ段が組み上がっていないあいだは、復元したい年代（wantEra）を載せたままにする。
 //   ここで落とすと、判定を待っている数百 ms のあいだに共有された URL から年代が消える。
+// ⚠ **いま URL に載せる年代**（上の理由で wantEra を残す）。⚠ 組み立てと分ける。
+const eraNowId=()=>frames[eraIdx]?.id ?? wantEra;
+// ⚠ **URL の形は持たない。**⚠ 組むのは `place-arg.js` の 1 か所（読む側と対）。
 function syncUrl(){
   if(!current) return;
-  const id=frames[eraIdx]?.id ?? wantEra;
-  history.replaceState(null,"",
-    `?q=${encodeURIComponent(current.title)}&ll=${current.lat.toFixed(5)},${current.lon.toFixed(5)}`
-    +(id?`&era=${encodeURIComponent(id)}`:""));
+  const q=KonjakuPlaceArg.placeQuery(
+    {title:current.title,lat:current.lat,lon:current.lon,era:eraNowId()});
+  // ⚠ 座標が読めないときは書かない（⚠ NaN を載せた URL を共有させない）
+  if(q) history.replaceState(null,"",q);
 }
-// 他の画面へ渡すときの `&era=…`。渡さないと、行き来しただけで年代が落ちる
-const eraParam=()=>{ const id=frames[eraIdx]?.id ?? wantEra;
-  return id?`&era=${encodeURIComponent(id)}`:""; };
 
 // 判定した画素の位置を「タイルに対する割合」で持つ。
 // ⚠ px の絶対値で切り出すと、枠の大きさを変えた瞬間に印が枠の外へ出る。
@@ -3235,10 +3235,8 @@ const feedbackUrl=(term)=>{
 //       ⚠ A と D は「半分切れているから、もっとあると分かる」と言った。
 //   ⚠ **一覧から抜けたので、⚠ ↑↓/Enter の輪と打鍵の絞り込みからは外れる。**
 //     ⚠ **CTA は一覧より上にあるので、⚠ 打っているあいだも見えている。**
-//   ⚠ **href に年代（eraParam）も載せる。**載せないと、見ていた年代が落ちる。
+//   ⚠ **href に年代（eraNowId）も載せる。**載せないと、見ていた年代が落ちる。
 function peelLens(p){
-  const ll=`${p.lat.toFixed(5)},${p.lon.toFixed(5)}`;
-  const enc=encodeURIComponent(p.title);
   // ⚠ **下地が無くても出す。押せる。**（2026-08-18。一度「出さない」にして戻した）
   //   出さないと「**まだ用意していない**」が「**この場所には機能そのものが無い**」に見える。
   //   利用者役 3/3 が「機能があること自体に気づけない」と答えた。
@@ -3257,7 +3255,10 @@ function peelLens(p){
     //     ⚠ **語は残す。**⚠ 消したら「昔」「3d」に対して
     //     ⚠ **「『昔』を周辺で探す」という無意味な行**が出た（⚠ 実測。⚠ 同日に踏んだ）。
     kw:["3d","さかのぼる","剥がす","埋立","水","動画","戻す","地盤","昔","むかし","歴史","明治","過去","立体","深掘り"],
-    href:`./peel?q=${enc}&ll=${ll}${eraParam()}`};
+    // ⚠ **年代も持って行く**（載せないと、行き来しただけで年代が落ちる）。
+    //   ⚠ 座標が読めなければ `./peel` だけ渡す（⚠ `/peel` が「場所が無い」と言う）。
+    href:"./peel"+(KonjakuPlaceArg.placeQuery(
+      {title:p.title,lat:p.lat,lon:p.lon,era:eraNowId()})??"")};
 }
 
 // ⚠ 判定カードの中に置く CTA。⚠ **画面に出る導線はここ 1 か所**
@@ -3730,7 +3731,6 @@ async function openPlace(lon,lat,title,opt){
       <div class="ev">${evidenceOf(fa)}${fa.caveat ? `<br>※ ${fa.caveat}` : ""}</div>
     </div>`;
 
-  const ll=`${lat.toFixed(5)},${lon.toFixed(5)}`, enc=encodeURIComponent(title);
   // 取れなかったものの値欄。「なし」「—」は事実の主張なので使わない。
   const unread = `<div class="v warn">読み込めませんでした
     <button class="retry">再試行</button></div>`;
@@ -3975,13 +3975,15 @@ if(!navigator.geolocation){
 
 // ============ URL から復元 ============
 const sp=new URLSearchParams(location.search);
-const ll=sp.get("ll"), q0=sp.get("q");
+// ⚠ **読むのは `place-arg.js` の 1 か所**（`/peel` と同じ答えから引く）。
+//   ⚠ 以前はここに同じ正規表現を直書きしていた。⚠ **地球の外の座標を弾いていなかった**
+//     ので、`?ll=999,0` で地図が別の場所を出していた（`/peel` は hidetzu/konjaku#221 で直っていた）。
 // ⚠ era が無い古い URL（q と ll だけ）も、これまでどおり開ける。既定の年代で始まるだけ
 const era0=sp.get("era");
-if(ll && /^-?[\d.]+,-?[\d.]+$/.test(ll)){
-  const [la,lo]=ll.split(",").map(Number);
-  openPlace(lo,la,q0||`${la.toFixed(4)}, ${lo.toFixed(4)}`,{era:era0});
-} else if(q0){ qEl.value=q0; searchPlace(q0); }
+const arg=KonjakuPlaceArg.readPlace(sp);
+if(arg.state==="ok"){
+  openPlace(arg.lon,arg.lat,arg.q||`${arg.lat.toFixed(4)}, ${arg.lon.toFixed(4)}`,{era:era0});
+} else if(arg.q){ qEl.value=arg.q; searchPlace(arg.q); }
 else { renderSaved(); renderKbd(); }
 </script>
 <script>

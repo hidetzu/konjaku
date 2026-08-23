@@ -1513,10 +1513,12 @@ const eraNow=()=>steps[stepNow()]?.id ?? null;
 //   ← を押すと別の年代のトップへ出ていた（実測で捕まえた）。
 function syncUrl(){
   if(!place) return;
-  const id=eraNow()??wantEra;
-  const q=`?q=${encodeURIComponent(place.title)}&ll=${place.lat.toFixed(5)},${place.lon.toFixed(5)}`
-    +(id?`&era=${encodeURIComponent(id)}`:"");
-  history.replaceState(null,"",q+(pickBld?`&b=${encodeURIComponent(pickBld)}`:""));
+  // ⚠ **URL の形は持たない。**⚠ 組むのは `place-arg.js` の 1 か所（読む側と対）。
+  const base={title:place.title,lat:place.lat,lon:place.lon,era:eraNow()??wantEra};
+  const q=KonjakuPlaceArg.placeQuery(base);
+  // ⚠ 座標が読めないときは書かない（⚠ NaN を載せた URL を共有させない）
+  if(!q) return;
+  history.replaceState(null,"",KonjakuPlaceArg.placeQuery({...base,bld:pickBld}));
   // ⚠ el.href は絶対URLを返すので setAttribute で書く（過去に一度踏んでいる）。
   //   建物は持って戻らない。トップに建物という概念が無い
   document.getElementById("back")?.setAttribute("href","./"+q);
