@@ -1015,10 +1015,36 @@ for (const f of htmlFiles) {
   const idx = await readFile(join(PUB, "index.html"), "utf8");
   const peel = await readFile(join(PUB, "peel.html"), "utf8");
   // 畳まずに見える1行（トップ）。⚠ /peel は 2026-08-18 に**短い版**へ替えた（下）
+  // ⚠ **2026-08-23 に、⚠ 見る対象を変えた**（Owner 判断）。
+  //   ⚠ **前は「その箱に字がべた書きされていること」を見ていた。**
+  //   ⚠ いまは中身が \`words.js\` の \`PRIVACY_SHORT\` から実行時に入るので、
+  //     ⚠ **字は静的には読めない**（⚠ 読めないものを「確認済み」と呼ばない。CLAUDE.md §1）。
+  //   ⚠ **だから、⚠ 静的に確かめられることだけを主張する**（⚠ 3 つ）:
+  //     1) 箱がある  2) ⚠ **\`<details>\` の中に入っていない**  3) そこへ \`PRIVACY_SHORT\` を入れている
+  //   ⚠ **2) は前より強い。**⚠ 前は「畳まずに見える」と名乗りながら、⚠ **畳みの中でも通った。**
+  //   ⚠ **字が本当に出ているかは、⚠ 実描画（\`footer .f-priv\`）が見る。**
   {
-    const a = grab(idx, "data-privacy-lead");
-    if (!a) bad("index.html に畳まずに見える1行（data-privacy-lead）が無い（この検査が何も見ていない）");
-    else ok("index.html に畳まずに見える1行がある");
+    const fails = [];
+    // ⚠ **コメントを先に落とす**（CLAUDE.md §5）。⚠ **落とさないと、⚠ この検査を説明する
+    //   コメントに書いた \`<details>\` を、⚠ 検査自身が数える**（⚠ 2026-08-23 に実際に踏んだ）。
+    const idxNoC = idx.replace(/<!--[\s\S]*?-->/g, "");
+    const m = /<[a-z]+[^>]*\bdata-privacy-lead\b[^>]*>/.exec(idxNoC);
+    if (!m) fails.push("箱（data-privacy-lead）が無い");
+    else {
+      // ⚠ **その箱より前にある \`<details>\` が、⚠ 箱より前に閉じているか**を数える。
+      //   ⚠ 開いたままなら、⚠ **畳みの中にいる。**
+      const before = idxNoC.slice(0, m.index);
+      const opens = (before.match(/<details\b/g) ?? []).length;
+      const closes = (before.match(/<\/details>/g) ?? []).length;
+      if (opens > closes) fails.push("箱が <details> の中にある（畳むと、送る前に読めるとは言えない）");
+      // ⚠ **そこへ PRIVACY_SHORT を入れているか**（⚠ 箱だけ残ると余白が増える）
+      const id = /\bid="([^"]+)"/.exec(m[0])?.[1];
+      if (!id) fails.push("箱に id が無い（入れる側と結びつかない）");
+      else if (!new RegExp(`${id}[\\s\\S]{0,300}PRIVACY_LEAD`).test(idxNoC))
+        fails.push(`箱（#${id}）へ PRIVACY_LEAD を入れていない`);
+    }
+    if (fails.length) bad(`index.html の畳まずに見える1行: ${fails.join(" / ")}`);
+    else ok("index.html の畳まずに見える1行は、<details> の外にあり、PRIVACY_SHORT を入れている");
   }
   // ⚠ **/peel は短い版だが、3 段を落とさない。**
   //   2026-08-18 に、この画面から「サイト全体の情報」（作者・プライバシーの詳しい説明・
@@ -1047,11 +1073,54 @@ for (const f of htmlFiles) {
         ["index.html", /id="privacyShort"/.test(idx)],
     ].filter(([, has]) => !has).map(([f]) => f);
     // ⚠ **入れる側が両方あること。**箱だけあって空だと、⚠ **余白だけが増える**
+    // ⚠ **2026-08-23 に、⚠ トップだけ別の文になった**（Owner 判断）。
+    //   ⚠ **トップの畳まずに見える 1 行は \`PRIVACY_LEAD\`**（いちばん強い約束 2 つ）。
+    //   ⚠ **/peel の情報パネルは \`PRIVACY_SHORT\`**（載る → 届く → 残らないの 3 段）。
+    //   ⚠ **なぜ違ってよいのかは \`public/words.js\` の \`PRIVACY_LEAD\` に書いてある。**
+    //     ⚠ ここには写さない（⚠ 2 か所に書くと、片方だけ古くなる）。
+    //   ⚠ **どちらも words.js の 1 か所から借りていること**は、ここで見る。
     const fills = [
-        ["index.html", /privacyShort[\s\S]{0,300}PRIVACY_SHORT/.test(idx)],
+        ["index.html", /privacyShort[\s\S]{0,300}PRIVACY_LEAD/.test(idx)],
         ["peel3d.js", /data-privacy-short[\s\S]{0,300}PRIVACY_SHORT/.test(
           await readFile(join(PUB, "peel3d.js"), "utf8"))],
     ].filter(([, has]) => !has).map(([f]) => f);
+    // ⚠ **トップの 3 段は、⚠ 畳みの中（\`data-privacy-body\`）に必ず残っていること。**
+    //   ⚠ **これが、⚠ 常時見える場所から 2 段落としたことの担保。**
+    //   ⚠ **ここが落ちたら、⚠ 「載る」「届く」がトップのどこにも無くなる。**
+    // ⚠ **NEED3 をそのまま使わない。**⚠ **緩すぎて、⚠ 別の文で通ってしまう。**
+    //   ⚠ 2026-08-23 に実際に踏んだ: ⚠ **「調べた場所が配信元へ届く」の文を丸ごと消しても、
+    //     ⚠ 「接続元の IP が配信元に届きます」が残っていて緑のままだった。**
+    //   ⚠ **IP が届くことと、⚠ 調べた場所が届くことは別の主張。**
+    //   ⚠ **1 つの文の中で、⚠ 場所（URL）と 届く先 が結びついていることまで見る。**
+    const bodyIdx = grab(idx, "data-privacy-body") ?? "";
+    const sentences = bodyIdx.split(/[。\n]/).map((t) => t.trim()).filter(Boolean);
+    const has = (...res) => sentences.some((t) => res.every((re) => re.test(t)));
+    const bodyMiss = [
+      [() => has(/調べた場所/, /URL|アドレス欄/, /入(り|ります)/),
+        "調べた場所が URL に入ること（載る）"],
+      // ⚠ **URL と 配信元 と 届く が、⚠ 同じ文の中にあること**（⚠ IP の文では通らない）
+      [() => has(/URL|アドレス/, /配信|Cloudflare/, /届|渡/),
+        "その URL を開くと配信元へ届くこと（届く）⚠ IP の文では代用できない"],
+      [() => has(/こちらの記録に/, /残りません/),
+        "こちらの記録には残らないこと（残らない）"],
+    ].filter(([f]) => !f()).map(([, n]) => n);
+    if (bodyMiss.length)
+      bad(`index.html の畳みの中から、3 段が落ちている: ${bodyMiss.join("、")}`
+        + "（⚠ 常時見える 1 行は 2026-08-23 に短くした。⚠ 3 段はここにしか残っていない）");
+    else ok("index.html の畳みの中に、3 段（載る → 届く → 残らない）が全部ある");
+    // ⚠ **常時見える 1 行が、⚠ いちばん強い約束 2 つを言っていること。**
+    //   ⚠ **「どこにも送らない」へ広げていないこと**も見る（⚠ 2026-08-15 の嘘）。
+    const lead = globalThis.KonjakuWords?.PRIVACY_LEAD ?? "";
+    const leadNeed = [[/計測データに(は)?含めません|計測に[^。]*送/, "計測データに含めないこと"],
+                      [/Cookie/, "Cookie を使わないこと"]];
+    const leadMiss = leadNeed.filter(([re]) => !re.test(lead)).map(([, n]) => n);
+    if (!lead) bad("words.js に PRIVACY_LEAD が無い（トップの畳まずに見える1行が空になる）");
+    else if (leadMiss.length)
+      bad(`PRIVACY_LEAD から約束が落ちている: ${leadMiss.join("、")}`);
+    else if (/どこにも送(りません|らず)|一切送/.test(lead))
+      bad("PRIVACY_LEAD が「どこにも送らない」まで言い切っている"
+        + "（⚠ 調べた場所は URL に載り、開けば配信元へ届く。2026-08-15 に直した嘘）");
+    else ok("トップの畳まずに見える1行は、強い約束 2 つを言い、言い切りすぎていない");
     const miss = NEED3.filter(([re]) => !re.test(short)).map(([, n]) => n);
     if (!short) bad("words.js に PRIVACY_SHORT が無い（両画面のプライバシーが空になる）");
     else if (boxes.length) bad(`プライバシーの 3 段を出す箱が無い: ${boxes.join("、")}`);

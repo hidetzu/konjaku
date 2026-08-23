@@ -2292,17 +2292,92 @@ export const CASES = [
   },
 
   {
-    // ⚠ **プライバシーの 3 段は、場所を送る前に読めること。**
-    //   ⚠ 以前は畳んだフッターの中にしかなく、⚠ **利用者役 2/4 が「これは先に見たかった」**。
-    //   ⚠ **「見えている」だけでなく「畳まれていない」「画面内」まで見る。**
-    //     ⚠ 畳んであると、送る前に読めるとは言えない（それが元の状態だった）。
-    //   ⚠ **3 段そろっていること。**1 段でも落ちると、いちばん強い約束だけが残って
-    //     「通信していない」と読める（2026-08-15 に直した嘘へ戻る）。
-    name: "場所を送る前に、プライバシーの3段が読める", path: "/",
+    // ⚠ **β 版であることが画面から分かり、⚠ フッターの押せるものが 44 を割らないこと**
+    //   （2026-08-23。Owner 判断。β 版リリース前の整理）。
+    //   ⚠ 実測（2026-08-23・利用者役 4 名・画面だけを見せた。⚠ **実在の利用者ではない**）:
+    //     ⚠ **2/4 が「完成品だと思った」**（⚠ 当時、画面に β の表記が無かった）。
+    //     ⚠ 1 名は「個人開発っぽいから、たぶん作りかけ」と ⚠ **画面ではなく雰囲気で**判断していた。
+    //     ⚠ **1 名が、⚠ 国土地理院のリンクを押そうとして 2 回外した**（⚠ 当時 60×20px）。
+    //   ⚠ **44×44 は指の端末の基準**（\`.claude/rules/css.md\`・\`ui-ux-review\` §3）。
+    //     ⚠ **PC では見ない**（⚠ ポインタが細いので、⚠ 余白だけ増えても損）。
+    //   ⚠ **件数を書かない。**⚠ **0 個であること**を見る（⚠ 数は走らせて数える）。
+    name: "β 版だと分かり、フッターの押せるものが 44 を割らない", path: "/",
     async check(page) {
-      const NEED = [[/URL|アドレス欄/, "載る"],
-                    [/(Cloudflare|配信元)[^。]*(届|渡)/, "届く"],
-                    [/こちらの記録には[^。]*残りません/, "残らない"]];
+      const out = [];
+      for (const [w, h] of [[375, 667], [344, 882], [320, 640]]) {
+        await page.setViewportSize({ width: w, height: h });
+        await settleAfterCondition(page);
+        const r = await page.evaluate(() => {
+          // ⚠ **サービス名の横にあること**（⚠ 「どこかに β がある」では弱い）
+          const brand = document.querySelector(".brand");
+          const beta = brand?.querySelector(".brand__beta");
+          const small = [...document.querySelectorAll("footer a, footer summary")]
+            .filter((e) => {
+              if (!e.checkVisibility?.()) return false;
+              const q = e.getBoundingClientRect();
+              return q.width < 44 || q.height < 44;
+            })
+            .map((e) => {
+              const q = e.getBoundingClientRect();
+              return `「${e.textContent.trim().slice(0, 10)}」${Math.round(q.width)}×${Math.round(q.height)}`;
+            });
+          return { beta: (beta?.textContent ?? "").trim(),
+                   betaSeen: beta?.checkVisibility?.() ?? false,
+                   inBrand: !!beta,
+                   // ⚠ **災害リスクの印を流用していないこと**（CLAUDE.md §4-1）
+                   warnMark: /⚠/.test(beta?.textContent ?? ""),
+                   small };
+        });
+        must(r.inBrand, `${w}px: β の印がサービス名の横に無い`);
+        must(r.betaSeen, `${w}px: β の印が見えていない`);
+        must(/β/.test(r.beta), `${w}px: β の印の字が違う:「${r.beta}」`);
+        must(!r.warnMark, `${w}px: β の印に ⚠ を使っている（⚠ は災害リスク専用）`);
+        must(!r.small.length,
+          `${w}px: フッターに 44 を割る的がある（${r.small.length} 個）: ${r.small.join(" ")}`);
+        out.push(`${w}: 「${r.beta}」・44 割れ 0`);
+      }
+      return out.join(" / ");
+    },
+  },
+
+  {
+    // ⚠ **2026-08-23 に、⚠ 主張を書き換えた**（Owner 判断。⚠ **こちらの提案ではない**）。
+    //
+    // ⚠ **前は「3 段が、畳まずに読めること」を見ていた**（2026-08-20 の決定）。
+    //   ⚠ 利用者役 2/4 が「これは先に見たかった」と言ったのが理由だった。
+    //
+    // ⚠ **いまは、⚠ 畳まずに見えるのは「いちばん強い約束 2 つ」だけ。**
+    //   ⚠ **何が弱くなったかは \`public/words.js\` の \`PRIVACY_LEAD\` に書いてある。**
+    //   ⚠ **ここには写さない**（⚠ 2 か所に書くと、片方だけ古くなる）。
+    //
+    // ⚠ **弱くなったぶん、⚠ ここで見ることを増やした。**
+    //   1) 常時見える 1 行が、⚠ **強い約束 2 つを言っている**
+    //   2) ⚠ **「どこにも送らない」へ広げていない**（⚠ 2026-08-15 に直した嘘）
+    //   3) ⚠ **3 段は「▸ プライバシーについて」を 1 回開けば読める**
+    //      ⚠ **実際に開いて確かめる。**⚠ 中身があることを、字で見る
+    //   4) ⚠ 場所を選んだあとも消えない
+    name: "強い約束は畳まずに読め、3 段は 1 回開けば読める", path: "/",
+    async check(page) {
+      // ⚠ **畳まずに見える側**（⚠ 2 つの約束）
+      const LEAD = [[/計測データに(は)?含めません|計測に[^。]*送/, "計測データに含めない"],
+                    [/Cookie/, "Cookie を使わない"]];
+      // ⚠ **畳みの中**（⚠ 3 段）。
+      // ⚠ **文をまたいで拾わせない。**⚠ 2026-08-23 に実際に踏んだ:
+      //   ⚠ **「調べた場所が配信元へ届く」の文を丸ごと消しても、
+      //     ⚠ 「接続元の IP が配信元に届きます」が残っていて緑のままだった。**
+      //   ⚠ **IP が届くことと、⚠ 調べた場所が届くことは別の主張。**
+      // ⚠ **1 つの文の中で結びついていること**まで見る。
+      const NEED = [
+        [[/調べた場所/, /URL|アドレス欄/, /入(り|ります)/], "載る"],
+        [[/URL|アドレス/, /配信|Cloudflare/, /届|渡/], "届く（⚠ IP の文では代用できない）"],
+        [[/こちらの記録に/, /残りません/], "残らない"],
+      ];
+      // ⚠ **文で切ってから見る**（⚠ 「。」と改行で切る）
+      const lacks = (txt) => {
+        const ss = (txt ?? "").split(/[。\n]/).map((t) => t.trim()).filter(Boolean);
+        return NEED.filter(([res]) => !ss.some((t) => res.every((re) => re.test(t))))
+          .map(([, n]) => n);
+      };
       const out = [];
       for (const [w, h] of [[375, 667], [344, 882], [320, 640], [1280, 800]]) {
         await page.setViewportSize({ width: w, height: h });
@@ -2325,25 +2400,62 @@ export const CASES = [
         must(!r.inDetails, `${w}px: プライバシーの3段が畳んだ中にある（送る前に読めない）`);
         must(r.y > r.qy, `${w}px: 検索欄より上にある（y=${r.y} / #q=${r.qy}）`);
         must(!r.over, `${w}px: 横にあふれている`);
-        const miss = NEED.filter(([re]) => !re.test(r.txt)).map(([, n]) => n);
-        must(!miss.length, `${w}px: 段が落ちている（${miss.join("・")}）: ${r.txt.slice(0, 60)}`);
+        const miss = LEAD.filter(([re]) => !re.test(r.txt)).map(([, n]) => n);
+        must(!miss.length, `${w}px: 強い約束が落ちている（${miss.join("・")}）: ${r.txt.slice(0, 60)}`);
+        // ⚠ **言い切りすぎていないこと**（⚠ 調べた場所は URL に載り、開けば配信元へ届く）
+        must(!/どこにも送(りません|らず)|一切送/.test(r.txt),
+          `${w}px: 「どこにも送らない」まで言い切っている: ${r.txt.slice(0, 60)}`);
         out.push(`${w}: y=${r.y}`);
       }
+      // ⚠ **3 段は、⚠ 1 回開けば読める。**⚠ **実際に開いて、⚠ 字で確かめる。**
+      //   ⚠ **これが、⚠ 常時見える場所から 2 段落としたことの担保。**
+      await page.setViewportSize({ width: 375, height: 667 });
+      const opened = await page.evaluate(() => {
+        const d = [...document.querySelectorAll("footer details")]
+          .find((x) => /プライバシー/.test(x.querySelector("summary")?.textContent ?? ""));
+        if (!d) return null;
+        d.open = true;
+        const body = d.querySelector("[data-privacy-body]");
+        return { seen: body?.checkVisibility() ?? false,
+                 txt: (body?.textContent ?? "").replace(/\s+/g, " ").trim() };
+      });
+      must(opened, "「プライバシーについて」の畳みが無い（3 段の行き先が消えている）");
+      must(opened.seen, "畳みを開いても、詳しい説明が出てこない");
+      const deep = lacks(opened.txt);
+      must(!deep.length,
+        `畳みの中から段が落ちている（${deep.join("・")}）`
+        + `：⚠ 常時見える 1 行は短くしたので、⚠ 3 段はここにしか残っていない`);
       // ⚠ **詳しい説明は残っていること**（要約が出たからといって消さない）
       const sums = await page.$$eval("footer summary", (es) => es.map((e) => e.textContent.trim()));
       must(sums.some((t) => /プライバシー/.test(t)),
         `畳んである詳しい説明が消えている: ${sums.join("・")}`);
-      // ⚠ **場所を選んだら消える。**送ったあとに残すと「これから送ります」に読める
+      // ⚠ **場所を選んでも、⚠ フッターに残っている**（2026-08-23。Owner 判断で変えた）。
+      //   ⚠ **前は「場所を選んだら消える」ことを見ていた**（\`#scope.on ~ .privacy-short\`）。
+      //     ⚠ 理由は「送ったあとに残すと『これから送ります』に読める」。
+      //   ⚠ **置き場所がフッターへ移ったので、⚠ その理由が当たらなくなった。**
+      //     ⚠ フッターは常時ある場所で、⚠ **書いてあるのは、⚠ いつでも成り立つ事実**
+      //     （調べた場所は URL に入る／開くと配信元へ届く／こちらの記録には残らない）。
+      //     ⚠ **「これから送ります」とは書いていない。**
+      //   ⚠ **消えないことを見る。**⚠ 消えると、⚠ **判定したあとに読み返せない。**
       await page.setViewportSize({ width: 375, height: 667 });
       await page.goto(`${page.url().split("?")[0]}?q=%E8%B1%8A%E6%B4%B2&ll=35.6548,139.7975`);
       await page.waitForFunction(
         () => /旧水部|土地/.test(document.getElementById("verdict")?.textContent ?? ""),
         null, { timeout: 60000 });
       await settleAfterCondition(page);
-      const still = await page.evaluate(() =>
-        document.getElementById("privacyShort")?.checkVisibility() ?? false);
-      must(!still, "場所を選んだあとも、送る前の案内が出たままになっている");
-      return `4 幅すべてで畳まず画面内（${out.join(" / ")}）／3 段そろい／詳しい説明は残る／場所を選ぶと消える`;
+      const after = await page.evaluate(() => {
+        const e = document.getElementById("privacyShort");
+        return { seen: e?.checkVisibility() ?? false, inDetails: !!e?.closest("details"),
+                 inFooter: !!e?.closest("footer"),
+                 txt: (e?.textContent ?? "").replace(/\s+/g, " ").trim() };
+      });
+      must(after.seen, "場所を選んだあと、プライバシーの記述が消えている（判定後に読み返せない）");
+      must(after.inFooter, "プライバシーの記述がフッターの外にある（常時ある場所に置く）");
+      must(!after.inDetails, "場所を選んだあと、プライバシーの記述が畳んだ中にある");
+      const gone = LEAD.filter(([re]) => !re.test(after.txt)).map(([, n]) => n);
+      must(!gone.length, `場所を選んだあと、約束が落ちている（${gone.join("・")}）: ${after.txt.slice(0, 60)}`);
+      return `4 幅すべてで畳まず画面内（${out.join(" / ")}）／強い約束 2 つ・言い切りなし`
+        + `／3 段は 1 回開けば読める／場所を選んでもフッターに残る`;
     },
   },
   {
@@ -3272,7 +3384,12 @@ export const CASES = [
       //   見たいのは「4 つのことが書いてあるか」。
       const facts = [
         // ⚠ **「地名か座標」で通さない。** 片方だけ書いても通っていた（2026-08-15 に指摘）。
-        [/計測に[はも、]?[^。]*地名[^。]*座標[^。]*送りません/, "計測に地名と座標の両方を送らないこと"],
+        // ⚠ **「送りません」の字面に縛らない**（2026-08-23）。⚠ **見るのは主張のほう。**
+        //   ⚠ フッターの 1 行は words.js の \`PRIVACY_SHORT\` になり、⚠ そこは「送らず」と書く。
+        //   ⚠ **「送らない」と言っていれば通す。**⚠ ただし ⚠ **地名と座標の両方**は外さない
+        //     （⚠ 片方だけ書いても通っていたことがある。2026-08-15 に指摘）。
+        [/計測データに(は)?含めません|計測に[はも、]?[^。]*地名[^。]*座標[^。]*送(りません|らず|っていません)/,
+          "計測に地名と座標の両方を送らないこと"],
         // ⚠ 配信元には届く。ここを書かないと、上の1行が言い切りすぎになる。
         [/IP/, "接続元の IP が配信元に届くこと"],
         [/URL|アドレス欄/, "調べた場所が URL に載ること"],
@@ -3290,7 +3407,10 @@ export const CASES = [
       //   残りは details に入れてよいが、**これは開かなくても読めること**。
       const shown = (await page.locator("footer .f-priv").textContent()).replace(/\s+/g, " ");
       must(await page.locator("footer .f-priv").isVisible(), "プライバシーの記述が畳まれている");
-      must(/計測に[はも、]?[^。]*地名[^。]*座標[^。]*送りません/.test(shown),
+      // ⚠ **2026-08-23: 畳まずに見える 1 行は \`PRIVACY_LEAD\` になった**（Owner 判断）。
+      //   ⚠ 「計測に地名も座標も送らず」→「検索した場所は計測データに含めません」。
+      //   ⚠ **主張は同じ**（⚠ 計測に場所を渡していない）。⚠ **言い方が変わった。**
+      must(/計測データに(は)?含めません|計測に[はも、]?[^。]*地名[^。]*座標[^。]*送(りません|らず)/.test(shown),
         `畳まずに見える場所から、いちばん強い約束が消えている: ${shown}`);
       must(/Cookie/.test(shown), `Cookie を使わないことが、畳まずに見える場所に無い: ${shown}`);
       // ⚠ 「保存しません」に弱めない。計測に関しては、そもそも送っていない（/t は固定文字列だけ）
