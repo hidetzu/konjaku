@@ -1,16 +1,11 @@
 # 今昔 — この土地は、昔なんだったのか？
 
-場所を指定すると、その土地の成り立ちを国土地理院のデータから判定し、
+[![検査](https://github.com/hidetzu/konjaku/actions/workflows/check.yml/badge.svg?branch=main)](https://github.com/hidetzu/konjaku/actions/workflows/check.yml?query=branch%3Amain)
+
+場所を指定すると、その土地の成り立ちと災害リスクを国土地理院のデータから判定し、
 参照したタイルや画素とともに表示するウェブサービスです。
 
 **[今昔を開く](https://konjaku.hidetzu.work/)**
-
-[![検査](https://github.com/hidetzu/konjaku/actions/workflows/check.yml/badge.svg?branch=main)](https://github.com/hidetzu/konjaku/actions/workflows/check.yml?query=branch%3Amain)
-
-⚠ **このバッジが見ているのは `main` の静的検査・実描画・検索の並びです。**
-⚠ **外部リンクの生死は含みません**（相手先の一時的な不調でこちらを止めないため、
-到達できなくても緑のままになります）。リンクが腐っていないかは実行ログを見てください。
-検査が何件走ったかは、走らせると走者自身が名乗ります（`docs/SPEC.md` には書きません）。
 
 ![今昔の画面](public/ogp.png)
 
@@ -59,6 +54,11 @@ Cookieや利用者識別子は使いません。地名・座標も計測へ送�
 
 ローカルでの起動、検査、Issue・PRの手順は
 [`CONTRIBUTING.md`](CONTRIBUTING.md) を参照してください。
+
+⚠ **このバッジが見ているのは `main` の静的検査・実描画・検索の並びです。**
+⚠ **外部リンクの生死は含みません**（相手先の一時的な不調でこちらを止めないため、
+到達できなくても緑のままになります）。リンクが腐っていないかは実行ログを見てください。
+検査が何件走ったかは、走らせると走者自身が名乗ります（`docs/SPEC.md` には書きません）。
 
 ## 主なデータとソフトウェア
 
