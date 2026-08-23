@@ -5626,6 +5626,71 @@ head("9. 画面の言葉");
     : ok("実描画を回す先を決める口は、CI と同じ書き方でも、引数の順を変えても同じ答えを返す");
 }
 
+// ── 日本語名のファイルでも、⚠ 回す先が同じか ────────────────────
+// ⚠ **2026-08-23 に踏んだ**（hidetzu/konjaku#222 の CI で発覚）。
+// ⚠ **`git diff --name-only` は、⚠ 非 ASCII のパスを C 形式で引用して返す**
+//   （`core.quotepath` の既定が `true`）。⚠ **先頭に二重引用符が付く。**
+// ⚠ **すると `/^docs\//` に一致せず、⚠ 「知らないもの」として全部に倒れる。**
+// ⚠ **`docs/adr/` はほぼ全部が日本語名。**⚠ **ADR を触るたびに実描画が 5 本走っていた。**
+// ⚠ **落ちない。**⚠ **多く回す向きなので、⚠ CI は緑のまま。**
+// ⚠ **手元でも気づけない**（⚠ `core.quotepath=false` を個人設定にしていると再現しない）。
+//
+// ⚠ **本物の git で確かめる**（⚠ 引用は git がやるので、⚠ 文字列を作って渡しても意味が無い）。
+// ⚠ **`core.quotepath=true` を環境変数で押しつける**（⚠ 走らせる人の設定に寄りかからない）。
+// ⚠ **一時のリポジトリを作る**（⚠ このリポジトリの履歴に寄りかからない）。
+{
+  const { mkdtempSync, rmSync: rmq, mkdirSync: mkq, writeFileSync: wfq } = await import("node:fs");
+  const { tmpdir: tmpq } = await import("node:os");
+  const dir = mkdtempSync(join(tmpq(), "konjaku-quote-"));
+  const wrongQ = [];
+  try {
+    const git = (...a) => execFileSync("git", a, { cwd: dir, encoding: "utf8", stdio: "pipe" });
+    // ⚠ **コミットのことばは Conventional Commits にする。**
+    //   ⚠ **人によっては global の hook がそれを強制している**（2026-08-23 に踏んだ）。
+    //   ⚠ **CI には無いので、⚠ 手元だけが落ちる。**
+    git("init", "-q", "-b", "main");
+    git("config", "user.email", "t@example.invalid");
+    git("config", "user.name", "t");
+    const put = (rel, body) => {
+      const full = join(dir, rel);
+      mkq(join(full, ".."), { recursive: true });
+      wfq(full, body);
+    };
+    put("docs/x/0099-日本語の名前.md", "a\n");
+    put("public/peel3d.js", "// a\n");
+    git("add", "-A"); git("commit", "-qm", "chore: 1");
+    put("docs/x/0099-日本語の名前.md", "b\n");
+    git("add", "-A"); git("commit", "-qm", "chore: 2");
+    // ⚠ **文書だけを変えたコミット。**⚠ 回す先は空のはず
+    const runQ = (range) => execFileSync(process.execPath,
+      [join(ROOT, "test/render-scope.mjs"), "--json", range],
+      { cwd: dir, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"],
+        env: { ...process.env, GIT_CONFIG_COUNT: "1",
+               GIT_CONFIG_KEY_0: "core.quotepath", GIT_CONFIG_VALUE_0: "true" } }).trim();
+    const docsOnly = runQ("HEAD~1...HEAD");
+    if (docsOnly !== "[]") {
+      wrongQ.push(`日本語名の文書だけを変えたのに「${docsOnly.slice(0, 60)}」と答える`);
+    }
+    // ⚠ **空を返すだけの口になっていないか。**⚠ 画面に届く変更では、⚠ 実際に回ること
+    put("public/peel3d.js", "// b\n");
+    git("add", "-A"); git("commit", "-qm", "chore: 3");
+    const withCode = runQ("HEAD~1...HEAD");
+    if (!withCode.includes('"suite":"peel"')) {
+      wrongQ.push(`画面に届く変更なのに peel を回さない（「${withCode.slice(0, 60)}」）`);
+    }
+  } catch (e) {
+    const why = String(e.stderr ?? "").split("\n").filter(Boolean)[0] ?? String(e.message).split("\n")[0];
+    wrongQ.push(`確かめられなかった: ${why.slice(0, 100)}`);
+  } finally {
+    rmq(dir, { recursive: true, force: true });
+  }
+  wrongQ.length
+    ? bad(`回す先を決める口が、日本語名のファイルで狂う（${wrongQ.length} 件）: ${wrongQ.join(" ／ ")}`
+        + "（⚠ **落ちるのではなく、⚠ 全部に倒れて黙って全部走る**）")
+    : ok("回す先を決める口は、⚠ 日本語名のファイルでも同じ答えを返す"
+        + "（⚠ 本物の git ／ ⚠ `core.quotepath=true` を押しつけて確認）");
+}
+
 // ── いくつ確かめたか、⚠ 最後に名乗る ────────────────────────────
 // ⚠ **0 件で緑にしない。**⚠ 1 件も走っていないのに「問題なし」と言わない
 //   （⚠ 以前は SPEC との突き合わせが、⚠ 偶然この役目も果たしていた）。
