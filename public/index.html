@@ -127,21 +127,42 @@
        終わったあとなので、入口の1タップは壊れない（.hint の事故と同じ轍は踏まない） */
   body.picked .lead{display:none}
   /* サービス名。共有リンクから来た人が「何のサイトか」「戻る先」を持てるように */
-  .brand{display:inline-flex;align-items:center;gap:6px;font-size:var(--fs-note);letter-spacing:.18em;
-    color:var(--ink-dim);text-decoration:none;margin-bottom:6px}
+  /* ⚠ **サービス名を、⚠ 説明文の段から引き上げた**（2026-08-23。Owner 判断）。
+     ⚠ 実測（2026-08-23・375×667・変更前）: ⚠ **サービス名 12px は、⚠ 画面でいちばん小さい段**
+       （⚠ 補足・「たとえば」・プライバシーと同じ 12px）。⚠ **見出し H1 19px の 63%。**
+     ⚠ 利用者役 4 名に画面だけを見せた（⚠ **実在の利用者ではない**）:
+       ⚠ **2/4 が「見出しのほうがサービス名だと思った」。**
+     ⚠ **H1 を越えさせない。**⚠ 主役は検索で、⚠ **名前は主役ではない**（`ui-ux-review` §1-2）。
+       ⚠ 15px は H1 19px の 79%。⚠ **名前だと分かる大きさで、⚠ 見出しを食わない。**
+     ⚠ **大きくしたぶん、⚠ 字間を締める**（.22em のままだと散って読みにくい）。 */
+  .brand{display:inline-flex;align-items:center;gap:7px;font-size:var(--fs-claim);letter-spacing:.1em;
+    color:var(--ink-dim);text-decoration:none;
+    /* ⚠ **この箱は `inline-flex` なので、⚠ `margin-bottom` は次の行を押し下げない**
+       （2026-08-23 に実測して分かった。⚠ **元の `margin-bottom:6px` も効いていなかった**）。
+       ⚠ **縦を決めているのは、⚠ この箱の高さのほう**（⚠ 印と字の大きい側）。
+       ⚠ **`line-height:1` で、⚠ 字のぶんの余りを落とす。** */
+    line-height:1;margin-bottom:0}
   a.brand:hover{color:var(--action)}
-    .brand .mark{width:15px;height:15px;border-radius:3.5px;flex:none;display:block}
+    /* ⚠ **印は、⚠ 字より大きくしない。**⚠ 大きいほうが箱の高さを決めるので、
+       ⚠ **印を上げると、⚠ 名前を上げていないのに縦が伸びる。**
+       ⚠ 実測（2026-08-23・320×640）: ⚠ 印 18px にしたら、
+         ⚠ **「重ねる」が画面の外へ出た**（641 / 640）。 */
+    .brand .mark{width:16px;height:16px;border-radius:4px;flex:none;display:block}
   .brand{align-items:center}
-.brand b{font-weight:500;letter-spacing:.22em}
+.brand b{font-weight:500;letter-spacing:.12em}
   /* ⚠ **β 版であることを、⚠ サービス名の横に置く**（2026-08-23。Owner 判断）。
      ⚠ 実測（2026-08-23・利用者役 4 名・画面だけを見せた。⚠ **実在の利用者ではない**）:
        ⚠ **2/4 が「完成品だと思った」。**⚠ 1 名は「個人開発っぽいから、たぶん作りかけ」と
        ⚠ **画面からではなく雰囲気で**判断していた。
      ⚠ **説明文にしない。**⚠ H1 と検索欄が主役なので、⚠ competing させない。
      ⚠ **`⚠` は使わない**（画面の `⚠` は災害リスク専用。CLAUDE.md §4-1）。 */
-  .brand__beta{font-size:var(--fs-badge);letter-spacing:.04em;line-height:1;
-    padding:2px 6px;border:1px solid var(--line);border-radius:999px;
-    color:var(--ink-faint);flex:none}
+  /* ⚠ **β は、⚠ 名前より小さい。**⚠ 名前の付属物であって、⚠ **同格ではない**
+     （⚠ 変更前は β 12.5px ＞ 名前 12px で、⚠ **付属物のほうが大きかった**）。
+     ⚠ **色は \`--ink-faint\` をやめた。**⚠ 実測（2026-08-23）: ⚠ **コントラスト 4.18**で、
+       ⚠ **WCAG AA の 4.5 を割っていた**（⚠ 小さい字ほど効く）。⚠ \`--ink-dim\` で 5.29。 */
+  .brand__beta{font-size:var(--fs-label);letter-spacing:.04em;line-height:1;
+    padding:3px 7px;border:1px solid var(--line);border-radius:999px;
+    color:var(--ink-dim);flex:none}
 
 
   /* ============ 入力（2段: 場所 → コマンド） ============ */
