@@ -5760,6 +5760,47 @@ head("9. 画面の言葉");
         + "（⚠ 本物の git ／ ⚠ `core.quotepath=true` を押しつけて確認）");
 }
 
+// ── 段の名乗りが、⚠ 画面 / README / SPEC で割れていないか ──────────
+// ⚠ **2026-08-23 に踏んだ。**⚠ **画面は hidetzu/konjaku#225 で β を名乗り始めたのに、
+//   ⚠ README は「プロトタイプです」と言い続けていた。**
+// ⚠ **README は共有先まで届く**（`CLAUDE.md` §6）。⚠ **画面より遠くへ行く。**
+// ⚠ **看板と共有カードは上で突き合わせているが、⚠ README は入っていなかった。**
+// ⚠ **段の名乗り（α / β / 正式版 / プロトタイプ）だけを見る。**
+//   ⚠ **README の書き方までは縛らない**（⚠ 文の形は自由）。
+{
+  const STAGE = ["プロトタイプ", "α 版", "α版", "β 版", "β版", "正式版"];
+  const norm = (set) => new Set([...set].map((w) => w.replace(/\s*版$/, "")));
+  // ⚠ **コメントを先に落とす**（⚠ 落とさないと、⚠ この決まりを説明した字面を拾う）。
+  const stageOf = (text) => {
+    const bare = text.replace(/<!--[\s\S]*?-->/g, "");
+    const got = new Set(STAGE.filter((w) => bare.includes(w)));
+    // ⚠ **`今昔 β` のように、⚠ 「版」を付けずに名乗ることがある。**⚠ 単独の β も拾う
+    if (/[^A-Za-zα-ωΑ-Ω]β[^A-Za-zα-ωΑ-Ω]/.test(bare)) got.add("β 版");
+    return norm(got);
+  };
+  // ⚠ **3 か所とも外へ出る**（⚠ 画面は見る人へ、⚠ README と SPEC は読む人へ）。
+  const faces = [
+    ["画面", stageOf(await readFile(join(PUB, "index.html"), "utf8"))],
+    ["README", stageOf(await readFile(join(ROOT, "README.md"), "utf8"))],
+    ["SPEC", stageOf(await readFile(join(ROOT, "docs", "SPEC.md"), "utf8"))],
+  ];
+  const silent = faces.filter(([, v]) => !v.size).map(([k]) => k);
+  const key = ([, v]) => [...v].sort().join("・");
+  const split = new Set(faces.map(key)).size > 1;
+  if (silent.length === faces.length) {
+    bad("どの面も段を名乗っていない（⚠ この検査が何も見ていない）");
+  } else if (silent.length) {
+    bad(`段を名乗っていない面がある（${silent.join("・")}）`
+      + `。⚠ 名乗っているのは ${faces.filter(([, v]) => v.size).map(([k, v]) => `${k}「${[...v].join("・")}」`).join(" / ")}`
+      + "。⚠ **README と SPEC は共有先まで届く**（`CLAUDE.md` §6）");
+  } else if (split) {
+    bad(`段の名乗りが割れている: ${faces.map(([k, v]) => `${k}「${[...v].join("・")}」`).join(" / ")}`
+      + "。⚠ **1 つだけ直すと、⚠ 遠くへ行くものが古いまま配られる**");
+  } else {
+    ok(`画面・README・SPEC の段の名乗りが揃っている（${key(faces[0])}）`);
+  }
+}
+
 // ── いくつ確かめたか、⚠ 最後に名乗る ────────────────────────────
 // ⚠ **0 件で緑にしない。**⚠ 1 件も走っていないのに「問題なし」と言わない
 //   （⚠ 以前は SPEC との突き合わせが、⚠ 偶然この役目も果たしていた）。
