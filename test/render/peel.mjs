@@ -63,6 +63,65 @@ ${peel.slice(i, j)}
 
 export const CASES = [
   {
+    // ⚠ **答えが、⚠ どの幅で、⚠ 何手で読めるか**（2026-08-23。hidetzu/konjaku#217 で置き場所が変わった）。
+    // ⚠ **`docs/SPEC.md` は同じことを言うが、⚠ 寸法は書かない**（⚠ **寸法はここが持つ**）。
+    //   ⚠ **実際に古くなった**: SPEC は「答えと分母は情報パネルの上端に出る／4 幅とも押さずに見えている」と
+    //     ⚠ **言い続けていた**（2026-08-22 実測）。⚠ **測り直すと 4 幅とも成り立っていなかった。**
+    // ⚠ **`checkVisibility()` では足りない。**⚠ **親のはみ出し切り取りを見ない。**
+    //   ⚠ **PC は `#panel` が中でスクロールする**ので、⚠ **答えがパネルの外にあっても「見えている」と答える。**
+    //   ⚠ **だから、⚠ その点に本人が居るか（`elementFromPoint`）で見る。**
+    name: "答えは 3 つ目の問いの中にあり、どの幅でも押さずには読めない", path: `/peel?${TOYOSU}`,
+    viewport: { width: 375, height: 667 }, hasTouch: true, setup: stubMapPictures,
+    async check(page) {
+      const ready = () => page.waitForFunction(
+        () => (document.getElementById("notes")?.textContent ?? "").trim().length > 0,
+        null, { timeout: 45000 });
+      await ready();
+      await settleAfterCondition(page);
+      const probe = () => page.evaluate(() => {
+        const leaf = (re) => [...document.querySelectorAll("#result *")]
+          .filter((x) => !x.querySelector("*")).find((x) => re.test(x.textContent ?? ""));
+        // ⚠ **その点に本人が居るか。**⚠ 親の切り取りも、⚠ 上に乗ったものも、⚠ まとめて見られる
+        const at = (el) => {
+          if (!el) return { there: false, top: null };
+          const r = el.getBoundingClientRect();
+          const t = document.elementFromPoint(
+            Math.round(r.left + Math.min(r.width, 40) / 2),
+            Math.round(r.top + Math.min(r.height, 20) / 2));
+          return { there: !!t && (t === el || el.contains(t) || t.contains(el)), top: Math.round(r.top) };
+        };
+        return { q1: at(leaf(/ここはどんな土地/)), ans: at(leaf(/足元（建っている地面）を判定できた/)) };
+      });
+      const out = [], wrong = [];
+      // ⚠ **幅を変えるだけでは足りない。**⚠ **その幅で開き直す**（上のケースと同じ理由）。
+      for (const [w, h] of [[375, 667], [344, 882], [320, 640], [1280, 800]]) {
+        await page.setViewportSize({ width: w, height: h });
+        await page.reload({ waitUntil: "domcontentloaded" });
+        await ready();
+        await settleAfterCondition(page);
+        const before = await probe();
+        const opener = page.locator("button").filter({ hasText: "全画面で読む" }).first();
+        const hasOpener = await opener.count() > 0;
+        let after = null;
+        if (hasOpener) { await opener.click(); await page.waitForTimeout(800); after = await probe(); }
+        out.push(`${w}×${h} 押す前:答え=${before.ans.there ? "居る" : "居ない"}`
+          + ` ／ 1手=${hasOpener ? `答え=${after.ans.there ? "居る" : "居ない"}(y${after.ans.top})`
+                                 + ` 第1層=${after.q1.there ? "居る" : "居ない"}(y${after.q1.top})`
+                                 : `無し（開いて始まる。第1層 y${before.q1.top}）`}`);
+        // ⚠ **主張 1: 答えは、⚠ どの幅でも押さずには読めない**
+        if (before.ans.there) wrong.push(`${w}×${h} で、⚠ 押さずに答えが読める`);
+        // ⚠ **主張 2: 第1層の見出しは、⚠ 1 手（PC は 0 手）で読める**
+        const q1 = hasOpener ? after.q1 : before.q1;
+        if (!q1.there) wrong.push(`${w}×${h} で、⚠ ${hasOpener ? "1 手でも" : "押さずに"}第1層が読めない`);
+        // ⚠ **主張 3: 狭い幅には「全画面で読む」がある。**⚠ **PC には無い**（開いて始まる）
+        if ((w < 700) !== hasOpener) wrong.push(`${w}×${h} で「全画面で読む」の有無が違う（${hasOpener}）`);
+      }
+      // ⚠ **落とすときは throw**（⚠ **戻り値で伝えると、⚠ 絶対に落ちない**）。
+      if (wrong.length) throw new Error(`答えの読める手数が変わった: ${wrong.join(" ／ ")}｜ 実測 ${out.join(" ｜ ")}`);
+      return out.join(" ｜ ");
+    },
+  },
+  {
     // ⚠ **HUD は「いまの年代」と「年代操作」だけを扱う**（2026-08-22。hidetzu/konjaku#168。Owner 判断）。
     //   ⚠ 補足（推定の断り・操作ヒント・重ねている断り）は、⚠ **HUD の外の層**（`#notice`）に出す。
     //   ⚠ **消したのではない。**⚠ 消えると、⚠ **推定の高さで建物が立った絵を断りなしに見せる**（掟 §1）。
