@@ -220,29 +220,53 @@ head("6. 外部リンク");
   //   コメントに素のパスで書いた `docs/adr/00xx-….md` は素通りする。
   //   ⚠ ADR の名前を変えたら黙って壊れる。コメントから ADR を指すなら、
   //     その参照が生きていることまで追跡する。
+  //
+  // ⚠ **見る先を書き並べない**（2026-08-25）。⚠ **手書きの一覧は、⚠ 必ず古くなる。**
+  //   ⚠ **実測（2026-08-25・`main` = `a8ef58d`）**: ⚠ **一覧は 27 件を見ていたが、
+  //   ⚠ ADR を指しているコードのうち 2 件が漏れていた**
+  //   （`.claude/hooks/telemetry.mjs` ／ `.claude/tools/telemetry-eval.mjs`）。
+  //   ⚠ **落ちない。**⚠ **見ないだけなので、⚠ 誰も気づけない。**
+  //   ⚠ **コメントは「運用は `scripts/` も見る」と言っていたが、⚠ 一覧に `scripts/` は 1 本も無かった。**
+  //
+  // ⚠ **`git ls-files` から引く。**⚠ **足したファイルが、⚠ その日から対象になる。**
+  //   ⚠ **`.md` は外す**（⚠ **上のマークダウンリンクの検査が見ている**。⚠ 二重に数えない）。
+  //   ⚠ **中身を読めないもの（バイナリ）は飛ばす。**
   {
     const { existsSync: ex3 } = await import("node:fs");
-    const cands = [...htmlFiles, ...jsFiles].map((f) => [f, src[f]])
-      .concat([["worker.js", await readFile(join(ROOT, "worker.js"), "utf8").catch(() => "")]])
-      // ⚠ **suite に割ったので、⚠ 走者だけ見ても足りない**（2026-08-22）
-      // ⚠ **検査は `test/`、⚠ 運用は `scripts/`**（2026-08-22 に分けた）。⚠ **両方を見る。**
-      .concat(await Promise.all(["test/check.mjs", "test/render.mjs", "test/search-check.mjs",
-        "test/render-scope.mjs", "test/render/lib.mjs", "test/render/top.mjs", "test/render/peel.mjs"]
-        .map(async (f) => [f, await readFile(join(ROOT, f), "utf8").catch(() => "")])));
+    const { execFileSync: exA } = await import("node:child_process");
+    let tracked = [];
+    try {
+      tracked = exA("git", ["ls-files"], { encoding: "utf8", cwd: ROOT }).split("\n").filter(Boolean);
+    } catch { bad("git ls-files が使えない（ADR 参照の検査が何も見ていない）"); }
+    const cands = [];
+    for (const f of tracked) {
+      if (f.endsWith(".md")) continue;
+      let buf; try { buf = await readFile(join(ROOT, f)); } catch { continue; }
+      if (buf.includes(0)) continue;                    // ⚠ バイナリは読まない
+      cands.push([f, buf.toString("utf8")]);
+    }
     const dead = [];
-    let refs = 0;
+    let refs = 0, from = 0;
     for (const [f, t] of cands) {
+      let hit = 0;
       for (const m of (t ?? "").matchAll(/docs\/adr\/[0-9]{4}-[^\s)）」`'"]+\.md/g)) {
-        refs++;
+        refs++; hit++;
         if (!ex3(join(ROOT, m[0]))) dead.push(`${f} → ${m[0]}`);
       }
+      if (hit) from++;
     }
-    dead.length
-      ? bad(`コードから指している ADR が実在しない: ${dead.join("、")}`)
-      : ok(`コードから指している ADR は全部実在する（${refs} 箇所）`);
     // ⚠ **0 件で緑にしない。** ADR 参照が全部消えても通ってしまう
     //   （前の版はそうなっていた。レビューで指摘された）。
+    // ⚠ **0 件のときは、⚠ 緑の行を出さない**（2026-08-25）。
+    //   ⚠ **前は「✗ 1 つも無い」と「✓ 全部実在する（0 箇所）」が同時に出ていた。**
+    //   ⚠ **0 件で「全部実在する」は、⚠ 測っていないことを緑で言っている**（`CLAUDE.md` §1）。
     if (!refs) bad("コードから ADR を指している箇所が1つも無い（この検査が何も見ていない）");
+    else if (dead.length)
+      bad(`コードから指している ADR が実在しない: ${dead.join("、")}`
+        + `（⚠ ADR の名前を変えたら、⚠ 指している側も直す）`);
+    else
+      ok(`コードから指している ADR は全部実在する（${refs} 箇所 / ${from} ファイル。`
+        + `⚠ git が追跡する ${cands.length} ファイルを走査。⚠ .md は上の検査が見る）`);
   }
 
   // ⚠ **このリポジトリの Issue 番号を、コードや文書に埋めない。**
