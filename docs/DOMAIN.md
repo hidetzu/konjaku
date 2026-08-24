@@ -173,7 +173,7 @@ public/verify.js  ⚠ **narrate() の 1 文目も、ここから借りる**（�
 ```
 public/photos.js   ⚠ **状態を決める。**⚠ **画面へ出す字を持たない**
 public/words.js    ⚠ **字を決める。**⚠ **状態の作り方を知らない**
-画面（index.html / peel3d.js）
+画面（top.js / peel3d.js）
                    ⚠ **置くだけ。**⚠ **何も判断しない**
 ```
 
@@ -203,7 +203,7 @@ public/words.js    ⚠ **字を決める。**⚠ **状態の作り方を知ら�
 ```
 public/eras.js     ⚠ **段を決める。**⚠ **並びも字も持たない**
 public/words.js    ⚠ **字を決める**（⚠ 復元できなかったときの言い方）
-画面（index.html / peel3d.js）
+画面（top.js / peel3d.js）
                    ⚠ **並べるだけ。**⚠ **落とし方を知らない**
 ```
 
@@ -233,7 +233,7 @@ hidetzu/konjaku#121）。
 ```
 public/verify.js   ⚠ **外から取ってくる。**⚠ **控えることを知らない**
 public/land.js     ⚠ **取得済みを控える、ただ1か所。**⚠ **取り方を知らない・字を持たない**
-画面（index.html / peel3d.js）
+画面（top.js / peel3d.js）
                    ⚠ **置くだけ。**⚠ **取得の層を直接呼ばない**
 ```
 
@@ -407,7 +407,7 @@ layersOf(...) → { layers: [ Layer, ... ], missing: [ Missing, ... ] }
 |---|---|
 | 出どころの語彙（実測／未取得／欠落／未対応／推定） | `public/prov.js` |
 | `/peel` の答えと出どころ | `peel3d.js` の `WORD` |
-| トップの根拠カードと導線 | `index.html` の `TOPWORD` |
+| トップの根拠カードと導線 | `top.js` の `TOPWORD`（⚠ 2026-08-24 に `index.html` から出した） |
 | ⚠ **写真が「いま届いたか」** | ⚠ **`public/photos.js`**（状態）＋ `public/words.js`（字） |
 | 明治期の 14 区分 | `public/swale.js` |
 | 年代の定義 | `public/verify.js` |

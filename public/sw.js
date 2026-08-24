@@ -18,7 +18,7 @@
 //   一度来た人に古い `/` と `/share.js` が出続けた。しかもローカルは初回訪問なので
 //   絶対に再現せず、CI も全部通る。流入を測り始める直前に一度踏みかけた。
 //   なぜハッシュにしたかの全文は scripts/sw-hash.mjs の頭にある。
-const VERSION = "konjaku-f52954d8";
+const VERSION = "konjaku-a27a30db";
 // ⚠ addAll は1件でも 404 すると install ごと reject し、キャッシュが丸ごと死ぬ。
 //   この一覧を足し引きしたときも版は変わる（一覧そのものもハッシュの材料に入れてある）。
 const SHELL = [
@@ -29,7 +29,7 @@ const SHELL = [
   //   （取得の結末と一覧行のタグを、2 画面で 1 か所から出している）。
   // ⚠ land.js も同じ性質。**来ないと両ページが土地情報を頼む先を失う**
   //   （2 画面が取得の層を直接呼ばず、ここだけを見る作りにしてある）。
-  "/esc.js", "/photos.js", "/eras.js", "/place-arg.js", "/words.js", "/verify.js", "/land.js", "/gsi-address-search.js", "/places.js", "/share.js", "/events.js",
+  "/esc.js", "/photos.js", "/eras.js", "/place-arg.js", "/words.js", "/top.js", "/verify.js", "/land.js", "/gsi-address-search.js", "/places.js", "/share.js", "/events.js",
   // ⚠ 2 画面で共通の見た目の定義。**来ないと両ページの色も文字サイズも決まらない**
   //   （esc.js と同じ性質。オフラインでも画面が成り立つための最小限）。
   //   ⚠ 68 KB の地図 CSS とは別物で、実測 1,650 バイト。
