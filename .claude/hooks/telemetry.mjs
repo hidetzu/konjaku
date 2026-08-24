@@ -68,13 +68,14 @@
 //   # ⚠ せき止めないことを確かめる（全部 0 で終わり、stdout が空であること）
 //   echo 'これは JSON ではない'   | node .claude/hooks/telemetry.mjs; echo "exit=$?"
 //   printf ''                     | node .claude/hooks/telemetry.mjs; echo "exit=$?"
-import { appendFileSync, mkdirSync, rmdirSync, readFileSync, writeFileSync, renameSync } from "node:fs";
+import { appendFileSync, mkdirSync, rmdirSync, readFileSync, writeFileSync, renameSync, statSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
 
 const LOCK_MS = 300;      // ⚠ 索引の取り合いを待つ上限。⚠ **超えたら鍵無しで進む**（止めない）
 const KEEP_TASKS = 500;   // ⚠ 索引に残す Task の数。⚠ 古いものから落とす（際限なく太らせない）
+const STALE_MS = 10_000;  // ⚠ これより古い鍵は、⚠ 持ち主が殺されたものとみなして外す
 
 // ⚠ **何が起きても 0 で終わる。**⚠ stdout へは出さない（会話へ混ざる）
 const bail = (why) => { if (why) process.stderr.write(`telemetry: ${why}\n`); process.exit(0); };
@@ -138,6 +139,10 @@ try {
     let held = false;
     for (const until = Date.now() + LOCK_MS; Date.now() < until;) {
       try { mkdirSync(LOCK); held = true; break; } catch { nap(20); }
+      // ⚠ **鍵の取り残しを、⚠ 永久に引きずらない。**⚠ この Hook は timeout で殺されうる
+      //   （⚠ `settings.json` の 5 秒）。⚠ **殺された回の鍵が残ると、⚠ 以後の全部が
+      //   ⚠ 上限まで待たされたうえ、⚠ 鍵無しで書く**（＝取り合いが常態になる）。
+      try { if (Date.now() - statSync(LOCK).mtimeMs > STALE_MS) rmdirSync(LOCK); } catch {}
     }
     // ⚠ **取れなくても進む。**⚠ 取り合いで Turn を 1 つ数え損ねるより、止まるほうが悪い
     try { return fn(); } finally { if (held) { try { rmdirSync(LOCK); } catch {} } }
