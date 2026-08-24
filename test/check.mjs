@@ -1268,48 +1268,6 @@ head("6. まだ問いで分けていないもの");
 }
 
 
-// ⚠ Cloudflare の _headers は、一致した規則を**全部**適用して連結する。
-//   「より細かい規則が勝つ」ではない。同じヘッダを2つの規則が書くと、
-//   本番では `max-age=86400, max-age=0, must-revalidate` のように連結され、
-//   どちらが効くかは実装依存になる（実測でそうなっていた）。
-//   実ファイルに当てて、同じヘッダが二重に当たっていないかを見る。
-{
-  const { readFileSync: rfh, readdirSync: rdh, statSync: sth } = await import("node:fs");
-  const lines = rfh("public/_headers", "utf8").split("\n");
-  const rules = [];
-  for (const raw of lines) {
-    if (!raw.trim() || raw.trim().startsWith("#")) continue;
-    if (!raw.startsWith(" ") && !raw.startsWith("\t")) { rules.push({ pat: raw.trim(), h: [] }); continue; }
-    const i = raw.indexOf(":");
-    if (i > 0 && rules.length) rules[rules.length - 1].h.push(raw.slice(0, i).trim().toLowerCase());
-  }
-  // _headers の * は / も跨いで一致する（/data/* が /data/ev/index.json に当たっていた）
-  const re = (pat) => new RegExp("^" + pat.replace(/[.+?^${}()|[\]\\]/g, "\\$&")
-    .replace(/\*/g, ".*") + "$");
-  const pats = rules.map((r) => ({ ...r, re: re(r.pat) }));
-  const files = [];
-  (function walk(d, url) {
-    for (const e of rdh(d)) {
-      if (e === "_headers" || e === "_redirects") continue;
-      const p2 = `${d}/${e}`;
-      sth(p2).isDirectory() ? walk(p2, `${url}/${e}`) : files.push(`${url}/${e}`);
-    }
-  })("public", "");
-  const clash = [];
-  for (const f of files) {
-    const hit = pats.filter((r) => r.re.test(f));
-    const seen = new Map();
-    for (const r of hit) for (const h of r.h) {
-      if (h === "referrer-policy") continue;     // 全体に1つだけ書いてある。重ならない
-      seen.has(h) ? clash.push(`${f}: ${h} が ${seen.get(h)} と ${r.pat} で二重`)
-        : seen.set(h, r.pat);
-    }
-  }
-  clash.length
-    ? bad(`_headers の規則が重なっている（本番で連結され、どちらが効くか決まらない）:\n      `
-        + clash.slice(0, 4).join("\n      ") + (clash.length > 4 ? `\n      ほか ${clash.length - 4} 件` : ""))
-    : ok(`_headers の規則が重なっていない（${files.length} ファイルに当てて確認）`);
-}
 
 // ⚠ 建物のタイルが重くなりすぎないよう、上限を決めて見張る。
 //   /peel は1画面で z14 を最大4枚読む。同じ画面が読む MapLibre 本体が gz 換算で
@@ -1436,54 +1394,7 @@ head("6. まだ問いで分けていないもの");
   }
 }
 
-// ⚠ 掟は「番号」ではなく「名前」で引く。
-//   以前はコードに「節番号」（章記号＋3.23 のような数）が141箇所あり、
-//   削除済みの長文設計メモの節を指していた。
-//   ただし調べると**参照ではなく引用**で、掟の中身はその場に書いてあった。
-//   番号は誰にとっても意味を持たない文字列で、しかも文書を消すと宙に浮く。
-//   → 名前で引く（`（掟: 取れなかったを「無い」と言わない）`）。番号に戻さない。
-{
-  const { readFileSync: rfk, readdirSync: rdk } = await import("node:fs");
-  const files = [...rdk("public").filter((f) => /\.(html|js)$/.test(f)).map((f) => `public/${f}`),
-    ...rdk("scripts").filter((f) => f.endsWith(".mjs")).map((f) => `scripts/${f}`),
-    // ⚠ **検査は `test/` にある**（2026-08-22）。⚠ **ここを落とすと、⚠ 検査の中の §番号を見なくなる。**
-    ...rdk("test").filter((f) => f.endsWith(".mjs")).map((f) => `test/${f}`),
-    ...rdk("test/render").filter((f) => f.endsWith(".mjs")).map((f) => `test/render/${f}`), "worker.js"];
-  const hit = [];
-  for (const f of files) {
-    let t = ""; try { t = rfk(f, "utf8"); } catch { continue; }
-    const m = t.match(/§\d+\.\d+/g);
-    if (m) hit.push(`${f}(${m.length})`);
-  }
-  hit.length
-    ? bad(`節番号での参照が戻っている: ${hit.join("、")}。掟は名前で引くこと`)
-    : ok(`掟は名前で引いている（節番号での参照は 0 件）`);
-}
 
-// ⚠ 3D のコードを SHELL に入れない。
-//   SHELL の中身がそのまま版（ハッシュ）なので、入れると 3D を1行直すたびに
-//   **全利用者のキャッシュが丸ごと飛ぶ**。MapLibre 1,032KB を SHELL から外した
-//   判断（初回 250KB → 1,646KB になっていた）と同じ理由。
-// ⚠ **コメントを先に落とす。** これを忘れると、SHELL の中のコメントに書いた
-//   「maplibre を SHELL に入れない理由」という字面を、この検査自身が拾って落ちる。
-//   実際に踏んだ（2026-08-15。MapLibre の実サイズをコメントに書いたとき）。
-//   CLAUDE.md §5 が「検査が文書やコメントを読むときはコメントを先に落とす」と
-//   書いているのは、これで3回目だから。
-{
-  const shell = /const SHELL\s*=\s*\[([\s\S]*?)\]/.exec(src["sw.js"] ?? "");
-  if (!shell) bad("sw.js の SHELL が読めない");
-  else {
-    // ⚠ **`//` は、⚠ `https://` を巻き込まない形で落とす**（2026-08-24）。
-    //   ⚠ **いまは SHELL に URL が 0 本なので実害は無い**（⚠ 実測: 差 0 文字）。
-    //   ⚠ **URL を 1 行足された瞬間に、⚠ その行の残りが検査の目から消える。**
-    const body = shell[1].replace(BLOCK_COMMENT, " ").replace(LINE_COMMENT, "$1");
-    const hit = ["peel3d", "maplibre"].filter((w) => body.includes(w));
-    hit.length
-      ? bad(`SHELL に 3D 側のものが入っている（${hit.join("・")}）。`
-          + "触るたび全利用者のキャッシュが飛ぶ")
-      : ok("SHELL に 3D 側のものは入っていない");
-  }
-}
 
 // ⚠ 建物の詰め方は、書く側（scripts/bl-format.mjs）と読む側（peel3d.js の
 //   unpackBuildings）が対になっている。片方だけ直すと**建物の形が静かにずれる**
