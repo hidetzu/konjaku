@@ -257,7 +257,7 @@ ready-for-ai の付与・削除は禁止
 | D-3 | `ready-for-ai` の説明文 | ⚠ **Owner が設定済み**（`Ready for AI implementation with clear scope, acceptance criteria, and verification.`） |
 | D-4 | `needs-decision` を作るか | ⚠ **いまは不要。**ラベルを増やさない |
 | D-5 | 各 Open Issue の Close / Rewrite / Split | ⚠ **いまは不要。**⚠ 本文には**触らない**。実測のずれは**コメント**で足す |
-| D-6 | Loop Controller の導入 | ⚠ **2026-08-19 に方針が変わった。**手動ループを 1 件（`hidetzu/konjaku#74`）通したあと、**v1 を作ることになった**（`tmp/KONJAKU_LOOP_CONTROLLER_V1_IMPLEMENTATION.md`）。⚠ **自動巡回・定期実行・自動 merge は入れない** |
+| D-6 | Loop Controller の導入 | ⚠ **2026-08-19 に方針が変わった。**手動ループを 1 件（`hidetzu/konjaku#74`）通したあと、**v1 を作ることになった**（⚠ **できたものは `.claude/skills/loop-controller/SKILL.md`**）。⚠ **自動巡回・定期実行・自動 merge は入れない** |
 
 ⚠ **D-5 の運用が決まったので、Issue に手を入れる前の既定はこうなる。**
 
