@@ -22,10 +22,10 @@
 //
 // ⚠ **道具は `test/check/lib.mjs` の 1 か所**（⚠ ここで持ち直さない）。
 
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { PUB, ok, bad, head, seen } from "./lib.mjs";
+import { ROOT, PUB, ok, bad, head, src, seen, htmlFiles, jsFiles, BLOCK_COMMENT, LINE_COMMENT } from "./lib.mjs";
 
 head("土地の区分");
 
@@ -379,4 +379,97 @@ head("土地の区分");
       : ok(`loadArea の直下の await ${top} 箇所は、全部その直後に seq を確かめている`
           + `（中の関数の中の ${nested} 箇所は、外側の番人が守る）`);
   }
+}
+
+// ============================================================
+// ⚠ 判定の表を、⚠ 自前で持ち直していないか
+// ============================================================
+// ⚠ **`test/check.mjs` の「1. スクリプトの構文」から逐語で移しただけ**
+//   （2026-08-25。hidetzu/konjaku#232 の 29 本目）。
+//   ⚠ **1 文字も変えていない。**⚠ **主張を強くも弱くもしていない。**
+//   ⚠ **その節は「構文」と名乗っていたが、⚠ 構文は 31 行しかなかった。**
+// ⚠ **ここが「土地の区分」の仲間である理由**: ⚠ **明治期の 14 区分表と、⚠ 水に由来する区分。**
+//   ⚠ 上の `swale.js` を動かす検査と、⚠ **同じ表を見ている。**
+// ⚠ 判定の表を自前で持ち直していないか。
+//   同じ 14区分表を verify.js / peel.html / eras.html / isekai.html の4箇所に置いていたため、
+//   「通信断を『データ無し』と断定しない」を直したときに eras だけ取り残され、
+//   実在するタイルについて「存在しないため判定できません」と断定し続けていた。
+//   表そのものが消せない事情のあるページ（peel は自前の描画で使う）は許すが、
+//   増やしたら気づけるように数を固定する。
+{
+  const marker = /251,\s*247,\s*176/;   // 明治期の低湿地「田」の色。表がある証拠
+  // ⚠ **走査対象に、外の .js も入れる。** 以前は htmlFiles+jsFiles だけを見ていて、
+  //   `build-water.js` に同じ表があることに気づけなかった（2026-08-17 に実測して寄せた）。
+  // ⚠ **ルート直下から `scripts/` へ移した**（2026-08-22）。⚠ **走査から落とさない。**
+  const outside = ["scripts/build-water.mjs", "scripts/check-tiles.mjs",
+    "scripts/fetch-buildings.mjs", "scripts/serve.mjs"]
+    .filter((f) => existsSync(join(ROOT, f)));
+  const outsideSrc = Object.fromEntries(await Promise.all(
+    outside.map(async (f) => [f, await readFile(join(ROOT, f), "utf8")])));
+  // ⚠ **検査は `test/` へ移した**（2026-08-22。Owner 判断）。⚠ **両方を見る。**
+  //   ⚠ **片方だけ見ると、⚠ 見ていないほうで静かに書き写される。**
+  const codeDirs = ["scripts", "test", "test/render"];
+  const codeFiles = (await Promise.all(codeDirs.map(async (d) =>
+    (await readdir(join(ROOT, d)).catch(() => []))
+      .filter((f) => f.endsWith(".mjs")).map((f) => `${d}/${f}`)))).flat();
+  const scriptsSrc = Object.fromEntries(await Promise.all(
+    codeFiles.map(async (f) => [f, await readFile(join(ROOT, f), "utf8")])));
+  const all = { ...src, ...outsideSrc, ...scriptsSrc };
+  const holders = Object.keys(all).filter((f) => marker.test(all[f]));
+  // ⚠ **表があってよいのは swale.js だけ。** 借りる側は書き写さない
+  const ALLOWED = ["swale.js"];
+  const extra = holders.filter((f) => !ALLOWED.includes(f));
+  extra.length
+    ? bad(`明治期の 14 区分表を自前で持っている先が ${extra.length} 件ある: ${extra.join(", ")}`
+        + `（public/swale.js に寄せること。分かれると片方だけ直し忘れる。`
+        + `⚠ 実際 build-water.js が突き合わせから漏れていた）`)
+    : ok(`明治期の 14 区分表を持つのは ${holders.join(" と ")} だけ（${Object.keys(all).length} ファイルを走査）`);
+
+  // ⚠ 上は明治期の14色表しか数えていない。あとで足した地形分類の「水に由来する区分」の
+  //   表は別物で、verify.js / share.js / index.html×2 の4箇所に複製されていた。
+  //   isekai で踏んだのと同じ型なので、こちらも数を固定する。
+  const wet = /["「]旧水部["」]/;
+  const wetHolders = [...htmlFiles, ...jsFiles].filter((f) => wet.test(src[f]));
+  const WET_MAX = 4;
+  wetHolders.length > WET_MAX
+    ? bad(`水に由来する区分の表が ${wetHolders.length} 箇所に増えている: ${wetHolders.join(", ")}`
+        + `（verify.js から配るか、増やすならこの上限も一緒に上げて理由を書くこと）`)
+    : ok(`水に由来する区分の表は ${wetHolders.length} 箇所（上限 ${WET_MAX}）`);
+}
+
+// ============================================================
+// ⚠ 「無い」と読んでよい応答は 404 だけか
+// ============================================================
+// ⚠ **`test/check.mjs` の「1. スクリプトの構文」から逐語で移しただけ**
+//   （2026-08-25。hidetzu/konjaku#232 の 29 本目）。
+//   ⚠ **1 文字も変えていない。**⚠ **主張を強くも弱くもしていない。**
+//   ⚠ **その節は「構文」と名乗っていたが、⚠ 構文は 31 行しかなかった。**
+// ⚠ **ここが「土地の区分」の仲間である理由**: ⚠ **`verify.js` の 3 経路を見ている。**
+//   ⚠ 掟 §1（⚠ 取れなかったを「無い」と言わない）を、⚠ **取得の側で見る。**
+// ⚠ **「無い」と読んでよい応答は 404 だけ**（掟: 取れなかったを「無い」と言わない）。
+//   403 は「見せてもらえなかった」であって「そこにデータが無い」ではない。
+//   以前は 404 と同じ absent に丸めていたため、拒まれただけの土地に
+//   「整備対象外」「標高データが無い」と書き、根拠に HTTP のステータスまで添えていた。
+//   ⚠ ここが見るのは**コードの形だけ**。実際に画面が断定しないことは実描画で見る
+//     （403 に差し替える 4 ケース）。静的検査だけで「確認済み」と呼ばない。
+//   ⚠ コメントを先に落とす。落とさないと、この決まりを説明したコメントの字面を拾う
+//     （CLAUDE.md「検査が文書やコメントを読むとき、コメントを先に落とす」）。
+{
+  const bare = (s) => s.replace(BLOCK_COMMENT, " ").replace(LINE_COMMENT, "$1");
+  // 条件は複数行にまたがる（`if (…)` と `return` が別の行）。畳んでから見る
+  const flat = bare(await readFile(join(PUB, "verify.js"), "utf8")).replace(/\s+/g, " ");
+  const conds = [...flat.matchAll(/if\s*\(([^)]*status[^)]*)\)\s*(?:\{[^}]*\})?\s*return\s*\{\s*state:\s*(\w+)/g)]
+    .map(([, cond, state]) => ({ cond, state, codes: [...cond.matchAll(/status\s*===\s*(\d{3})/g)].map((m) => m[1]) }))
+    .filter((c) => c.codes.length);
+  const absent = conds.filter((c) => c.state === "ABSENT");
+  const wrong = absent.filter((c) => c.codes.some((n) => n !== "404"));
+  // ⚠ 0 件で緑にしない。分岐が消えても通ってしまう
+  if (!absent.length)
+    bad("verify.js に、HTTP のステータスから不在を決めている分岐が1つも無い（この検査が何も見ていない）");
+  else if (wrong.length)
+    bad(`verify.js が 404 以外を「無い」と読んでいる: ${
+      wrong.map((c) => `${c.codes.join("/")} → ABSENT`).join("、")}`
+      + `（403 は拒否であって、不在の証拠ではない）`);
+  else
+    ok(`不在と読むのは 404 だけ（verify.js の ${absent.length} 経路: 画像・GeoJSON・標高）`);
 }
