@@ -21,7 +21,7 @@
 
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { PUB, ok, bad, head, src, seen, stripJs, BLOCK_COMMENT, HTML_COMMENT, HEAD_COMMENT } from "./lib.mjs";
+import { PUB, ok, bad, head, src, seen, stripJs, BLOCK_COMMENT, HTML_COMMENT, HEAD_COMMENT, LINE_COMMENT } from "./lib.mjs";
 
 head("取得と表示を分ける");
 
@@ -185,4 +185,58 @@ head("取得と表示を分ける");
     ? bad(`明治期の「面」が、取得と画面に分かれていない: ${bad5.join("、")}`)
     : ok("明治期の面は「取得（verify.js swaleArea）→ 控える（land.js meijiArea）→ "
        + "矩形化だけ（peel3d.js）」に分かれている");
+}
+
+// ============================================================
+// ⚠ 3D の下地があるかの判定を、⚠ 画面が持っていないか
+// ============================================================
+// ⚠ **`test/check.mjs` から逐語で移しただけ**（2026-08-25。hidetzu/konjaku#232 の 26 本目）。
+//   ⚠ **1 文字も変えていない。**⚠ **主張を強くも弱くもしていない。**
+//   ⚠ **元の見出し（`head()`）は落とした**（⚠ 行き先の見出しの下に入る）。
+// ⚠ **ここが「取得と表示を分ける」の仲間である理由**: ⚠ **画面が判断を持たない。**
+//   ⚠ トップと `/peel` が、⚠ **同じ答え**（`ground.js`）から引く。
+//   ⚠ 別々に書くと、⚠ **トップが「深掘りできる」と言った場所で `/peel` が落ちる。**
+// ⚠ **「この場所に 3D の下地があるか」に答える実装を、2 つ持たない**（掟6）。
+//   トップは「この場所を深掘り」の導線を出すかどうかを、/peel は建物を静的に描けるかを、
+//   **同じ答え**で決めている。別々に書くと、
+//   **トップが「深掘りできる」と言った場所で /peel が Overpass に落ちる**状態が作れる
+//   （＝出るか出ないかが相手次第。押しても何も起きない導線を置かない、に反する）。
+//   ⚠ 判定の材料は 2 つある。どちらも ground.js だけが持つこと。
+//     1) 集計する範囲（HALF_LON / HALF_LAT）  2) z14 タイル索引の引き方
+{
+  const g = src["ground.js"];
+  if (!g) bad("public/ground.js が無い（下地の判定の置き場所）");
+  else {
+    const needs = [
+      ["HALF_LON", "集計する範囲（この値がずれると、導線を出したのに建物が出ない場所ができる）"],
+      ["hasSync", "トップが同期で引く入口"],
+      ["tilesFor", "/peel が読むタイルの並び"],
+    ];
+    const miss = needs.filter(([k]) => !g.includes(k));
+    if (miss.length) bad(`ground.js に ${miss.map(([k, w]) => `${k}（${w}）`).join("・")} が無い`);
+    else ok("ground.js が、範囲・トップ側の入口・/peel 側の入口を持っている");
+
+    // ⚠ 使う側が、同じ判断を自分でも書いていないこと。
+    //   ⚠ **コメントを先に落とす。** 落とさないと、この決まりを説明したコメントの字面を拾う
+    //     （CLAUDE.md §5。2 回踏んでいる）。
+    const strip = (s) => s.replace(BLOCK_COMMENT, " ").replace(LINE_COMMENT, "$1")
+      .replace(HTML_COMMENT, " ");
+    // ⚠ **トップの JS は `top.js`**（2026-08-24。⚠ `index.html` から逐語で出した）。
+    //   ⚠ **`/peel` の `peel3d.js` と対になる。**⚠ 2 画面とも JS は別ファイル。
+    for (const f of ["top.js", "peel3d.js"]) {
+      const s = strip(src[f] ?? "");
+      const own = [
+        [/const\s*\{?\s*HALF_LON/, "範囲（HALF_LON）を自分で宣言している"],
+        [/z14of\s*=/, "z14 タイルの求め方を自分で書いている"],
+        [/bl\/index\.json/, "タイル索引の場所を直に書いている（assets.json 経由にする）"],
+      ].filter(([re]) => re.test(s.replace(/const\s*\{HALF_LON,HALF_LAT\}\s*=\s*KonjakuGround/, "")));
+      if (own.length) bad(`${f} が下地の判定を自分でも持っている: ${own.map(([, w]) => w).join("・")}`);
+      else if (!s.includes("KonjakuGround")) bad(`${f} が KonjakuGround を使っていない（判定の出どころが不明）`);
+      else ok(`${f} は ground.js の答えを使っている`);
+    }
+    // 読み込み忘れ。読み込まないと ReferenceError で画面が丸ごと止まる
+    for (const f of ["index.html", "peel.html"])
+      if ((src[f] ?? "").includes('src="./ground.js"')) ok(`${f} が ground.js を読み込んでいる`);
+      else bad(`${f} が ground.js を読み込んでいない（KonjakuGround が未定義になる）`);
+  }
 }

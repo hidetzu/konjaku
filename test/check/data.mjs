@@ -29,7 +29,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import { VERSION as BL_VERSION } from "../../scripts/bl-format.mjs";
-import { ROOT, PUB, ok, bad, head, src, TOP, seen } from "./lib.mjs";
+import { ROOT, PUB, ok, bad, head, src, TOP, seen, BLOCK_COMMENT, HTML_COMMENT, HEAD_COMMENT } from "./lib.mjs";
 
 // 事物の索引の読み方。⚠ **ここ1か所**にする（z12 の束ごとに、中の z14 を1ビットずつ）。
 //   写すと、索引の持ち方を変えたときに片方だけ直して、同じ問いに違う答えが出る。
@@ -442,4 +442,39 @@ head("配っている現物");
     errors.length ? bad(`assets.json の建物参照が不正: ${errors.join("、")}`)
       : ok(`assets.json の建物参照が索引・タイルと一致（${Object.keys(idx.tiles).length} 区画）`);
   }
+}
+
+// ============================================================
+// ⚠ 土地ごとの例外が、⚠ もう一度生えてきていないか
+// ============================================================
+// ⚠ **`test/check.mjs` から逐語で移しただけ**（2026-08-25。hidetzu/konjaku#232 の 26 本目）。
+//   ⚠ **1 文字も変えていない。**⚠ **主張を強くも弱くもしていない。**
+//   ⚠ **元の見出し（`head()`）は落とした**（⚠ 行き先の見出しの下に入る）。
+// ⚠ **ここが「配っている現物」の仲間である理由**: ⚠ **`public/data/` に何が置いてあるか。**
+//   ⚠ 1 つの土地だけが専用の現物を持つと、⚠ **その土地だけ別の経路を通る。**
+// ⚠ **以前ここは範囲索引（豊洲 1 件だけ）を見ていた**（2026-08-20 に外した）。
+//   ⚠ 豊洲だけが専用の集計範囲・事前生成の水域・事前生成の建物を持ち、
+//     ⚠ **1 つの土地だけが他と違う経路を通っていた**（掟: 同じ問いに答える実装を2つ持たない）。
+// ⚠ **守りたかったこと（実行時 Overpass に黙って落ちない）は消していない。**
+//   それは下の「タイル索引」と共通マニフェストの検査が見ている。
+// ⚠ ここが見るのは、**その例外がもう一度生えてこないこと**。
+{
+  const gone = ["areas.json", "toyosu-buildings.geojson", "toyosu-water.geojson"];
+  for (const f of gone)
+    existsSync(join(PUB, "data", f))
+      ? bad(`public/data/${f} が戻っている。1 つの土地だけが違う経路を通る`)
+      : ok(`public/data/${f} は無い`);
+  // ⚠ 読む側が生えていないか。**配っていないものを読みに行くと、静かに 404 を出し続ける**
+  // ⚠ **コメントを先に落とす。**落とさないと、上の説明の字面をこの検査が拾う（CLAUDE.md §5）。
+  let reads = 0;
+  for (const [f, s2] of Object.entries(src)) {
+    if (!/\.(js|html)$/.test(f)) continue;
+    // ⚠ HTML のコメント（<!-- -->）も落とす。⚠ **落とさないと、何を外したかを
+    //   説明した .html のコメントを、この検査自身が「読んでいる」と読む**（CLAUDE.md §5）
+    const bare = s2.replace(HTML_COMMENT, " ")
+      .replace(BLOCK_COMMENT, " ").replace(HEAD_COMMENT, "");
+    for (const g of gone)
+      if (bare.includes(g)) { bad(`${f} が data/${g} を読もうとしている（もう配っていない）`); reads++; }
+  }
+  if (!reads) ok("公開物のどれも、消した 3 件を読みに行っていない");
 }
