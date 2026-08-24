@@ -22,7 +22,7 @@
 import { readFile, readdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { ROOT, ok, bad, head } from "./lib.mjs";
+import { ROOT, ok, bad, head, dropCommentOrHash } from "./lib.mjs";
 
 head("人の判断を飛ばさない");
 
@@ -192,7 +192,7 @@ head("人の判断を飛ばさない");
       }
       return out;
     }
-    return src2.split("\n").map((l) => l.replace(/(^|\s)(\/\/|#).*$/, ""));
+    return src2.split("\n").map(dropCommentOrHash);
   };
   const hits = [];
   for (const f of files) {
