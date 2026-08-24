@@ -111,6 +111,35 @@ const E = await import(pathToFileURL(join(ROOT, TOOL)).href);
     `まとめ方ごとの件数が合わない: ${JSON.stringify(s.by_grouping)}`);
   // ⚠ **読めなかった行を黙らせない**
   yes(s.unreadable_lines === 2, `読めなかった行が ${s.unreadable_lines}（2 のはず）`);
+  // ⚠ **JSON としては読めるが、⚠ task_id が無くて Task にできない行**も黙らせない
+  //   ⚠ **原因が違うので、⚠ 読めなかった行とは別に数える**
+  yes(s.invalid_task_rows === 1, `Task にできない行が ${s.invalid_task_rows}（task_id の無い 1 行のはず）`);
+  // ⚠ **見ている期間は「集計に入っている、⚠ 最古と最新の観測時刻」**（2026-08-24。⚠ **実際にずれた**）。
+  //   ⚠ **終わりの最後を終端にすると、⚠ まだ終わっていない Task の始まりが範囲の外へ出る。**
+  //   ⚠ **B（11:00 開始・未終了）が、⚠ いちばん新しい観測時刻。**⚠ **D の終わり 13:02 より前。**
+  //   ⚠ **だから、⚠ 終端は D の 13:02。**⚠ **ここは「終わりだけ」でも「始まりだけ」でも出せない。**
+  yes(s.period.from === "2026-08-24T10:00:00+09:00", `期間の始まりが ${s.period.from}（10:00 のはず）`);
+  yes(s.period.to === "2026-08-24T13:02:00+09:00", `期間の終わりが ${s.period.to}（13:02 のはず）`);
+  {
+    // ⚠ **未終了 Task の始まりが、⚠ 終わったどの Task よりも後**のとき（⚠ **指摘された形そのもの**）
+    const late = E.summarize([
+      T({ task_id: "X", started_at: "2026-08-24T20:00:00+09:00", ended_at: "2026-08-24T20:10:00+09:00" }),
+      T({ task_id: "Y", started_at: "2026-08-24T21:00:00+09:00", ended_at: null }),
+    ], []);
+    yes(late.period.to === "2026-08-24T21:00:00+09:00",
+      `未終了 Task の始まりが範囲の外に出ている（終わりが ${late.period.to}。21:00 のはず）`);
+    // ⚠ **時差の違う書き方が混ざっても、⚠ 実際の瞬間で比べる。**
+    //   ⚠ **文字列順と、⚠ 実際の前後が食い違う組を選ぶ**（⚠ でないと、⚠ どちらでも通ってしまう）:
+    //     P の終わり "2026-08-25T00:30:00+09:00" = 15:30Z
+    //     Q の終わり "2026-08-24T16:00:00Z"      = 16:00Z   ⚠ **こちらが後**
+    //   ⚠ **文字列のまま並べると P が後に見える**（"2026-08-25…" > "2026-08-24…"）。
+    const tz = E.summarize([
+      T({ task_id: "P", started_at: "2026-08-24T09:00:00+09:00", ended_at: "2026-08-25T00:30:00+09:00" }),
+      T({ task_id: "Q", started_at: "2026-08-24T15:00:00Z", ended_at: "2026-08-24T16:00:00Z" }),
+    ], []);
+    yes(tz.period.to === "2026-08-24T16:00:00Z",
+      `時差の違う時刻を文字列のまま並べ替えている（終わりが ${tz.period.to}。16:00Z のはず）`);
+  }
   // ⚠ **1 件も無いときに 0 を返さない**（⚠ **「測ったら 0 だった」に読める**）
   const empty = E.summarize([], []);
   yes(empty.overall.tasks === 0 && empty.overall.duration.median_sec === null
@@ -122,7 +151,9 @@ const E = await import(pathToFileURL(join(ROOT, TOOL)).href);
         + `（⚠ 最後の行を採る／⚠ 終わっていないものを母数へ混ぜない）`)
     : ok(`Eval の集計を動かして確認（同じ task_id 3 行 → 最後を採る・未終了は所要時間の`
         + `母数 ${s.overall.duration.samples} 件に入らない・知らない種別が残る・`
-        + `Turn と Session を 1 個／複数で区別・読めなかった行 ${s.unreadable_lines} 行を数える・`
+        + `Turn と Session を 1 個／複数で区別・読めなかった行 ${s.unreadable_lines} 行と`
+        + `Task にできない行 ${s.invalid_task_rows} 行を分けて数える・`
+        + `⚠ 期間は最古と最新の観測時刻（未終了の始まりも時差の違う書き方も外さない）・`
         + `0 件のときは 0 ではなく null）`);
 }
 

@@ -70,14 +70,19 @@ export const parseJsonl = (text) => {
 };
 
 // ⚠ **同じ task_id の最後の行を採る**（⚠ 上の契約）。⚠ **並びは最初に出てきた順のまま。**
+//
+// ⚠ **落とした行も返す。**⚠ **JSON として読めても、⚠ `task_id` が無ければ Task にできない。**
+//   ⚠ **黙って消すと、⚠ 母数が減ったことに誰も気づけない**（⚠ 読めなかった行と同じ話）。
+//   ⚠ **読めなかった行（JSON として壊れている）とは別に数える。**⚠ **原因が違う。**
 export const snapshot = (rows) => {
   const seen = new Map();
+  let invalid = 0;
   for (const r of rows) {
     const id = r?.task_id;
-    if (typeof id !== "string" || !id) continue;   // ⚠ 名前の無い行は Task として数えない
+    if (typeof id !== "string" || !id) { invalid += 1; continue; }
     seen.set(id, r);                               // ⚠ あとの行が前の行を置き換える
   }
-  return [...seen.values()];
+  return { tasks: [...seen.values()], invalid };
 };
 
 // ---------- 数える ----------
@@ -136,7 +141,7 @@ const statsOf = (tasks) => {
 };
 
 export const summarize = (rows, unreadableLines = []) => {
-  const tasks = snapshot(rows);
+  const { tasks, invalid } = snapshot(rows);
   const byType = new Map();
   for (const t of tasks) {
     // ⚠ **知らない種別が来ても壊れない。**⚠ **無い場合は `(none)` として、⚠ 見えるようにする**
@@ -151,15 +156,29 @@ export const summarize = (rows, unreadableLines = []) => {
     const g = typeof t?.grouping === "string" && t.grouping ? t.grouping : "(none)";
     byGrouping[g] = (byGrouping[g] ?? 0) + 1;
   }
-  // ⚠ **いつからいつまでを見ているか。**⚠ **絞り込んでいない**（⚠ 記録の全部が対象）
-  const starts = tasks.map((t) => t?.started_at).filter((s) => typeof s === "string" && Number.isFinite(Date.parse(s))).sort();
-  const ends = tasks.map((t) => t?.ended_at).filter((s) => typeof s === "string" && Number.isFinite(Date.parse(s))).sort();
+  // ⚠ **いつからいつまでを見ているか。**⚠ **絞り込んでいない**（⚠ 記録の全部が対象）。
+  //
+  // ⚠ **始まりと終わりを、⚠ 一緒くたに並べて両端を採る。**
+  //   ⚠ **終わりの最後を終端にしてはいけない**（2026-08-24。⚠ **実際にずれた**）:
+  //     ⚠ 20:00-20:10 の Task と、⚠ **21:00 に始まってまだ終わっていない Task** があると、
+  //     ⚠ **21:00 の Task も集計に入っているのに、⚠ Period が「20:00 - 20:10」になった。**
+  //   ⚠ **意味は「集計に入っている、⚠ いちばん古い観測時刻と、⚠ いちばん新しい観測時刻」。**
+  //
+  // ⚠ **文字列のまま並べ替えない**（⚠ **同じ瞬間でも書き方が違う**）。
+  //   ⚠ `2026-08-24T01:01:00Z` と `2026-08-24T10:00:00+09:00` は ⚠ **時差が違うだけで前後が逆に出る。**
+  //   ⚠ **実際の瞬間で比べる**（`Date.parse`）。
+  const observed = tasks
+    .flatMap((t) => [t?.started_at, t?.ended_at])
+    .filter((v) => typeof v === "string" && Number.isFinite(Date.parse(v)))
+    .sort((x, y) => Date.parse(x) - Date.parse(y));
   return {
     schema: 1,
     // ⚠ **これは「観測した事実の集計」であって、⚠ 良し悪しの判定ではない**
     kind: "observation",
     unreadable_lines: unreadableLines.length,
-    period: { from: starts[0] ?? null, to: ends[ends.length - 1] ?? starts[starts.length - 1] ?? null },
+    // ⚠ **JSON として壊れている行**と、⚠ **読めるが Task にできない行**を分ける（原因が違う）
+    invalid_task_rows: invalid,
+    period: { from: observed[0] ?? null, to: observed[observed.length - 1] ?? null },
     overall: statsOf(tasks),
     by_grouping: byGrouping,
     by_type: order.map((k) => ({ task_type: k, ...statsOf(byType.get(k)) })),
@@ -190,6 +209,7 @@ export const format = (s) => {
   L.push(`  終わっていない:     ${s.overall.duration.unfinished}`);
   if (s.overall.duration.unusable) L.push(`  ⚠ 時刻が読めない:   ${s.overall.duration.unusable}`);
   if (s.unreadable_lines) L.push(`  ⚠ 読めなかった行:   ${s.unreadable_lines}`);
+  if (s.invalid_task_rows) L.push(`  ⚠ Task にできない行: ${s.invalid_task_rows}（task_id が無い）`);
   L.push("");
   L.push(`所要時間（⚠ 終わりを観測できた ${s.overall.duration.samples} 件だけ）`);
   L.push(`  median ${fmtDur(s.overall.duration.median_sec)} ／ p90 ${fmtDur(s.overall.duration.p90_sec)}`);
