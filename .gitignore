@@ -16,6 +16,11 @@ node_modules/
 tmp/
 scratch/
 
+# 開発の計測（.claude/hooks/telemetry.mjs が書く）。
+# ⚠ 配信の計測（D1 の tick / health）とは別もの。こちらは手元の作業の記録で、
+#   外へも git へも出さない。誰がいつ何を頼んだかは、共有物にしない。
+.claude/telemetry/
+
 # 検査の出力
 .artifacts/
 # ⚠ 実描画のスクリーンショット。隠しディレクトリだと upload-artifact に
