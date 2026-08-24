@@ -154,7 +154,9 @@ head("人の判断を飛ばさない");
   // ⚠ **計測の出力は読まない**（2026-08-24）。⚠ `.claude/telemetry/` は git の外で、
   //   ⚠ **作業のたびに増える。**⚠ 読むと、⚠ **名乗るファイル数が回すたびに変わる**
   //   （⚠ `CLAUDE.md` §9: ⚠ **判定の字を変更前後で突き合わせられなくなる**）。
-  const SKIP = new Set(["telemetry"]);
+  // ⚠ **`worktrees/` も読まない。**⚠ **中身はこの repo の別の版そのもの**なので、
+  //   ⚠ **読むと、⚠ 同じファイルを 2 度見たうえに、⚠ 数が作業中かどうかで変わる。**
+  const SKIP = new Set(["telemetry", "worktrees"]);
   const walk = async (d) => {
     const out = [];
     for (const e of await readdir(d, { withFileTypes: true })) {
