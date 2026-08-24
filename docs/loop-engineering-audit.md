@@ -188,7 +188,7 @@ ready-for-ai の付与・削除は禁止
 | hidetzu/konjaku#14 | 外部リンクを日本語 Wikipedia へ・三状態 | ⚠ **KEEP に近い** | Owner Decisions が本文にある。実測（2,220/2,367＝93.8%）もある |
 | hidetzu/konjaku#12 | キーボード操作とフォーカス表示 | **SPLIT** | ⚠ 実測が 2 件以上ある（`/peel` の閉じたパネル・トップの検索欄）。別々に直せる |
 | hidetzu/konjaku#11 | 「動きを減らす」で自前アニメを止める | ⚠ **KEEP に近い** | 実測（自前 0 件・transition 5＋5・animation 2）が具体的。⚠ 11 秒再生の扱いだけ判断が要る |
-| hidetzu/konjaku#9 | 利用者向けの言葉に揃える | ⚠ **進行中**（この Issue で作業してきた） | ⚠ 進捗の出どころは `tmp/9/06-いまここ.md` |
+| hidetzu/konjaku#9 | 利用者向けの言葉に揃える | ⚠ **進行中**（この Issue で作業してきた） | — |
 
 ⚠ **古い Issue 本文を、正しい仕様として読まない。**
 ⚠ **`ready-for-ai` を付ける前に、`main` で測り直すこと。**
