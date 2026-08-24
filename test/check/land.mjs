@@ -1,4 +1,4 @@
-// 静的検査 — 土地の区分（⚠ **明治期のラスタを、⚠ どう読むか**）
+// 静的検査 — 土地の区分（⚠ **明治期のラスタを、⚠ どう読み、⚠ どう控えるか**）
 //
 // ⚠ **`test/check.mjs` から逐語で移しただけ**（2026-08-24。hidetzu/konjaku#232 の 10 本目）。
 //   ⚠ **1 文字も変えていない。**⚠ **主張を強くも弱くもしていない。**
@@ -10,6 +10,8 @@
 //                              ⚠ **DOM も地図も持たないので、⚠ ここで全部の枝を回せる**
 //     位置誤差の但し書き        ⚠ **原典どおり地域（関東・近畿）を書いているか**
 //                              ⚠ 落とすと、⚠ **全国どこでも同じ誤差に読める**
+//     `land.js` を動かす       ⚠ **控えの鍵・効き方・取れなかった回**（2026-08-25 に合流）
+//     `land.js` の面を動かす   ⚠ **範囲ごとの鍵・mask を控えない・同時の重なり**
 //
 // ⚠ **以前は同じ計算が 4 か所にあり、⚠ うち 3 か所だけを突き合わせていた**
 //   （⚠ `build-water.js` は走査から漏れていた。2026-08-17）。
@@ -113,4 +115,190 @@ head("土地の区分");
         : bad("位置誤差の但し書きから、原典にある地域の限定（関東地区・近畿地区）が落ちている");
     }
   }
+}
+
+// ============================================================
+// ⚠ land.js を動かして確かめる（控える層）
+// ============================================================
+// ⚠ **`test/check.mjs` の「9. 画面の言葉」から逐語で移しただけ**
+//   （2026-08-25。hidetzu/konjaku#232 の 18 本目）。
+//   ⚠ **1 文字も変えていない。**⚠ **主張を強くも弱くもしていない。**
+//   ⚠ **この 2 つは、⚠ 節 9 の道具（`seen` / `stripJs`）に触っていない**
+//     （⚠ 実測 2026-08-24）。⚠ **だから、⚠ 道具を動かす前に出せる。**
+// ⚠ **ここが「土地の区分」の仲間である理由**: ⚠ **`public/land.js` が相手。**
+//   ⚠ 上の `swale.js` は ⚠ **ラスタをどう読むか。**⚠ こちらは ⚠ **読んだ結果をどう控えるか。**
+//   ⚠ **どちらも DOM も地図も持たない**ので、⚠ ブラウザ抜きで全部の枝を回せる。
+// ⚠ **land.js の面を動かして確かめる。**⚠ 字面ではなく振る舞いを見る。
+{
+  const fails = [];
+  const mkStore = () => { const m = new Map();
+    return { getItem: (k) => m.get(k) ?? null, setItem: (k, v) => m.set(k, String(v)),
+             removeItem: (k) => m.delete(k), _m: m }; };
+  const fresh = async (store, konjaku) => {
+    const g = { sessionStorage: store, Konjaku: konjaku };
+    const code = await readFile(join(PUB, "land.js"), "utf8");
+    new Function("g", code.replace(/\(typeof window === "undefined" \? globalThis : window\)/, "(g)"))(g);
+    return g.KonjakuLand;
+  };
+  // 偽の取得の層。⚠ **何回呼ばれたかを数える**
+  const mk = (tilesOk = 1) => {
+    const n = { swaleArea: 0 };
+    return { n, STATE: { UNREACHABLE: "unreachable" },
+      swaleArea: async (b, z) => { n.swaleArea++;
+        return { mask: new Uint8Array(4), tw: 2, th: 2, x0: 1, y0: 2, z,
+          waterPx: 1, classCounts: { 水: 1 }, classifiedPixels: 1,
+          transparentPixels: 0, unknownPixels: 0,
+          tiles: { ok: tilesOk, absent: 0, unreachable: tilesOk ? 0 : 1 }, ratio: 0.25 }; } };
+  };
+  const BB = { w: 139.79, s: 35.65, e: 139.80, n: 35.66 };
+
+  // 1. 点と面で、キーが別
+  { const L = await fresh(mkStore(), mk());
+    if (L.areaKey(BB, 16) === L.key(139.7975, 35.6548))
+      fails.push("点と面が同じキーになっている"); }
+  // 2. 範囲が違えば、キーも違う
+  { const L = await fresh(mkStore(), mk());
+    if (L.areaKey(BB, 16) === L.areaKey({ ...BB, e: 139.81 }, 16))
+      fails.push("違う範囲が同じキーになっている"); }
+  // 3. ⚠ **mask を控えていない**（保存の中身に mask が入らない）
+  { const st = mkStore(), L = await fresh(st, mk());
+    await L.meijiArea(BB, 16);
+    const saved = [...st._m.values()].join("");
+    if (/mask/.test(saved)) fails.push("mask を控えている（1.25MB。保存が埋まる）");
+    if (!/classCounts/.test(saved)) fails.push("集計を控えていない（控える意味が無い）"); }
+  // 4. ⚠ **1 枚も読めていない回は控えない**（掟: 取得できなかった ≠ 存在しなかった）
+  { const st = mkStore(), L = await fresh(st, mk(0));
+    await L.meijiArea(BB, 16);
+    if (st._m.size !== 0) fails.push("1 枚も読めていない回を控えている（読めない範囲として固まる）"); }
+  // 5. 同時に 2 回頼まれても、取得は 1 回
+  { const K = mk(), L = await fresh(mkStore(), K);
+    await Promise.all([L.meijiArea(BB, 16), L.meijiArea(BB, 16)]);
+    if (K.n.swaleArea !== 1) fails.push(`同時の 2 回が ${K.n.swaleArea} 本になっている`); }
+  // 6. ⚠ **mask はそのまま返る**（画面が矩形化に使う）
+  { const L = await fresh(mkStore(), mk());
+    const a = await L.meijiArea(BB, 16);
+    if (!(a.mask instanceof Uint8Array)) fails.push("mask が返っていない（画面が描けない）");
+    if (a.tw !== 2 || a.x0 !== 1) fails.push("mask の大きさ・左上が返っていない（経緯度へ戻せない）"); }
+  fails.length
+    ? bad(`land.js の面の単体テストが失敗（${fails.length} 件）: ${fails.slice(0, 5).join(" / ")}`)
+    : ok("land.js の面を動かして確認（点と別のキー・範囲ごとのキー・mask を控えない・"
+       + "読めない回を控えない・同時の重なり・mask はそのまま返る）");
+}
+
+// ⚠ **land.js を動かして確かめる。**⚠ 字面ではなく、⚠ **実際の振る舞い**を見る。
+//   ⚠ DOM も地図も要らない作りにしてあるので、ブラウザを立てずに全部回せる。
+{
+  const fails = [];
+  // 偽の sessionStorage。⚠ **本物を汚さない**
+  const mkStore = (opt = {}) => {
+    const m = new Map();
+    return {
+      getItem: (k) => (opt.throwGet ? (() => { throw new Error("no"); })() : (m.get(k) ?? null)),
+      setItem: (k, v) => { if (opt.throwSet) throw new Error("full"); m.set(k, String(v)); },
+      removeItem: (k) => m.delete(k),
+      _m: m,
+    };
+  };
+  // 偽の取得の層。⚠ **何回呼ばれたかを数える**
+  const mkKonjaku = (answer) => {
+    const n = { landform: 0, meiji: 0, elevation: 0, photos: 0, facts: 0 };
+    const one = (key) => async (lon, lat) => { n[key]++; return answer(key, lon, lat); };
+    return { n, STATE: { UNREACHABLE: "unreachable" },
+      landform: one("landform"), meiji: one("meiji"),
+      elevation: one("elevation"), photos: one("photos"),
+      facts: async (lon, lat) => { n.facts++;
+        return { lon, lat, byKey: { landform: answer("landform", lon, lat),
+          meiji: answer("meiji", lon, lat), elevation: answer("elevation", lon, lat),
+          photos: answer("photos", lon, lat) } }; } };
+  };
+  // ⚠ **毎回、真新しい land.js を読む**（前の試験の中身を持ち越さない）
+  //   store に "throwGetProp" を渡すと、⚠ **参照そのものが投げる**形になる
+  //   （Safari のプライベート・埋め込み枠での遮断。⚠ **メソッドが投げるのとは別**）。
+  const fresh = async (store, konjaku) => {
+    const g = { Konjaku: konjaku };
+    if (store === "throwGetProp")
+      Object.defineProperty(g, "sessionStorage",
+        { get() { throw new Error("保存は使えません"); } });
+    else g.sessionStorage = store;
+    const code = await readFile(join(PUB, "land.js"), "utf8");
+    new Function("g", code.replace(/\(typeof window === "undefined" \? globalThis : window\)/, "(g)"))(g);
+    return g.KonjakuLand;
+  };
+  const OK = (key) => ({ state: "ok", value: key });
+  const NG = () => ({ state: "unreachable" });
+
+  // 1. キーは小数5桁の lat,lon（URL と同じ粒度・同じ並び）
+  {
+    const L = await fresh(mkStore(), mkKonjaku(OK));
+    if (L.key(139.7975, 35.6548) !== "35.65480,139.79750")
+      fails.push(`キーが5桁の lat,lon でない（${L.key(139.7975, 35.6548)}）`);
+    // ⚠ 6桁目が違うだけの2点は、**同じキーにならない**
+    if (L.key(139.79750, 35.65480) === L.key(139.79760, 35.65480))
+      fails.push("5桁目が違う2点が同じキーになっている");
+  }
+  // 2. 2回目は取りに行かない（控えが効いている）
+  {
+    const K = mkKonjaku(OK), L = await fresh(mkStore(), K);
+    await L.terrain(139.7975, 35.6548);
+    await L.terrain(139.7975, 35.6548);
+    if (K.n.landform !== 1) fails.push(`控えが効いていない（地形分類を ${K.n.landform} 回取った）`);
+  }
+  // 3. ⚠ **取れなかったものを控えない**（掟: 取得できなかった ≠ 存在しなかった）
+  {
+    const K = mkKonjaku(NG), L = await fresh(mkStore(), K);
+    await L.terrain(139.7975, 35.6548);
+    await L.terrain(139.7975, 35.6548);
+    if (K.n.landform !== 2)
+      fails.push("取れなかった回を控えている（次からずっと「取れない土地」になる）");
+  }
+  // 4. 別の地点を混ぜない
+  {
+    const K = mkKonjaku(OK), L = await fresh(mkStore(), K);
+    await L.terrain(139.7975, 35.6548);
+    await L.terrain(139.7000, 35.6000);
+    if (K.n.landform !== 2) fails.push("別の地点で、前の地点の控えを使っている");
+  }
+  // 5. 壊れた控えがあっても、取りに行って正しく返す（例外を投げない）
+  {
+    const st = mkStore(), K = mkKonjaku(OK), L = await fresh(st, K);
+    st._m.set(L.PREFIX + L.key(139.7975, 35.6548), "{壊れた");
+    let got = null;
+    try { got = await L.terrain(139.7975, 35.6548); }
+    catch (e) { fails.push(`壊れた控えで例外が出た（${e.message}）`); }
+    if (got?.state !== "ok") fails.push("壊れた控えのとき、取得へ落ちていない");
+  }
+  // 6. sessionStorage が使えなくても壊れない
+  {
+    const K = mkKonjaku(OK);
+    for (const [name, st] of [["読めない", mkStore({ throwGet: true })],
+                              ["書けない", mkStore({ throwSet: true })],
+                              ["そもそも無い", undefined],
+                              // ⚠ **参照そのものが投げる。**⚠ これが無いと、
+                              //   ⚠ **参照を守っている try を外しても緑になる**（2026-08-20 に踏んだ）
+                              ["参照だけで落ちる", "throwGetProp"]]) {
+      const L = await fresh(st, K);
+      try {
+        const got = await L.terrain(139.7975, 35.6548);
+        if (got?.state !== "ok") fails.push(`sessionStorage が${name}とき、答えが返っていない`);
+      } catch (e) { fails.push(`sessionStorage が${name}ときに例外（${e.message}）`); }
+    }
+  }
+  // 7. 同時に2回頼まれても、取得は1回（控えに入る前の重なり）
+  {
+    const K = mkKonjaku(OK), L = await fresh(mkStore(), K);
+    await Promise.all([L.terrain(139.7975, 35.6548), L.terrain(139.7975, 35.6548)]);
+    if (K.n.landform !== 1) fails.push(`同時の2回が ${K.n.landform} 本になっている`);
+  }
+  // 8. トップが facts で取ったものを、/peel が terrain で使い回す（⚠ この Issue の本題）
+  {
+    const st = mkStore(), K = mkKonjaku(OK), L = await fresh(st, K);
+    await L.facts(139.7975, 35.6548);
+    const before = K.n.landform;
+    await L.terrain(139.7975, 35.6548);
+    if (K.n.landform !== before)
+      fails.push("トップで取った地形分類を、/peel が使い回せていない");
+  }
+  fails.length
+    ? bad(`land.js の単体テストが失敗（${fails.length} 件）: ${fails.slice(0, 6).join(" / ")}`)
+    : ok("land.js を動かして確認（5桁キー・控えが効く・取れなかった回は控えない・別地点・壊れた控え・保存が使えない・同時の重なり・トップ → /peel）");
 }
