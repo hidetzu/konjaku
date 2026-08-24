@@ -683,6 +683,95 @@ head("8. CI の固定");
     : ok("実描画を回す先を決める口は、CI と同じ書き方でも、引数の順を変えても同じ答えを返す");
 }
 
+// ── ⚠ 「実描画が読まない」という主張を、⚠ 実物の import と突き合わせる ──
+// ⚠ **2026-08-24 に踏んだ。**⚠ hidetzu/konjaku#232 で `check.mjs` を 11 本へ割ったとき、
+//   ⚠ **`NO_RENDER` が `test/check.mjs` だけを挙げたままだった。**
+//   ⚠ **落ちない。**⚠ **多く回す向きに倒れるので、⚠ CI は緑のまま。**
+//   ⚠ **検査コードだけを触った PR でも、⚠ 実描画が 5 本（約 9 分）走っていた。**
+//
+// ⚠ **同じ轍を踏まないために、⚠ 一覧を突き合わせる相手を「別の道」で作る**
+//   （`CLAUDE.md` §9）。⚠ **`render.mjs` の `import` を実際にたどる。**
+//   ⚠ **`render-scope.mjs` の正規表現を読まない**（⚠ 読むと、⚠ 同じ字を 2 回見るだけになる）。
+//
+// ⚠ **聞く相手は、⚠ 決める口そのもの**（`--files=`）。⚠ **正規表現を写して真似しない。**
+//
+// ⚠ **見るのは 2 方向。**⚠ **効くのは 2 つ目のほう。**
+//   ① 読まないファイル → ⚠ 回さないと答えること（⚠ 無駄に 9 分走らせない）
+//   ② ⚠ **読むファイル → ⚠ 必ず回すと答えること**（⚠ **見張りが外れていないこと**）
+{
+  const { readFileSync: rfD, existsSync: exD, readdirSync: rdD } = await import("node:fs");
+  const { resolve: resD, dirname: dirD, relative: relD } = await import("node:path");
+  const SCOPE = join(ROOT, "test/render-scope.mjs");
+
+  // ⚠ **コメントを先に落とす**（`CLAUDE.md` §5）。⚠ **落とさないと、⚠ 説明に書いたパスを拾う。**
+  //   ⚠ **道具は `lib.mjs` の 1 か所から借りる**（⚠ ここで正規表現を持ち直さない）。
+  //   ⚠ **行頭の `//` だけ落とす**（`HEAD_COMMENT`）。⚠ **`https://` を巻き込まない形。**
+  const bare = (src2) => src2.replace(BLOCK_COMMENT, " ").replace(HEAD_COMMENT, " ");
+
+  // ⚠ **import をたどる**（⚠ 静的・動的の両方）。⚠ **外部と `node:` は追わない。**
+  const readsOf = (entry) => {
+    const seen = new Set(), queue = [resD(ROOT, entry)];
+    while (queue.length) {
+      const f = queue.shift();
+      if (seen.has(f) || !exD(f)) continue;
+      seen.add(f);
+      const src2 = bare(rfD(f, "utf8"));
+      // ⚠ **改行をまたぐ import を落とさない**（2026-08-24。⚠ **実際に落とした**）。
+      //   ⚠ `import {\n … \n} from "./render/lib.mjs"` の形が ⚠ **1 つも拾えていなかった。**
+      //   ⚠ **`[^;\n]` にすると、⚠ 1 行に収まっているものだけが見える。**
+      for (const re of [/(?:import|export)[^;]{0,300}?from\s+["']([^"']+)["']/g,
+                        /\bimport\s*\(\s*["']([^"']+)["']\s*\)/g]) {
+        let m;
+        while ((m = re.exec(src2))) if (m[1].startsWith(".")) queue.push(resD(dirD(f), m[1]));
+      }
+    }
+    return new Set([...seen].map((f) => relD(ROOT, f)));
+  };
+
+  const reads = readsOf("test/render.mjs");
+  // ⚠ **`test/` の下の `.mjs` を実際に読む**（⚠ 一覧を書き写さない。⚠ 足したら自動で対象）
+  const found = [];
+  const scanD = (d) => {
+    for (const e of rdD(join(ROOT, d), { withFileTypes: true })) {
+      const rel = `${d}/${e.name}`;
+      if (e.isDirectory()) scanD(rel);
+      else if (rel.endsWith(".mjs")) found.push(rel);
+    }
+  };
+  scanD("test");
+
+  // ⚠ **決める口そのものに聞く**（⚠ 正規表現を真似しない）
+  const askScope = (list) => execFileSync(process.execPath, [SCOPE, `--files=${list.join(",")}`],
+    { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+
+  // ⚠ **当人は外す。**⚠ **回すものを決める本人**なので、⚠ 変えたら実際に回して確かめる
+  const SELF = "test/render-scope.mjs";
+  const readByRender = found.filter((f) => reads.has(f));
+  const notRead = found.filter((f) => !reads.has(f) && f !== SELF);
+  const wrongR = [];
+
+  if (!readByRender.length) wrongR.push("render.mjs が test/ の .mjs を 1 つも読んでいない（⚠ たどれていない）");
+  if (!notRead.length) wrongR.push("render.mjs が読まない test/ の .mjs が 1 つも無い（⚠ この検査が何も見ていない）");
+
+  // ① ⚠ **読まないものを、⚠ まとめて渡す。**⚠ 1 つでも回ると答えたら、⚠ 空ではなくなる
+  if (notRead.length) {
+    const said = askScope(notRead);
+    if (said) wrongR.push(`読まないはずの ${notRead.length} 件で「${said.split("\n").join(" / ")}」と答える`);
+  }
+  // ② ⚠ **読むものは、⚠ 1 つずつ聞く**（⚠ まとめると、⚠ 1 つが効いているだけで通ってしまう）
+  for (const f of readByRender) {
+    const said = askScope([f]);
+    if (!said) wrongR.push(`${f} は render.mjs が読むのに「回さない」と答える（⚠ 見張りが外れている）`);
+  }
+
+  wrongR.length
+    ? bad(`実描画を回すかどうかの判定が、実物の import と食い違う: ${wrongR.join(" ／ ")}`
+        + `（⚠ **落ちるのではなく、⚠ 黙って全部走る／黙って見張りが外れる**）`)
+    : ok(`実描画を回すかどうかの判定が、render.mjs の import と合っている`
+        + `（⚠ 読む ${readByRender.length} 件は全部「回す」・読まない ${notRead.length} 件は「回さない」。`
+        + `⚠ ${SELF} は当人なので外した）`);
+}
+
 // ── 日本語名のファイルでも、⚠ 回す先が同じか ────────────────────
 // ⚠ **2026-08-23 に踏んだ**（hidetzu/konjaku#222 の CI で発覚）。
 // ⚠ **`git diff --name-only` は、⚠ 非 ASCII のパスを C 形式で引用して返す**
