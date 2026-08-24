@@ -70,6 +70,19 @@ const jsFiles = pubFiles.filter((f) => extname(f) === ".js");
 const src = {};
 for (const f of [...htmlFiles, ...jsFiles]) src[f] = await readFile(join(PUB, f), "utf8");
 
+// ⚠ **トップの画面は 2 ファイルに分かれた**（2026-08-24）。
+//   ⚠ `index.html` … HTML と CSS ／ ⚠ `top.js` … JavaScript（⚠ 逐語で出しただけ）
+//   ⚠ **`/peel` は前からこの形**（`peel.html` ↔ `peel3d.js`）。⚠ **トップが取り残されていた。**
+//
+// ⚠ **どちらを見るかは、⚠ 検査ごとに違う。**
+//   ⚠ DOM や CSS を見る検査 → `src["index.html"]`
+//   ⚠ **JS の振る舞いを見る検査 → `TOP`**
+//
+// ⚠ **`TOP` は 2 つを繋いだもの。**⚠ 利用者から見れば 1 つの画面なので、
+//   ⚠ 「トップがこの言葉を使っているか」は、⚠ **どちらにあっても同じ意味。**
+// ⚠ **繋ぎ目に印を入れる**（⚠ 跨いだ一致が起きたとき、⚠ 気づけるように）。
+const TOP = `${src["index.html"] ?? ""}\n/* ==== top.js ==== */\n${src["top.js"] ?? ""}`;
+
 // ---------- 1. スクリプトの構文 ----------
 head("1. スクリプトの構文");
 for (const f of htmlFiles) {
@@ -96,9 +109,17 @@ for (const f of jsFiles) {
   try { new (async () => {}).constructor(src[f]); ok(f); }
   catch (e) { bad(`${f}: ${e.message}`); }
 }
+// ⚠ **その画面の JS も一緒に見る**（2026-08-24。⚠ **実際に踏んだ**）。
+//   ⚠ トップの JS を `top.js` へ出したとき、⚠ **`index.html` から `KonjakuPlaces.` が消えた。**
+//   ⚠ **`src="./places.js"` は残っているのに、⚠ この検査は何も確かめなくなった**
+//     （⚠ 落ちない。⚠ **確かめる相手が居なくなるだけなので気づけない**）。
+//   ⚠ **画面 = HTML ＋ その画面の JS。**⚠ `/peel` も同じ形（`peel.html` ＋ `peel3d.js`）。
+const PAGE_JS = { "index.html": "top.js", "peel.html": "peel3d.js" };
+const pageSrc = (f) => `${src[f] ?? ""}\n${src[PAGE_JS[f]] ?? ""}`;
+
 // 読み込み忘れの検知。places.js は index.html の検索が依存している
 for (const f of htmlFiles) {
-  const needs = [...src[f].matchAll(/\b(KonjakuPlaces|Konjaku)\./g)].map((m) => m[1]);
+  const needs = [...pageSrc(f).matchAll(/\b(KonjakuPlaces|Konjaku)\./g)].map((m) => m[1]);
   const wants = new Set(needs.map((n) => (n === "KonjakuPlaces" ? "places.js" : "verify.js")));
   for (const w of wants)
     src[f].includes(`src="./${w}"`) ? ok(`${f} → ${w}`) : bad(`${f}: ${w} を読み込んでいない`);
@@ -548,7 +569,14 @@ head("2.6. 配信中の版（/version.json）");
 head("3. 内部リンク");
 {
   const pages = new Set(htmlFiles.map((f) => basename(f, ".html")));
-  for (const f of htmlFiles) {
+  // ⚠ **JS も見る**（2026-08-24。⚠ **実際に踏んだ**）。
+  //   ⚠ **地図の CSS は、⚠ JS が動的に読み込んでいる**（`css.href="./vendor/maplibre-gl.css"`）。
+  //   ⚠ **前は `index.html` のインライン `<script>` にあったので、⚠ HTML を見るだけで拾えていた。**
+  //   ⚠ `top.js` へ出した瞬間、⚠ **この検査が静かに 1 件見なくなった**
+  //     （⚠ 落ちない。⚠ **数が減るだけなので気づけない**）。
+  //   ⚠ **`peel3d.js` も同じことをしている**（⚠ こちらは前から見ていなかった）。
+  //   ⚠ **「全部緑」は、⚠ 何も変わっていないことの証明ではない**（`CLAUDE.md` §9）。
+  for (const f of [...htmlFiles, ...jsFiles]) {
     const self = basename(f, ".html");
     // href="..." と href:`...` の両方（テンプレートリテラルで組む箇所がある）
     const refs = [...src[f].matchAll(/href[=:]\s*[`"]\.\/([^`"?#]*)/g)].map((m) => m[1]);
@@ -628,7 +656,9 @@ head("3.6. 3D の下地の判定（public/ground.js の1か所）");
     //     （CLAUDE.md §5。2 回踏んでいる）。
     const strip = (s) => s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/[^\n]*/g, "$1")
       .replace(/<!--[\s\S]*?-->/g, "");
-    for (const f of ["index.html", "peel3d.js"]) {
+    // ⚠ **トップの JS は `top.js`**（2026-08-24。⚠ `index.html` から逐語で出した）。
+    //   ⚠ **`/peel` の `peel3d.js` と対になる。**⚠ 2 画面とも JS は別ファイル。
+    for (const f of ["top.js", "peel3d.js"]) {
       const s = strip(src[f] ?? "");
       const own = [
         [/const\s*\{?\s*HALF_LON/, "範囲（HALF_LON）を自分で宣言している"],
@@ -673,7 +703,7 @@ head("3.7. 場所を探す口は 1 つ（トップだけ）");
   else if (loads) bad("peel.html が places.js を読み込んでいる（この画面に使う相手がいない）");
   else ok("/peel に場所を探す口が無い（場所を決めるのはトップ）");
   // ⚠ 「1 つ」なので、**トップ側は必ず持っている**こと。両方消えたら探せなくなる
-  if (strip(src["index.html"]).includes("KonjakuPlaces")) ok("トップが places.js の検索を使っている");
+  if (strip(TOP).includes("KonjakuPlaces")) ok("トップが places.js の検索を使っている");
   else bad("トップにも検索が無い（場所を探す手段が 1 つも無い）");
 }
 
@@ -1040,7 +1070,10 @@ for (const f of htmlFiles) {
       // ⚠ **そこへ PRIVACY_SHORT を入れているか**（⚠ 箱だけ残ると余白が増える）
       const id = /\bid="([^"]+)"/.exec(m[0])?.[1];
       if (!id) fails.push("箱に id が無い（入れる側と結びつかない）");
-      else if (!new RegExp(`${id}[\\s\\S]{0,300}PRIVACY_LEAD`).test(idxNoC))
+      // ⚠ **箱は `index.html`、⚠ 入れる側は `top.js`**（2026-08-24 に JS を出した）。
+      //   ⚠ **2 つを繋いで見る。**⚠ 利用者から見れば 1 つの画面。
+      else if (!new RegExp(`${id}[\\s\\S]{0,300}PRIVACY_LEAD`)
+        .test(`${idxNoC}\n${src["top.js"] ?? ""}`))
         fails.push(`箱（#${id}）へ PRIVACY_LEAD を入れていない`);
     }
     if (fails.length) bad(`index.html の畳まずに見える1行: ${fails.join(" / ")}`);
@@ -1080,7 +1113,8 @@ for (const f of htmlFiles) {
     //     ⚠ ここには写さない（⚠ 2 か所に書くと、片方だけ古くなる）。
     //   ⚠ **どちらも words.js の 1 か所から借りていること**は、ここで見る。
     const fills = [
-        ["index.html", /privacyShort[\s\S]{0,300}PRIVACY_LEAD/.test(idx)],
+        // ⚠ **入れる側は `top.js`**（2026-08-24）
+        ["index.html", /privacyShort[\s\S]{0,300}PRIVACY_LEAD/.test(`${idx}\n${src["top.js"] ?? ""}`)],
         ["peel3d.js", /data-privacy-short[\s\S]{0,300}PRIVACY_SHORT/.test(
           await readFile(join(PUB, "peel3d.js"), "utf8"))],
     ].filter(([, has]) => !has).map(([f]) => f);
@@ -1492,7 +1526,7 @@ head("6. 外部リンク");
     // ⚠ **2026-08-21 に、⚠ 名乗りの場所が `{id:"peel"…}`（一覧の行）→ `peelLens()` へ移った。**
     //   ⚠ 「この場所を深掘り」を行動一覧から判定カードの中へ移したため。
     //   ⚠ **見ているものは同じ**（⚠ 深掘りの名乗りが、実装とずれていないか）。
-    ["public/index.html", /function peelLens\([\s\S]*?\n\}/g],
+    ["public/top.js", /function peelLens\([\s\S]*?\n\}/g],
   ]) {
     const hay = (rfn(file, "utf8").match(where) ?? []).join(" ");
     if (!hay) { bad(`${file}: 名乗りの箇所が読めない`); continue; }
@@ -1934,21 +1968,40 @@ head("6. 外部リンク");
   const { readFileSync: rf } = await import("node:fs");
   // 判定の結果を出す先。畳んだ中に入ってはいけない
   const RESULT_IDS = ["status", "result", "prov", "breakdown", "pick", "landAll", "placeName"];
-  for (const f of ["public/peel.html", "public/index.html"]) {
+  // ⚠ **その画面の JS も見る**（2026-08-24）。⚠ **`<details>` は JS も組み立てる。**
+  //   ⚠ トップの JS を `top.js` へ出したら、⚠ **数えていた箱が 3 → 2 に減った。**
+  //   ⚠ **落ちないので気づけない**（⚠ 「畳んだ中に結果が無い」と言い続ける）。
+  // ⚠ **繋いで見ない。**⚠ 繋ぐと、⚠ **片方の閉じと片方の開きが跨いで「入れ子」に見える**
+  //   （⚠ 2026-08-24 に実際に踏んだ。⚠ `peel.html` ＋ `peel3d.js` で偽陽性）。
+  // ⚠ **ファイルごとに数えて、⚠ 画面として足す。**
+  for (const [f, jsF] of [["public/peel.html", "public/peel3d.js"],
+                          ["public/index.html", "public/top.js"]]) {
     // ⚠ コメントを先に落とす。落とさないと、この検査を説明するコメントに書いた
     //   `<details>` の字面を検査自身が拾って落ちる（実際に踏んだ）。
     //   コメントは画面に出ないので、見るべきでもない。
-    const s = rf(f, "utf8").replace(/<!--[\s\S]*?-->/g, "");
+    // ⚠ **JS の側は、⚠ `//` と `/* */` も落とす**（`CLAUDE.md` §5）。
+    //   ⚠ **落とさないと、⚠ この検査を説明したコメントの `<details>` を検査自身が拾う**
+    //     （⚠ 2026-08-24 に実際に踏んだ。⚠ `peel3d.js` のコメント 2 か所で「入れ子」判定）。
+    //   ⚠ `//` は `https://` を巻き込まない形で落とす。
+    const parts = [f, jsF].map((x) => {
+      const t = rf(x, "utf8").replace(/<!--[\s\S]*?-->/g, "");
+      return x.endsWith(".js")
+        ? t.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/[^\n]*/g, "$1")
+        : t;
+    });
     // <details> … </details> の中身を取り出す（入れ子は使っていない。使ったらここで気づく）
-    if (/<details[^>]*>(?:(?!<\/details>)[\s\S])*<details/.test(s)) {
+    const nested = parts.some((t) => /<details[^>]*>(?:(?!<\/details>)[\s\S])*<details/.test(t));
+    if (nested) {
       bad(`${f}: <details> が入れ子になっている。この検査は入れ子を想定していない`); continue;
     }
-    const inside = [...s.matchAll(/<details[^>]*>([\s\S]*?)<\/details>/g)].map((m) => m[1]).join("\n");
+    const inside = parts.flatMap((t) =>
+      [...t.matchAll(/<details[^>]*>([\s\S]*?)<\/details>/g)].map((m) => m[1])).join("\n");
+    const boxes = parts.reduce((a, t) => a + (t.match(/<details/g) ?? []).length, 0);
     if (!inside) { ok(`${f}: 畳む箱は無い`); continue; }
     const hit = RESULT_IDS.filter((id) => new RegExp(`id="${id}"`).test(inside));
     hit.length
       ? bad(`${f}: 判定の結果が畳んだ <details> の中にある（${hit.join(",")}）。閉じていると画面に出ない`)
-      : ok(`${f}: 判定の結果は畳んだ中に無い（畳む箱 ${(s.match(/<details/g) ?? []).length} 個）`);
+      : ok(`${f}: 判定の結果は畳んだ中に無い（畳む箱 ${boxes} 個）`);
   }
 }
 
@@ -1957,7 +2010,7 @@ head("6. 外部リンク");
 //   ここでは書き写さずに切り出して動かす。書き写すと、直したのに検査が古いままになる。
 {
   const { readFileSync: rf } = await import("node:fs");
-  const html = rf("public/index.html", "utf8");
+  const html = rf("public/top.js", "utf8");
   const a = html.indexOf("const ADMIN ="), b = html.indexOf("// ⚠ 記録の精度どおりに書く");
   if (a < 0 || b < a) bad("説明を落とす規則が index.html に見つからない（目印が変わった？）");
   else {
@@ -2362,7 +2415,7 @@ head("6. 外部リンク");
     //   例が 1 件も出ない**（画面側には先頭 3 件へ落ちる保険があるが、
     //   保険が働いた画面は「豊洲・渋谷・広島」ではなくなる。ここで気づけるようにする）。
     //   掟: 同じ問いに答える実装を2つ持つときは、機械で突き合わせる。
-    const m = /const TOP_EXAMPLE_IDS\s*=\s*\[([^\]]*)\]/.exec(src["index.html"] ?? "");
+    const m = /const TOP_EXAMPLE_IDS\s*=\s*\[([^\]]*)\]/.exec(TOP);
     if (!m) bad("index.html の TOP_EXAMPLE_IDS を読めない（トップの入力例が何も突き合わされていない）");
     else {
       const ids = [...m[1].matchAll(/"([^"]+)"/g)].map((x) => x[1]);
@@ -2632,7 +2685,7 @@ head("6. 外部リンク");
       fails.push("共有カードの文にも補助説明が入っている（焼く文と読む文を同じにしない）");
   } else fails.push("words.js が ground1Speech を持っていない（画面に足した字を声が読まない）");
   // ⚠ **画面が読み上げも words.js から取っていること**
-  if (!(src["index.html"] ?? "").includes("KonjakuWords.ground1Speech"))
+  if (!TOP.includes("KonjakuWords.ground1Speech"))
     fails.push("index.html が KonjakuWords.ground1Speech を通っていない（声だけ古くなる）");
 
   // ⚠ **呼ぶ側が書き写していないこと。**⚠ コメントは先に落とす（CLAUDE.md §5）
@@ -2646,7 +2699,7 @@ head("6. 外部リンク");
   }
   if (spilled.length) fails.push(`補助説明を書き写している: ${spilled.slice(0, 3).join("、")}`);
   // ⚠ **画面が words.js を通っていること**（写しが無いだけでは、出していない場合と区別できない）
-  if (!(src["index.html"] ?? "").includes("KonjakuWords.groundGloss"))
+  if (!TOP.includes("KonjakuWords.groundGloss"))
     fails.push("index.html が KonjakuWords.groundGloss を通っていない（説明が画面に出ていない）");
 
   fails.length
@@ -3169,7 +3222,8 @@ head("6. 外部リンク");
       if (src2 == null) fails.push(`${f} を読めない`);
       else if (!src2.includes(sym)) fails.push(`${f} に ${sym} が無い（持ち主が変わった）`);
     }
-    for (const [f, sym] of [["WORD", "peel3d.js"], ["TOPWORD", "index.html"]]) {
+    // ⚠ **トップの JS は `top.js`**（2026-08-24）。⚠ TOPWORD の持ち主が移った
+    for (const [f, sym] of [["WORD", "peel3d.js"], ["TOPWORD", "top.js"]]) {
       if (!dom.includes(f)) fails.push(`DOMAIN.md が ${f} を名指ししていない`);
       if (!(src[sym] ?? "").includes(`const ${f} = {`) && !(src[sym] ?? "").includes(`const ${f} = {`))
         fails.push(`${sym} に ${f} が無い（持ち主が変わった）`);
@@ -3248,7 +3302,7 @@ head("6. 外部リンク");
         + `（受け口 scrollToEl を通すこと。呼ぶ側は「どこへ寄せるか」だけ言う）`);
   }
   // ⚠ 受け口そのものが消えていないこと（消すと、上の走査は 0 件で通ってしまう）
-  if (!/const scrollToEl\s*=/.test(src["index.html"] ?? ""))
+  if (!/const scrollToEl\s*=/.test(TOP))
     fails.push("index.html に受け口 scrollToEl が無い（この検査が何も見ていない）");
   // ⚠ **同じ問いを 2 か所で聞いている。**CSS の媒体クエリと JS の matchMedia。
   //   片方だけ直すと、**CSS は詰まったのに寄せる操作は滑らかなまま**になる。
@@ -3263,7 +3317,8 @@ head("6. 外部リンク");
     //   トップは index.html の中に両方ある。深掘りは peel.html（CSS）と peel3d.js（JS）に分かれている。
     //   ⚠ 分かれているぶん、こちらのほうが食い違いやすい。
     for (const [name, cssSrc, jsSrc] of [
-      ["index.html", src["index.html"], src["index.html"]],
+      // ⚠ **トップも 2 ファイルに分かれた**（2026-08-24）。⚠ CSS は index.html・JS は top.js
+      ["index.html ↔ top.js", src["index.html"], src["top.js"]],
       ["peel.html ↔ peel3d.js", src["peel.html"], src["peel3d.js"]],
     ]) {
       const css = cond(cssSrc)[0], js = cond(jsSrc)[1];
@@ -3363,8 +3418,11 @@ head("6. 外部リンク");
 //   （WORD は /peel の答えと出どころ、TOPWORD はトップの根拠カードと導線）。
 //   ⚠ 取り出せなくなったら落とす（黙って素通りさせない）。
 {
+  // ⚠ **トップの JS は `top.js`**（2026-08-24）。⚠ `<script>` から取り出す形はもう合わない。
+  //   ⚠ **インラインも残っている**（SW の登録）ので、⚠ 両方を繋いで見る。
   const js = [...(src["index.html"] ?? "").matchAll(
-    /<script(?![^>]*src)[^>]*>([\s\S]*?)<\/script>/g)].map((m) => m[1]).join("\n");
+    /<script(?![^>]*src)[^>]*>([\s\S]*?)<\/script>/g)].map((m) => m[1]).join("\n")
+    + "\n" + (src["top.js"] ?? "");
   const mw = /\nconst TOPWORD = \{[\s\S]*?\n\};/.exec(js);
   const mr = /\nconst RELOCATE_HOW = [\s\S]*?;\n/.exec(js);
   if (!mw || !mr) bad("index.html の TOPWORD / RELOCATE_HOW を取り出せない（この検査が何も見ていない）");
@@ -3701,7 +3759,9 @@ head("6. 外部リンク");
     const pj = bare("peel3d.js");
     // ⚠ **トップも見る**（2026-08-23）。⚠ **以前は `/peel` しか見ておらず、
     //   ⚠ `index.html` が同じ正規表現を直書きしていたのを素通りさせていた。**
-    for (const f of ["index.html", "peel3d.js"]) {
+    // ⚠ **トップの JS は `top.js`**（2026-08-24。⚠ `index.html` から逐語で出した）。
+    //   ⚠ **`/peel` の `peel3d.js` と対になる。**⚠ 2 画面とも JS は別ファイル。
+    for (const f of ["top.js", "peel3d.js"]) {
       const b = bare(f);
       const shape = (b.match(/\^-\?\[\\d\.\]\+,-\?\[\\d\.\]\+\$/g) ?? []).length;
       yes(shape === 0, `${f} が座標の形を持ち直している（${shape} か所）。place-arg.js が正本`);
@@ -3818,7 +3878,7 @@ head("6. 外部リンク");
     }
 
     // ⚠ AC 3・AC 6: 両画面が同じ 1 か所を呼び、⚠ 段を作り直すコードが残っていない
-    for (const [f, code] of [["public/index.html", src["index.html"]],
+    for (const [f, code] of [["public/top.js", src["top.js"]],
                              ["public/peel3d.js", src["peel3d.js"]]]) {
       if (code == null) { fails.push(`${f} を読めない`); continue; }
       yes(code.includes("KonjakuEras.stepsOf"), `${f} が段の作り方を 1 か所から借りていない`);
@@ -4033,7 +4093,9 @@ head("7. 外部から来た文字列");
   // ---- 外部の応答が最初に入る受け皿 ----
   // ⚠ ここに無い名前は見ていない。新しい外部データを描くときは、受け皿をここに足す。
   const DOORS = {
-    "index.html": {
+    // ⚠ **トップの HTML 組み立ては `top.js`**（2026-08-24。⚠ `index.html` から逐語で出した）。
+    //   ⚠ **`peel3d.js` と対になる。**⚠ 2 画面とも、⚠ 組み立てているのは JS のファイル。
+    "top.js": {
       x:  "Wikidata の事物（名前・説明・出典URL）",
       it: "一覧の行（地理院の地名と、利用者が打った語が入る）",
       r:  "保存した記録（地名と、利用者のメモ）",
@@ -4256,9 +4318,22 @@ head("9. 画面の言葉");
     .replace(/(<style\b[^>]*>)([\s\S]*?)(<\/style>)/gi, (_m, a, body, b) => a + body.replace(/\/\*[\s\S]*?\*\//g, " ") + b)
     .replace(/(<script\b[^>]*>)([\s\S]*?)(<\/script>)/gi, (_m, a, body, b) => a + stripJs(body, file) + b);
 
+  // ⚠ **`.js` でも HTML コメントを落とす**（2026-08-24。⚠ **実際に踏んだ**）。
+  //   ⚠ この repo の JS は、⚠ **テンプレートリテラルの中に HTML を書く。**
+  //     ⚠ そこには `<!-- -->` のコメントも入る。
+  //   ⚠ **`.html` 側は `stripHtml` が先に落としていた**が、⚠ **`.js` 側は素通りだった。**
+  //   ⚠ `index.html` の JS を `top.js` へ出したとき、⚠ **その穴が表に出た**
+  //     （⚠ 「一度消した語が戻っている」が、⚠ **説明のコメントを拾って落ちた**）。
+  //   ⚠ **`peel3d.js` にも同じ穴があった**（⚠ たまたま引っかかる語が無かっただけ）。
+  //   ⚠ **`CLAUDE.md` §5: 検査が文書やコメントを読むとき、⚠ コメントを先に落とす。**
+  const dropHtmlComments = (t) => t.replace(/<!--[\s\S]*?-->/g, " ");
   const seen = {};
   for (const f of [...htmlFiles, ...jsFiles])
-    seen[f] = f.endsWith(".html") ? stripHtml(src[f], f) : stripJs(src[f], f);
+    seen[f] = f.endsWith(".html") ? stripHtml(src[f], f) : dropHtmlComments(stripJs(src[f], f));
+
+  // ⚠ **トップの画面は 2 ファイル**（2026-08-24）。⚠ **JS の振る舞いを見る検査はこちら。**
+  //   ⚠ **語の棚卸し（SCREEN_WORDS）は `seen` のまま**（⚠ 繋ぐと二重に数える）。
+  const seenTop = `${seen["index.html"] ?? ""}\n${seen["top.js"] ?? ""}`;
 
   // この検査そのものの健全性。取り違えると、静かに数え落として緑になる
   torn.length
@@ -4292,17 +4367,17 @@ head("9. 画面の言葉");
           + "⚠ **残る 4 件は語ではなく文**（「区分の境目にあたる可能性がある」など）。"
           + "⚠ **作り手側の分類ではなく、土地そのものの説明**なので残す" },
     { word: "データ・判定について", kind: "分類", live: 1, next: "済",
-      files: ["index.html"],
+      files: ["index.html", "top.js"],
       seat: "フッターの畳み見出し。⚠ **2026-08-20 に「データについて」から。**"
           + "中身は判定方法・位置誤差・提供範囲・限界まで説明していて、見出しと合っていなかった" },
     { word: "この範囲で、年が記録されているもの", kind: "分類", live: 1, next: "済",
-      files: ["index.html"],
+      files: ["index.html", "top.js"],
       seat: "フッターの出典欄。⚠ **2026-08-20 に「この範囲にできていたもの」から。**"
           + "⚠ **開業／設立／完成のどれかを区別できない**ので、「できていた」と言い切らない" },
     // ⚠ **2026-08-20 に言い直した**（#9c）。⚠ **「変化が無かった」と読ませない。**
     //   こちらが持っている記録の話であって、現実に何も起きなかったという意味ではない。
     { word: "この期間に表示できる変化の記録は見つかっていません", kind: "状態", live: 1, next: "済",
-      files: ["index.html"], seat: "正常0件。Wikidata は読めている" },
+      files: ["index.html", "top.js"], seat: "正常0件。Wikidata は読めている" },
     { word: "記録なし", kind: "状態", live: 1, next: "#9c",
       files: ["words.js"],
       seat: "正常0件（明治期タイルは読めた）。⚠ **2026-08-20 に 3 → 1**。"
@@ -4366,7 +4441,9 @@ head("9. 画面の言葉");
     for (const w of ["まだ出ていません", "読み込めませんでした", "接続を確認", "インターネット"])
       if (ph.includes(w)) bad2.push(`photos.js が画面の字を持っている（「${w}」）`);
     // ⚠ **画面が「何の写真か」を組み立てない。**⚠ 組み立てると、判断が画面ごとに増える
-    for (const f of ["index.html", "peel3d.js"]) {
+    // ⚠ **トップの JS は `top.js`**（2026-08-24。⚠ `index.html` から逐語で出した）。
+    //   ⚠ **`/peel` の `peel3d.js` と対になる。**⚠ 2 画面とも JS は別ファイル。
+    for (const f of ["top.js", "peel3d.js"]) {
       const bare = (src[f] ?? "").replace(/<!--[\s\S]*?-->/g, "")
         .replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
       // ⚠ **写真の状態の文脈だけを見る。**⚠ 「明治期の地面と見くらべる」は深掘りの案内で、
@@ -4571,7 +4648,7 @@ head("9. 画面の言葉");
   //   ⚠ **字も 1 か所**（TOPWORD.peelLead）。⚠ 以前は一覧行が同じ字を書き写していた。
   {
     const bad8 = [];
-    const IX = seen["index.html"] ?? "";
+    const IX = seenTop;
     if (!IX) bad8.push("index.html を読めていない（この検査が何も見ていない）");
     // ⚠ **根拠パネルの組み立てに、./peel へのリンクが無いこと**
     //   ⚠ **`own.innerHTML` は 2 か所ある**（⚠ 判定中の 1 行と、⚠ 根拠カードの本体）。
@@ -4758,8 +4835,9 @@ head("9. 画面の言葉");
         if ((seen[f] ?? "").includes(w)) bad4.push(`${f} が words.js の字を書き写している（「${w}」）`);
     }
     // ⚠ **3 つの呼び手が、全部 words.js を通っていること**
-    for (const [f, w] of [["index.html", "KonjakuWords.ground1Lines"],
-                          ["index.html", "KonjakuWords.layerTitle"],
+    // ⚠ **トップの JS は `top.js`**（2026-08-24）
+    for (const [f, w] of [["top.js", "KonjakuWords.ground1Lines"],
+                          ["top.js", "KonjakuWords.layerTitle"],
                           ["peel3d.js", "KonjakuWords.ground1Lines"],
                           ["peel3d.js", "KonjakuWords.layerTitle"],
                           ["verify.js", "KonjakuWords.ground1Text"]])
@@ -4802,7 +4880,7 @@ head("9. 画面の言葉");
     if (!blk.includes("盛土・埋立を読み込めませんでした"))
       bad5.push("badges() から「盛土・埋立を読み込めませんでした」が消えている（同上）");
     // ⚠ **「広い区分」の持ち主が、判定カードに残っていること**
-    if (!/lfF\.ok && !lfF\.fine/.test(seen["index.html"] ?? ""))
+    if (!/lfF\.ok && !lfF\.fine/.test(seenTop))
       bad5.push("index.html が coarse の行（広い区分の理由）を出していない");
     bad5.length
       ? bad(`地形分類の語が 1 か所から出ていない: ${bad5.join("、")}`)
@@ -4816,8 +4894,8 @@ head("9. 画面の言葉");
   //   ⚠ **上限まで開いたら押せる見た目をやめる**ことも、ここで見る（ADR 0026）。
   {
     const bad6 = [];
-    const H = seen["index.html"] ?? "";
-    if (!H) bad6.push("index.html を読めていない（この検査が何も見ていない）");
+    const H = seenTop;
+    if (!H) bad6.push("index.html / top.js を読めていない（この検査が何も見ていない）");
     if (!/const evVis\s*=/.test(H)) bad6.push("evVis() が無い（出す行の持ち主がいない）");
     // ⚠ **切り出しの式は 1 回だけ**
     const cut = (H.match(/slice\(0,\s*EV_MIN\)/g) ?? []).length;
@@ -5365,7 +5443,7 @@ head("9. 画面の言葉");
     //     ここで、書いた瞬間に落とす。
     // ⚠ **生の中身を見る。** `seen` は HTML コメントを落としたあとなので、
     //   そこを見ても一生見つからない（最初そう書いて、わざと壊しても緑のままだった）。
-    const raw = (src["index.html"] ?? "");
+    const raw = TOP;
     // ⚠ <script> の中だけを見る。CSS や本文の HTML コメントは、
     //   バッククォートがあっても壊れない（文字列の中にいない）。
     const scripts = [...raw.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)].map((m) => m[1]).join("\n");
