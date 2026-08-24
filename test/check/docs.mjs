@@ -280,3 +280,34 @@ import { ROOT, ok, bad, head, src , HTML_COMMENT, dropComment } from "./lib.mjs"
         + `（docs/DOMAIN.md が言葉の持ち主。実装を変えたら、そちらも直す）`)
     : ok(`docs/DOMAIN.md の名指しは実在し、統一した語だけが画面に出ている`);
 }
+
+// ============================================================
+// ⚠ 掟は「番号」ではなく「名前」で引いているか
+// ============================================================
+// ⚠ **`test/check.mjs` から逐語で移しただけ**（2026-08-24。hidetzu/konjaku#232 の 13 本目）。
+//   ⚠ **1 文字も変えていない。**⚠ **主張を強くも弱くもしていない。**
+// ⚠ **ここが「文書と数」の仲間である理由**: ⚠ **文書を消すと、⚠ 番号は宙に浮く。**
+//   ⚠ **落ちない。**⚠ 誰にとっても意味を持たない文字列が、⚠ コードに残るだけ。
+// ⚠ 掟は「番号」ではなく「名前」で引く。
+//   以前はコードに「節番号」（章記号＋3.23 のような数）が141箇所あり、
+//   削除済みの長文設計メモの節を指していた。
+//   ただし調べると**参照ではなく引用**で、掟の中身はその場に書いてあった。
+//   番号は誰にとっても意味を持たない文字列で、しかも文書を消すと宙に浮く。
+//   → 名前で引く（`（掟: 取れなかったを「無い」と言わない）`）。番号に戻さない。
+{
+  const { readFileSync: rfk, readdirSync: rdk } = await import("node:fs");
+  const files = [...rdk("public").filter((f) => /\.(html|js)$/.test(f)).map((f) => `public/${f}`),
+    ...rdk("scripts").filter((f) => f.endsWith(".mjs")).map((f) => `scripts/${f}`),
+    // ⚠ **検査は `test/` にある**（2026-08-22）。⚠ **ここを落とすと、⚠ 検査の中の §番号を見なくなる。**
+    ...rdk("test").filter((f) => f.endsWith(".mjs")).map((f) => `test/${f}`),
+    ...rdk("test/render").filter((f) => f.endsWith(".mjs")).map((f) => `test/render/${f}`), "worker.js"];
+  const hit = [];
+  for (const f of files) {
+    let t = ""; try { t = rfk(f, "utf8"); } catch { continue; }
+    const m = t.match(/§\d+\.\d+/g);
+    if (m) hit.push(`${f}(${m.length})`);
+  }
+  hit.length
+    ? bad(`節番号での参照が戻っている: ${hit.join("、")}。掟は名前で引くこと`)
+    : ok(`掟は名前で引いている（節番号での参照は 0 件）`);
+}
