@@ -25,7 +25,7 @@
 import { readFile, readdir } from "node:fs/promises";
 import { existsSync, readFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
-import { join, dirname } from "node:path";
+import { join, dirname, extname, basename } from "node:path";
 import { ROOT, PUB, SITE, ok, bad, warn, head, htmlFiles, jsFiles, src , BLOCK_COMMENT, HTML_COMMENT, dropComment } from "./lib.mjs";
 
 // ⚠ **外へ実際に出るかどうかの指定**（⚠ `test/check.mjs` から一緒に持ってきた）。
@@ -403,4 +403,46 @@ head("6. 外部リンク");
     ? bad(`外へ出る相手の住所が 1 か所になっていない: ${fails.join(" / ")}`
         + `（片方だけ直すと、同じ画面で別の相手を見る）`)
     : ok(`外へ出る相手の住所は 1 か所（地理院タイル・ベクトルとも verify.js。peel3d.js は借りている）`);
+}
+
+// ============================================================
+// ⚠ 内部リンクが、⚠ 実在して自己参照していないか
+// ============================================================
+// ⚠ **`test/check.mjs` から逐語で移しただけ**（2026-08-25。hidetzu/konjaku#232 の 26 本目）。
+//   ⚠ **1 文字も変えていない。**⚠ **主張を強くも弱くもしていない。**
+//   ⚠ **元の見出し（`head()`）は落とした**（⚠ 行き先の見出しの下に入る）。
+// ⚠ **ここが「リンク」の仲間である理由**: ⚠ **そのままの問い。**
+//   ⚠ 元は `3. 内部リンク` という自分の節だった。
+{
+  const pages = new Set(htmlFiles.map((f) => basename(f, ".html")));
+  // ⚠ **JS も見る**（2026-08-24。⚠ **実際に踏んだ**）。
+  //   ⚠ **地図の CSS は、⚠ JS が動的に読み込んでいる**（`css.href="./vendor/maplibre-gl.css"`）。
+  //   ⚠ **前は `index.html` のインライン `<script>` にあったので、⚠ HTML を見るだけで拾えていた。**
+  //   ⚠ `top.js` へ出した瞬間、⚠ **この検査が静かに 1 件見なくなった**
+  //     （⚠ 落ちない。⚠ **数が減るだけなので気づけない**）。
+  //   ⚠ **`peel3d.js` も同じことをしている**（⚠ こちらは前から見ていなかった）。
+  //   ⚠ **「全部緑」は、⚠ 何も変わっていないことの証明ではない**（`CLAUDE.md` §9）。
+  for (const f of [...htmlFiles, ...jsFiles]) {
+    const self = basename(f, ".html");
+    // href="..." と href:`...` の両方（テンプレートリテラルで組む箇所がある）
+    const refs = [...src[f].matchAll(/href[=:]\s*[`"]\.\/([^`"?#]*)/g)].map((m) => m[1]);
+    for (const r of refs) {
+      const ext = extname(r);
+      // css/js/png などのアセットは、ページではなく実体の有無を見る
+      if (ext && ext !== ".html") {
+        await readFile(join(PUB, r))
+          .then(() => ok(`${f}: ./${r}`))
+          .catch(() => bad(`${f}: ./${r} が存在しない`));
+        continue;
+      }
+      if (ext === ".html")
+        bad(`${f}: ./${r} は拡張子付き。本番は /${basename(r, ".html")} へ307転送される`);
+      const target = r.replace(/\/$/, "");
+      if (target && !pages.has(target))
+        bad(`${f}: ./${r} に対応するページが無い`);
+      if (target === self)
+        bad(`${f}: ./${r} は自分自身を指している`);
+    }
+  }
+  ok("拡張子なし・実在・自己参照を検査済み");
 }
