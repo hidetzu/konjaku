@@ -29,13 +29,20 @@ const NO_RENDER = [/^docs\//, /^\.claude\//, /^[^/]+\.md$/, /^\.github\/ISSUE_TE
   /^test\/fixtures\/search\//,
   // ⚠ **実描画が読まない検査コード**（2026-08-22。hidetzu/konjaku#190）。
   //   ⚠ **線は「`render.mjs` が読むか」で引く**（上の規則と同じ）。
-  //   ⚠ **実測（2026-08-22）**: `render.mjs` が取り込むのは
-  //     `test/render/lib.mjs` / `test/render/top.mjs` / `test/render/peel.mjs` と
-  //     `public/sw.js` だけ。⚠ **下のものは 1 行も読まない。**
+  //   ⚠ **ここに一覧を書き写さない。**⚠ **`test/check/deliver.mjs` が、
+  //     ⚠ `render.mjs` の import を実際にたどって、⚠ この判定と突き合わせる**
+  //     （⚠ **前は「実測（2026-08-22）: 取り込むのは lib / top / peel だけ」と
+  //     ⚠ 書いてあったが、⚠ `test/render/shelf.mjs` が増えていて古くなっていた**）。
   //   ⚠ **`test/render-scope.mjs` は入れない**（⚠ **回すものを決める当人**なので、
   //     ⚠ 変えたら実際に回して確かめる）。
   //   ⚠ **同じコミットで `public/` も触っていれば、⚠ そちらで回る。**⚠ 見張りは外れない。
-  /^test\/check\.mjs$/, /^test\/search-check\.mjs$/,
+  //
+  // ⚠ **`test/check/` の下ごと外す**（2026-08-24）。
+  //   ⚠ **hidetzu/konjaku#232 で `check.mjs` を 11 本へ割ったとき、⚠ ここが取り残された。**
+  //   ⚠ **落ちない。**⚠ **多く回す向きに倒れるので、⚠ CI は緑のまま。**
+  //   ⚠ **実測: 検査コードだけを触った PR でも、⚠ 実描画が 5 本（約 9 分）走っていた。**
+  /^test\/check\.mjs$/, /^test\/check\//,
+  /^test\/search-check\.mjs$/,
   /^test\/repository-check\.mjs$/, /^test\/search-live-check\.mjs$/];
 
 // ⚠ **suite を名指しできるもの。**⚠ ここに無いものは全部に倒す。
