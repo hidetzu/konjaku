@@ -27,7 +27,7 @@
 import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { unpack as blUnpack } from "../../scripts/bl-format.mjs";
-import { ROOT, ok, bad, head, src } from "./lib.mjs";
+import { ROOT, ok, bad, head, src , HTML_COMMENT } from "./lib.mjs";
 
 // ⚠ **SPEC の「静的 N件」が、本当に N 件か。**
 //   上の検査は「空・0・書き方」だけを見ていて、**中身のずれは見ていなかった**。
@@ -265,7 +265,7 @@ import { ROOT, ok, bad, head, src } from "./lib.mjs";
     //   ⚠ 出典・/about は別（そこでは使ってよい）。ここでは
     //     **判定文を組み立てている行**だけを見る。
     const strip = (t) => (t ?? "").split("\n")
-      .map((l) => l.replace(/(^|\s)\/\/.*$/, "")).join("\n").replace(/<!--[\s\S]*?-->/g, "");
+      .map((l) => l.replace(/(^|\s)\/\/.*$/, "")).join("\n").replace(HTML_COMMENT, " ");
     const BAN = [
       { w: "この場所は", why: "場所の指し方は「この土地は」に統一（DOMAIN §2-1）" },
     ];

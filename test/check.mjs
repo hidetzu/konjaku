@@ -27,7 +27,7 @@ import { VERSION as BL_VERSION, unpack as blUnpack } from "../scripts/bl-format.
 //   ⚠ **節を別ファイルへ出すには、⚠ どの節も使う道具を先に出す必要がある。**
 //   ⚠ **`test/render/lib.mjs` と対になる置き方。**
 import { ROOT, PUB, SITE, ok, bad, warn, head, tally, makeReport,
-         htmlFiles, jsFiles, src, TOP, PAGE_JS, pageSrc } from "./check/lib.mjs";
+         htmlFiles, jsFiles, src, TOP, PAGE_JS, pageSrc , BLOCK_COMMENT, HTML_COMMENT } from "./check/lib.mjs";
 
 // ⚠ **出した節の一覧**（2026-08-24。hidetzu/konjaku#232）。
 //   ⚠ **順番はここで決める。**⚠ **`readdir` の順に任せない**
@@ -140,6 +140,45 @@ head("0. 数え方そのもの");
         + `（⚠ その行の残りが、⚠ 静かに検査の目から消える。`
         + `⚠ 直前が \`:\` や空白でないことを見る形にする）`);
     else ok(`検査は https:// を壊さない形でコメントを落としている（${files.length} ファイル）`);
+  }
+
+  // ⚠ **共有した正規表現を、⚠ `.replace()` 以外に使っていないか**（2026-08-24）。
+  //   ⚠ **`BLOCK_COMMENT` / `HTML_COMMENT` には `g` が付いている。**
+  //   ⚠ **`g` 付きを `.test()` や `.exec()` に使うと、⚠ `lastIndex` が残る。**
+  //     ⚠ 実測: `const RE=/x/g; RE.test("axa")` → ⚠ **`true`, `false`**（⚠ 2 回目が false）。
+  //   ⚠ **`.replace()` は毎回 `lastIndex` を 0 に戻すので安全。**
+  //   ⚠ **45 か所を 1 か所へ寄せたときに生まれた道**（⚠ こちらが持ち込んだ risk）。
+  //   ⚠ **落ちない。**⚠ **2 回目だけ静かに通る**ので、⚠ 人が気づけない。
+  {
+    const files = ["test/check.mjs", ...PARTS.map((p2) => `test/check/${p2}`)];
+    const misuse = [];
+    for (const f of files) {
+      const t = (await readFile(join(ROOT, f), "utf8").catch(() => ""))
+        .split("\n").map((l) => l.replace(/(^|\s)\/\/.*$/, "")).join("\n");
+      // ⚠ **行ごとに見る。**⚠ **この見張り自身の行を数えない**（`CLAUDE.md` §5）。
+      //   ⚠ **踏んだ**（2026-08-24）: ⚠ import の続きの行と、⚠ この判定を書いた行を拾った。
+      // ⚠ **名前を字として組み立てて、⚠ 自分の行に現れないようにする。**
+      const NAMES = ["BLOCK", "HTML"].map((x) => `${x}_COM` + "MENT");
+      for (const [k, line] of t.split("\n").entries()) {
+        // ⚠ import 文（⚠ 複数行に分かれる）は、⚠ `from "./lib.mjs"` までが 1 かたまり
+        if (/^\s*import\b|^\s{5,}\w[\w, ]*\} from /.test(line)) continue;
+        if (NAMES.some((n) => new RegExp(`["'\`]\\s*\\$\\{?${n}|${n}\\s*["'\`]`).test(line))) continue;
+        for (const n of NAMES) {
+          let at = line.indexOf(n);
+          while (at >= 0) {
+            const before = line.slice(Math.max(0, at - 12), at);
+            if (!/\.replace\($/.test(before)) misuse.push(`${f}:${k + 1} ${line.trim().slice(0, 40)}`);
+            at = line.indexOf(n, at + 1);
+          }
+        }
+      }
+    }
+    if (!files.length) bad("検査のファイルが 1 つも無い（⚠ この検査が何も見ていない）");
+    else if (misuse.length)
+      bad(`共有した正規表現を .replace() 以外に使っている（${misuse.length} 件）: `
+        + misuse.join(" / ")
+        + `（⚠ g 付きなので lastIndex が残り、⚠ 2 回目の .test() が false になる）`);
+    else ok(`共有した正規表現は .replace() だけに使われている（${files.length} ファイル）`);
   }
 
   // ⚠ **出した節を、⚠ 1 つ残らず読み込んでいるか**（2026-08-24。⚠ **実際に起こした**）。
@@ -292,7 +331,7 @@ for (const f of htmlFiles) {
   //   行末まで消してしまい、`const LFC = "https://maps.gsi.go.jp/xyz"` が空になった
   //   （2026-08-15 に実際に踏んだ。検査は「読めない」と言って落ちたので気づけた）。
   //   ⚠ **直前が `:` のときは落とさない。**
-  const bare = (s) => s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/[^\n]*/g, "$1");
+  const bare = (s) => s.replace(BLOCK_COMMENT, " ").replace(/(^|[^:])\/\/[^\n]*/g, "$1");
   const m = /TILE_HOSTS\s*=\s*\[([^\]]*)\]/.exec(bare(swSrc));
   const shelf = m ? [...m[1].matchAll(/["']([^"']+)["']/g)].map((x) => x[1]) : null;
   const vf = bare(await readFile(join(PUB, "verify.js"), "utf8"));
@@ -362,7 +401,7 @@ for (const f of htmlFiles) {
 //   ⚠ コメントを先に落とす。落とさないと、この決まりを説明したコメントの字面を拾う
 //     （CLAUDE.md「検査が文書やコメントを読むとき、コメントを先に落とす」）。
 {
-  const bare = (s) => s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/[^\n]*/g, "$1");
+  const bare = (s) => s.replace(BLOCK_COMMENT, " ").replace(/(^|[^:])\/\/[^\n]*/g, "$1");
   // 条件は複数行にまたがる（`if (…)` と `return` が別の行）。畳んでから見る
   const flat = bare(await readFile(join(PUB, "verify.js"), "utf8")).replace(/\s+/g, " ");
   const conds = [...flat.matchAll(/if\s*\(([^)]*status[^)]*)\)\s*(?:\{[^}]*\})?\s*return\s*\{\s*state:\s*(\w+)/g)]
@@ -449,8 +488,8 @@ head("3.5. 土地ごとの例外を作っていない");
     if (!/\.(js|html)$/.test(f)) continue;
     // ⚠ HTML のコメント（<!-- -->）も落とす。⚠ **落とさないと、何を外したかを
     //   説明した .html のコメントを、この検査自身が「読んでいる」と読む**（CLAUDE.md §5）
-    const bare = s2.replace(/<!--[\s\S]*?-->/g, "")
-      .replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+    const bare = s2.replace(HTML_COMMENT, " ")
+      .replace(BLOCK_COMMENT, " ").replace(/^\s*\/\/.*$/gm, "");
     for (const g of gone)
       if (bare.includes(g)) { bad(`${f} が data/${g} を読もうとしている（もう配っていない）`); reads++; }
   }
@@ -481,8 +520,8 @@ head("3.6. 3D の下地の判定（public/ground.js の1か所）");
     // ⚠ 使う側が、同じ判断を自分でも書いていないこと。
     //   ⚠ **コメントを先に落とす。** 落とさないと、この決まりを説明したコメントの字面を拾う
     //     （CLAUDE.md §5。2 回踏んでいる）。
-    const strip = (s) => s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/[^\n]*/g, "$1")
-      .replace(/<!--[\s\S]*?-->/g, "");
+    const strip = (s) => s.replace(BLOCK_COMMENT, " ").replace(/(^|[^:])\/\/[^\n]*/g, "$1")
+      .replace(HTML_COMMENT, " ");
     // ⚠ **トップの JS は `top.js`**（2026-08-24。⚠ `index.html` から逐語で出した）。
     //   ⚠ **`/peel` の `peel3d.js` と対になる。**⚠ 2 画面とも JS は別ファイル。
     for (const f of ["top.js", "peel3d.js"]) {
@@ -516,8 +555,8 @@ head("3.6. 3D の下地の判定（public/ground.js の1か所）");
 //     実装が 1 つになったので、**2 つ目が生えないこと**を見るほうが強い。
 head("3.7. 場所を探す口は 1 つ（トップだけ）");
 {
-  const strip = (s) => (s ?? "").replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/(^|[^:])\/\/[^\n]*/g, "$1").replace(/<!--[\s\S]*?-->/g, "");
+  const strip = (s) => (s ?? "").replace(BLOCK_COMMENT, " ")
+    .replace(/(^|[^:])\/\/[^\n]*/g, "$1").replace(HTML_COMMENT, " ");
   const ph = strip(src["peel.html"]), pj = strip(src["peel3d.js"]);
   const ui = [['id="q"', "検索欄"], ['id="cands"', "候補の置き場"],
               ['id="quick"', "クイック地点"], ['id="here"', "現在地"],
@@ -614,7 +653,7 @@ for (const f of htmlFiles) {
   if (!peel) fails.push("peel3d.js を読めない（この検査が何も見ていない）");
 
   // ⚠ **コメントは先に落とす**（CLAUDE.md §5。⚠ 説明の字面を検査が拾う事故を 3 回踏んでいる）
-  const bare = (t) => t.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/^\s*\/\/.*$/gm, " ");
+  const bare = (t) => t.replace(BLOCK_COMMENT, " ").replace(/^\s*\/\/.*$/gm, " ");
   const jsBare = bare(js), peelBare = bare(peel);
 
   // ---- a コンポーネントが触ってはいけない相手（Owner 指定の 5 つ）----
@@ -844,7 +883,7 @@ for (const f of htmlFiles) {
     const t = await readFile(join(PUB, f), "utf8").catch(() => "");
     // ⚠ コメントは落とす。落とさないと、この決まりを説明したコメントを拾う。
     //   ⚠ `//` を素朴に落とすと URL を食うので、直前が `:` なら落とさない。
-    const bare = t.replace(/<!--[\s\S]*?-->/g, "").replace(/\/\*[\s\S]*?\*\//g, "")
+    const bare = t.replace(HTML_COMMENT, " ").replace(BLOCK_COMMENT, " ")
       .replace(/(^|[^:])\/\/[^\n]*/g, "$1");
     const n = (bare.match(/AddressSearch\?q=/g) ?? []).length;
     if (n) hits.push(`${f}×${n}`);
@@ -864,7 +903,7 @@ for (const f of htmlFiles) {
 //   そのぶん 2 か所に同じ文字が並ぶので、ここで突き合わせる
 //   （掟「やむを得ず2つ持つときは、機械で突き合わせる」）。
 {
-  const strip = (s) => s.replace(/<!--[\s\S]*?-->/g, "").replace(/<[^>]+>/g, "").replace(/\s+/g, "");
+  const strip = (s) => s.replace(HTML_COMMENT, " ").replace(/<[^>]+>/g, "").replace(/\s+/g, "");
   const grab = (src, attr) => {
     const m = new RegExp(`<div[^>]*\\b${attr}\\b[^>]*>([\\s\\S]*?)</div>`).exec(src);
     return m ? strip(m[1]) : null;
@@ -884,7 +923,7 @@ for (const f of htmlFiles) {
     const fails = [];
     // ⚠ **コメントを先に落とす**（CLAUDE.md §5）。⚠ **落とさないと、⚠ この検査を説明する
     //   コメントに書いた \`<details>\` を、⚠ 検査自身が数える**（⚠ 2026-08-23 に実際に踏んだ）。
-    const idxNoC = idx.replace(/<!--[\s\S]*?-->/g, "");
+    const idxNoC = idx.replace(HTML_COMMENT, " ");
     const m = /<[a-z]+[^>]*\bdata-privacy-lead\b[^>]*>/.exec(idxNoC);
     if (!m) fails.push("箱（data-privacy-lead）が無い");
     else {
@@ -1007,7 +1046,7 @@ for (const f of htmlFiles) {
     //     ⚠ **余分に消えていた**（⚠ URL 20 本ぶん）。
     //   ⚠ **実証**: ⚠ URL と同じ行にべた書きを仕込むと ⚠ **緑のまま通った。**
     //     ⚠ URL の無い行に仕込むと落ちた。⚠ **落ちない。⚠ 静かに見なくなるだけ。**
-    const strip = (t) => (t ?? "").replace(/<!--[\s\S]*?-->/g, "").replace(/(^|[^:])\/\/[^\n]*/g, "$1");
+    const strip = (t) => (t ?? "").replace(HTML_COMMENT, " ").replace(/(^|[^:])\/\/[^\n]*/g, "$1");
     const leaked = [["index.html", strip(idx)], ["peel3d.js", strip(pj)]]
       .filter(([, t]) => /この土地には残っていません/.test(t))
       .map(([f]) => f);
@@ -1026,7 +1065,7 @@ for (const f of htmlFiles) {
     // ⚠ **コメントを先に落とす。**落とさないと、
     //   「何を外したか」を説明したコメントの字面を、この検査自身が拾う。
     //   ⚠ CLAUDE.md §5 の落とし穴。**3 回目**（2026-08-18 に踏んだ）。
-    const peelNoComment = peel.replace(/<!--[\s\S]*?-->/g, "");
+    const peelNoComment = peel.replace(HTML_COMMENT, " ");
     // ⚠ **「データについて」は、⚠ 見出しとして丸ごとそれか**で見る（2026-08-22。hidetzu/konjaku#153）。
     //   ⚠ **守りたいのは「サイト全体のデータ説明が戻っていないこと」**で、
     //     ⚠ **その字を含む別の見出しまで塞ぐこと**ではない。
@@ -1302,7 +1341,7 @@ head("6. まだ問いで分けていないもの");
   //   （2026-08-16 実測。長崎 出島では 491 件）。掟: 同じ問いに答える実装を2つ持たない。
   //   ⚠ コメントを先に落とす（説明に書いた年代IDを検査自身が拾うため）。
   {
-    const bare = (s) => s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/[^\n]*/g, "$1");
+    const bare = (s) => s.replace(BLOCK_COMMENT, " ").replace(/(^|[^:])\/\/[^\n]*/g, "$1");
     const ids = ["ort_riku10", "ort_USA10", "ort_old10", "gazo1", "gazo2", "gazo3", "gazo4"];
     const vf = bare(rfv("public/verify.js", "utf8"));
     const missing = ids.filter((id) => !vf.includes(id));
@@ -1360,7 +1399,7 @@ head("6. まだ問いで分けていないもの");
     // ⚠ **`//` は、⚠ `https://` を巻き込まない形で落とす**（2026-08-24）。
     //   ⚠ **いまは SHELL に URL が 0 本なので実害は無い**（⚠ 実測: 差 0 文字）。
     //   ⚠ **URL を 1 行足された瞬間に、⚠ その行の残りが検査の目から消える。**
-    const body = shell[1].replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/[^\n]*/g, "$1");
+    const body = shell[1].replace(BLOCK_COMMENT, " ").replace(/(^|[^:])\/\/[^\n]*/g, "$1");
     const hit = ["peel3d", "maplibre"].filter((w) => body.includes(w));
     hit.length
       ? bad(`SHELL に 3D 側のものが入っている（${hit.join("・")}）。`
@@ -1526,9 +1565,9 @@ head("6. まだ問いで分けていないもの");
     //     （⚠ 2026-08-24 に実際に踏んだ。⚠ `peel3d.js` のコメント 2 か所で「入れ子」判定）。
     //   ⚠ `//` は `https://` を巻き込まない形で落とす。
     const parts = [f, jsF].map((x) => {
-      const t = rf(x, "utf8").replace(/<!--[\s\S]*?-->/g, "");
+      const t = rf(x, "utf8").replace(HTML_COMMENT, " ");
       return x.endsWith(".js")
-        ? t.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/[^\n]*/g, "$1")
+        ? t.replace(BLOCK_COMMENT, " ").replace(/(^|[^:])\/\/[^\n]*/g, "$1")
         : t;
     });
     // <details> … </details> の中身を取り出す（入れ子は使っていない。使ったらここで気づく）
@@ -1871,7 +1910,7 @@ head("6. まだ問いで分けていないもの");
 {
   const OWNED = ["記録なし", "さらに調べる", "公的な情報で確認する"];
   const bare = (f) => (src[f] ?? "")
-    .replace(/<!--[\s\S]*?-->/g, "").replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+    .replace(HTML_COMMENT, " ").replace(BLOCK_COMMENT, " ").replace(/^\s*\/\/.*$/gm, "");
   const spill = [];
   for (const f of Object.keys(src)) {
     if (f === "words.js" || !/\.(js|html)$/.test(f)) continue;
@@ -1967,7 +2006,7 @@ head("6. まだ問いで分けていないもの");
 
   // ⚠ **呼ぶ側が書き写していないこと。**⚠ コメントは先に落とす（CLAUDE.md §5）
   const bare = (f) => (src[f] ?? "")
-    .replace(/<!--[\s\S]*?-->/g, " ").replace(/\/\*[\s\S]*?\*\//g, " ").replace(/^\s*\/\/.*$/gm, "");
+    .replace(HTML_COMMENT, " ").replace(BLOCK_COMMENT, " ").replace(/^\s*\/\/.*$/gm, "");
   const spilled = [];
   for (const f of Object.keys(src)) {
     if (f === "words.js" || !/\.(js|html)$/.test(f)) continue;
@@ -2287,9 +2326,9 @@ head("6. まだ問いで分けていないもの");
     //   ⚠ **コメントを先に落とす**（`CLAUDE.md` §5。⚠ 落とさないと、⚠ 説明の字面を自分で拾う）。
     //   ⚠ **`https://` の `//` は残す**（⚠ 落とすと行末まで消えて、⚠ 見張りが素通りする）。
     const bare = (f) => src[f]
-      .replace(/<!--[\s\S]*?-->/g, "")
+      .replace(HTML_COMMENT, " ")
       .replace(/(^|[^:])\/\/[^\n]*/g, "$1")
-      .replace(/\/\*[\s\S]*?\*\//g, "");
+      .replace(BLOCK_COMMENT, " ");
     const pj = bare("peel3d.js");
     // ⚠ **トップも見る**（2026-08-23）。⚠ **以前は `/peel` しか見ておらず、
     //   ⚠ `index.html` が同じ正規表現を直書きしていたのを素通りさせていた。**
@@ -2350,7 +2389,7 @@ head("6. まだ問いで分けていないもの");
     if (src2 == null) fails.push("public/eras.js を読めない（この検査が何も見ていない）");
     else {
       // ⚠ **コメントを先に落とす。**⚠ 落とさないと、⚠ 説明に書いた字を自分で拾う（掟）
-      const code = src2.replace(/\/\*[\s\S]*?\*\//g, "").split("\n")
+      const code = src2.replace(BLOCK_COMMENT, " ").split("\n")
         .filter((l) => !l.trim().startsWith("//")).join("\n");
       // ⚠ **末尾の IIFE 引数だけは除く**（`photos.js` ほか 7 つと同じ形。
       //   ⚠ `(typeof window === "undefined" ? globalThis : window)`）。
@@ -2417,7 +2456,7 @@ head("6. まだ問いで分けていないもの");
       if (code == null) { fails.push(`${f} を読めない`); continue; }
       yes(code.includes("KonjakuEras.stepsOf"), `${f} が段の作り方を 1 か所から借りていない`);
       // ⚠ **コメントを先に落とす**（⚠ 説明に書いた字を拾わない）
-      const bare = code.replace(/\/\*[\s\S]*?\*\//g, "").split("\n")
+      const bare = code.replace(BLOCK_COMMENT, " ").split("\n")
         .filter((l) => !l.trim().startsWith("//")).join("\n");
       // ⚠ **落とし方をもう一度書いていないこと**（⚠ ずれの再発）。
       //   ⚠ **`unreachable` は段以外にも出る**（⚠ `peel3d.js` の地形分類）。
@@ -2615,8 +2654,8 @@ head("9. 画面の言葉");
   //   正規表現リテラルの始まりに見える。当てたときは、そこから次の `/` までを飲み込み、
   //   出典欄のリンク（index.html:831 付近）が丸ごと消えた（実測 2026-08-17）。
   const stripHtml = (s, file) => s
-    .replace(/<!--[\s\S]*?-->/g, " ")
-    .replace(/(<style\b[^>]*>)([\s\S]*?)(<\/style>)/gi, (_m, a, body, b) => a + body.replace(/\/\*[\s\S]*?\*\//g, " ") + b)
+    .replace(HTML_COMMENT, " ")
+    .replace(/(<style\b[^>]*>)([\s\S]*?)(<\/style>)/gi, (_m, a, body, b) => a + body.replace(BLOCK_COMMENT, " ") + b)
     .replace(/(<script\b[^>]*>)([\s\S]*?)(<\/script>)/gi, (_m, a, body, b) => a + stripJs(body, file) + b);
 
   // ⚠ **`.js` でも HTML コメントを落とす**（2026-08-24。⚠ **実際に踏んだ**）。
@@ -2627,7 +2666,7 @@ head("9. 画面の言葉");
   //     （⚠ 「一度消した語が戻っている」が、⚠ **説明のコメントを拾って落ちた**）。
   //   ⚠ **`peel3d.js` にも同じ穴があった**（⚠ たまたま引っかかる語が無かっただけ）。
   //   ⚠ **`CLAUDE.md` §5: 検査が文書やコメントを読むとき、⚠ コメントを先に落とす。**
-  const dropHtmlComments = (t) => t.replace(/<!--[\s\S]*?-->/g, " ");
+  const dropHtmlComments = (t) => t.replace(HTML_COMMENT, " ");
   const seen = {};
   for (const f of [...htmlFiles, ...jsFiles])
     seen[f] = f.endsWith(".html") ? stripHtml(src[f], f) : dropHtmlComments(stripJs(src[f], f));
@@ -2745,8 +2784,8 @@ head("9. 画面の言葉");
     // ⚠ **トップの JS は `top.js`**（2026-08-24。⚠ `index.html` から逐語で出した）。
     //   ⚠ **`/peel` の `peel3d.js` と対になる。**⚠ 2 画面とも JS は別ファイル。
     for (const f of ["top.js", "peel3d.js"]) {
-      const bare = (src[f] ?? "").replace(/<!--[\s\S]*?-->/g, "")
-        .replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+      const bare = (src[f] ?? "").replace(HTML_COMMENT, " ")
+        .replace(BLOCK_COMMENT, " ").replace(/^\s*\/\/.*$/gm, "");
       // ⚠ **写真の状態の文脈だけを見る。**⚠ 「明治期の地面と見くらべる」は深掘りの案内で、
       //   ⚠ **別の文**（それまで拾うと、直しようのない誤検出になる）。
       for (const w of ["いまの街の写真", "この年代の写真は", "明治期の地面は"])
@@ -3783,7 +3822,7 @@ head("9. 画面の言葉");
   const norm = (set) => new Set([...set].map((w) => w.replace(/\s*版$/, "")));
   // ⚠ **コメントを先に落とす**（⚠ 落とさないと、⚠ この決まりを説明した字面を拾う）。
   const stageOf = (text) => {
-    const bare = text.replace(/<!--[\s\S]*?-->/g, "");
+    const bare = text.replace(HTML_COMMENT, " ");
     const got = new Set(STAGE.filter((w) => bare.includes(w)));
     // ⚠ **`今昔 β` のように、⚠ 「版」を付けずに名乗ることがある。**⚠ 単独の β も拾う
     if (/[^A-Za-zα-ωΑ-Ω]β[^A-Za-zα-ωΑ-Ω]/.test(bare)) got.add("β 版");
