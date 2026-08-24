@@ -29,7 +29,7 @@
 
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { ROOT, ok, bad, head, src, seen, seenTop, stripJs } from "./lib.mjs";
+import { ROOT, ok, bad, head, src, seen, seenTop, stripJs, BLOCK_COMMENT, HTML_COMMENT, HEAD_COMMENT } from "./lib.mjs";
 
 head("言葉は 1 か所から");
 
@@ -374,5 +374,69 @@ head("言葉は 1 か所から");
     got.join("／") === want.join("／")
       ? ok(`一覧の組の見出しは棚卸しのとおり（${got.join("・")}）`)
       : bad(`一覧の組の見出しが棚卸しと違う: ${got.join("・")}（棚卸しは ${want.join("・")}）`);
+  }
+}
+
+// ============================================================
+// ⚠ 字の持ち主と、⚠ 説明を落とす規則
+// ============================================================
+// ⚠ **`test/check.mjs` の「6. まだ問いで分けていないもの」から逐語で移しただけ**
+//   （2026-08-25。hidetzu/konjaku#232 の 24 本目）。
+//   ⚠ **1 文字も変えていない。**⚠ **主張を強くも弱くもしていない。**
+// ⚠ **ここが「言葉は 1 か所から」の仲間である理由**: ⚠ **どちらも「写しを作らない」。**
+//   ⚠ 字は `words.js` だけが持つ。⚠ 規則は `index.html` だけが持つ（⚠ 書き写さず切り出して動かす）。
+// ⚠ **字を持っているのは words.js だけ。**呼ぶ側に写しを作らない。
+{
+  const OWNED = ["記録なし", "さらに調べる", "公的な情報で確認する"];
+  const bare = (f) => (src[f] ?? "")
+    .replace(HTML_COMMENT, " ").replace(BLOCK_COMMENT, " ").replace(HEAD_COMMENT, "");
+  const spill = [];
+  for (const f of Object.keys(src)) {
+    if (f === "words.js" || !/\.(js|html)$/.test(f)) continue;
+    for (const w of OWNED) if (bare(f).includes(w)) spill.push(`${f}「${w}」`);
+  }
+  spill.length
+    ? bad(`words.js が持つ字を、呼ぶ側が書き写している: ${spill.join("、")}`
+        + `（片方だけ直すと、同じ状態に 2 通りの言い方ができる）`)
+    : ok(`words.js が持つ字（${OWNED.length} 語）は、呼ぶ側に写しが無い`);
+}
+
+// ⚠ 説明から「この画面では自明なもの」を落とす規則が、**本題まで落としていない**こと。
+//   規則そのものは index.html にしかない（掟: 同じ問いに答える実装を2つ持たない）ので、
+//   ここでは書き写さずに切り出して動かす。書き写すと、直したのに検査が古いままになる。
+{
+  const { readFileSync: rf } = await import("node:fs");
+  const html = rf("public/top.js", "utf8");
+  const a = html.indexOf("const ADMIN ="), b = html.indexOf("// ⚠ 記録の精度どおりに書く");
+  if (a < 0 || b < a) bad("説明を落とす規則が index.html に見つからない（目印が変わった？）");
+  else {
+    const evDesc = new Function(`${html.slice(a, b)}; return evDesc;`)();
+    // [説明, 名前, 期待]
+    const CASES = [
+      // 落とす（この画面では自明）
+      ["広島市中区にある被爆建物", "旧日本銀行広島支店", "被爆建物"],
+      ["日本の広島県広島市に所在する医療機関、広島原爆の爆心地として知られる", "島病院",
+        "医療機関、広島原爆の爆心地として知られる"],
+      ["広島市にある戦争遺構、世界遺産、旧広島県産業奨励館", "原爆ドーム",
+        "戦争遺構、世界遺産、旧広島県産業奨励館"],
+      // ⚠ 名前を読めば分かるものは出さない（読んでも増えない）
+      ["東京都江東区にある小学校", "江東区立豊洲小学校", ""],
+      ["東京都江東区にある中学校", "江東区立深川第五中学校", ""],
+      // ⚠ ここから下は「落としてはいけない」側。壊れたら嘘になる
+      //   「かつて」を落とすと、無くなったものが**いまあるもの**になる
+      ["かつて仙台市にあった日本国有鉄道の貨物駅", "宮城野貨物駅",
+        "かつて日本国有鉄道の貨物駅"],
+      //   行政区画の接尾辞を必須にしていないと、ここまで落ちる
+      ["広島原爆の爆心地にある慰霊碑", "慰霊碑", "広島原爆の爆心地にある慰霊碑"],
+      //   「の」を禁じていないと、公園名が消える
+      ["仙台市の榴岡公園にある資料館", "資料館", "榴岡公園にある資料館"],
+      ["広島平和記念公園にある休憩所", "レストハウス", "広島平和記念公園にある休憩所"],
+      // 説明が無いものは、無いまま
+      [null, "何か", ""], ["", "何か", ""],
+    ];
+    const ng = CASES.filter(([d, l, want]) => evDesc(d, l) !== want)
+      .map(([d, l, want]) => `「${d}」→「${evDesc(d, l)}」（期待「${want}」）`);
+    ng.length ? bad(`説明を落とす規則が壊れている: ${ng.join(" / ")}`)
+      : ok(`説明を落とす規則（${CASES.length} 例。落としてはいけない側 4 例を含む）`);
   }
 }

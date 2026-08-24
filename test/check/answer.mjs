@@ -556,3 +556,235 @@ head("答えの組み立て");
           + `普段は名乗らず、出ていないときは必ず名乗る。理由を知らないときは断定せず、圏外のときだけ言い切る）`);
   }
 }
+
+// ============================================================
+// ⚠ 言葉を作る側（words.js / prov.js / ものさし）を、⚠ 動かして確かめる
+// ============================================================
+// ⚠ **`test/check.mjs` の「6. まだ問いで分けていないもの」から逐語で移しただけ**
+//   （2026-08-25。hidetzu/konjaku#232 の 24 本目）。
+//   ⚠ **1 文字も変えていない。**⚠ **主張を強くも弱くもしていない。**
+// ⚠ **ここが「答えの組み立て」の仲間である理由**: ⚠ **どれも「読んだ結果を、どう言うか」。**
+//   ⚠ すぐ上の `WORD` / `TOPWORD` / 内訳 と、⚠ **同じ形の検査**（⚠ 取り出して全部の枝を回す）。
+// 「取得の結末」と「一覧行のタグ」の字は **public/words.js の1か所**。
+// ⚠ **2 画面（トップと /peel）と共有カードが、同じ字を使う。**
+//   ⚠ 以前は 4 ファイルが同じ字を別々に書いていて、片方だけ直せば
+//     **同じ状態に 2 通りの言い方**ができた（実際に踏んでいる。prov.js の冒頭に記録がある）。
+// ⚠ DOM も地図も見ないので、ここで全部の枝を回す。
+{
+  await import(`file://${join(PUB, "words.js")}`);
+  const W = globalThis.KonjakuWords;
+  const fails = [];
+  const eq = (got, want, what) => { if (got !== want) fails.push(`${what}: ${got} ≠ ${want}`); };
+  const yes = (c, what) => { if (!c) fails.push(what); };
+
+  if (!W) fails.push("words.js を読み込めない（この検査が何も見ていない）");
+  else {
+    // ---- ⚠ 読めて 0 件 と 答えを出せない を、同じ語にしない（掟の核心）----
+    yes(W.S.noRecord !== W.S.cantTell, "「読めて 0 件」と「答えを出せない」が同じ語になっている");
+    eq(W.meiji("田", true), "田", "値があるときは、その値を出す");
+    eq(W.meiji("田", false), "田", "値があれば none に関係なくその値");
+    eq(W.meiji(null, true), W.S.noRecord, "読めて 0 件のとき");
+    eq(W.meiji(null, false), W.S.cantTell, "答えを出せないとき");
+    // ⚠ **0 件を「無い」と言い切らない。**資料の話に留める
+    yes(!/^ありません|存在しません|無い$/.test(W.S.noRecord),
+      `0 件の語が「無い」と言い切っている: ${W.S.noRecord}`);
+    // ⚠ **答えを出せないときに、数や割合を作らない**
+    yes(!/\d/.test(W.S.cantTell), `答えを出せないのに数字が入っている: ${W.S.cantTell}`);
+
+    // ---- ⚠ 根拠カードと共有カードは、同じ行を描く ----
+    eq(W.meijiBadge(true), `明治期: ${W.S.noRecord}`, "根拠カードの 0 件の行");
+    eq(W.meijiBadge(false), `明治期: ${W.S.cantTell}`, "根拠カードの答えを出せない行");
+
+    // ---- ⚠ 組の見出し（2026-08-21。行ごとのタグをここへ移した）----
+    // ⚠ **見出しを持たない組がある。**⚠ own（この場所を深掘り）と、打った語の周辺検索。
+    //   ⚠ own はその行の見出しが「この場所を深掘り」で、⚠ **組の名前と同じ字になる**。
+    for (const g of ["why", "ext"]) eq(W.groupTitle(g), W.GROUP[g], `groupTitle(${g})`);
+    eq(W.groupTitle("own"), "", "深掘りに見出しが付いている（行の字と重なる）");
+    eq(W.groupTitle("zzz"), "", "知らない組に見出しが出ている");
+    eq(W.groupTitle(undefined), "", "組なしに見出しが出ている");
+    // ⚠ **名前が互いに違う。**同じ字だと、組を分けた意味が無い
+    yes(new Set(Object.values(W.GROUP)).size === Object.keys(W.GROUP).length,
+      "組の見出しが重なっている");
+    // ⚠ **消した TAG が戻っていない**（⚠ 行ごとのタグと組の見出しを両方持たない）
+    yes(!("TAG" in W) && !("tag" in W), "行ごとのタグが戻っている（見出しと 2 か所になる）");
+  }
+  fails.length
+    ? bad(`words.js の単体テストが失敗（${fails.length} 件）: ${fails.slice(0, 6).join(" / ")}`)
+    : ok(`words.js を動かして確認（0 件と答えを出せないを分ける・根拠カードと共有カードが同じ行・組の見出しと既定値）`);
+}
+
+// ⚠ **ものさしの目盛りに置く、短い年**（2026-08-22。hidetzu/konjaku#166。Owner 判断）。
+//   ⚠ **狭い幅では「1984–86」が 53px あり、9 段で 488px 要る**（実測 2026-08-22・12px）。
+//   ⚠ **入らないから間引く、はやらない**（間引くと「その年代は無い」と読まれる。掟 §1）。
+//   ⚠ **短くして全部出す。**⚠ だから、⚠ **短くする側が壊れると画面が嘘をつく。**
+// ⚠ **DOM 無しで確かめられる**（`.claude/rules/testing.md`: Domain の変換に代表ケースを持つ）。
+{
+  const W = globalThis.KonjakuWords;
+  const fails = [];
+  if (W?.eraTick) {
+    // ⚠ **字を書き写しているのではない。**⚠ 入れた字と出た字の関係だけを見ている
+    const cases = [["1984–86", "’84"], ["1936–42", "’36"], ["現在", "現在"], ["明治期", "明治期"],
+                   ["", ""], [null, ""], [undefined, ""], ["昭和のいつか", "昭和のいつか"]];
+    for (const [inp, want] of cases) {
+      const got = W.eraTick(inp);
+      if (got !== want) fails.push(`eraTick(${JSON.stringify(inp)}) が ${JSON.stringify(got)}（期待 ${JSON.stringify(want)}）`);
+    }
+    // ⚠ **短くしても、⚠ 別の年代と同じ字にならないこと**（⚠ 同じ字だと段が見分けられない）
+    const all = ["1987–90", "1984–86", "1979–83", "1974–78", "1961–69", "1955–60", "1945–50", "1936–42"];
+    const short = all.map((t) => W.eraTick(t));
+    if (new Set(short).size !== short.length)
+      fails.push(`短くすると同じ字になる年代がある: ${short.join("、")}`);
+  } else fails.push("words.js が eraTick を持っていない（この検査が何も見ていない）");
+
+  fails.length
+    ? bad(`ものさしの短い年が壊れている（${fails.length} 件）: ${fails.slice(0, 4).join(" / ")}`)
+    : ok("ものさしの短い年は、渡された字から取り出すだけ（知らない形はそのまま／段どうしが同じ字にならない）");
+}
+
+// 「いま画面に出ているもの」（台帳）は **public/prov.js の1か所**。
+// ⚠ ここが掟の一行目（取れなかった ≠ 無い）を、いちばん広い面で守っている。
+//   以前は peel3d.js の render() の中で組んでいたので、
+//   **ブラウザを立てて、その状態を実際に作れたときしか**確かめられなかった。
+//   DOM も地図も見ない形にしたので、ここで**全組み合わせ**を回す。
+// ⚠ 字面ではなく **tag**（実測／未取得／欠落／未対応／推定）で見る。
+//   文言は変わる。変わってはいけないのは「どの語を使ってよいか」のほう。
+{
+  await import(`file://${join(PUB, "prov.js")}`);
+  const P = globalThis.KonjakuProv;
+  const fails = [];
+  const eq = (got, want, what) => { if (got !== want) fails.push(`${what}: ${got} ≠ ${want}`); };
+  const yes = (c, what) => { if (!c) fails.push(what); };
+
+  if (!P) fails.push("prov.js を読み込めない（この検査が何も見ていない）");
+  else {
+    const ERA = { label: "1984–86" };
+    // ⚠ **答えが出せない問いには、⚠ 「詳しく見る」を出さない**（2026-08-23。Owner 判断）。
+    //   ⚠ 実測（網走市・1280×950）: ⚠ **「この範囲に明治期の低湿地データが無い」の下に出ていた。**
+    //   ⚠ **断りは消さない。**⚠ **畳んでいた実測の行だけ出さない**（掟 §1）。
+    {
+      const list = [{ q: 2, level: "no", tag: "未取得", body: "取れていない" },
+                    { q: 2, level: "ok", tag: "実測", body: "これは材料" }];
+      const on  = P.section(list, "詳しく見る", true);
+      const off = P.section(list, "詳しく見る", false);
+      yes(/詳しく見る/.test(on),   "答えがあるのに「詳しく見る」が無い");
+      yes(!/詳しく見る/.test(off), "答えが出せないのに「詳しく見る」がある（何を見るのか分からない）");
+      yes(/取れていない/.test(off), "「詳しく見る」を隠したら、断りまで消えた（掟 §1）");
+    }
+    // ---- 地表。届いていないなら「実測」と言わない ----
+    eq(P.groundRow(true, ERA).tag, "実測", "届いた地表");
+    eq(P.groundRow(false, ERA).tag, "未取得", "届いていない地表");
+    yes(P.groundRow(false, ERA).body.includes("1984–86"), "届いていない地表に、どの年代かが無い");
+    yes(P.groundRow(false, null).body.includes("明治期"), "明治期の地表の呼び名");
+    // ⚠ ここが本丸。届いていないことを「無い」と言わせない
+    yes(/記録の有無は分かっていない/.test(P.groundRow(false, ERA).note ?? ""),
+      "届いていない地表に「記録の有無は分かっていない」が無い");
+
+    // ---- 水面。読めなかった（未取得）と、本当に無い（整備対象外）を混ぜない ----
+    eq(P.waterRow({ waterRead: true }).tag, "実測", "読めた水面");
+    eq(P.waterRow({ waterRead: false, waterUnread: true }).tag, "未取得", "読めなかった水面");
+    // ⚠ **整備対象外のときは、⚠ 材料の行を出さない**（2026-08-23。Owner 判断）。
+    //   ⚠ **層の理由が既に「この範囲は明治期の低湿地データの整備対象外です」と言っている。**
+    //   ⚠ **前は 2 行目が「この範囲に明治期の低湿地データが無い」で、⚠ 言い切っていた**
+    //     （掟 §1: ⚠ **データにない ≠ 現実にない**）。
+    //   ⚠ **混ぜないという主張は変えていない。**⚠ **読めなかったときは、⚠ 上の行が残る。**
+    yes(P.waterRow({ waterRead: false, waterUnread: false }) === null,
+      "整備対象外なのに材料の行を出している（層の理由と同じことを 2 回言う）");
+    // ⚠ **`null` が並びから落ちること**（⚠ 落とし忘れると、⚠ 画面を組む側で落ちる）
+    yes(P.rows({ area: { waterRead: false, waterUnread: false }, groundArrived: true })
+      .every(Boolean), "行の並びに null が混ざっている");
+
+    // ---- 建物。0 件は「読んだ結果」なので実測の側 ----
+    eq(P.buildingRows({ bldState: "loading" })[0].tag, "未取得", "取得中の建物");
+    eq(P.buildingRows({ bldState: "notyet" })[0].tag, "未対応", "まだ提供していない建物");
+    eq(P.buildingRows({ bldState: "fail" })[0].tag, "未取得", "取れなかった建物");
+    eq(P.buildingRows({ bldState: "ok", total: 0, bldSource: "overpass" })[0].tag, "実測",
+      "正常に 0 件だった建物");
+    yes(/OSM に登録が無いだけで/.test(P.buildingRows({ bldState: "ok", total: 0 })[0].note ?? ""),
+      "0 件のときに「現地に無いとは限らない」が無い");
+    // ⚠ **「まだ提供していない」の文は、prov.js の 1 つだけ。**
+    //   実測（2026-08-18）: 同じ事実に 2 通りの文があり、20 秒のあいだに入れ替わっていた。
+    //     待っているあいだ … 「この場所の建物データは、まだ用意できていません」
+    //     終わったあと     … 「建物ごとの判定は、この場所ではまだ提供していません」
+    //   ⚠ 入れ替わると、同じことを言っているのだと分からない。
+    yes(typeof P.NOTYET === "string" && P.NOTYET.length > 8, "NOTYET を配っていない");
+    yes(typeof P.NOTYET_WHY === "string" && /通信の問題ではありません/.test(P.NOTYET_WHY),
+      "NOTYET_WHY を配っていない、または「通信の問題ではありません」が無い");
+    // ⚠ 主語は「建物データ」ではなく「建物ごとの判定」。建物そのものは出ることがある
+    yes(/建物ごとの判定/.test(P.NOTYET), `NOTYET の主語が「建物ごとの判定」でない: ${P.NOTYET}`);
+    yes(P.buildingRows({ bldState: "notyet" })[0].body.includes("この場所ではまだ提供していません"),
+      "台帳の行が NOTYET を使っていない");
+
+    // ⚠ 「届かなかった」と言う行には、打ち消しの但し書きが要る。
+    //   ⚠ **水面の行だけ、いまこれを持っていない**（2026-08-18 にこの検査で見つけた）。
+    //     このリファクタでは文言を変えない約束なので直していない。
+    for (const [rowOf, what] of [
+      [() => P.groundRow(false, ERA), "地表"],
+      [() => P.buildingRows({ bldState: "loading" })[0], "取得中の建物"],
+      [() => P.buildingRows({ bldState: "fail" })[0], "取れなかった建物"],
+      [() => P.unreadRow({ unread: 232 })[0], "足元を判定できなかった建物"],
+    ]) {
+      const r = rowOf();
+      yes(/限らない|分かっていない/.test(r.note ?? ""), `${what}の「未取得」に打ち消しの但し書きが無い`);
+    }
+    // ⚠ 「未対応」は**こちらの都合**。通信の話に読ませない（CLAUDE.md §4-1）
+    {
+      const r = P.buildingRows({ bldState: "notyet" })[0];
+      yes(/通信の問題ではありません/.test(r.note ?? ""), "未対応に「通信の問題ではありません」が無い");
+      yes(!/取得中|取得できませんでした|届いていない/.test(r.body + (r.note ?? "")),
+        "未対応の行が、通信のせいに読める言い方をしている");
+      yes(/現地に建物が無いという意味でもありません/.test(r.note ?? ""),
+        "未対応に「現地に無いという意味ではない」が無い");
+    }
+    // ⚠ **光らせるボタンは、⚠ 内訳（`paintBreakdown`）が持つようになった**（2026-08-22。Owner 判断）。
+    //   ⚠ **主張は同じ**（⚠ 建設年が 1 件も分かっていないときは出さない。⚠ ADR 0026）。
+    //   ⚠ **見る場所が `prov.js` → 内訳へ移っただけ。**⚠ 下の breakdown の節が見ている。
+    // ⚠ **材料の行は「どうやって決めたか」だけを言う**（⚠ 件数は内訳が持つ。掟 §6）。
+    yes(!/\d+\s*\/\s*\d+/.test(
+          P.buildingRows({ bldState: "ok", total: 9, dated: 3 }).map((r)=>r.body+(r.note??"")).join("")),
+      "材料の行が件数を言っている（⚠ 内訳と同じ数字を 2 か所で言うことになる）");
+
+    // ---- 全組み合わせ。⚠ ここが「ブラウザでは作れない状態」を含む ----
+    const TAGS = new Set(Object.values(P.TAGS));
+    let n = 0;
+    for (const groundArrived of [true, false])
+    for (const era of [null, ERA])
+    for (const area of [null,
+        { waterRead: true, bldState: "loading" },
+        { waterRead: true, bldState: "notyet" },
+        { waterRead: true, bldState: "fail" },
+        { waterRead: false, waterUnread: true, bldState: "fail" },
+        { waterRead: false, waterUnread: false, bldState: "ok", total: 0, bldSource: "tile" },
+        { waterRead: true, bldState: "ok", total: 0, bldSource: "overpass" },
+        { waterRead: true, bldState: "ok", total: 533, dated: 8, unread: 0,
+          hSrc: { measured: 42, levels: 64, default: 427 } },
+        { waterRead: false, waterUnread: true, bldState: "ok", total: 5017, dated: 0, unread: 232 }]) {
+      const rows = P.rows({ groundArrived, era, area });
+      n++;
+      for (const r of rows) {
+        if (!TAGS.has(r.tag)) fails.push(`知らない語が台帳に出た: ${r.tag}`);
+        if (!["ok", "no", "est"].includes(r.level)) fails.push(`知らない level: ${r.level}`);
+        // ⚠ 「読めなかった」の行が、**その事物が無い**と言い切っていないか。
+        //   ⚠ 打ち消し（「無いとは限らない」等）は先に落とす。落とさないと、
+        //     守っている行のほうが引っかかる。
+        //   ⚠ 見るのは**事物の有無**だけ。「まだ提供していません」はこちらの都合の話で、
+        //     現地に無いとは言っていないので、当ててはいけない。
+        if (r.tag === "未取得" || r.tag === "未対応") {
+          const t = (r.body + " " + (r.note ?? ""))
+            .replace(/無いとは限らない|無いという意味でもありません|有無は分かっていない/g, "");
+          if (/(建物|記録|データ|写真|資料)(は|が)(無い|ありません|存在しません)/.test(t))
+            fails.push(`「${r.tag}」の行が、無いと言い切っている: ${r.body}`);
+        }
+      }
+      // 地表の行は必ず先頭に 1 つ。出ているものの出所を落とさない
+      if (rows[0].body.indexOf("地表") !== 0) fails.push("台帳の先頭が地表の行ではない");
+      // HTML は 1 か所でしか作らない。行の数だけ div が出る
+      const html = P.html(rows);
+      eq((html.match(/<div class="prov /g) ?? []).length, rows.length, "行の数と div の数");
+      if (/<script|onerror=|javascript:/i.test(html)) fails.push("台帳の HTML に危ないものが入った");
+    }
+    eq(n, 36, "回した組み合わせの数");
+  }
+  fails.length
+    ? bad(`prov.js の単体テストが失敗（${fails.length} 件）: ${fails.slice(0, 6).join(" / ")}`)
+    : ok(`prov.js を動かして確認（語彙 5・36 通りの状態で、読めなかったことを「無い」と言わない）`);
+}
