@@ -294,104 +294,6 @@ for (const part of PARTS) await import(`./check/${part}`);
 
 
 
-// ---------- 5. OGP ----------
-head("5. OGP");
-for (const f of htmlFiles) {
-  const s = src[f];
-  const miss = ["og:title", "og:description", "og:url", "og:image", "twitter:card"]
-    .filter((k) => !s.includes(`"${k}"`));
-  if (miss.length) { bad(`${f}: ${miss.join(", ")} が無い`); continue; }
-  const url = s.match(/og:url"\s+content="([^"]+)"/)?.[1] ?? "";
-  if (!url.startsWith(SITE)) bad(`${f}: og:url のドメインが違う（${url}）`);
-  else if (url.endsWith(".html")) bad(`${f}: og:url が拡張子付き（${url}）`);
-  else ok(`${f}: ${url}`);
-}
-
-
-
-{
-  const { execFileSync } = await import("node:child_process");
-  try {
-    const result = execFileSync(process.execPath, ["scripts/generate-ogp.mjs", "--check"], {
-      cwd: ROOT,
-      encoding: "utf8",
-    }).trim();
-    ok(result);
-  } catch (error) {
-    const detail = String(error.stderr || error.stdout || error.message).trim();
-    bad(`OGP の生成元と配信画像が食い違っている: ${detail}`);
-  }
-}
-
-
-// ⚠ **ここから下は、⚠ まだ問いで分けていない**（2026-08-24。hidetzu/konjaku#232）。
-//   ⚠ **元は「6. 外部リンク」という節名の下にあった。**⚠ **その名前は中身と合っていなかった**
-//     （⚠ 49 件のうち、⚠ 外部リンクは 3 件だけ。⚠ 残りは CSS ／ 配っている現物 ／
-//      ⚠ Domain を動かす ／ 秘密 …が積まれていた）。
-//   ⚠ **名前を「外部リンク」のまま残さない。**⚠ **嘘の名前は、⚠ 次に足す人を迷わせる。**
-//   ⚠ **正直な名前にする。**⚠ **次にやることが、⚠ 名前から分かる。**
-head("6. まだ問いで分けていないもの");
-
-
-
-
-
-
-
-
-
-
-
-
-
-// ⚠ 畳んだ <details> の中に、判定の結果を入れない。
-//   実際にやった（2026-08-15）: パネルの「場所を探す」214px を <details> にしたとき、
-//   同じ枠に入っていた #status を巻き込んだ。#status は検索の状態ではなく**判定の結果**で、
-//   「建物 533 件を判定しました」「このエリアには明治期の低湿地データがありません」
-//   「読み込めませんでした ＋ 再試行」まで全部そこに出る。
-//   閉じた <details> の中身は innerText に出ない＝画面にも出ないので、
-//   取れなかったことを言う文ごと消えた。実描画 9 件が落ちて気づいた。
-//   ここで止めれば、ブラウザを起こす前に分かる。
-{
-  const { readFileSync: rf } = await import("node:fs");
-  // 判定の結果を出す先。畳んだ中に入ってはいけない
-  const RESULT_IDS = ["status", "result", "prov", "breakdown", "pick", "landAll", "placeName"];
-  // ⚠ **その画面の JS も見る**（2026-08-24）。⚠ **`<details>` は JS も組み立てる。**
-  //   ⚠ トップの JS を `top.js` へ出したら、⚠ **数えていた箱が 3 → 2 に減った。**
-  //   ⚠ **落ちないので気づけない**（⚠ 「畳んだ中に結果が無い」と言い続ける）。
-  // ⚠ **繋いで見ない。**⚠ 繋ぐと、⚠ **片方の閉じと片方の開きが跨いで「入れ子」に見える**
-  //   （⚠ 2026-08-24 に実際に踏んだ。⚠ `peel.html` ＋ `peel3d.js` で偽陽性）。
-  // ⚠ **ファイルごとに数えて、⚠ 画面として足す。**
-  for (const [f, jsF] of [["public/peel.html", "public/peel3d.js"],
-                          ["public/index.html", "public/top.js"]]) {
-    // ⚠ コメントを先に落とす。落とさないと、この検査を説明するコメントに書いた
-    //   `<details>` の字面を検査自身が拾って落ちる（実際に踏んだ）。
-    //   コメントは画面に出ないので、見るべきでもない。
-    // ⚠ **JS の側は、⚠ `//` と `/* */` も落とす**（`CLAUDE.md` §5）。
-    //   ⚠ **落とさないと、⚠ この検査を説明したコメントの `<details>` を検査自身が拾う**
-    //     （⚠ 2026-08-24 に実際に踏んだ。⚠ `peel3d.js` のコメント 2 か所で「入れ子」判定）。
-    //   ⚠ `//` は `https://` を巻き込まない形で落とす。
-    const parts = [f, jsF].map((x) => {
-      const t = rf(x, "utf8").replace(HTML_COMMENT, " ");
-      return x.endsWith(".js")
-        ? t.replace(BLOCK_COMMENT, " ").replace(LINE_COMMENT, "$1")
-        : t;
-    });
-    // <details> … </details> の中身を取り出す（入れ子は使っていない。使ったらここで気づく）
-    const nested = parts.some((t) => /<details[^>]*>(?:(?!<\/details>)[\s\S])*<details/.test(t));
-    if (nested) {
-      bad(`${f}: <details> が入れ子になっている。この検査は入れ子を想定していない`); continue;
-    }
-    const inside = parts.flatMap((t) =>
-      [...t.matchAll(/<details[^>]*>([\s\S]*?)<\/details>/g)].map((m) => m[1])).join("\n");
-    const boxes = parts.reduce((a, t) => a + (t.match(/<details/g) ?? []).length, 0);
-    if (!inside) { ok(`${f}: 畳む箱は無い`); continue; }
-    const hit = RESULT_IDS.filter((id) => new RegExp(`id="${id}"`).test(inside));
-    hit.length
-      ? bad(`${f}: 判定の結果が畳んだ <details> の中にある（${hit.join(",")}）。閉じていると画面に出ない`)
-      : ok(`${f}: 判定の結果は畳んだ中に無い（畳む箱 ${boxes} 個）`);
-  }
-}
 
 
 
@@ -412,8 +314,27 @@ head("6. まだ問いで分けていないもの");
 
 
 
-// ---------- 9. 画面の言葉 ----------
-head("9. 画面の言葉");
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+// ---------- 数の名乗り ----------
+// ⚠ **名前を中身に合わせた**（2026-08-25。hidetzu/konjaku#232 の 30 本目）。
+//   ⚠ **「9. 画面の言葉」の中身は、⚠ 全部 `test/check/*.mjs` へ出た。**
+//   ⚠ **残ったのは、⚠ 走者が最後に名乗る件数だけ。**⚠ **嘘の名前を残さない。**
+head("数の名乗り");
 
 
 

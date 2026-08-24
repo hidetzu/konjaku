@@ -1,4 +1,4 @@
-// 静的検査 — 見た目の決め方（⚠ **同じ値が 2 か所に無いか。⚠ 狭い幅が既定か**）
+// 静的検査 — 見せ方の決め方（⚠ **同じ値が 2 か所に無いか。⚠ 狭い幅が既定か。⚠ 畳んだ中に隠れていないか**）
 //
 // ⚠ **`test/check.mjs` から逐語で移しただけ**（2026-08-24。hidetzu/konjaku#232 の 7 本目）。
 //   ⚠ **1 文字も変えていない。**⚠ **主張を強くも弱くもしていない。**
@@ -21,7 +21,7 @@
 import { readFile } from "node:fs/promises";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { ROOT, PUB, ok, bad, head, htmlFiles, jsFiles, src , BLOCK_COMMENT, HTML_COMMENT } from "./lib.mjs";
+import { ROOT, PUB, ok, bad, head, htmlFiles, jsFiles, src , BLOCK_COMMENT, HTML_COMMENT, LINE_COMMENT } from "./lib.mjs";
 
 head("見た目の決め方");
 
@@ -239,3 +239,61 @@ head("見た目の決め方");
         + `⚠ 値が違う 5 つは各ページに残す）`);
 }
 
+// ============================================================
+// ⚠ 畳んだ `<details>` の中に、⚠ 判定の結果を入れていないか
+// ============================================================
+// ⚠ **`test/check.mjs` の「6. まだ問いで分けていないもの」から逐語で移しただけ**
+//   （2026-08-25。hidetzu/konjaku#232 の 30 本目）。
+//   ⚠ **1 文字も変えていない。**⚠ **主張を強くも弱くもしていない。**
+// ⚠ **ここが「見せ方の決め方」の仲間である理由**: ⚠ **閉じていると画面に出ない。**
+//   ⚠ **実際にやった**（2026-08-15）: ⚠ パネルを `<details>` にしたとき `#status` を巻き込み、
+//     ⚠ **取れなかったことを言う文ごと消えた**（⚠ 実描画 9 件が落ちて気づいた）。
+//   ⚠ **見出しの一文を、⚠ これに合わせて直した**（`CLAUDE.md` §5）。
+// ⚠ 畳んだ <details> の中に、判定の結果を入れない。
+//   実際にやった（2026-08-15）: パネルの「場所を探す」214px を <details> にしたとき、
+//   同じ枠に入っていた #status を巻き込んだ。#status は検索の状態ではなく**判定の結果**で、
+//   「建物 533 件を判定しました」「このエリアには明治期の低湿地データがありません」
+//   「読み込めませんでした ＋ 再試行」まで全部そこに出る。
+//   閉じた <details> の中身は innerText に出ない＝画面にも出ないので、
+//   取れなかったことを言う文ごと消えた。実描画 9 件が落ちて気づいた。
+//   ここで止めれば、ブラウザを起こす前に分かる。
+{
+  const { readFileSync: rf } = await import("node:fs");
+  // 判定の結果を出す先。畳んだ中に入ってはいけない
+  const RESULT_IDS = ["status", "result", "prov", "breakdown", "pick", "landAll", "placeName"];
+  // ⚠ **その画面の JS も見る**（2026-08-24）。⚠ **`<details>` は JS も組み立てる。**
+  //   ⚠ トップの JS を `top.js` へ出したら、⚠ **数えていた箱が 3 → 2 に減った。**
+  //   ⚠ **落ちないので気づけない**（⚠ 「畳んだ中に結果が無い」と言い続ける）。
+  // ⚠ **繋いで見ない。**⚠ 繋ぐと、⚠ **片方の閉じと片方の開きが跨いで「入れ子」に見える**
+  //   （⚠ 2026-08-24 に実際に踏んだ。⚠ `peel.html` ＋ `peel3d.js` で偽陽性）。
+  // ⚠ **ファイルごとに数えて、⚠ 画面として足す。**
+  for (const [f, jsF] of [["public/peel.html", "public/peel3d.js"],
+                          ["public/index.html", "public/top.js"]]) {
+    // ⚠ コメントを先に落とす。落とさないと、この検査を説明するコメントに書いた
+    //   `<details>` の字面を検査自身が拾って落ちる（実際に踏んだ）。
+    //   コメントは画面に出ないので、見るべきでもない。
+    // ⚠ **JS の側は、⚠ `//` と `/* */` も落とす**（`CLAUDE.md` §5）。
+    //   ⚠ **落とさないと、⚠ この検査を説明したコメントの `<details>` を検査自身が拾う**
+    //     （⚠ 2026-08-24 に実際に踏んだ。⚠ `peel3d.js` のコメント 2 か所で「入れ子」判定）。
+    //   ⚠ `//` は `https://` を巻き込まない形で落とす。
+    const parts = [f, jsF].map((x) => {
+      const t = rf(x, "utf8").replace(HTML_COMMENT, " ");
+      return x.endsWith(".js")
+        ? t.replace(BLOCK_COMMENT, " ").replace(LINE_COMMENT, "$1")
+        : t;
+    });
+    // <details> … </details> の中身を取り出す（入れ子は使っていない。使ったらここで気づく）
+    const nested = parts.some((t) => /<details[^>]*>(?:(?!<\/details>)[\s\S])*<details/.test(t));
+    if (nested) {
+      bad(`${f}: <details> が入れ子になっている。この検査は入れ子を想定していない`); continue;
+    }
+    const inside = parts.flatMap((t) =>
+      [...t.matchAll(/<details[^>]*>([\s\S]*?)<\/details>/g)].map((m) => m[1])).join("\n");
+    const boxes = parts.reduce((a, t) => a + (t.match(/<details/g) ?? []).length, 0);
+    if (!inside) { ok(`${f}: 畳む箱は無い`); continue; }
+    const hit = RESULT_IDS.filter((id) => new RegExp(`id="${id}"`).test(inside));
+    hit.length
+      ? bad(`${f}: 判定の結果が畳んだ <details> の中にある（${hit.join(",")}）。閉じていると画面に出ない`)
+      : ok(`${f}: 判定の結果は畳んだ中に無い（畳む箱 ${boxes} 個）`);
+  }
+}
