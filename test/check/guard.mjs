@@ -151,11 +151,17 @@ head("人の判断を飛ばさない");
 //   文書まで拾うと、書いた瞬間に落ちる（コメントを先に落とす規則と同じ話）。
 {
   const dir = join(ROOT, ".claude");
+  // ⚠ **計測の出力は読まない**（2026-08-24）。⚠ `.claude/telemetry/` は git の外で、
+  //   ⚠ **作業のたびに増える。**⚠ 読むと、⚠ **名乗るファイル数が回すたびに変わる**
+  //   （⚠ `CLAUDE.md` §9: ⚠ **判定の字を変更前後で突き合わせられなくなる**）。
+  // ⚠ **`worktrees/` も読まない。**⚠ **中身はこの repo の別の版そのもの**なので、
+  //   ⚠ **読むと、⚠ 同じファイルを 2 度見たうえに、⚠ 数が作業中かどうかで変わる。**
+  const SKIP = new Set(["telemetry", "worktrees"]);
   const walk = async (d) => {
     const out = [];
     for (const e of await readdir(d, { withFileTypes: true })) {
       const full = join(d, e.name);
-      if (e.isDirectory()) out.push(...await walk(full));
+      if (e.isDirectory()) { if (!SKIP.has(e.name)) out.push(...await walk(full)); }
       else out.push(full);
     }
     return out;
@@ -199,4 +205,175 @@ head("人の判断を飛ばさない");
     : ok(`Skill と Hook は、人の判断を飛ばさない（${files.length} ファイル・`
         + `ラベル付与／自動 merge／--admin／Issue を閉じる が無く、`
         + `ready-for-ai の意味は CLAUDE.md にある）`);
+}
+
+// ⚠ **計測が、作業を止めないこと**（2026-08-24。`.claude/hooks/telemetry.mjs`）。
+//
+// ⚠ **`UserPromptSubmit` と `Stop` は、exit 2 で止まる Hook。**
+//   ⚠ **前者はプロンプトごと消え、⚠ 後者は会話が終われなくなる。**
+//   ⚠ **観測のために作業が止まったら本末転倒。**だから、⚠ **止まらないことを的にする。**
+//
+// ⚠ **字面だけで見ない。**⚠ **実際に走らせて、⚠ 出てきたものを読む**
+//   （`CLAUDE.md` §9: ⚠ **突き合わせる相手は、⚠ 別の道で得たものにする**）。
+//   ⚠ **「`try/catch` がある」を見ても、⚠ 本当に 0 で終わるかは分からない。**
+//
+// ⚠ **本物の計測は汚さない。**⚠ `KONJAKU_TELEMETRY_DIR` で書き先をすげ替える。
+head("計測が、作業を止めない");
+
+{
+  const HOOK = ".claude/hooks/telemetry.mjs";
+  const SETTINGS = ".claude/settings.json";
+  const { execFileSync: exT } = await import("node:child_process");
+  const { mkdtempSync, rmSync, statSync, readFileSync: rfT, existsSync: exsT } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+
+  // ---- 1. 仕掛けが揃っている ----
+  {
+    const fails = [];
+    if (!exsT(join(ROOT, HOOK))) fails.push(`${HOOK} が無い`);
+    else if (!(statSync(join(ROOT, HOOK)).mode & 0o111)) fails.push(`${HOOK} に実行権が無い`);
+
+    const wired = [];
+    if (!exsT(join(ROOT, SETTINGS))) fails.push(`${SETTINGS} が無い`);
+    else {
+      let j; try { j = JSON.parse(await readFile(join(ROOT, SETTINGS), "utf8")); }
+      catch { fails.push(`${SETTINGS} が JSON として壊れている`); }
+      // ⚠ **2 つとも要る。**⚠ 片方だけだと、⚠ **始まりか終わりのどちらかが永久に欠ける**
+      for (const ev of ["UserPromptSubmit", "Stop"]) {
+        const hs = (j?.hooks?.[ev] ?? []).flatMap((g) => g.hooks ?? [])
+          .filter((h) => /telemetry\.mjs$/.test(h.command ?? ""));
+        if (!hs.length) { fails.push(`${ev} に計測の Hook が無い`); continue; }
+        for (const h of hs) {
+          const rel = (h.command ?? "").replace(/^\$\{[^}]+\}\//, "");
+          if (!exsT(join(ROOT, rel))) fails.push(`${ev} が指している ${rel} が無い`);
+          // ⚠ **既定の 600 秒に任せない。**⚠ 計測が固まったら、⚠ **その分だけ会話が待たされる**
+          if (typeof h.timeout !== "number") fails.push(`${ev} の timeout が書かれていない`);
+          else if (h.timeout > 30) fails.push(`${ev} の timeout が ${h.timeout} 秒（長すぎる）`);
+          else wired.push(`${ev} ${h.timeout}秒`);
+        }
+      }
+    }
+    // ⚠ **git に入っていないこと。**⚠ .gitignore を読んで確かめない。
+    //   ⚠ **git が実際にどう扱っているか**で見る（⚠ 上の Slack の検査と同じ流儀）
+    try {
+      const t = exT("git", ["ls-files", ".claude/telemetry"], { encoding: "utf8", cwd: ROOT }).trim();
+      if (t) fails.push(`計測の出力が git に入っている: ${t.split("\n").join("、")}`);
+    } catch { fails.push("git ls-files が使えない（追跡されていないことを確かめていない）"); }
+
+    fails.length
+      ? bad(`計測の仕掛けが揃っていない: ${fails.join(" / ")}`
+          + `（⚠ 始まりと終わりの両方が要る。⚠ 出力は git に入れない）`)
+      : ok(`計測の Hook が両端に付いている（${wired.join(" ／ ")}・出力は git の外）`);
+  }
+
+  // ---- 2. ⚠ 実際に走らせる（⚠ **止まらない／中身を持ち出さない**） ----
+  {
+    const fails = [];
+    const dir = mkdtempSync(join(tmpdir(), "konjaku-tel-"));
+    // ⚠ **この目印が記録に出てきたら、⚠ 本文を持ち出している**
+    const MARK = "kensa-himitsu-9f3a";
+    const feed = (label, input) => {
+      try {
+        const out = exT("node", [join(ROOT, HOOK)], {
+          input, cwd: ROOT, encoding: "utf8", timeout: 20_000,
+          env: { ...process.env, KONJAKU_TELEMETRY_DIR: dir },
+          stdio: ["pipe", "pipe", "pipe"],
+        });
+        // ⚠ **stdout は空でなければならない。**⚠ `UserPromptSubmit` の stdout は
+        //   ⚠ **Claude への追加文脈として読まれる**（⚠ 計測が会話へ混ざる）
+        if (out !== "") fails.push(`${label}: stdout へ出している（会話へ混ざる）: ${out.slice(0, 40)}`);
+      } catch (e) {
+        fails.push(`${label}: 0 以外で終わった（status=${e?.status ?? "?"}）`);
+      }
+    };
+    // ⚠ **壊れた入力で止まらない**（⚠ 実際に起こりうる: 仕様が変わる・上流が変わる）
+    feed("JSON でない", "これは JSON ではない");
+    feed("空", "");
+    feed("空オブジェクト", "{}");
+    feed("別の Hook", JSON.stringify({ hook_event_name: "PreToolUse", session_id: "x" }));
+    // ⚠ **ふつうの 1 往復**
+    feed("UserPromptSubmit", JSON.stringify({
+      hook_event_name: "UserPromptSubmit", session_id: "kensa-1", prompt_id: "kensa-p1",
+      permission_mode: "default", prompt: `${MARK} を使って直して`,
+    }));
+    feed("Stop", JSON.stringify({
+      hook_event_name: "Stop", session_id: "kensa-1", prompt_id: "kensa-p1",
+      permission_mode: "default", effort: { level: "high" }, stop_hook_active: false,
+      last_assistant_message: `${MARK} を消しました`,
+    }));
+
+    // ⚠ **束ねてよいのは、⚠ 束ねる根拠があるときだけ**（2026-08-24）。
+    //   ⚠ **以前は「同じ Session の連続した Turn」を 1 Task にしていた。**⚠ **これは推定で、
+    //   ⚠ 本文を持たない以上、⚠ あとから割れない**（⚠ 別々の仕事が 1 Task に化ける）。
+    //   ⚠ **逆向きなら、⚠ あとからでも束ねられる。**
+    // ⚠ **主張は 2 つ。**⚠ **どちらも、⚠ 出てきた task_id で見る**（⚠ 中の変数を覗かない）。
+    const ISSUE = "kensa/repo#4242";
+    feed("同じ Session・2 つ目", JSON.stringify({
+      hook_event_name: "UserPromptSubmit", session_id: "kensa-1", prompt_id: "kensa-p2",
+      prompt: "べつの用事",
+    }));
+    feed("issue・1 つ目", JSON.stringify({
+      hook_event_name: "UserPromptSubmit", session_id: "kensa-2", prompt_id: "kensa-p3",
+      prompt: `${ISSUE} をやって`,
+    }));
+    feed("issue・別 Session", JSON.stringify({
+      hook_event_name: "UserPromptSubmit", session_id: "kensa-3", prompt_id: "kensa-p4",
+      prompt: `${ISSUE} のつづき`,
+    }));
+
+    const slurp = (f) => (exsT(join(dir, f)) ? rfT(join(dir, f), "utf8") : "");
+    const events = slurp("events.jsonl"), tasks = slurp("tasks.jsonl");
+    // ⚠ **1 行も書けていないのに緑にしない**（⚠ 何も確かめていないのと同じ）
+    if (!events.trim()) fails.push("events.jsonl に 1 行も書かれていない");
+    if (!tasks.trim()) fails.push("tasks.jsonl に 1 行も書かれていない");
+    // ⚠ **壊れた JSONL を残さない**（⚠ あとで読めない記録は、記録ではない）
+    const rows = [];
+    for (const [f, body] of [["events.jsonl", events], ["tasks.jsonl", tasks]])
+      for (const line of body.split("\n").filter(Boolean)) {
+        try { rows.push([f, JSON.parse(line)]); }
+        catch { fails.push(`${f} に JSON として読めない行がある`); }
+      }
+    // ⚠ **本文を持ち出していない**（⚠ 目印は、⚠ プロンプトにも返答にも入れてある）
+    if (`${events}${tasks}${slurp("state.json")}`.includes(MARK))
+      fails.push("プロンプトか返答の中身が記録に入っている（識別に本文は要らない）");
+    // ⚠ **始まりと終わりが、⚠ 同じ Task に結ばれている**
+    const ev = rows.filter(([f]) => f === "events.jsonl").map(([, r]) => r);
+    const started = ev.find((r) => r.event === "UserPromptSubmit");
+    const ended = ev.find((r) => r.event === "Stop");
+    if (!started?.task_id || started.task_id !== ended?.task_id)
+      fails.push("UserPromptSubmit と Stop が同じ task_id に結ばれていない");
+    // ⚠ **根拠が無いときは束ねない**（⚠ 同じ Session でも、⚠ プロンプトごとに別の Task）
+    const asked = ev.filter((r) => r.event === "UserPromptSubmit");
+    const solo = asked.filter((r) => r.session_id === "kensa-1");
+    if (solo.length !== 2) fails.push(`同じ Session の 2 プロンプトが ${solo.length} 件しか記録されていない`);
+    else {
+      if (solo[0].task_id === solo[1].task_id)
+        fails.push("issue の無い 2 つのプロンプトが 1 つの Task に束ねられている（根拠が無いのに束ねない）");
+      if (solo.some((r) => r.grouping !== "turn" || r.turn !== 1))
+        fails.push("issue の無い Task が turn 1 件で名乗っていない");
+    }
+    // ⚠ **根拠があるときは束ねる**（⚠ **Session をまたいでも同じ Task**）
+    const byIssue = asked.filter((r) => r.issue === ISSUE);
+    if (byIssue.length !== 2) fails.push(`issue を指す 2 プロンプトが ${byIssue.length} 件しか記録されていない`);
+    else if (byIssue[0].task_id !== byIssue[1].task_id)
+      fails.push("同じ issue を指す 2 つのプロンプトが、別々の Task になっている（Session をまたいでも同じ Task）");
+    // ⚠ **何を見てそう決めたかが、⚠ 必ず付いている**（⚠ **どれも観測値ではなく推定値**）
+    const naked = asked.filter((r) => !r.grouping || !r.task_type_source);
+    if (naked.length) fails.push(`推定の根拠（grouping / task_type_source）が付いていない行が ${naked.length} 件`);
+    // ⚠ **採点していない。**⚠ Phase 1 で観測できたのは「Turn が終わった」ことだけ。
+    //   ⚠ **`completed` などを書き始めたら、⚠ 推定が実測の顔をする**（`CLAUDE.md` §1）
+    const graded = rows.filter(([f]) => f === "tasks.jsonl").map(([, r]) => r.result)
+      .filter((v) => v !== "unknown");
+    if (graded.length) fails.push(`tasks.jsonl が結果を採点している: ${[...new Set(graded)].join("、")}`);
+    rmSync(dir, { recursive: true, force: true });
+
+    fails.length
+      ? bad(`計測が作業を止めうる／中身を持ち出している: ${fails.join(" / ")}`
+          + `（⚠ 計測が取れないことより、⚠ 作業が止まるほうが悪い）`)
+      : ok(`計測は作業を止めない（⚠ 実際に 9 通り流した。⚠ 全部 exit 0・stdout 空`
+          + `・${rows.length} 行が JSON として読める・本文は記録に出てこない`
+          + `・始まりと終わりが同じ task_id・結果を採点していない`
+          + `・⚠ 根拠が無いときは束ねず、⚠ issue があるときは Session をまたいで束ねる`
+          + `・推定の根拠が全行に付いている）`);
+  }
 }
