@@ -26,7 +26,7 @@ import { readFile, readdir } from "node:fs/promises";
 import { existsSync, readFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { join, dirname } from "node:path";
-import { ROOT, PUB, SITE, ok, bad, warn, head, htmlFiles, jsFiles, src } from "./lib.mjs";
+import { ROOT, PUB, SITE, ok, bad, warn, head, htmlFiles, jsFiles, src , BLOCK_COMMENT, HTML_COMMENT } from "./lib.mjs";
 
 // ⚠ **外へ実際に出るかどうかの指定**（⚠ `test/check.mjs` から一緒に持ってきた）。
 const CHECK_LINKS = process.argv.includes("--links");
@@ -358,7 +358,7 @@ head("6. 外部リンク");
 {
   const fails = [];
   const strip = (t) => (t ?? "").split("\n").map((l) => l.replace(/(^|\s)\/\/.*$/, "")).join("\n")
-    .replace(/\/\*[\s\S]*?\*\//g, "").replace(/<!--[\s\S]*?-->/g, "");
+    .replace(BLOCK_COMMENT, " ").replace(HTML_COMMENT, " ");
   const HOSTS = [
     { re: /["'`]https:\/\/cyberjapandata\.gsi\.go\.jp\/xyz["'`]/g, nm: "地理院タイル", own: "verify.js" },
     { re: /["'`]https:\/\/maps\.gsi\.go\.jp\/xyz["'`]/g, nm: "地理院ベクトル", own: "verify.js" },

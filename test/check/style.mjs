@@ -21,7 +21,7 @@
 import { readFile } from "node:fs/promises";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { ROOT, PUB, ok, bad, head, htmlFiles, jsFiles, src } from "./lib.mjs";
+import { ROOT, PUB, ok, bad, head, htmlFiles, jsFiles, src , BLOCK_COMMENT, HTML_COMMENT } from "./lib.mjs";
 
 head("見た目の決め方");
 
@@ -43,7 +43,7 @@ head("見た目の決め方");
     // ⚠ コメントを先に落とす。落とさないと、`--tap:44px を割っていた` のように
     //   **この検査を説明するコメント**を検査自身が定義として拾い、
     //   その中の var(--tap) を「自己参照」と誤判定する（<details> の検査でも同じ形を踏んだ）。
-    t = t.replace(/\/\*[\s\S]*?\*\//g, "").replace(/<!--[\s\S]*?-->/g, "");
+    t = t.replace(BLOCK_COMMENT, " ").replace(HTML_COMMENT, " ");
     for (const m of t.matchAll(/(--[a-z0-9-]+)\s*:\s*([^;}]+)/g)) {
       defined.add(m[1]);
       if (m[2].includes(`var(${m[1]})`)) self.push(`${f}: ${m[1]}`);
@@ -81,7 +81,7 @@ head("見た目の決め方");
     for (const [f, s0] of [["index.html", src["index.html"]], ["peel.html", src["peel.html"]],
                            ["css/tokens.css", css]]) {
       // ⚠ **コメントを先に落とす。**⚠ 落とさないと、⚠ **この決めごとを説明した字を拾う**
-      const bare = (s0 ?? "").replace(/<!--[\s\S]*?-->/g, "").replace(/\/\*[\s\S]*?\*\//g, "");
+      const bare = (s0 ?? "").replace(HTML_COMMENT, " ").replace(BLOCK_COMMENT, " ");
       for (const m of bare.matchAll(/@media[^{]*\(\s*max-width\s*:\s*([^)]+?)\s*\)/g))
         found.push([f.replace("css/", ""), m[1].trim()]);
     }
@@ -106,7 +106,7 @@ head("見た目の決め方");
   {
     const bad2 = [];
     const css = await readFile(join(PUB, "css", "tokens.css"), "utf8");
-    const idx2 = (src["index.html"] ?? "").replace(/<!--[\s\S]*?-->/g, "");
+    const idx2 = (src["index.html"] ?? "").replace(HTML_COMMENT, " ");
     // ⚠ 幅の定義は tokens.css の 1 か所
     const def = [...css.matchAll(/--detail-pane-width\s*:\s*([^;]+);/g)];
     if (def.length !== 1) bad2.push(`--detail-pane-width の定義が ${def.length} 個（1 個にする）`);
@@ -144,7 +144,7 @@ head("見た目の決め方");
     const css = await readFile(join(PUB, "css", "tokens.css"), "utf8");
     for (const [f, st0] of [["index.html", src["index.html"]], ["peel.html", src["peel.html"]],
                             ["tokens.css", css]]) {
-      const st = (st0 ?? "").replace(/<!--[\s\S]*?-->/g, "").replace(/\/\*[\s\S]*?\*\//g, "");
+      const st = (st0 ?? "").replace(HTML_COMMENT, " ").replace(BLOCK_COMMENT, " ");
       // ⚠ **html セレクタに font-size / font 短縮形を書かない。**
       //   ⚠ body に書くのはよい（ルートを動かさない）。
       for (const m of st.matchAll(/(^|[}\n])\s*([^{}\n]*\bhtml\b[^{}]*)\{([^}]*)\}/g)) {
@@ -209,7 +209,7 @@ head("見た目の決め方");
   const fails = [];
   const styleOf = (t) => {
     const m = /<style>([\s\S]*?)<\/style>/.exec(t ?? "");
-    return (m ? m[1] : "").replace(/\/\*[\s\S]*?\*\//g, "");
+    return (m ? m[1] : "").replace(BLOCK_COMMENT, " ");
   };
   const declOf = (css) => {
     const o = {};
