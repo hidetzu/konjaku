@@ -22,7 +22,7 @@ import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import { VERSION_RE, hashOf, readSw } from "../../scripts/sw-hash.mjs";
 import { pathToFileURL } from "node:url";
-import { ROOT, PUB, ok, bad, warn, head, src, TOP } from "./lib.mjs";
+import { ROOT, PUB, ok, bad, warn, head, src, TOP, HEAD_COMMENT } from "./lib.mjs";
 
 // ⚠ **必須チェックにしている名前**（ruleset「main を守る」）。
 //   ⚠ **repo の外にあるものを控えている。**⚠ **ruleset を変えたら、⚠ ここも直す。**
@@ -34,7 +34,7 @@ const REQUIRED_CHECKS = ["静的検査・外部リンク", "検索の並び（42
 head("2. デプロイ設定");
 {
   const raw = await readFile(join(ROOT, "wrangler.jsonc"), "utf8");
-  const conf = JSON.parse(raw.replace(/^\s*\/\/.*$/gm, ""));
+  const conf = JSON.parse(raw.replace(HEAD_COMMENT, ""));
   const dir = conf.assets?.directory;
   if (dir === "./public") ok(`assets.directory = ${dir}`);
   else bad(`assets.directory が ${JSON.stringify(dir)}。"." だと node_modules ごと上げてデプロイが落ちる`);
