@@ -27,7 +27,8 @@ import { VERSION as BL_VERSION, unpack as blUnpack } from "../scripts/bl-format.
 //   ⚠ **節を別ファイルへ出すには、⚠ どの節も使う道具を先に出す必要がある。**
 //   ⚠ **`test/render/lib.mjs` と対になる置き方。**
 import { ROOT, PUB, SITE, ok, bad, warn, head, tally, makeReport, dropComment, dropCommentOrHash,
-         htmlFiles, jsFiles, src, TOP, PAGE_JS, pageSrc , BLOCK_COMMENT, HTML_COMMENT, LINE_COMMENT, HEAD_COMMENT } from "./check/lib.mjs";
+         htmlFiles, jsFiles, src, TOP, PAGE_JS, pageSrc, seen, seenTop, torn, stripJs,
+         BLOCK_COMMENT, HTML_COMMENT, LINE_COMMENT, HEAD_COMMENT } from "./check/lib.mjs";
 
 // ⚠ **出した節の一覧**（2026-08-24。hidetzu/konjaku#232）。
 //   ⚠ **順番はここで決める。**⚠ **`readdir` の順に任せない**
@@ -257,6 +258,17 @@ head("0. 数え方そのもの");
     else ok(`コメントを落とす 4 つは、それぞれ違うものを残している`
       + `（${n} 通りで確かめた・https:// は 4 つとも守る）`);
   }
+
+  // ⚠ **コメント落としが取り違えていないか**（⚠ `lib.mjs` の `seen` を作るときの副作用を見る）。
+  //   ⚠ **`test/check.mjs` の「9. 画面の言葉」から移した**（2026-08-25。hidetzu/konjaku#232 の 19 本目）。
+  //   ⚠ **道具（`seen`）が `lib.mjs` へ移ったので、⚠ その健全性を見る判定もここへ。**
+  //   ⚠ **この節は「検査の道具そのもの」を見る場所**（⚠ 数え方・コメント落とし・節の読み込み）。
+
+  // この検査そのものの健全性。取り違えると、静かに数え落として緑になる
+  torn.length
+    ? bad(`コメント落としが取り違えている（改行をまたぐ引用符 ${torn.length} 件）: ${torn.slice(0, 3).join("、")}`
+        + `（この状態では、語を数え落としても緑になる）`)
+    : ok(`コメント落としが取り違えていない（改行をまたぐ引用符 0 件 / ${Object.keys(seen).length} ファイル）`);
 
   // ⚠ **出した節を、⚠ 1 つ残らず読み込んでいるか**（2026-08-24。⚠ **実際に起こした**）。
   //   ⚠ **読み込み忘れは落ちない。**⚠ **件数が減るだけなので、⚠ 人が数を覚えていないと気づけない。**
@@ -1949,97 +1961,6 @@ head("9. 画面の言葉");
 //     ① 表より少ない … 直したのに表に残っている（表が古い）
 //     ② 表より多い   … 増やした（棚卸しを通さずに内部語が増えた）
 {
-  // ⚠ **コメントを先に落とす。** 落とさないと、この棚卸しを説明するコメント自身を数える
-  //   （CLAUDE.md「検査が文書やコメントを読むとき、コメントを先に落とす」。2 回踏んでいる）。
-  //   実測（2026-08-17）: 落とさないと index.html の「直読み」は 3 件見えるが、
-  //   3 件とも CSS と JS のコメントで、**画面には 1 件も出ていない**。
-  //
-  // ⚠ 7 節にも JS を舐める実装があるが、答えている問いが違う
-  //   （あちら「テンプレートの ${…} に何が入るか」／こちら「コメントを消した本文」）。
-  const REGEX_OK = /[(,=:[!&|?{};+\-*%~^<>]$/;
-  const torn = [];        // 改行をまたいだ引用符＝取り違えの証拠（下で 0 件を確かめる）
-  // ⚠ テンプレート文字列の `${…}` は入れ子になる。追わないと、穴の中の ` で
-  //   テンプレートが終わったことにして、そこから先が全部ずれる
-  //   （実測: peel3d.js の pickCard() で起き、L519 以降のコメントが 1 つも落ちなかった）。
-  const stripJs = (s, file) => {
-    const n = s.length;
-    let out = "", i = 0, braces = 0, inTpl = false;
-    const holes = [];
-    while (i < n) {
-      const c = s[i], d = s[i + 1];
-      if (inTpl) {
-        if (c === "\\") { out += s.slice(i, i + 2); i += 2; continue; }
-        if (c === "`") { out += c; i++; inTpl = false; continue; }
-        if (c === "$" && d === "{") { out += "${"; i += 2; holes.push(braces); braces = 0; inTpl = false; continue; }
-        out += c; i++; continue;
-      }
-      if (c === "/" && d === "*") { const e = s.indexOf("*/", i + 2); i = e < 0 ? n : e + 2; out += " "; continue; }
-      if (c === "/" && d === "/") { const e = s.indexOf("\n", i); i = e < 0 ? n : e; out += " "; continue; }
-      if (c === '"' || c === "'") {
-        const q = c, st = i; out += c; i++;
-        while (i < n) {
-          if (s[i] === "\\") { out += s.slice(i, i + 2); i += 2; continue; }
-          out += s[i];
-          if (s[i] === q) { i++; break; }
-          i++;
-        }
-        if (s.slice(st, i).includes("\n")) torn.push(`${file}「${s.slice(st, i).split("\n")[0].slice(0, 40)}…」`);
-        continue;
-      }
-      if (c === "`") { out += c; i++; inTpl = true; continue; }
-      if (c === "{") { braces++; out += c; i++; continue; }
-      if (c === "}") {
-        if (braces === 0 && holes.length) { out += c; i++; braces = holes.pop(); inTpl = true; continue; }
-        if (braces > 0) braces--;
-        out += c; i++; continue;
-      }
-      // 正規表現リテラルは飛ばす。飛ばさないと `/"/g` の " から先を文字列と読む
-      if (c === "/" && REGEX_OK.test(out.replace(/\s+$/, ""))) {
-        let j = i + 1, cls = false, done = -1;
-        while (j < n) {
-          if (s[j] === "\\") { j += 2; continue; }
-          if (s[j] === "[") cls = true;
-          else if (s[j] === "]") cls = false;
-          else if (s[j] === "\n") break;
-          else if (s[j] === "/" && !cls) { done = j; break; }
-          j++;
-        }
-        if (done > 0) { out += s.slice(i, done + 1); i = done + 1; continue; }
-      }
-      out += c; i++;
-    }
-    return out;
-  };
-  // ⚠ HTML の本文に JS の物差しを当てない。`</a>` の `/` の前は `<` で、
-  //   正規表現リテラルの始まりに見える。当てたときは、そこから次の `/` までを飲み込み、
-  //   出典欄のリンク（index.html:831 付近）が丸ごと消えた（実測 2026-08-17）。
-  const stripHtml = (s, file) => s
-    .replace(HTML_COMMENT, " ")
-    .replace(/(<style\b[^>]*>)([\s\S]*?)(<\/style>)/gi, (_m, a, body, b) => a + body.replace(BLOCK_COMMENT, " ") + b)
-    .replace(/(<script\b[^>]*>)([\s\S]*?)(<\/script>)/gi, (_m, a, body, b) => a + stripJs(body, file) + b);
-
-  // ⚠ **`.js` でも HTML コメントを落とす**（2026-08-24。⚠ **実際に踏んだ**）。
-  //   ⚠ この repo の JS は、⚠ **テンプレートリテラルの中に HTML を書く。**
-  //     ⚠ そこには `<!-- -->` のコメントも入る。
-  //   ⚠ **`.html` 側は `stripHtml` が先に落としていた**が、⚠ **`.js` 側は素通りだった。**
-  //   ⚠ `index.html` の JS を `top.js` へ出したとき、⚠ **その穴が表に出た**
-  //     （⚠ 「一度消した語が戻っている」が、⚠ **説明のコメントを拾って落ちた**）。
-  //   ⚠ **`peel3d.js` にも同じ穴があった**（⚠ たまたま引っかかる語が無かっただけ）。
-  //   ⚠ **`CLAUDE.md` §5: 検査が文書やコメントを読むとき、⚠ コメントを先に落とす。**
-  const dropHtmlComments = (t) => t.replace(HTML_COMMENT, " ");
-  const seen = {};
-  for (const f of [...htmlFiles, ...jsFiles])
-    seen[f] = f.endsWith(".html") ? stripHtml(src[f], f) : dropHtmlComments(stripJs(src[f], f));
-
-  // ⚠ **トップの画面は 2 ファイル**（2026-08-24）。⚠ **JS の振る舞いを見る検査はこちら。**
-  //   ⚠ **語の棚卸し（SCREEN_WORDS）は `seen` のまま**（⚠ 繋ぐと二重に数える）。
-  const seenTop = `${seen["index.html"] ?? ""}\n${seen["top.js"] ?? ""}`;
-
-  // この検査そのものの健全性。取り違えると、静かに数え落として緑になる
-  torn.length
-    ? bad(`コメント落としが取り違えている（改行をまたぐ引用符 ${torn.length} 件）: ${torn.slice(0, 3).join("、")}`
-        + `（この状態では、語を数え落としても緑になる）`)
-    : ok(`コメント落としが取り違えていない（改行をまたぐ引用符 0 件 / ${Object.keys(seen).length} ファイル）`);
 
   // 棚卸し（2026-08-17 実測）。
   //   kind … 分類 = 作り手側の区別で、利用者の問いではない

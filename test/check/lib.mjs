@@ -172,3 +172,105 @@ export const TOP = `${src["index.html"] ?? ""}\n/* ==== top.js ==== */\n${src["t
 //     （⚠ 落ちない。⚠ **確かめる相手が居なくなるだけなので気づけない**）。
 export const PAGE_JS = { "index.html": "top.js", "peel.html": "peel3d.js" };
 export const pageSrc = (f) => `${src[f] ?? ""}\n${src[PAGE_JS[f]] ?? ""}`;
+
+// ---------- コメントを落とした本文（`seen`） ----------
+// ⚠ **`test/check.mjs` の「9. 画面の言葉」から逐語で移しただけ**
+//   （2026-08-25。hidetzu/konjaku#232 の 19 本目）。⚠ **1 文字も変えていない。**
+//
+// ⚠ **なぜ道具へ出したか**（⚠ 実測 2026-08-24）:
+//   ⚠ **節 9 の 25 塊のうち 18 塊が `seen` / `seenTop` に触っている。**
+//   ⚠ **道具がこの節の中にある限り、⚠ 18 塊は 1 つも外へ出せない。**
+//
+// ⚠ **`src` / `TOP` / `pageSrc` と同じ「読む先」**。⚠ 違いは ⚠ **コメントを落としてあること。**
+//   ⚠ **落とさないと、⚠ 検査が自分の説明を拾う**（`CLAUDE.md` §5。⚠ この repo で 4 回以上）。
+//
+// ⚠ **`torn` は `stripJs` の副作用で溜まる。**⚠ **道具と一緒に動かすしかない**
+//   （⚠ 「コメント落としが取り違えていない」がそれを見ている）。
+//   ⚠ **その判定は `check.mjs` の「0. 数え方そのもの」へ移した**（⚠ 検査の道具そのものの健全性）。
+
+// ⚠ **コメントを先に落とす。** 落とさないと、この棚卸しを説明するコメント自身を数える
+//   （CLAUDE.md「検査が文書やコメントを読むとき、コメントを先に落とす」。2 回踏んでいる）。
+//   実測（2026-08-17）: 落とさないと index.html の「直読み」は 3 件見えるが、
+//   3 件とも CSS と JS のコメントで、**画面には 1 件も出ていない**。
+//
+// ⚠ 7 節にも JS を舐める実装があるが、答えている問いが違う
+//   （あちら「テンプレートの ${…} に何が入るか」／こちら「コメントを消した本文」）。
+const REGEX_OK = /[(,=:[!&|?{};+\-*%~^<>]$/;
+export const torn = [];        // 改行をまたいだ引用符＝取り違えの証拠（下で 0 件を確かめる）
+// ⚠ テンプレート文字列の `${…}` は入れ子になる。追わないと、穴の中の ` で
+//   テンプレートが終わったことにして、そこから先が全部ずれる
+//   （実測: peel3d.js の pickCard() で起き、L519 以降のコメントが 1 つも落ちなかった）。
+export const stripJs = (s, file) => {
+  const n = s.length;
+  let out = "", i = 0, braces = 0, inTpl = false;
+  const holes = [];
+  while (i < n) {
+    const c = s[i], d = s[i + 1];
+    if (inTpl) {
+      if (c === "\\") { out += s.slice(i, i + 2); i += 2; continue; }
+      if (c === "`") { out += c; i++; inTpl = false; continue; }
+      if (c === "$" && d === "{") { out += "${"; i += 2; holes.push(braces); braces = 0; inTpl = false; continue; }
+      out += c; i++; continue;
+    }
+    if (c === "/" && d === "*") { const e = s.indexOf("*/", i + 2); i = e < 0 ? n : e + 2; out += " "; continue; }
+    if (c === "/" && d === "/") { const e = s.indexOf("\n", i); i = e < 0 ? n : e; out += " "; continue; }
+    if (c === '"' || c === "'") {
+      const q = c, st = i; out += c; i++;
+      while (i < n) {
+        if (s[i] === "\\") { out += s.slice(i, i + 2); i += 2; continue; }
+        out += s[i];
+        if (s[i] === q) { i++; break; }
+        i++;
+      }
+      if (s.slice(st, i).includes("\n")) torn.push(`${file}「${s.slice(st, i).split("\n")[0].slice(0, 40)}…」`);
+      continue;
+    }
+    if (c === "`") { out += c; i++; inTpl = true; continue; }
+    if (c === "{") { braces++; out += c; i++; continue; }
+    if (c === "}") {
+      if (braces === 0 && holes.length) { out += c; i++; braces = holes.pop(); inTpl = true; continue; }
+      if (braces > 0) braces--;
+      out += c; i++; continue;
+    }
+    // 正規表現リテラルは飛ばす。飛ばさないと `/"/g` の " から先を文字列と読む
+    if (c === "/" && REGEX_OK.test(out.replace(/\s+$/, ""))) {
+      let j = i + 1, cls = false, done = -1;
+      while (j < n) {
+        if (s[j] === "\\") { j += 2; continue; }
+        if (s[j] === "[") cls = true;
+        else if (s[j] === "]") cls = false;
+        else if (s[j] === "\n") break;
+        else if (s[j] === "/" && !cls) { done = j; break; }
+        j++;
+      }
+      if (done > 0) { out += s.slice(i, done + 1); i = done + 1; continue; }
+    }
+    out += c; i++;
+  }
+  return out;
+};
+// ⚠ HTML の本文に JS の物差しを当てない。`</a>` の `/` の前は `<` で、
+//   正規表現リテラルの始まりに見える。当てたときは、そこから次の `/` までを飲み込み、
+//   出典欄のリンク（index.html:831 付近）が丸ごと消えた（実測 2026-08-17）。
+const stripHtml = (s, file) => s
+  .replace(HTML_COMMENT, " ")
+  .replace(/(<style\b[^>]*>)([\s\S]*?)(<\/style>)/gi, (_m, a, body, b) => a + body.replace(BLOCK_COMMENT, " ") + b)
+  .replace(/(<script\b[^>]*>)([\s\S]*?)(<\/script>)/gi, (_m, a, body, b) => a + stripJs(body, file) + b);
+
+// ⚠ **`.js` でも HTML コメントを落とす**（2026-08-24。⚠ **実際に踏んだ**）。
+//   ⚠ この repo の JS は、⚠ **テンプレートリテラルの中に HTML を書く。**
+//     ⚠ そこには `<!-- -->` のコメントも入る。
+//   ⚠ **`.html` 側は `stripHtml` が先に落としていた**が、⚠ **`.js` 側は素通りだった。**
+//   ⚠ `index.html` の JS を `top.js` へ出したとき、⚠ **その穴が表に出た**
+//     （⚠ 「一度消した語が戻っている」が、⚠ **説明のコメントを拾って落ちた**）。
+//   ⚠ **`peel3d.js` にも同じ穴があった**（⚠ たまたま引っかかる語が無かっただけ）。
+//   ⚠ **`CLAUDE.md` §5: 検査が文書やコメントを読むとき、⚠ コメントを先に落とす。**
+const dropHtmlComments = (t) => t.replace(HTML_COMMENT, " ");
+export const seen = {};
+for (const f of [...htmlFiles, ...jsFiles])
+  seen[f] = f.endsWith(".html") ? stripHtml(src[f], f) : dropHtmlComments(stripJs(src[f], f));
+
+// ⚠ **トップの画面は 2 ファイル**（2026-08-24）。⚠ **JS の振る舞いを見る検査はこちら。**
+//   ⚠ **語の棚卸し（SCREEN_WORDS）は `seen` のまま**（⚠ 繋ぐと二重に数える）。
+export const seenTop = `${seen["index.html"] ?? ""}\n${seen["top.js"] ?? ""}`;
+
