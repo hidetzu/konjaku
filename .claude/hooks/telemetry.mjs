@@ -50,10 +50,21 @@
 // ⚠ **人に入力させない。**⚠ **プロンプトから読み取れるものだけで決める。**
 //
 //     issue が読み取れた   →  その issue が Task（⚠ **Session をまたいでも同じ Task**）
-//     読み取れない         →  その Session の「issue に紐づかない連続した Turn」を 1 Task
+//     読み取れない         →  ⚠ **1 プロンプト = 1 Task**（⚠ **束ねない**）
 //
-// ⚠ **後者は推定。**⚠ **本当に同じ作業かは観測していない。**
-//   だから `grouping` に何を根拠にまとめたかを必ず書く（`issue` / `session`）。
+// ⚠ **束ねてよいのは、⚠ 束ねる根拠があるときだけ**（2026-08-24 に直した）。
+//   ⚠ **以前は「同じ Session の連続した Turn」を 1 Task にしていた。**⚠ **これは推定で、
+//   ⚠ しかも取り返しがつかない**:
+//     「CSS を整理して」→「README を直して」→「この SQL どう思う？」が
+//     ⚠ **1 Task・3 Turn・30 分に化ける。**
+//   ⚠ **本文を持たないので、⚠ あとから割れない。**
+//   ⚠ **逆向きなら、⚠ あとからでも束ねられる**（⚠ T001 と T002 は同じ仕事だった、と言える）。
+//
+// ⚠ **何を根拠に決めたかを、⚠ 必ず一緒に書く**（⚠ **どれも観測値ではなく推定値**）。
+//     grouping           issue / turn
+//     task_type_source   prompt_pattern（Skill 名が書いてあった）
+//                        issue_ref（issue があるから execute とみなした）
+//                        default（何も読み取れなかった）
 //   ⚠ **この欄を消すと、推定が実測の顔をする**（`CLAUDE.md` §1）。
 //
 // ## 手元での試し方（⚠ 本物を汚さない）
@@ -125,10 +136,16 @@ try {
   };
   // ⚠ **Skill の名前が書かれていたら、それを採る。**⚠ 書かれていなければ issue の有無で決める。
   //   ⚠ **これは字面の判定。**⚠ 実際にその Skill が走ったかは見ていない。
+  //
+  // ⚠ **だから、⚠ 何を見てそう決めたかを一緒に残す**（`task_type_source`）。
+  //   ⚠ **`grouping` と同じ原則。**⚠ **どれも観測値ではなく推定値**（`CLAUDE.md` §1）。
+  //   ⚠ **実際に取り違える**: 「#<番号> について調べて」は、⚠ **中身は issue_refine でも
+  //   ⚠ issue があるので issue_execute になる。**⚠ **読む側が、⚠ それを知れるようにする。**
   const typeOf = (text, issue) => {
-    if (/issue-ready/.test(text)) return "issue_refine";
-    if (/loop-controller|issue-work/.test(text) || issue) return "issue_execute";
-    return "prompt";
+    if (/issue-ready/.test(text)) return { task_type: "issue_refine", source: "prompt_pattern" };
+    if (/loop-controller|issue-work/.test(text)) return { task_type: "issue_execute", source: "prompt_pattern" };
+    if (issue) return { task_type: "issue_execute", source: "issue_ref" };
+    return { task_type: "prompt", source: "default" };
   };
 
   // ---- 索引（⚠ **取り合うので、鍵を取ってから読み書きする**） ----
@@ -177,14 +194,26 @@ try {
     const text = String(IN.prompt ?? "");
     const chars = text.length;
     const issue = issueOf(text);
-    const task_type = typeOf(text, issue);
-    const grouping = issue ? "issue" : "session";
-    const key = issue ? `${task_type}:${issue}` : `${task_type}:session:${sid}`;
+    const { task_type, source: task_type_source } = typeOf(text, issue);
+
+    // ⚠ **束ねてよいのは、⚠ 束ねる根拠があるときだけ。**
+    //   ⚠ **issue が読めたなら、⚠ Session をまたいでも同じ Task**（⚠ **根拠がある**）。
+    //   ⚠ **読めないなら、⚠ 1 プロンプト = 1 Task**（⚠ **根拠が無いので束ねない**）。
+    //
+    // ⚠ **同じ Session の連続した Turn を 1 Task にしていた**（2026-08-24 に直した）。
+    //   ⚠ **これは推定で、⚠ しかも取り返しがつかない**:
+    //     「CSS を整理して」→「README を直して」→「この SQL どう思う？」が
+    //     ⚠ **1 Task・3 Turn・30 分に化ける。**
+    //   ⚠ **本文を持たないので、⚠ あとから割れない。**
+    //   ⚠ **逆向きなら、⚠ あとからでも束ねられる**（T001 と T002 は同じ仕事だった、と言える）。
+    const grouping = issue ? "issue" : "turn";
+    const turnId = IN.prompt_id ?? `${ts}-${Math.random().toString(16).slice(2, 10)}`;
+    const key = issue ? `${task_type}:${issue}` : `${task_type}:turn:${sid}:${turnId}`;
 
     const rec = withLock(() => {
       const st = readState();
       const t = st.tasks[key] ?? {
-        task_id: newTaskId(), task_type, grouping, issue,
+        task_id: newTaskId(), task_type, task_type_source, grouping, issue,
         started_at: ts, ended_at: null, session_ids: [], turns: 0, result: "unknown",
       };
       t.turns += 1;
@@ -197,7 +226,7 @@ try {
 
     put("events.jsonl", {
       ts, event, session_id: sid, prompt_id: IN.prompt_id ?? null,
-      task_id: rec.task_id, task_type, issue, turn: rec.turns,
+      task_id: rec.task_id, task_type, task_type_source, grouping, issue, turn: rec.turns,
       permission_mode: IN.permission_mode ?? null,
       prompt_chars: chars,     // ⚠ **長さだけ。**⚠ 本文もハッシュも持たない
     });
@@ -231,6 +260,7 @@ try {
   // ⚠ **追記だけ。**⚠ 同じ task_id が何度も出る。⚠ **読むときは最後の行を採る**
   if (snap) put("tasks.jsonl", {
     ts, task_id: snap.task_id, task_type: snap.task_type, grouping: snap.grouping,
+    task_type_source: snap.task_type_source ?? null,
     issue: snap.issue, started_at: snap.started_at, ended_at: snap.ended_at,
     session_ids: snap.session_ids, turns: snap.turns,
     result: snap.result,   // ⚠ **常に unknown。**⚠ 採点していないので、それ以外を書かない

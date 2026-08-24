@@ -302,6 +302,25 @@ head("計測が、作業を止めない");
       last_assistant_message: `${MARK} を消しました`,
     }));
 
+    // ⚠ **束ねてよいのは、⚠ 束ねる根拠があるときだけ**（2026-08-24）。
+    //   ⚠ **以前は「同じ Session の連続した Turn」を 1 Task にしていた。**⚠ **これは推定で、
+    //   ⚠ 本文を持たない以上、⚠ あとから割れない**（⚠ 別々の仕事が 1 Task に化ける）。
+    //   ⚠ **逆向きなら、⚠ あとからでも束ねられる。**
+    // ⚠ **主張は 2 つ。**⚠ **どちらも、⚠ 出てきた task_id で見る**（⚠ 中の変数を覗かない）。
+    const ISSUE = "kensa/repo#4242";
+    feed("同じ Session・2 つ目", JSON.stringify({
+      hook_event_name: "UserPromptSubmit", session_id: "kensa-1", prompt_id: "kensa-p2",
+      prompt: "べつの用事",
+    }));
+    feed("issue・1 つ目", JSON.stringify({
+      hook_event_name: "UserPromptSubmit", session_id: "kensa-2", prompt_id: "kensa-p3",
+      prompt: `${ISSUE} をやって`,
+    }));
+    feed("issue・別 Session", JSON.stringify({
+      hook_event_name: "UserPromptSubmit", session_id: "kensa-3", prompt_id: "kensa-p4",
+      prompt: `${ISSUE} のつづき`,
+    }));
+
     const slurp = (f) => (exsT(join(dir, f)) ? rfT(join(dir, f), "utf8") : "");
     const events = slurp("events.jsonl"), tasks = slurp("tasks.jsonl");
     // ⚠ **1 行も書けていないのに緑にしない**（⚠ 何も確かめていないのと同じ）
@@ -323,6 +342,24 @@ head("計測が、作業を止めない");
     const ended = ev.find((r) => r.event === "Stop");
     if (!started?.task_id || started.task_id !== ended?.task_id)
       fails.push("UserPromptSubmit と Stop が同じ task_id に結ばれていない");
+    // ⚠ **根拠が無いときは束ねない**（⚠ 同じ Session でも、⚠ プロンプトごとに別の Task）
+    const asked = ev.filter((r) => r.event === "UserPromptSubmit");
+    const solo = asked.filter((r) => r.session_id === "kensa-1");
+    if (solo.length !== 2) fails.push(`同じ Session の 2 プロンプトが ${solo.length} 件しか記録されていない`);
+    else {
+      if (solo[0].task_id === solo[1].task_id)
+        fails.push("issue の無い 2 つのプロンプトが 1 つの Task に束ねられている（根拠が無いのに束ねない）");
+      if (solo.some((r) => r.grouping !== "turn" || r.turn !== 1))
+        fails.push("issue の無い Task が turn 1 件で名乗っていない");
+    }
+    // ⚠ **根拠があるときは束ねる**（⚠ **Session をまたいでも同じ Task**）
+    const byIssue = asked.filter((r) => r.issue === ISSUE);
+    if (byIssue.length !== 2) fails.push(`issue を指す 2 プロンプトが ${byIssue.length} 件しか記録されていない`);
+    else if (byIssue[0].task_id !== byIssue[1].task_id)
+      fails.push("同じ issue を指す 2 つのプロンプトが、別々の Task になっている（Session をまたいでも同じ Task）");
+    // ⚠ **何を見てそう決めたかが、⚠ 必ず付いている**（⚠ **どれも観測値ではなく推定値**）
+    const naked = asked.filter((r) => !r.grouping || !r.task_type_source);
+    if (naked.length) fails.push(`推定の根拠（grouping / task_type_source）が付いていない行が ${naked.length} 件`);
     // ⚠ **採点していない。**⚠ Phase 1 で観測できたのは「Turn が終わった」ことだけ。
     //   ⚠ **`completed` などを書き始めたら、⚠ 推定が実測の顔をする**（`CLAUDE.md` §1）
     const graded = rows.filter(([f]) => f === "tasks.jsonl").map(([, r]) => r.result)
@@ -333,8 +370,10 @@ head("計測が、作業を止めない");
     fails.length
       ? bad(`計測が作業を止めうる／中身を持ち出している: ${fails.join(" / ")}`
           + `（⚠ 計測が取れないことより、⚠ 作業が止まるほうが悪い）`)
-      : ok(`計測は作業を止めない（⚠ 実際に 6 通り流した。⚠ 全部 exit 0・stdout 空`
+      : ok(`計測は作業を止めない（⚠ 実際に 9 通り流した。⚠ 全部 exit 0・stdout 空`
           + `・${rows.length} 行が JSON として読める・本文は記録に出てこない`
-          + `・始まりと終わりが同じ task_id・結果を採点していない）`);
+          + `・始まりと終わりが同じ task_id・結果を採点していない`
+          + `・⚠ 根拠が無いときは束ねず、⚠ issue があるときは Session をまたいで束ねる`
+          + `・推定の根拠が全行に付いている）`);
   }
 }
