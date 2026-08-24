@@ -18,7 +18,7 @@
 //
 // ⚠ **道具は `test/check/lib.mjs` の 1 か所**（⚠ ここで持ち直さない）。
 
-import { ok, bad, head, src, TOP } from "./lib.mjs";
+import { ok, bad, head, src, TOP, dropComment } from "./lib.mjs";
 
 head("動きを減らす");
 
@@ -34,7 +34,7 @@ head("動きを減らす");
     fails.push("peel3d.js が「動きを減らす」を見ていない（受け口が無い）");
   // ⚠ カメラを振る呼び出しが、**減らしていない側にだけ**あること。
   //   ⚠ 行で見る。字面の数だけ数えると、条件の外に出しても気づけない
-  const lines = src2.split("\n").map((l) => l.replace(/(^|\s)\/\/.*$/, ""));
+  const lines = src2.split("\n").map(dropComment);
   const sweep = lines
     .map((l, i) => ({ l, i }))
     .filter((x) => /map\.jumpTo\([^)]*bearing\s*:\s*b0\s*\+/.test(x.l));
@@ -68,7 +68,7 @@ head("動きを減らす");
   //   検査自身が拾う（CLAUDE.md「コメント」の節。実測 2026-08-19 に踏んだ）。
   for (const f of Object.keys(src)) {
     const stray = (src[f] ?? "").split("\n")
-      .map((line, i) => ({ line: line.replace(/(^|\s)\/\/.*$/, ""), i }))
+      .map((line, i) => ({ line: dropComment(line), i }))
       .filter((x) => /behavior\s*:\s*["']smooth["']/.test(x.line) && !/scrollToEl/.test(x.line));
     if (stray.length)
       fails.push(`${f}:${stray.map((x) => x.i + 1).join("・")} に生の behavior:"smooth"`
