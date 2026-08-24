@@ -21,8 +21,9 @@
 // ⚠ **道具は `test/check/lib.mjs` の 1 か所**（⚠ ここで持ち直さない）。
 
 import { readFile } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
 import { join } from "node:path";
-import { ROOT, PUB, ok, bad, head, src, HTML_COMMENT, LINE_COMMENT } from "./lib.mjs";
+import { ROOT, PUB, SITE, ok, bad, head, src, htmlFiles, HTML_COMMENT, LINE_COMMENT } from "./lib.mjs";
 
 head("名乗り");
 
@@ -159,4 +160,40 @@ head("名乗り");
     bad("README が「どこにも送らない」まで言い切っている"
       + "（⚠ 調べた場所は URL に載り、開けば配信元へ届く。2026-08-15 に画面で直した嘘）");
   else ok("README も、画面と同じ 3 段（載る → 届く → 残らない）を書いている");
+}
+
+// ============================================================
+// ⚠ OGP（外へ出る面そのもの）
+// ============================================================
+// ⚠ **`test/check.mjs` の「5. OGP」から逐語で移しただけ**
+//   （2026-08-25。hidetzu/konjaku#232 の 30 本目）。
+//   ⚠ **1 文字も変えていない。**⚠ **主張を強くも弱くもしていない。**
+// ⚠ **ここが「名乗り」の仲間である理由**: ⚠ **共有カードは、⚠ SNS で単独に流れる。**
+//   ⚠ すぐ上の「看板と共有カードの名乗り」と、⚠ **同じ面を見ている。**
+// ⚠ **元の見出し（`head("5. OGP")`）は落とした**（⚠ 中身が 2 塊だけになっていた）。
+for (const f of htmlFiles) {
+  const s = src[f];
+  const miss = ["og:title", "og:description", "og:url", "og:image", "twitter:card"]
+    .filter((k) => !s.includes(`"${k}"`));
+  if (miss.length) { bad(`${f}: ${miss.join(", ")} が無い`); continue; }
+  const url = s.match(/og:url"\s+content="([^"]+)"/)?.[1] ?? "";
+  if (!url.startsWith(SITE)) bad(`${f}: og:url のドメインが違う（${url}）`);
+  else if (url.endsWith(".html")) bad(`${f}: og:url が拡張子付き（${url}）`);
+  else ok(`${f}: ${url}`);
+}
+
+
+
+{
+  const { execFileSync } = await import("node:child_process");
+  try {
+    const result = execFileSync(process.execPath, ["scripts/generate-ogp.mjs", "--check"], {
+      cwd: ROOT,
+      encoding: "utf8",
+    }).trim();
+    ok(result);
+  } catch (error) {
+    const detail = String(error.stderr || error.stdout || error.message).trim();
+    bad(`OGP の生成元と配信画像が食い違っている: ${detail}`);
+  }
 }
