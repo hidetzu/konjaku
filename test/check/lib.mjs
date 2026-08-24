@@ -23,6 +23,10 @@ import { join, extname } from "node:path";
 export const ROOT = new URL("../..", import.meta.url).pathname;
 export const PUB = join(ROOT, "public");
 
+// ⚠ **本番の住所**（⚠ 2 か所以上が見るのでここに置く。2026-08-24）。
+//   ⚠ OGP の `og:url` と、⚠ 外部リンクの「外かどうか」の判定が、⚠ 同じ値を見る。
+export const SITE = "https://konjaku.hidetzu.work";
+
 // ---------- 数え方 ----------
 // ⚠ **数を持つのは、⚠ ここ 1 か所**（2026-08-24）。
 //   ⚠ **前は `check.mjs` の module 変数だった。**⚠ 節を別ファイルへ出すと、
