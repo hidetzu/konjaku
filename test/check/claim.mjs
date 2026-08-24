@@ -1,0 +1,162 @@
+// 静的検査 — 名乗り（⚠ **この道具が「何をするもの」と言っているか。⚠ 実装と合っているか**）
+//
+// ⚠ **`test/check.mjs` の「5. OGP」「6」「9. 画面の言葉」から逐語で移しただけ**
+//   （2026-08-25。hidetzu/konjaku#232 の 28 本目）。
+//   ⚠ **1 文字も変えていない。**⚠ **主張を強くも弱くもしていない。**
+//
+// ⚠ **3 つの節にまたがっていた**（⚠ 実測 2026-08-25）。⚠ **同じ問いなのに、⚠ 離れていた。**
+//
+// ⚠ **ここが守っているもの**:
+//     看板と共有カード  ⚠ **外へ出る面のあいだで割れないこと**（⚠ `h1` ／ `og:title` ／ 共有カード）
+//     実装との一致      ⚠ **やめると決めた演出を、⚠ 名乗りが約束していないか**
+//                       ⚠ 実際にずれていた（⚠ `og:description`「建物が消え…」）
+//     段の名乗り        ⚠ **画面 / README / SPEC で、⚠ 同じ段を名乗っているか**
+//     README の限界     ⚠ **画面と同じ限界を書いているか**（⚠ 載る → 届く → 残らない）
+//
+// ⚠ **名乗りは共有先まで届く**（`CLAUDE.md` §6）。⚠ **ここがずれると、⚠ 共有先で嘘をつく。**
+//
+// ⚠ **`credit.mjs`（出典）とは別。**⚠ あちらは ⚠ **借りた相手の名前。**
+//   ⚠ こちらは ⚠ **自分の名前。**
+//
+// ⚠ **道具は `test/check/lib.mjs` の 1 か所**（⚠ ここで持ち直さない）。
+
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+import { ROOT, PUB, ok, bad, head, src, HTML_COMMENT, LINE_COMMENT } from "./lib.mjs";
+
+head("名乗り");
+
+// ⚠ **名乗りが、外へ出る面のあいだで割れないこと。**
+//   看板（index.html の h1）と、共有カード（share.js が canvas に描く文字）は
+//   **別ファイルにあり、片方だけ直すと気づけない**。実際に割れていた:
+//   看板は「カテゴリ名では何が起きるか分からない」として言い換えたのに、
+//   共有カードだけが旧い名乗りのまま SNS へ配られていた。
+//   ⚠ **止める検査が1つも無かった**ので、ここで突き合わせる
+//   （掟「やむを得ず2つ持つときは、機械で突き合わせる」）。
+{
+  const idx = await readFile(join(PUB, "index.html"), "utf8");
+  const shr = await readFile(join(PUB, "share.js"), "utf8");
+  const h1 = /<h1>([^<]+)<\/h1>/.exec(idx)?.[1]?.trim();
+  // ⚠ コメントを先に落とす。落とさないと、この決まりを説明したコメントの字面を拾う。
+  //   ⚠ **`//` を素朴に落とすと URL を食う。** `https://…` の `//` をコメント開始と
+  //     読んで行末まで消すため、**同じ行で読みたい値より前に URL があると読めなくなる**
+  //     （実測 2026-08-15。`const LFC = "https://…"` を読む別の検査で実際に踏んだ）。
+  //     ⚠ いまの share.js では起きないが、正しい版と誤った版を並べて置かない。
+  //     直前が `:` のときは落とさない。
+  const banner = /BANNER\s*=\s*"([^"]+)"/.exec(shr.replace(LINE_COMMENT, "$1"))?.[1];
+  if (!h1) bad("index.html から看板（h1）を読めない（この検査が何も見ていない）");
+  else if (!banner) bad("share.js に BANNER が無い（共有カードの名乗りを追えない）");
+  else if (h1 !== banner)
+    bad(`名乗りが割れている: 看板「${h1}」/ 共有カード「${banner}」`
+      + `（カード画像は SNS で単独に流れるので、ここが看板の代わりになる）`);
+  else ok(`看板と共有カードの名乗りが揃っている（${h1}）`);
+}
+
+// ⚠ 名乗りは、実装が実際にやっていることに合わせる。
+//   OGP と title は共有先まで届くので、ここが実装とずれると**共有先で嘘をつく**。
+//   実際にずれていた（2026-08-14）:
+//     og:description「建物が消え、明治期の地形が現れる」← やめると決めた演出の説明
+//     label「時間をさかのぼる（3D）」                  ← 時間を自由に動かせると約束
+//   建物が年で消えるのを支えるデータは、10街40万件で建設年 0.30%（写真の帯なら 0.08%）。
+//   PLATEAU も 4.94%（建築年は都市計画基礎調査の法定事項ではないので、待っても埋まらない）。
+{
+  const { readFileSync: rfn } = await import("node:fs");
+  const BAN = [
+    ["建物が消え", "やめると決めた演出を、名乗りが約束している"],
+    ["時間をさかのぼる", "時間を自由に動かせると約束している（支えるデータが 0.30%）"],
+    ["（3D）", "利用者は誰も「2D/3D」と言わなかった（利用者役のエージェントによる検証）"],
+  ];
+  for (const [file, where] of [
+    ["public/peel.html", /<title>[\s\S]*?<\/title>|<meta[^>]*(og:|twitter:|name="description")[^>]*>/g],
+    // ⚠ **2026-08-21 に、⚠ 名乗りの場所が `{id:"peel"…}`（一覧の行）→ `peelLens()` へ移った。**
+    //   ⚠ 「この場所を深掘り」を行動一覧から判定カードの中へ移したため。
+    //   ⚠ **見ているものは同じ**（⚠ 深掘りの名乗りが、実装とずれていないか）。
+    ["public/top.js", /function peelLens\([\s\S]*?\n\}/g],
+  ]) {
+    const hay = (rfn(file, "utf8").match(where) ?? []).join(" ");
+    if (!hay) { bad(`${file}: 名乗りの箇所が読めない`); continue; }
+    const hit = BAN.filter(([w]) => hay.includes(w));
+    hit.length
+      ? bad(`${file} の名乗りが実装とずれている: `
+          + hit.map(([w, why]) => `「${w}」（${why}）`).join(" / "))
+      : ok(`${file.replace("public/", "")} の名乗りが、実装と食い違っていない`);
+  }
+}
+
+// ── 段の名乗りが、⚠ 画面 / README / SPEC で割れていないか ──────────
+// ⚠ **2026-08-23 に踏んだ。**⚠ **画面は hidetzu/konjaku#225 で β を名乗り始めたのに、
+//   ⚠ README は「プロトタイプです」と言い続けていた。**
+// ⚠ **README は共有先まで届く**（`CLAUDE.md` §6）。⚠ **画面より遠くへ行く。**
+// ⚠ **看板と共有カードは上で突き合わせているが、⚠ README は入っていなかった。**
+// ⚠ **段の名乗り（α / β / 正式版 / プロトタイプ）だけを見る。**
+//   ⚠ **README の書き方までは縛らない**（⚠ 文の形は自由）。
+{
+  const STAGE = ["プロトタイプ", "α 版", "α版", "β 版", "β版", "正式版"];
+  const norm = (set) => new Set([...set].map((w) => w.replace(/\s*版$/, "")));
+  // ⚠ **コメントを先に落とす**（⚠ 落とさないと、⚠ この決まりを説明した字面を拾う）。
+  const stageOf = (text) => {
+    const bare = text.replace(HTML_COMMENT, " ");
+    const got = new Set(STAGE.filter((w) => bare.includes(w)));
+    // ⚠ **`今昔 β` のように、⚠ 「版」を付けずに名乗ることがある。**⚠ 単独の β も拾う
+    if (/[^A-Za-zα-ωΑ-Ω]β[^A-Za-zα-ωΑ-Ω]/.test(bare)) got.add("β 版");
+    return norm(got);
+  };
+  // ⚠ **3 か所とも外へ出る**（⚠ 画面は見る人へ、⚠ README と SPEC は読む人へ）。
+  const faces = [
+    ["画面", stageOf(await readFile(join(PUB, "index.html"), "utf8"))],
+    ["README", stageOf(await readFile(join(ROOT, "README.md"), "utf8"))],
+    ["SPEC", stageOf(await readFile(join(ROOT, "docs", "SPEC.md"), "utf8"))],
+  ];
+  const silent = faces.filter(([, v]) => !v.size).map(([k]) => k);
+  const key = ([, v]) => [...v].sort().join("・");
+  const split = new Set(faces.map(key)).size > 1;
+  if (silent.length === faces.length) {
+    bad("どの面も段を名乗っていない（⚠ この検査が何も見ていない）");
+  } else if (silent.length) {
+    bad(`段を名乗っていない面がある（${silent.join("・")}）`
+      + `。⚠ 名乗っているのは ${faces.filter(([, v]) => v.size).map(([k, v]) => `${k}「${[...v].join("・")}」`).join(" / ")}`
+      + "。⚠ **README と SPEC は共有先まで届く**（`CLAUDE.md` §6）");
+  } else if (split) {
+    bad(`段の名乗りが割れている: ${faces.map(([k, v]) => `${k}「${[...v].join("・")}」`).join(" / ")}`
+      + "。⚠ **1 つだけ直すと、⚠ 遠くへ行くものが古いまま配られる**");
+  } else {
+    ok(`画面・README・SPEC の段の名乗りが揃っている（${key(faces[0])}）`);
+  }
+}
+
+// ── README も、⚠ 画面と同じ限界を書いているか ────────────────────
+// ⚠ **掟 §6。**⚠ **外向けの文章（記事・OGP・SNS・README）にも同じ規則を適用する。**
+//   ⚠ **README と OGP は共有先まで届く**ので、⚠ そこだけこの掟の外に出る。
+//
+// ⚠ **2026-08-23 に踏んだ。**⚠ README のプライバシーの節が
+//   ⚠ **「Cookie を使わない／計測へ送らない」だけを書いていた。**
+//   ⚠ **書いてあること自体は正しい**（⚠ 「計測へ」と範囲を限っている）。
+//   ⚠ **落ちていたのは限界のほう**（⚠ 調べた場所は URL に入り、開くと配信元へ届く）。
+//   ⚠ **画面には「▸ プライバシーについて」があるが、⚠ README に開く先は無い。**
+//
+// ⚠ **字面をそろえない**（⚠ 画面と README で長さが違うのは正当）。⚠ **主張で見る。**
+{
+  head("README も、画面と同じ限界を書いている");
+  const rd = await readFile(join(ROOT, "README.md"), "utf8");
+  // ⚠ **文で切ってから見る**（⚠ 別々の文に散っていると「言っている」とは言えない）。
+  //   ⚠ **`/peel` の 3 段を見る検査で、⚠ IP の文を拾って素通りした**（2026-08-23）。⚠ 同じ轍を踏まない。
+  const ss = rd.split(/[。\n]/).map((t) => t.trim()).filter(Boolean);
+  const has = (...res) => ss.some((t) => res.every((re) => re.test(t)));
+  const miss = [
+    [() => has(/調べた場所|検索した場所/, /URL|アドレス欄/, /入(り|ります)/),
+      "調べた場所が URL に入ること（載る）"],
+    [() => has(/URL|アドレス/, /配信元|Cloudflare/, /届|渡/),
+      "その URL を開くと配信元へ届くこと（届く）"],
+    [() => has(/こちらの記録に/, /残りません/),
+      "こちらの記録には残らないこと（残らない）"],
+  ].filter(([f]) => !f()).map(([, n]) => n);
+  // ⚠ **言い切りすぎていないこと**（⚠ 2026-08-15 に画面で直した嘘を、⚠ README で繰り返さない）
+  const lie = /(どこにも|一切)[^。\n]*送(りません|っていません)|サーバーには送りません/.test(rd);
+  if (miss.length)
+    bad(`README に、画面が言っている限界が無い: ${miss.join("、")}`
+      + "（⚠ 掟 §6: ⚠ README は共有先まで届く。⚠ 画面と違って、開く先が無い）");
+  else if (lie)
+    bad("README が「どこにも送らない」まで言い切っている"
+      + "（⚠ 調べた場所は URL に載り、開けば配信元へ届く。2026-08-15 に画面で直した嘘）");
+  else ok("README も、画面と同じ 3 段（載る → 届く → 残らない）を書いている");
+}
