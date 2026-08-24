@@ -93,6 +93,49 @@ head("2. デプロイ設定");
         + clash.slice(0, 4).join("\n      ") + (clash.length > 4 ? `\n      ほか ${clash.length - 4} 件` : ""))
     : ok(`_headers の規則が重なっていない（${files.length} ファイルに当てて確認）`);
 }
+// ============================================================
+// ⚠ /vendor/ が immutable の約束を守っているか
+// ============================================================
+// ⚠ **`test/check.mjs` の「5. OGP」から逐語で移しただけ**（2026-08-24。hidetzu/konjaku#232 の 14 本目）。
+//   ⚠ **1 文字も変えていない。**⚠ **主張を強くも弱くもしていない。**
+//   ⚠ **元の節名は「OGP」だったが、⚠ 中身は OGP ではなかった**
+//     （⚠ 実測 2026-08-24: ⚠ **471 行のうち OGP は 41 行**）。
+// ⚠ **ここが「2. デプロイ設定」の仲間である理由**: ⚠ **`_headers` が何を約束しているか。**
+//   ⚠ 上の `_headers` の検査と、⚠ 同じファイルの、⚠ 同じ約束を見ている。
+// ⚠ **`immutable` と名乗るなら、中身が変わったら名前も変わること。**
+//   ⚠ **いま `_headers` は `immutable` を付けていない**（2026-08-16 に外した）。
+//   実ファイル名が maplibre-gl.js / .css で**固定**で、「中身が変われば名前が変わる」が
+//   嘘だったため。**この検査は、いまは自動的に無効になる**（下の `if (!immutable)`）。
+//
+//   ⚠ **消さずに残しておく。** ファイル名をハッシュ付きにできた時点で `immutable` へ戻すが、
+//   そのとき**この検査がまた効く**。immutable は「この URL の中身は二度と変わらない」という
+//   約束で、ブラウザは1年間、確認すらしない。名前を変えずに中身を差し替えると、
+//   **一度来た人は1年間、古い地図エンジンを使い続ける**。
+{
+  const { createHash } = await import("node:crypto");
+  // 中身の指紋。⚠ 更新したらここも直す。**直さずに済ませられないのが要点。**
+  const PINNED = {
+    "maplibre-gl.js": "45a9b07a9189ce56",
+    "maplibre-gl.css": "ab1e70d59ec40465",
+  };
+  const hdr = await readFile(join(PUB, "_headers"), "utf8");
+  const immutable = /\/vendor\/\*[\s\S]{0,80}?immutable/.test(hdr);
+  if (!immutable) ok("/vendor/ は immutable を名乗っていない（改名の縛りは無い）");
+  else {
+    const off = [];
+    for (const [f, want] of Object.entries(PINNED)) {
+      const buf = await readFile(join(PUB, "vendor", f)).catch(() => null);
+      if (!buf) { off.push(`${f}（無い）`); continue; }
+      const got = createHash("sha256").update(buf).digest("hex").slice(0, 16);
+      if (got !== want) off.push(`${f}（${want} → ${got}）`);
+    }
+    off.length
+      ? bad(`/vendor/ は immutable を名乗っているのに、名前を変えずに中身が変わった: ${off.join("、")}`
+          + `（一度来た人は1年間、古いものを使い続ける。改名するか immutable をやめるか決めること。`
+          + `決めたら test/check/deliver.mjs の PINNED を直す）`)
+      : ok(`/vendor/ は immutable の約束を守っている（${Object.keys(PINNED).length} 本の中身が変わっていない）`);
+  }
+}
 // ---------- 2.5 Service Worker の版 ----------
 // ⚠ ここだけは「本番でしか壊れない」検査。
 //   VERSION はキャッシュのキーそのもので、上げないと一度来た人に古い `/` と
@@ -141,6 +184,116 @@ head("2.5. Service Worker の版");
       ? bad(`SHELL に 3D 側のものが入っている（${hit.join("・")}）。`
           + "触るたび全利用者のキャッシュが飛ぶ")
       : ok("SHELL に 3D 側のものは入っていない");
+  }
+}
+// ============================================================
+// ⚠ SW が「古いものを返し続ける」経路を作っていないか
+// ============================================================
+// ⚠ **`test/check.mjs` の「5. OGP」から逐語で移しただけ**（2026-08-24。hidetzu/konjaku#232 の 14 本目）。
+//   ⚠ **1 文字も変えていない。**⚠ **主張を強くも弱くもしていない。**
+//   ⚠ **元の節名は「OGP」だったが、⚠ 中身は OGP ではなかった**
+//     （⚠ 実測 2026-08-24: ⚠ **471 行のうち OGP は 41 行**）。
+// ⚠ **ここが「2.5 Service Worker の版」の仲間である理由**: ⚠ **版が変わらないまま中身が変わるか。**
+//   ⚠ 上の 2 件（版・SHELL の中身）と、⚠ 同じ「古い画面が出続けない」を守っている。
+// ⚠ **SW が「古いものを返し続ける」経路を作らない。**
+//   ⚠ Cache API は HTTP キャッシュの鮮度を自動では見ない。`must-revalidate` を付けても、
+//   Cache API から返せば**そのまま古いものが出る**。ヘッダでは守られない。
+//
+//   ⚠ **見るのは「must-revalidate かどうか」ではない**（最初そう書いていて、理屈が粗かった）。
+//   本当の条件は **版（VERSION）が変わらないまま、中身が変わりうるか**。
+//
+//     /data/**    毎回確認させる ＋ **版の材料に入っていない**（取り込みで書き換わる）
+//                 → SW が持ってはいけない
+//     /vendor/*   毎回確認させる ＋ **版の材料に入れてある**（scripts/sw-hash.mjs）
+//                 → 中身が変われば版も変わり、activate で消える。持ってよい
+//
+//   ⚠ とくに /data/bl/ は、索引と本体が更新時に食い違うと**誤判定につながる**。
+//   実際に食い違っていた（建物タイルが版のキャッシュに入り、版ごとに捨てて取り直していた）。
+{
+  const swSrc = await readFile(join(PUB, "sw.js"), "utf8");
+  const hdr = await readFile(join(PUB, "_headers"), "utf8");
+  // _headers から「毎回確認させる」と言っているパスを拾う
+  // ⚠ **コメント（#）と空行を先に落とす。** 落とさないと、コメントを挟んだ次のブロックの
+  //   Cache-Control を手前のパスのものとして拾う（実際に踏んだ: /vendor/* が
+  //   immutable なのに must-revalidate と読めた。⚠ 検査が誤った警告を出していた）。
+  const strict = [];
+  let cur = null;
+  for (const raw of hdr.split("\n")) {
+    const line = raw.replace(/\s+$/, "");
+    if (!line.trim() || line.trim().startsWith("#")) continue;
+    if (/^\//.test(line)) { cur = line.trim(); continue; }
+    // ⚠ no-store も同じ側に入れる（＝持たせない。must-revalidate より強い約束）。
+    //   /version.json がこれ。SW が持つと、古い版が「いまの本番」として読まれる。
+    if (cur && /Cache-Control/i.test(line) && /must-revalidate|no-store/i.test(line)) strict.push(cur);
+  }
+  if (!strict.length) bad("_headers から must-revalidate / no-store のパスを読めない（この検査が何も見ていない）");
+  else {
+    // sw.js の判定を実際に動かす。**書いてある字面ではなく、動きで見る。**
+    const { runInNewContext } = await import("node:vm");
+    const sandbox = { self: { addEventListener() {} }, location: { origin: "" } };
+    let fns = null;
+    try { fns = runInNewContext(`${swSrc}\n;({ cacheable, SHELL })`, sandbox, { timeout: 3000 }); }
+    catch (e) { bad(`public/sw.js を動かせない: ${String(e.message).slice(0, 80)}`); }
+    if (fns) {
+      // ⚠ **本当の条件は「版が変わらないまま中身が変わりうるか」。**
+      //   最初は「must-revalidate なら SW に持たせない」と書いたが、**理屈が粗かった**
+      //   （2026-08-16）。/vendor/ は must-revalidate だが、**版（VERSION）の材料に
+      //   入れてある**ので、中身が変われば版も変わり、古いものは activate で消える。
+      //   ⚠ 危ないのは「must-revalidate なのに、版の材料に入っていないもの」。
+      //     /data/ がそれ（取り込みで書き換わるが、版は動かない）。
+      // ⚠ **ソースから名前を拾わない。実際に材料になっている一覧をもらう。**
+      //   以前はディレクトリ名で前方一致していたので、**/vendor/other.js を足すと
+      //   材料に入っていないのに「版の材料」と判定していた**（2026-08-16 の指摘）。
+      // ⚠ **`../../` になった**（2026-08-24。⚠ `test/check.mjs` から 1 階層深くなった）。
+      const { extraFiles } = await import("../../scripts/sw-hash.mjs");
+      const extra = (await extraFiles()).map((p) => "/" + p);
+      const versioned = (u) => (fns.SHELL ?? []).includes(u) || extra.includes(u);
+      // ⚠ 代表ファイルは**実在するもの**にする。/vendor/index.json のような
+      //   存在しない名前で試すと、実態と違う判定になる。
+      const { readdir } = await import("node:fs/promises");
+      const samples = [];
+      for (const pat of strict) {
+        if (!pat.endsWith("*")) { samples.push(pat); continue; }
+        const dir = pat.slice(1, -1);                     // "/vendor/*" → "vendor/"
+        const names = await readdir(join(PUB, dir)).catch(() => []);
+        // ⚠ そのディレクトリの**全ファイル**で試す。1つだけでは、後から足した分を見逃す。
+        for (const n of names) samples.push(`/${dir}${n}`);
+        if (!names.length) samples.push(pat.slice(0, -1) + "index.json");
+      }
+      const held = samples.filter((u) => fns.cacheable(u) && !versioned(u));
+      held.length
+        ? bad(`版の材料に入っていないのに、SW が版のキャッシュに入れる: ${held.join("、")}`
+            + `（_headers は古いものを返さないと言っている。Cache API はヘッダの鮮度を見ないので、`
+            + `版が動かないまま中身が変わると古いものが出続ける）`)
+        : ok(`古いものを返さないと言っているもの（実ファイル ${samples.length} 本）のうち、`
+            + `SW が持つのは版の材料に入っているものだけ（版の材料: ${extra.length} 本）`);
+      // ⚠ 許可リストが**何も通さない**空振りになっていないこと
+      fns.cacheable("/vendor/maplibre-gl.js")
+        ? ok("版のキャッシュに入るものはある（/vendor/ が通る）")
+        : bad("許可リストが何も通していない（この検査が何も見ていない）");
+      // ⚠ **「/data/ は1つも版のキャッシュに入らない」と言ってはいけない。**
+      //   /data/landform.json は SHELL に入っており、**同じ VERSION のキャッシュに入る**
+      //   （install の addAll）。2026-08-16 に指摘されるまで、
+      //   **検査が事実でないことを「確認済み」として表示していた**。
+      //   ⚠ **動的に足す分（0 件）と、SHELL の例外（明示した分）を分けて言う。**
+      const probes = ["/data/bl/index.json", "/data/ev/index.json", "/data/assets.json",
+                      "/data/landform.json", "/data/quick-places.json"];
+      const dyn = probes.filter((u) => fns.cacheable(u));
+      dyn.length
+        ? bad(`/data/ が版のキャッシュに**動的に**入る: ${dyn.join("、")}（取り込みで書き換わる。持たない）`)
+        : ok("/data/ は、網からは1つも版のキャッシュに入らない（動的追加 0 件）");
+      // SHELL 経由で入る /data/ は、**数えて名前で出す**。黙って 0 と言わない。
+      const shellData = (fns.SHELL ?? []).filter((u) => u.startsWith("/data/"));
+      // ⚠ SHELL に入れてよいのは「取り込みで書き換わらないもの」だけ。
+      //   _headers が must-revalidate と言っているものが SHELL にあれば、それは矛盾。
+      const shellStrict = shellData.filter((u) => strict.some((pat) =>
+        pat.endsWith("*") ? u.startsWith(pat.slice(0, -1)) : u === pat));
+      shellStrict.length
+        ? bad(`SHELL に、毎回確認させるはずの /data/ がある: ${shellStrict.join("、")}`
+            + `（版と一緒に配られるので、取り込みで書き換わるものを入れてはいけない）`)
+        : ok(`SHELL 経由で版のキャッシュに入る /data/ は ${shellData.length} 件`
+            + `（${shellData.join("、") || "無し"}。いずれも取り込みで書き換わらないもの）`);
+    }
   }
 }
 // ---------- 2.6 配信中の版 ----------

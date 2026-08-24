@@ -27,7 +27,7 @@
 import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { unpack as blUnpack } from "../../scripts/bl-format.mjs";
-import { ROOT, ok, bad, head, src , HTML_COMMENT, dropComment } from "./lib.mjs";
+import { ROOT, PUB, ok, bad, head, src , BLOCK_COMMENT, HTML_COMMENT, LINE_COMMENT, dropComment } from "./lib.mjs";
 
 // ⚠ **SPEC の「静的 N件」が、本当に N 件か。**
 //   上の検査は「空・0・書き方」だけを見ていて、**中身のずれは見ていなかった**。
@@ -123,6 +123,39 @@ import { ROOT, ok, bad, head, src , HTML_COMMENT, dropComment } from "./lib.mjs"
     : ok(`住所検索の口は ${OWNER} の1か所（⚠ ${cand.length} ファイルを見た）`);
 }
 
+// ============================================================
+// ⚠ 住所検索を叩いているのが 1 か所だけか
+// ============================================================
+// ⚠ **`test/check.mjs` の「5. OGP」から逐語で移しただけ**（2026-08-24。hidetzu/konjaku#232 の 14 本目）。
+//   ⚠ **1 文字も変えていない。**⚠ **主張を強くも弱くもしていない。**
+//   ⚠ **元の節名は「OGP」だったが、⚠ 中身は OGP ではなかった**
+//     （⚠ 実測 2026-08-24: ⚠ **471 行のうち OGP は 41 行**）。
+// ⚠ **ここが「住所検索の口」の続きである理由**: ⚠ **すぐ上が「口を書き写していないか」。**
+//   ⚠ こちらは ⚠ **その口を、⚠ 実際に叩いているのが 1 か所か。**⚠ 同じ問いの表と裏。
+// ⚠ **住所検索を叩く実装は1か所だけ。**
+//   以前は index.html と peel3d.js が同じものを持っていて、**実際に食い違っていた**
+//   （/peel だけ時間切れも再試行も追い越し防止も無く、取れなかったときに
+//   「見つかりませんでした」と書いていた）。揃え直したあとも「揃えてあるだけ」で、
+//   片方だけ直す事故が起きうる状態だった（掟: 同じ問いに答える実装を2つ持たない）。
+{
+  const files = ["index.html", "peel.html", "places.js", "gsi-address-search.js", "peel3d.js", "verify.js", "events.js", "share.js", "esc.js", "sw.js"];
+  const hits = [];
+  for (const f of files) {
+    const t = await readFile(join(PUB, f), "utf8").catch(() => "");
+    // ⚠ コメントは落とす。落とさないと、この決まりを説明したコメントを拾う。
+    //   ⚠ `//` を素朴に落とすと URL を食うので、直前が `:` なら落とさない。
+    const bare = t.replace(HTML_COMMENT, " ").replace(BLOCK_COMMENT, " ")
+      .replace(LINE_COMMENT, "$1");
+    const n = (bare.match(/AddressSearch\?q=/g) ?? []).length;
+    if (n) hits.push(`${f}×${n}`);
+  }
+  // ⚠ **2026-08-22 に、⚠ 口を `gsi-address-search.js` へ切り出した**（hidetzu/konjaku#181）。
+  //   ⚠ **期待する場所が変わっただけ。**⚠ 「1 か所だけ」という主張は変えていない。
+  hits.length === 1 && hits[0].startsWith("gsi-address-search.js")
+    ? ok(`住所検索を叩くのは gsi-address-search.js の1か所だけ（${hits[0]}）`)
+    : bad(`住所検索を叩く箇所が1つでない: ${hits.join("、") || "0 か所"}`
+      + `（画面ごとに持つと、片方だけ直す事故が起きる。gsi-address-search.js を使うこと）`);
+}
 // ⚠ **42 語すべてに fixture があるか**（2026-08-22。hidetzu/konjaku#204）。
 //   ⚠ **走らせる前に分かる。**⚠ **走らせてから気づくと、⚠ 1 語ぶん静かに減る。**
 //   ⚠ **実際に踏んだ**: 控えを別名で戻して fixture を 1 つ壊したとき、
