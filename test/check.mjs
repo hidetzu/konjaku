@@ -23,8 +23,12 @@ import { join, extname, basename, dirname } from "node:path";
 import { pathToFileURL } from "node:url";
 import { VERSION_RE, hashOf, readSw } from "../scripts/sw-hash.mjs";
 import { VERSION as BL_VERSION, unpack as blUnpack } from "../scripts/bl-format.mjs";
+// ⚠ **数え方と読む先は `test/check/lib.mjs` の 1 か所**（2026-08-24。hidetzu/konjaku#232）。
+//   ⚠ **節を別ファイルへ出すには、⚠ どの節も使う道具を先に出す必要がある。**
+//   ⚠ **`test/render/lib.mjs` と対になる置き方。**
+import { ROOT, PUB, ok, bad, warn, head, tally, makeReport,
+         htmlFiles, jsFiles, src, TOP, PAGE_JS, pageSrc } from "./check/lib.mjs";
 
-const ROOT = new URL("..", import.meta.url).pathname;
 // ⚠ **住所検索の口は `public/gsi-address-search.js` の1か所**（hidetzu/konjaku#181）。
 //   ⚠ **この検査も写さない。**⚠ 本番の口に URL を組み立てさせて借りる。
 const gsiSearchUrl = (q) => {
@@ -37,7 +41,6 @@ const gsiSearchUrl = (q) => {
   }).search(q);
   return seen;
 };
-const PUB = join(ROOT, "public");
 const SITE = "https://konjaku.hidetzu.work";
 const CHECK_LINKS = process.argv.includes("--links");
 // --links-new / --links-new=<ref>。指定が無ければ null（外へ出ない）
@@ -46,14 +49,9 @@ const NEW_LINKS = (() => {
   return a === undefined ? null : (a.split("=")[1] ?? "");
 })();
 
-let failed = 0, warned = 0, passed = 0;
 // ⚠ **必須チェックにしている名前**（ruleset「main を守る」）。
 //   ⚠ **repo の外にあるものを控えている。**⚠ **ruleset を変えたら、⚠ ここも直す。**
 const REQUIRED_CHECKS = ["静的検査・外部リンク", "検索の並び（42語・fixture）", "実描画"];
-const ok   = (m) => { passed++; console.log(`  \x1b[32m✓\x1b[0m ${m}`); };
-const bad  = (m) => { failed++; console.log(`  \x1b[31m✗\x1b[0m ${m}`); };
-const warn = (m) => { warned++; console.log(`  \x1b[33m!\x1b[0m ${m}`); };
-const head = (m) => console.log(`\n\x1b[1m${m}\x1b[0m`);
 
 // 事物の索引の読み方。⚠ **ここ1か所**にする（z12 の束ごとに、中の z14 を1ビットずつ）。
 //   写すと、索引の持ち方を変えたときに片方だけ直して、同じ問いに違う答えが出る。
@@ -64,24 +62,50 @@ const evCovered = (idx, tileOf) => (lon, lat) => {
   return { t, on: !!((idx.tiles[`${bx}/${by}`] ?? 0) & bit) };
 };
 
-const pubFiles = await readdir(PUB);
-const htmlFiles = pubFiles.filter((f) => extname(f) === ".html");
-const jsFiles = pubFiles.filter((f) => extname(f) === ".js");
-const src = {};
-for (const f of [...htmlFiles, ...jsFiles]) src[f] = await readFile(join(PUB, f), "utf8");
-
-// ⚠ **トップの画面は 2 ファイルに分かれた**（2026-08-24）。
-//   ⚠ `index.html` … HTML と CSS ／ ⚠ `top.js` … JavaScript（⚠ 逐語で出しただけ）
-//   ⚠ **`/peel` は前からこの形**（`peel.html` ↔ `peel3d.js`）。⚠ **トップが取り残されていた。**
+// ---------- 0. 数え方そのもの ----------
+// ⚠ **この検査が壊れると、⚠ 全部の検査が黙って通る**（2026-08-24。⚠ **実際に起こした**）。
+//   ⚠ `test/check/lib.mjs` を別ファイルへ出した直後、⚠ **`bad` が数えない形に壊したら、
+//     ⚠ 検査が落ちているのに「問題なし」と出た。**
+//   ⚠ **数える処理が 1 行で消せるうちは、⚠ 誰も捕まえられない。**
 //
-// ⚠ **どちらを見るかは、⚠ 検査ごとに違う。**
-//   ⚠ DOM や CSS を見る検査 → `src["index.html"]`
-//   ⚠ **JS の振る舞いを見る検査 → `TOP`**
-//
-// ⚠ **`TOP` は 2 つを繋いだもの。**⚠ 利用者から見れば 1 つの画面なので、
-//   ⚠ 「トップがこの言葉を使っているか」は、⚠ **どちらにあっても同じ意味。**
-// ⚠ **繋ぎ目に印を入れる**（⚠ 跨いだ一致が起きたとき、⚠ 気づけるように）。
-const TOP = `${src["index.html"] ?? ""}\n/* ==== top.js ==== */\n${src["top.js"] ?? ""}`;
+// ⚠ **本物には触らない。**⚠ **工場で新しく作って、⚠ 別の道で確かめる**
+//   （`CLAUDE.md` §9: ⚠ **突き合わせる相手は、⚠ 別の道で得たものにする**）。
+head("0. 数え方そのもの");
+{
+  const fails = [];
+  const yes = (c, what) => { if (!c) fails.push(what); };
+  const said = [];
+  const r = makeReport((m) => said.push(m));
+  r.ok("a"); r.ok("b"); r.bad("x"); r.warn("w"); r.head("h");
+  const t = r.tally();
+  yes(t.passed === 2, `通った数が合わない: ${t.passed}`);
+  yes(t.failed === 1, `落ちた数が合わない: ${t.failed}`);
+  yes(t.warned === 1, `警告の数が合わない: ${t.warned}`);
+  // ⚠ **落ちた理由を持っていること**（⚠ 数だけ持つ形に戻っていない証拠）
+  yes(r.reasons().join() === "x", `落ちた理由を持っていない: ${JSON.stringify(r.reasons())}`);
+  // ⚠ **印字と数が 1 対 1**（⚠ 片方だけ消えていない）
+  yes(said.length === 5, `印字した行が合わない: ${said.length}`);
+  yes(said.filter((m) => /✓/.test(m)).length === 2, "✓ の印が合わない");
+  yes(said.filter((m) => /✗/.test(m)).length === 1, "✗ の印が合わない");
+  // ⚠ **作るたびに別**（⚠ 貯めた行を共有していない）
+  const r2 = makeReport(() => {});
+  yes(r2.tally().passed === 0, "新しく作ったのに数が引き継がれている");
+  // ⚠ **本物の数は、⚠ ここまでで 0 件でないこと**（⚠ 走者が生きている証拠）
+  //   ⚠ この節はいちばん最初なので、⚠ **まだ 0**。⚠ だから見ない。
+  // ⚠ **`bad()` で落とさない**（2026-08-24。⚠ **実際に素通りさせた**）。
+  //   ⚠ **`bad` が壊れているとき、⚠ `bad` を使う検査では捕まえられない**（⚠ 自己参照）。
+  //   ⚠ 実測: ⚠ `bad` を「印字するが貯めない」形にしたら、
+  //     ⚠ **この節が落ちたのに、⚠ 走者は「問題なし」で終わった。**
+  //   ⚠ **別の道で落とす**（`CLAUDE.md` §9）。⚠ **走者ごと止める。**
+  //   ⚠ **汚い落ち方でよい。**⚠ ここが壊れているなら、⚠ **他の検査は全部信用できない。**
+  if (fails.length) {
+    console.log(`  \x1b[31m✗\x1b[0m 数え方が壊れている（${fails.length} 件）: ${fails.join(" / ")}`);
+    console.log(`\n\x1b[31m⚠ 検査の数え方そのものが壊れています。`
+      + `ここが壊れていると、⚠ すべての検査が黙って通ります。\x1b[0m`);
+    process.exit(1);
+  }
+  ok("数え方は、貯めた行を数えている（印字と 1 対 1・作るたびに別・理由を持つ）");
+}
 
 // ---------- 1. スクリプトの構文 ----------
 head("1. スクリプトの構文");
@@ -109,14 +133,6 @@ for (const f of jsFiles) {
   try { new (async () => {}).constructor(src[f]); ok(f); }
   catch (e) { bad(`${f}: ${e.message}`); }
 }
-// ⚠ **その画面の JS も一緒に見る**（2026-08-24。⚠ **実際に踏んだ**）。
-//   ⚠ トップの JS を `top.js` へ出したとき、⚠ **`index.html` から `KonjakuPlaces.` が消えた。**
-//   ⚠ **`src="./places.js"` は残っているのに、⚠ この検査は何も確かめなくなった**
-//     （⚠ 落ちない。⚠ **確かめる相手が居なくなるだけなので気づけない**）。
-//   ⚠ **画面 = HTML ＋ その画面の JS。**⚠ `/peel` も同じ形（`peel.html` ＋ `peel3d.js`）。
-const PAGE_JS = { "index.html": "top.js", "peel.html": "peel3d.js" };
-const pageSrc = (f) => `${src[f] ?? ""}\n${src[PAGE_JS[f]] ?? ""}`;
-
 // 読み込み忘れの検知。places.js は index.html の検索が依存している
 for (const f of htmlFiles) {
   const needs = [...pageSrc(f).matchAll(/\b(KonjakuPlaces|Konjaku)\./g)].map((m) => m[1]);
@@ -6045,12 +6061,14 @@ head("9. 画面の言葉");
 //   ⚠ **`CLAUDE.md` はここを「この数が正」と指しているので、⚠ 正本が実際より少なく名乗る形だった。**
 //   ⚠ **落ちない。**⚠ **少なく言うだけなので、⚠ 気づけない。**
 {
-  const mine = passed + 1;   // ⚠ **自分もこれから 1 件になるので足す**
+  // ⚠ **数は `test/check/lib.mjs` が持つ**（2026-08-24）。⚠ ここでは読むだけ。
+  const mine = tally().passed + 1;   // ⚠ **自分もこれから 1 件になるので足す**
   mine > 1
     ? ok(`静的検査は ${mine} 件を数えた（⚠ この数が正。⚠ SPEC には書かない）`)
     : bad(`静的検査が ${mine} 件しか走っていない（⚠ 1 件も確かめていないので緑にしない）`);
 }
 
+const { failed, warned } = tally();
 console.log(`\n${"─".repeat(52)}`);
 if (failed) { console.log(`\x1b[31m${failed} 件の問題\x1b[0m${warned ? ` / ${warned} 件の警告` : ""}`); process.exit(1); }
 console.log(`\x1b[32m問題なし\x1b[0m${warned ? ` / ${warned} 件の警告` : ""}`);
