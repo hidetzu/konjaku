@@ -80,9 +80,12 @@
 //   echo 'これは JSON ではない'   | node .claude/hooks/telemetry.mjs; echo "exit=$?"
 //   printf ''                     | node .claude/hooks/telemetry.mjs; echo "exit=$?"
 import { appendFileSync, mkdirSync, rmdirSync, readFileSync, writeFileSync, renameSync, statSync } from "node:fs";
-import { join, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 import { execFileSync } from "node:child_process";
+// ⚠ **置き場所は `.claude/telemetry-dir.mjs` の 1 か所**（2026-08-24 に寄せた）。
+//   ⚠ **前は、⚠ 書く側と読む側が別々に同じ字を持っていた。**
+//   ⚠ **片方だけ変えても、⚠ 検査は 1 件も落ちなかった**（⚠ 実証済み）。
+import { telemetryDir, projectRoot } from "../telemetry-dir.mjs";
 
 const LOCK_MS = 300;      // ⚠ 索引の取り合いを待つ上限。⚠ **超えたら鍵無しで進む**（止めない）
 const KEEP_TASKS = 500;   // ⚠ 索引に残す Task の数。⚠ 古いものから落とす（際限なく太らせない）
@@ -101,9 +104,8 @@ try {
   const sid = String(IN.session_id ?? "").trim();
   if (!sid) bail("session_id が無い");
 
-  const ROOT = process.env.CLAUDE_PROJECT_DIR
-    ?? join(dirname(fileURLToPath(import.meta.url)), "..", "..");
-  const DIR = process.env.KONJAKU_TELEMETRY_DIR ?? join(ROOT, ".claude", "telemetry");
+  const ROOT = projectRoot();
+  const DIR = telemetryDir();
   mkdirSync(DIR, { recursive: true });
 
   // ---- 時刻（地方時のオフセット付き。UTC へ寄せない＝いつ作業したかが読める） ----

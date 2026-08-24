@@ -23,6 +23,9 @@ import { readFile, readdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { ROOT, ok, bad, head, dropCommentOrHash } from "./lib.mjs";
+// ⚠ **計測の置き場所は `.claude/telemetry-dir.mjs` の 1 か所**（2026-08-24 に寄せた）。
+//   ⚠ **ここで字を持ち直さない。**⚠ **持ち直すと、⚠ 寄せた意味が無くなる。**
+import { TELEMETRY_DIR_NAME, TELEMETRY_IGNORE_LINE } from "../../.claude/telemetry-dir.mjs";
 
 head("人の判断を飛ばさない");
 
@@ -156,7 +159,7 @@ head("人の判断を飛ばさない");
   //   （⚠ `CLAUDE.md` §9: ⚠ **判定の字を変更前後で突き合わせられなくなる**）。
   // ⚠ **`worktrees/` も読まない。**⚠ **中身はこの repo の別の版そのもの**なので、
   //   ⚠ **読むと、⚠ 同じファイルを 2 度見たうえに、⚠ 数が作業中かどうかで変わる。**
-  const SKIP = new Set(["telemetry", "worktrees"]);
+  const SKIP = new Set([TELEMETRY_DIR_NAME, "worktrees"]);
   const walk = async (d) => {
     const out = [];
     for (const e of await readdir(d, { withFileTypes: true })) {
@@ -261,14 +264,25 @@ head("計測が、作業を止めない");
     // ⚠ **git に入っていないこと。**⚠ .gitignore を読んで確かめない。
     //   ⚠ **git が実際にどう扱っているか**で見る（⚠ 上の Slack の検査と同じ流儀）
     try {
-      const t = exT("git", ["ls-files", ".claude/telemetry"], { encoding: "utf8", cwd: ROOT }).trim();
+      const t = exT("git", ["ls-files", `.claude/${TELEMETRY_DIR_NAME}`], { encoding: "utf8", cwd: ROOT }).trim();
       if (t) fails.push(`計測の出力が git に入っている: ${t.split("\n").join("、")}`);
     } catch { fails.push("git ls-files が使えない（追跡されていないことを確かめていない）"); }
 
+    // ⚠ **`.gitignore` だけは、⚠ コードから借りられない**（⚠ git の書式で、⚠ コードではない）。
+    //   ⚠ **だから、⚠ 機械で突き合わせる**（`CLAUDE.md` §3: ⚠ やむを得ず 2 つ持つときは突き合わせる）。
+    //   ⚠ **置き場所の名前を変えたのに `.gitignore` を直し忘れると、
+    //   ⚠ 記録が git に入り始める**（⚠ **「git に入れない」という約束が黙って破れる**）。
+    {
+      const ig = await readFile(join(ROOT, ".gitignore"), "utf8").catch(() => "");
+      if (!ig.split("\n").map((l) => l.trim()).includes(TELEMETRY_IGNORE_LINE))
+        fails.push(`.gitignore が ${TELEMETRY_IGNORE_LINE} を外していない`
+          + `（⚠ 置き場所は .claude/telemetry-dir.mjs が持つ。⚠ 名前を変えたら両方を直す）`);
+    }
     fails.length
       ? bad(`計測の仕掛けが揃っていない: ${fails.join(" / ")}`
           + `（⚠ 始まりと終わりの両方が要る。⚠ 出力は git に入れない）`)
-      : ok(`計測の Hook が両端に付いている（${wired.join(" ／ ")}・出力は git の外）`);
+      : ok(`計測の Hook が両端に付いている（${wired.join(" ／ ")}・出力は git の外`
+          + `・置き場所 ${TELEMETRY_IGNORE_LINE} は .gitignore が外している）`);
   }
 
   // ---- 2. ⚠ 実際に走らせる（⚠ **止まらない／中身を持ち出さない**） ----

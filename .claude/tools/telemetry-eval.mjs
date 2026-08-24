@@ -50,8 +50,11 @@
 // ⚠ **`tasks.jsonl` は追記だけ**（`telemetry.mjs` の契約）。
 // ⚠ **その task_id の最後の行を、⚠ いまの状態として採る。**⚠ **書き換えて 1 行にしない。**
 import { readFileSync, existsSync } from "node:fs";
-import { join, dirname } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
+// ⚠ **置き場所は `../telemetry-dir.mjs` の 1 か所**（⚠ 書く側と同じものを借りる）。
+//   ⚠ **別々に持つと、⚠ 書いた先と読む先が黙ってずれる**（2026-08-24 に実証した）。
+import { telemetryDir } from "../telemetry-dir.mjs";
 
 // ⚠ **並べる順は決め打ち。**⚠ **知らない種別は、⚠ そのうしろに足す**
 //   （⚠ 消さない。⚠ **知らないものが増えたことに気づけるように**）。
@@ -250,12 +253,6 @@ export const readTasks = (dir) => {
   const f = join(dir, "tasks.jsonl");
   if (!existsSync(f)) return { rows: [], unreadable: [], missing: true };
   return { ...parseJsonl(readFileSync(f, "utf8")), missing: false };
-};
-
-export const telemetryDir = () => {
-  const ROOT = process.env.CLAUDE_PROJECT_DIR
-    ?? join(dirname(fileURLToPath(import.meta.url)), "..", "..");
-  return process.env.KONJAKU_TELEMETRY_DIR ?? join(ROOT, ".claude", "telemetry");
 };
 
 const main = () => {

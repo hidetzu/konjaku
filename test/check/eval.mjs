@@ -230,6 +230,38 @@ const E = await import(pathToFileURL(join(ROOT, TOOL)).href);
       env: { ...process.env, KONJAKU_TELEMETRY_DIR: none }, stdio: ["ignore", "pipe", "pipe"] });
     if (!/ありません/.test(out)) fails.push("記録がまだ無いときに、そう言っていない");
   } catch (e) { fails.push(`記録がまだ無いときに落ちた（status=${e?.status ?? "?"}）`); }
+  // ⚠ **書いた先を、⚠ 本当に読めるか**（2026-08-24）。
+  //   ⚠ **置き場所は `.claude/telemetry-dir.mjs` の 1 か所に寄せた。**
+  //   ⚠ **片方だけが自前で決め始めても、⚠ 字を見るだけでは気づけない**（⚠ 実証した）。
+  //   ⚠ **だから、⚠ 既定の置き場所のまま 1 往復させて、⚠ 読む側が見つけるかで見る。**
+  //   ⚠ **`KONJAKU_TELEMETRY_DIR` を渡さない**（⚠ 渡すと、⚠ 両方に同じ答えを教えてしまう）。
+  {
+    const home = mkdtempSync(join(tmpdir(), "konjaku-roundtrip-"));
+    const env = { ...process.env, CLAUDE_PROJECT_DIR: home };
+    delete env.KONJAKU_TELEMETRY_DIR;
+    const hook = join(ROOT, ".claude/hooks/telemetry.mjs");
+    try {
+      for (const input of [
+        { hook_event_name: "UserPromptSubmit", session_id: "rt-1", prompt_id: "rt-p1", prompt: "ふつうの依頼" },
+        { hook_event_name: "Stop", session_id: "rt-1", prompt_id: "rt-p1", last_assistant_message: "はい" },
+      ]) execFileSync("node", [hook], { input: JSON.stringify(input), cwd: ROOT, encoding: "utf8",
+            env, timeout: 20_000, stdio: ["pipe", "pipe", "pipe"] });
+      const out = execFileSync("node", [join(ROOT, TOOL), "--json"],
+        { cwd: ROOT, encoding: "utf8", env, timeout: 20_000, stdio: ["ignore", "pipe", "pipe"] });
+      // ⚠ **記録が無いと、⚠ 読む側は「まだありません」と人の言葉で答える**（⚠ JSON にならない）。
+      //   ⚠ **それ自体が「書いた先を見ていない」ことの印。**⚠ **そう名乗る**
+      //   （⚠ パースの失敗として報せない。⚠ **落ちた理由が狙った主張になっていないと読めない**）。
+      let seen = null; try { seen = JSON.parse(out); } catch {}
+      if (!seen)
+        fails.push("読む側が、書いた先に記録を見つけていない（⚠ 書く側と読む側が別の場所を指している）");
+      else if (seen.overall.tasks !== 1)
+        fails.push(`書いた先を読めていない（読む側が見つけた Task は ${seen.overall.tasks} 件。1 件のはず）`
+          + `（⚠ 書く側と読む側が、⚠ 別の場所を指している）`);
+    } catch (e) {
+      fails.push(`既定の置き場所で 1 往復できない（${String(e.message).slice(0, 60)}）`);
+    }
+    rmSync(home, { recursive: true, force: true });
+  }
   rmSync(dir, { recursive: true, force: true });
   rmSync(none, { recursive: true, force: true });
 
@@ -238,5 +270,6 @@ const E = await import(pathToFileURL(join(ROOT, TOOL)).href);
         + `（⚠ 読むだけ／⚠ 観測していないことを言わない）`)
     : ok("Eval を実際に走らせて確認（人が読む形と --json の 2 通り・壊れた行 1 行を数えて残りは集計・"
         + "未終了は所要時間の母数に入らない・良し悪しの欄を 1 つも持たない・"
-        + "推定値であることを両方で名乗る・生の記録は 1 バイトも変わらない・記録が無くても落ちない）");
+        + "推定値であることを両方で名乗る・生の記録は 1 バイトも変わらない・記録が無くても落ちない・"
+        + "⚠ 既定の置き場所のまま 1 往復して、⚠ 書いた先を読む側が見つけられる）");
 }
