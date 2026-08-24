@@ -21,7 +21,7 @@
 import { readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { ROOT, PUB, ok, bad, head, htmlFiles, jsFiles, src } from "./lib.mjs";
+import { ROOT, PUB, ok, bad, head, htmlFiles, jsFiles, src , BLOCK_COMMENT } from "./lib.mjs";
 
 
 // ⚠ URL に地名と座標を載せているので、Referer で外へ出さないこと。
@@ -91,7 +91,7 @@ head("1.7 計測の受け口（/t を実際に呼ぶ）");
       // ⚠ **`//` は、⚠ `https://` を巻き込まない形で落とす**（2026-08-24）。
       //   ⚠ **いまは worker.js の URL がコメント行の中なので実害は無い**（⚠ 実測: 差 0 文字）。
       //   ⚠ **URL を 1 行足された瞬間に、⚠ その行の残りが検査の目から消える。**
-      .replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/[^\n]*/g, "$1");
+      .replace(BLOCK_COMMENT, " ").replace(/(^|[^:])\/\/[^\n]*/g, "$1");
     const setOf = (name) => [...(new RegExp(`const ${name} = new Set\\(\\[([\\s\\S]*?)\\]\\)`).exec(wsrc)?.[1] ?? "")
       .matchAll(/"([^"]+)"/g)].map((m) => m[1]);
     const EV = setOf("EVENTS"), TG = setOf("TARGETS"), SR = setOf("SOURCES");
