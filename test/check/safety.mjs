@@ -88,7 +88,10 @@ head("1.7 計測の受け口（/t を実際に呼ぶ）");
     //   「/t が数えていない本文がある: 後で」で落ちる。実際に踏んだ（2026-08-15）。
     //   CLAUDE.md §5 が「コメントを先に落とす」と書いているのは、これで何度目か。
     const wsrc = (await readFile(join(ROOT, "worker.js"), "utf8"))
-      .replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/.*$/gm, "");
+      // ⚠ **`//` は、⚠ `https://` を巻き込まない形で落とす**（2026-08-24）。
+      //   ⚠ **いまは worker.js の URL がコメント行の中なので実害は無い**（⚠ 実測: 差 0 文字）。
+      //   ⚠ **URL を 1 行足された瞬間に、⚠ その行の残りが検査の目から消える。**
+      .replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/[^\n]*/g, "$1");
     const setOf = (name) => [...(new RegExp(`const ${name} = new Set\\(\\[([\\s\\S]*?)\\]\\)`).exec(wsrc)?.[1] ?? "")
       .matchAll(/"([^"]+)"/g)].map((m) => m[1]);
     const EV = setOf("EVENTS"), TG = setOf("TARGETS"), SR = setOf("SOURCES");
