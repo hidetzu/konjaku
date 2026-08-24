@@ -341,3 +341,42 @@ head("6. 外部リンク");
     }
   }
 }
+
+// ============================================================
+// ⚠ 外へ出る相手の住所（⚠ 元は「6」の中にあった）
+// ============================================================
+// ⚠ **`test/check.mjs` から逐語で移しただけ**（2026-08-24。hidetzu/konjaku#232 の 8 本目）。
+//   ⚠ **1 文字も変えていない。**
+// ⚠ **ここが「リンク」の仲間である理由**: ⚠ **外へ出る先が 1 か所に書いてあるか**を見る。
+//   ⚠ **2 か所に書くと、⚠ 片方だけ直したときに「同じ画面で別の相手を見る」**（ADR 0021）。
+
+// 外へ出る相手の住所は、1 か所にしか書かないこと。
+// ⚠ 2 か所に書くと、片方だけ直したときに**同じ画面で別の相手を見る**
+//   （ADR 0021）。実測（2026-08-19）: 地理院タイルの入口が verify.js と peel3d.js の
+//   2 か所にあった。⚠ index.html は既に Konjaku.GSI を借りていた。
+// ⚠ **コメントは先に落とす。**落とさないと、この検査を説明したコメントを拾う。
+{
+  const fails = [];
+  const strip = (t) => (t ?? "").split("\n").map((l) => l.replace(/(^|\s)\/\/.*$/, "")).join("\n")
+    .replace(/\/\*[\s\S]*?\*\//g, "").replace(/<!--[\s\S]*?-->/g, "");
+  const HOSTS = [
+    { re: /["'`]https:\/\/cyberjapandata\.gsi\.go\.jp\/xyz["'`]/g, nm: "地理院タイル", own: "verify.js" },
+    { re: /["'`]https:\/\/maps\.gsi\.go\.jp\/xyz["'`]/g, nm: "地理院ベクトル", own: "verify.js" },
+  ];
+  for (const h of HOSTS) {
+    const where = [];
+    for (const f of Object.keys(src)) {
+      const n = [...strip(src[f]).matchAll(h.re)].length;
+      if (n) where.push(`${f}×${n}`);
+    }
+    if (where.length !== 1 || !where[0].startsWith(h.own))
+      fails.push(`${h.nm} の住所が ${where.join(" / ") || "どこにも無い"}（${h.own} の 1 か所だけにする）`);
+  }
+  // ⚠ 借りる側が、本当に借りていること（自前に戻ったら落とす）
+  if (!/const GSI\s*=\s*Konjaku\.GSI/.test(src["peel3d.js"] ?? ""))
+    fails.push("peel3d.js が Konjaku.GSI を借りていない");
+  fails.length
+    ? bad(`外へ出る相手の住所が 1 か所になっていない: ${fails.join(" / ")}`
+        + `（片方だけ直すと、同じ画面で別の相手を見る）`)
+    : ok(`外へ出る相手の住所は 1 か所（地理院タイル・ベクトルとも verify.js。peel3d.js は借りている）`);
+}

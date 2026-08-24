@@ -27,7 +27,7 @@
 import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { unpack as blUnpack } from "../../scripts/bl-format.mjs";
-import { ROOT, ok, bad, head } from "./lib.mjs";
+import { ROOT, ok, bad, head, src } from "./lib.mjs";
 
 // ⚠ **SPEC の「静的 N件」が、本当に N 件か。**
 //   上の検査は「空・0・書き方」だけを見ていて、**中身のずれは見ていなかった**。
@@ -227,3 +227,56 @@ import { ROOT, ok, bad, head } from "./lib.mjs";
   }
 }
 
+// ============================================================
+// ⚠ ドメインモデル（docs/DOMAIN.md）が、実物とつながっているか
+// ============================================================
+// ⚠ **`test/check.mjs` から逐語で移しただけ**（2026-08-24。hidetzu/konjaku#232 の 8 本目）。
+//   ⚠ **1 文字も変えていない。**
+// ⚠ **ここが「文書と数」の仲間である理由**: ⚠ **文書が名指ししているものが実在するか**を見る。
+//   ⚠ **文書は誰も実行しない。**⚠ ずれても、⚠ 誰も気づかない。
+
+// ドメインモデル（docs/DOMAIN.md）が、実物とつながっていること。
+// ⚠ **文書は誰も実行しないので、黙って古くなる。**機械で見られるところだけ見る。
+// ⚠ **中身の正しさ（言葉づかいが良いか）はここでは見ない。**見るのは
+//   「言葉の持ち主」として名指ししたものが**実在するか**と、
+//   ⚠ **画面に出さないと決めた語が、本当に出ていないか**。
+{
+  const dom = await readFile(join(ROOT, "docs", "DOMAIN.md"), "utf8").catch(() => "");
+  const fails = [];
+  if (!dom) fails.push("docs/DOMAIN.md を読めない");
+  else {
+    // ① 持ち主として名指ししたものが実在すること
+    const OWNERS = [["public/prov.js", "KonjakuProv"], ["public/swale.js", "SWALE"],
+                    ["public/verify.js", "ERAS"]];
+    for (const [f, sym] of OWNERS) {
+      if (!dom.includes(f)) fails.push(`DOMAIN.md が ${f} を名指ししていない`);
+      const src2 = f.startsWith("public/") ? src[f.slice(7)] : null;
+      if (src2 == null) fails.push(`${f} を読めない`);
+      else if (!src2.includes(sym)) fails.push(`${f} に ${sym} が無い（持ち主が変わった）`);
+    }
+    // ⚠ **トップの JS は `top.js`**（2026-08-24）。⚠ TOPWORD の持ち主が移った
+    for (const [f, sym] of [["WORD", "peel3d.js"], ["TOPWORD", "top.js"]]) {
+      if (!dom.includes(f)) fails.push(`DOMAIN.md が ${f} を名指ししていない`);
+      if (!(src[sym] ?? "").includes(`const ${f} = {`) && !(src[sym] ?? "").includes(`const ${f} = {`))
+        fails.push(`${sym} に ${f} が無い（持ち主が変わった）`);
+    }
+    // ② ⚠ 画面に出さないと決めた語が、**利用者に見えるところ**に出ていないこと。
+    //   ⚠ コメントは先に落とす（検査が自分の説明を拾う。3 回踏んでいる）。
+    //   ⚠ 出典・/about は別（そこでは使ってよい）。ここでは
+    //     **判定文を組み立てている行**だけを見る。
+    const strip = (t) => (t ?? "").split("\n")
+      .map((l) => l.replace(/(^|\s)\/\/.*$/, "")).join("\n").replace(/<!--[\s\S]*?-->/g, "");
+    const BAN = [
+      { w: "この場所は", why: "場所の指し方は「この土地は」に統一（DOMAIN §2-1）" },
+    ];
+    for (const f of ["index.html", "peel3d.js", "peel.html"])
+      for (const g of BAN) {
+        const n = [...strip(src[f]).matchAll(new RegExp(g.w, "g"))].length;
+        if (n) fails.push(`${f} に「${g.w}」が ${n} 箇所（${g.why}）`);
+      }
+  }
+  fails.length
+    ? bad(`ドメインモデルと実物が食い違っている: ${fails.join(" / ")}`
+        + `（docs/DOMAIN.md が言葉の持ち主。実装を変えたら、そちらも直す）`)
+    : ok(`docs/DOMAIN.md の名指しは実在し、統一した語だけが画面に出ている`);
+}
