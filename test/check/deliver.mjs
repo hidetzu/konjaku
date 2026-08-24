@@ -18,11 +18,27 @@
 // ⚠ **道具は `test/check/lib.mjs` の 1 か所**（⚠ ここで持ち直さない）。
 
 import { readFile } from "node:fs/promises";
+import { existsSync, readFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import { VERSION_RE, hashOf, readSw } from "../../scripts/sw-hash.mjs";
 import { pathToFileURL } from "node:url";
-import { ROOT, PUB, ok, bad, warn, head, src, TOP, BLOCK_COMMENT, HEAD_COMMENT, LINE_COMMENT } from "./lib.mjs";
+import { ROOT, PUB, ok, bad, warn, head, src, TOP, seen, BLOCK_COMMENT, HEAD_COMMENT, LINE_COMMENT } from "./lib.mjs";
+
+// ⚠ **`test/check.mjs` から一緒に持ってきた道具**（2026-08-25。hidetzu/konjaku#232 の 29 本目）。
+//   ⚠ **この 1 塊しか使わない。**⚠ **`../../` になった**（⚠ 1 階層深くなった）。
+// ⚠ **住所検索の口は `public/gsi-address-search.js` の1か所**（hidetzu/konjaku#181）。
+//   ⚠ **この検査も写さない。**⚠ 本番の口に URL を組み立てさせて借りる。
+const gsiSearchUrl = (q) => {
+  const win = {};
+  new Function("window", "module", readFileSync(new URL("../../public/gsi-address-search.js",
+    import.meta.url), "utf8"))(win, undefined);
+  let seen = "";
+  win.KonjakuGsiAddressSearch.createGsiAddressSearch({
+    fetch: (u) => { seen = u; return Promise.resolve({ ok: true, json: async () => [] }); },
+  }).search(q);
+  return seen;
+};
 
 // ⚠ **必須チェックにしている名前**（ruleset「main を守る」）。
 //   ⚠ **repo の外にあるものを控えている。**⚠ **ruleset を変えたら、⚠ ここも直す。**
@@ -837,3 +853,129 @@ head("8. CI の固定");
         + "（⚠ 本物の git ／ ⚠ `core.quotepath=true` を押しつけて確認）");
 }
 
+// ============================================================
+// ⚠ Service Worker が、⚠ 判定に必要なものを取りこぼしていないか
+// ============================================================
+// ⚠ **`test/check.mjs` の「1. スクリプトの構文」から逐語で移しただけ**
+//   （2026-08-25。hidetzu/konjaku#232 の 29 本目）。
+//   ⚠ **1 文字も変えていない。**⚠ **主張を強くも弱くもしていない。**
+//   ⚠ **その節は「構文」と名乗っていたが、⚠ 構文は 31 行しかなかった。**
+// ⚠ **ここが「届け方」の仲間である理由**: ⚠ **`SHELL` の中身が、⚠ そのまま配るもの。**
+//   ⚠ `addAll` は 1 件でも 404 すると install ごと reject する。
+// ⚠ Service Worker が、判定に必要なものを取りこぼしていないか。
+//   addAll は1件でも 404 すると install ごと reject するので、SHELL の中身は実在必須。
+//   data/landform.json を足したとき SHELL に入れ忘れ、しばらく気づかなかった。
+{
+  const sw = src["sw.js"];
+  if (!sw) { bad("sw.js が読めない"); }
+  else {
+    // ⚠ sw.js 全体から "/…" を拾ってはいけない。SHELL 以外のパス（タイルの判定など）まで
+    //   SHELL の中身とみなして落ちる。**SHELL の配列だけ**を読む。
+    const block = /const SHELL\s*=\s*\[([\s\S]*?)\]/.exec(sw)?.[1] ?? "";
+    if (!block) bad("sw.js の SHELL 配列が読めない");
+    const shell = [...block.matchAll(/"(\/[^"]*)"/g)].map((m) => m[1]);
+    // 判定が動くために要るもの。ここに足したら SHELL にも足すこと。
+    // ⚠ esc.js は両ページがトップレベルで `const {esc}=KonjakuEsc` を読む。
+    //   来ないと ReferenceError でページのスクリプトが丸ごと止まる（判定も検索も出ない）。
+    //   esc.js を SHELL に足したとき、ここに足し忘れていた。
+    //   実測（2026-08-15）: SHELL から "/esc.js" を消しても `npm run check` は
+    //   「判定の依存が揃っている（10 件）」と緑で通った。
+    const must = ["/", "/esc.js", "/verify.js", "/places.js", "/data/landform.json"];
+    const miss = must.filter((m) => !shell.includes(m));
+    miss.length ? bad(`sw.js の SHELL に入っていない: ${miss.join(", ")}`)
+                : ok(`sw.js の SHELL に判定の依存が揃っている（${shell.length} 件）`);
+    // SHELL に書いたものが本当に配信されるか（addAll が死ぬ条件）
+    const gone = shell.filter((u) => {
+      if (u === "/") return false;
+      const rel = u.replace(/^\//, "");
+      return !existsSync(join(PUB, rel)) && !existsSync(join(PUB, `${rel}.html`));
+    });
+    gone.length ? bad(`sw.js の SHELL に、配信されないものがある: ${gone.join(", ")}（addAll ごと死ぬ）`)
+                : ok("sw.js の SHELL は全件が配信物にある");
+  }
+}
+
+// ============================================================
+// ⚠ 判定文の根拠が、⚠ 棚（キャッシュ）の対象に入っているか
+// ============================================================
+// ⚠ **`test/check.mjs` の「1. スクリプトの構文」から逐語で移しただけ**
+//   （2026-08-25。hidetzu/konjaku#232 の 29 本目）。
+//   ⚠ **1 文字も変えていない。**⚠ **主張を強くも弱くもしていない。**
+//   ⚠ **その節は「構文」と名乗っていたが、⚠ 構文は 31 行しかなかった。**
+// ⚠ **ここが「届け方」の仲間である理由**: ⚠ **何を棚に置くかは、⚠ 届け方の判断。**
+//   ⚠ **棚の対象は `public/sw.js` の `TILE_HOSTS` 1 か所だけ**が定義する。
+// ⚠ **判定文の根拠が、棚の対象に入っていること。**
+//   「この場所は 旧水部 です」と言い切っている、その出どころ（地形分類）だけが
+//   棚から漏れていた。漏れると**同じものを毎回取りに行く**（地理院タイルは
+//   Cache-Control も Expires も返さない）。
+//   ⚠ **`sw.js` の表を目で読んで確かめない。** verify.js が実際に使っているホストを
+//     読んで突き合わせる。表に何が書いてあっても、**使っている側が入っていなければ意味がない**。
+//   ⚠ 棚の対象は `public/sw.js` の TILE_HOSTS **1 か所だけ**が定義（cost.mjs はそこを読む）。
+{
+  const swSrc = await readFile(join(PUB, "sw.js"), "utf8");
+  // ⚠ コメントを先に落とす。落とさないと、この決まりを説明したコメントの字面を拾う
+  //   （CLAUDE.md「検査が文書やコメントを読むとき、コメントを先に落とす」）。
+  // ⚠ **`//` を素朴に落とすと URL を食う。** `https://…` の `//` をコメント開始と読んで
+  //   行末まで消してしまい、`const LFC = "https://maps.gsi.go.jp/xyz"` が空になった
+  //   （2026-08-15 に実際に踏んだ。検査は「読めない」と言って落ちたので気づけた）。
+  //   ⚠ **直前が `:` のときは落とさない。**
+  const bare = (s) => s.replace(BLOCK_COMMENT, " ").replace(LINE_COMMENT, "$1");
+  const m = /TILE_HOSTS\s*=\s*\[([^\]]*)\]/.exec(bare(swSrc));
+  const shelf = m ? [...m[1].matchAll(/["']([^"']+)["']/g)].map((x) => x[1]) : null;
+  const vf = bare(await readFile(join(PUB, "verify.js"), "utf8"));
+  const lfc = /LFC\s*=\s*["']https:\/\/([^/"']+)/.exec(vf)?.[1];
+  if (!shelf?.length) bad("public/sw.js の TILE_HOSTS を読めない（この検査が何も見ていない）");
+  else if (!lfc) bad("verify.js から地形分類のホストを読めない（この検査が何も見ていない）");
+  else if (!shelf.includes(lfc))
+    bad(`判定文の根拠（${lfc}）が棚に入らない。verify.js はここから地形分類を取っている`
+      + `（「旧水部です」と言い切っている、その出どころだけが毎回取り直しになる）`);
+  else ok(`判定文の根拠（${lfc}）が棚に入る（棚の対象 ${shelf.length} ホスト）`);
+
+  // ⚠ **表を見るだけでは足りない。isTile() を実際に動かす。**
+  //   配列に載っていても、`isTile` の中を壊せば棚に入らない（ホストの見方でも、
+  //   パスの前置きでも）。**表だけ見る検査は、壊れた実装の上でも緑になる。**
+  // ⚠ 代表 URL は思いつきで書かない。**verify.js が実際に組み立てる形**から作る。
+  //   でないと「検査だけが通る URL」を相手にすることになる。
+  if (shelf?.length && lfc) {
+    const layer = /LFC_NAT\s*=\s*["']([^"']+)/.exec(vf)?.[1];
+    const shape = /\$\{LFC\}\/\$\{layer\}\/\$\{z\}\/\$\{t\.x\}\/\$\{t\.y\}\.geojson/.test(vf);
+    if (!layer) bad("verify.js から地形分類の層の名前を読めない（この検査が何も見ていない）");
+    else if (!shape) bad("verify.js の地形分類 URL の組み立てが変わった（代表 URL を作り直すこと）");
+    else {
+      const { runInNewContext } = await import("node:vm");
+      // sw.js は最上位で self.addEventListener を呼ぶ。動かすためだけの器を渡す。
+      const sandbox = { self: { addEventListener() {} }, location: { origin: "" } };
+      let fns = null;
+      try { fns = runInNewContext(`${swSrc}\n;({ isTile, tileTtl })`, sandbox, { timeout: 3000 }); }
+      catch (e) { bad(`public/sw.js を動かせない: ${String(e.message).slice(0, 80)}`); }
+      if (fns) {
+        const real = new URL(`https://${lfc}/xyz/${layer}/16/58205/25807.geojson`);
+        const cases = [
+          [real, true, "判定文の根拠（地形分類）"],
+          [new URL(`https://${lfc}/development/ichiran.html`), false, "同じホストだが /xyz/ でないもの"],
+          // ⚠ **口を書き写さない**（2026-08-22。hidetzu/konjaku#181）。⚠ 本番の口から借りる
+          [new URL(gsiSearchUrl("x")), false, "住所検索"],
+          [new URL("https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/16/1/1.jpg"), true, "空中写真"],
+        ];
+        const wrong = cases.filter(([u, want]) => fns.isTile(u) !== want)
+          .map(([, want, name]) => `${name}は${want ? "入るはず" : "入らないはず"}`);
+        wrong.length
+          ? bad(`sw.js の isTile() の判定が違う: ${wrong.join("、")}`
+              + `（表に載っていても、isTile の中を壊せば棚に入らない）`)
+          : ok(`sw.js の isTile() を実際に動かして確かめた（${cases.length} 通り）`);
+        // 寿命も動かして見る。地形分類は 30 日（実測で 1 年以上更新が無い）
+        const D = 24 * 60 * 60 * 1000;
+        fns.tileTtl(real) === 30 * D
+          ? ok("地形分類の寿命は 30 日")
+          : bad(`地形分類の寿命が 30 日でない: ${fns.tileTtl(real) / D} 日`);
+      }
+    }
+  }
+
+  // ⚠ **cost.mjs が表を写していないこと。** 写すと、片方だけ足したときに
+  //   「棚に入れるもの」と「数えるもの」がずれる（実際にずれていた）。
+  const costSrc = bare(await readFile(join(ROOT, "scripts/cost.mjs"), "utf8"));
+  /TILE_HOSTS\s*=\s*\[/.test(costSrc)
+    ? bad("scripts/cost.mjs が TILE_HOSTS を写している（public/sw.js から読むこと。写すとずれる）")
+    : ok("棚の対象の定義は public/sw.js の1か所だけ（cost.mjs はそこを読む）");
+}
