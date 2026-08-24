@@ -34,7 +34,7 @@ import { ROOT, PUB, SITE, ok, bad, warn, head, tally, makeReport,
 //     （⚠ 節の並びは、⚠ そのまま判定の字の並びになる）。
 //   ⚠ **読み込むのは、⚠ 元の節があった位置**（⚠ 下のほう）。⚠ **並びを変えないため。**
 //   ⚠ **漏れが無いことは「0. 数え方そのもの」が見る**（⚠ `test/check/` を実際に読む）。
-const PARTS = ["links.mjs", "style.mjs", "motion.mjs", "land.mjs", "answer.mjs", "guard.mjs", "safety.mjs", "deliver.mjs", "docs.mjs"];
+const PARTS = ["links.mjs", "style.mjs", "motion.mjs", "land.mjs", "answer.mjs", "guard.mjs", "eval.mjs", "safety.mjs", "deliver.mjs", "docs.mjs"];
 
 // ⚠ **住所検索の口は `public/gsi-address-search.js` の1か所**（hidetzu/konjaku#181）。
 //   ⚠ **この検査も写さない。**⚠ 本番の口に URL を組み立てさせて借りる。
