@@ -44,6 +44,7 @@ head("言葉は 1 か所から");
     ...Object.values(globalThis.KonjakuWords?.METHOD ?? {}),
     globalThis.KonjakuWords?.EDGE, globalThis.KonjakuWords?.UNREAD,
     globalThis.KonjakuWords?.S?.noRecord, globalThis.KonjakuWords?.S?.cantTell,
+    globalThis.KonjakuWords?.MEIJI_NOT_PHOTO,
   ].filter(Boolean);
   // ⚠ **コメント落としは stripJs を使う。**⚠ 素朴な正規表現で書いたら、
   //   ⚠ **正規表現リテラルの中の `/*` を拾って、本物のコードを大量に消していた**
