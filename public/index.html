@@ -169,7 +169,6 @@
     /* ⚠ **名前と同じ高さに揃えない。**⚠ 揃えると同格に見える（Owner 判断 2026-08-23）。 */
     align-self:center;position:relative;top:1px}
 
-
   /* ============ 入力（2段: 場所 → コマンド） ============ */
   .scope{display:flex;align-items:center;gap:0;border:1px solid var(--line);border-radius:12px;
     background:var(--surface);overflow:hidden}
@@ -188,7 +187,7 @@
     display:grid;place-items:center;font-style:normal}
   .chip .x:hover{color:var(--missing)}
   .chip .x:hover i{border-color:var(--missing)}
-  #q{flex:1;min-width:0;padding:15px 16px;font:inherit;font-size:var(--fs-input);border:0;outline:none;
+  .scope__input{flex:1;min-width:0;padding:15px 16px;font:inherit;font-size:var(--fs-input);border:0;outline:none;
     background:transparent;color:var(--ink)}
   /* placeholder に入りきらない補足。場所を選ぶ前に、入力欄に触れている間だけ出す。
      ⚠ display で出し入れしてはいけない。**入口が塞がる。**
@@ -424,7 +423,8 @@
        ⚠ **足したぶんは写真から出す。**⚠ 320×640 の余白は **0px** だった
          （足す前の実測: 重ねるの下端 640 ／ 画面 640）。⚠ 他に出どころが無い。
        ⚠ 写真は 320×640 で 176 → 140px、375×667 で 203 → 167px になる。 */
-  .verdict > #big{max-height:calc(100dvh - 31.5rem)}
+  .verdict > .big{max-height:calc(100dvh - 31.5rem)}
+
   /* ⚠ **次の段と接させない**（2026-08-20）。⚠ 接すると、44×44 の下端 1px を隣の見出しが拾い、
      ⚠ **指で押せる大きさが実質 43px になる**（実測: .v-acts の下端 349 と #yrBig の上端 349）。
      ⚠ computed style は 44 のままなので、⚠ **座標を押して確かめないと気づけない。** */
@@ -1021,11 +1021,11 @@
     .verdict{display:flow-root}
 
     /* ⚠ **右＝見るもの。**⚠ clear:right で、右の中だけで縦に積む */
-    .verdict > #yrBig,
+    .verdict > .strip-title,
     .verdict > .strip-ops,
-    .verdict > #strip,
-    .verdict > #big,
-    .verdict > #ovRow,
+    .verdict > .strip,
+    .verdict > .big,
+    .verdict > .ov,
     /* ⚠ **次の体験は「見るもの」の列**（2026-08-21）。⚠ 重ねるのすぐ下に置く。
        ⚠ **流れの中の箱のままにすると、⚠ 2 段組そのものが壊れる**（実測で踏んだ）:
          ⚠ 幅いっぱいの箱が float の列を分断し、⚠ **1 段組に戻って
@@ -1044,9 +1044,9 @@
     .verdict > .v-acts,
     .verdict > .share-msg,
     .verdict > .say-msg,
-    .verdict > #area,
+    .verdict > .area,
     .verdict > .strip-foot,
-    .verdict > #ev,
+    .verdict > .ev,
     .verdict > .badges,
     .verdict > .risk,
     .verdict > .coarse,
@@ -1074,7 +1074,7 @@
        ⚠ **33rem → 35.5rem にした**（2026-08-22。hidetzu/konjaku#148）。
          ⚠ 補助説明の 1 行ずつで答えが +35px。⚠ 左が伸びれば、右の段も同じだけ下がる。
          ⚠ 実測（1280×800）: 33rem のままだと「重ねる」が **811**（画面 800）で外へ出る。 */
-    .verdict > #big{max-height:min(30rem, calc(100dvh - 35.5rem))}
+    .verdict > .big{max-height:min(30rem, calc(100dvh - 35.5rem))}
   }
 
 </style>
@@ -1129,7 +1129,7 @@
        ⚠ 場所が決まったあとの文言は setMode() が持っている。**2 か所ある**ので、
          片方だけ直さない（場所未選択と場所選択中で入力欄の意味が違う）。
        補足は下の .hint に出す（入力欄に触れている間だけ） -->
-  <input id="q" placeholder="地名・住所を入力" autocomplete="off" autofocus>
+  <input id="q" class="scope__input" placeholder="地名・住所を入力" autocomplete="off" autofocus>
   <button id="here" class="in-box" title="現在地から調べる">📍</button>
   <button id="mineToggle" class="mine-toggle in-box" title="この場所の評価とメモ"
           aria-expanded="false" style="display:none">☆</button>
