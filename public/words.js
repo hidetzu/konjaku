@@ -226,6 +226,19 @@
   };
   const layerTitle = (n) => LAYER_TITLE[n] ?? "";
 
+  // ⚠ **明治期のコマは空中写真ではない**（`docs/SPEC.md` §2）。
+  //   ⚠ **幅のある見出しの側で、⚠ そう名乗る。**⚠ 帯の 1 コマは幅が無く、入れると読めない。
+  // ⚠ **ここが字の持ち主**（2026-08-25 に `top.js` から移した。hidetzu/konjaku#176）。
+  //   ⚠ **移した理由**: ⚠ 実描画が字を書き写していて（`includes(...)`）、
+  //     ⚠ **言い直したら、⚠ 製品ではなく検査が落ちた。**⚠ `.claude/rules/domain.md`
+  //       「言葉は 1 か所から借りる」。⚠ **検査は `KonjakuWords` から取ること。**
+  // ⚠ **短さが効く**（Owner 判断 2026-08-25）。
+  //   ⚠ 前の字「低湿地データ（空中写真ではありません）」は、⚠ 文字 150% で **3 行・88px**。
+  //   ⚠ **この行と写真は、⚠ 同じ高さを 1:1 で取り合う。**⚠ 実測で写真が 2px まで潰れていた。
+  // ⚠ **主張は弱めていない。**⚠ 「写真ではない」を先に言い、⚠ 何なのか（地図）を続ける。
+  //   ⚠ **「地図」だけにしない。**⚠ 写真と見分けられることが、この行の目的。
+  const MEIJI_NOT_PHOTO = "写真ではなく地図";
+
   // ⚠ 第1層の文。⚠ **ADR 0030 §4 が決めたとおりに組む。**
   //   1 主語は「この土地は」に統一（実測 9:1。利用者役 2/4 が「この場所」と別物と読んだ）
   //   3 「もとは」を使わない（3/4 が明治期＝第2層と取り違えた）
@@ -406,6 +419,6 @@
 
   g.KonjakuWords = { S, meiji, meijiBadge, GROUP, groupTitle, METHOD, EDGE, UNREAD, method, shareMiss, noPlace,
                      PRIVACY_SHORT, PRIVACY_LEAD, photoSay,
-                     whyLabel, canWithoutBuildings, BLD_SOON, LAYER_TITLE, layerTitle, ground1Lines, ground1Names, ground1Text,
+                     whyLabel, canWithoutBuildings, BLD_SOON, LAYER_TITLE, layerTitle, MEIJI_NOT_PHOTO, ground1Lines, ground1Names, ground1Text,
                      GROUND_GLOSS, groundGloss, ground1Speech, eraTick };
 })(typeof window === "undefined" ? globalThis : window);
