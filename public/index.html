@@ -169,6 +169,7 @@
     /* ⚠ **名前と同じ高さに揃えない。**⚠ 揃えると同格に見える（Owner 判断 2026-08-23）。 */
     align-self:center;position:relative;top:1px}
 
+
   /* ============ 入力（2段: 場所 → コマンド） ============ */
   .scope{display:flex;align-items:center;gap:0;border:1px solid var(--line);border-radius:12px;
     background:var(--surface);overflow:hidden}
@@ -685,8 +686,17 @@
        写真の上の札は大きいほど写真を隠す（写真が本命）。 */
   @media (hover:none){
     .say{width:var(--tap);height:var(--tap)}
-    /* ＋− は 44+4+44=92px。下端 var(--attrib) から積む（帰属表示を隠さない） */
     .big .zoombar button{width:var(--tap);height:var(--tap)}
+    /* ⚠ **指の端末では、⚠ ＋− を横に並べる**（2026-08-25。hidetzu/konjaku#176。Owner 判断）。
+       ⚠ **縦だと 44+4+44 = 92px** あり、⚠ **写真が短いときに枠から出て押せなくなる。**
+       ⚠ 実測（2026-08-25・豊洲・SW 無効・hasTouch。⚠ **座標を押して届くかで見た**）:
+         ⚠ 縦: 375×667 の 150% で ＋ が **見えている高さ 22px・届かない**。
+             ⚠ 320×640 の 150% では **0px**（⚠ **完全に枠の外**）。
+         ⚠ 横: 4 条件とも届く。⚠ **下限 112px と合わせて、⚠ どの条件でも 44×44 が残る。**
+       ⚠ **`css.md` の MUST「押せるものは 44×44 を割らない」。**
+         ⚠ **computed style は縦でも 44×44 のまま**なので、⚠ **座標を押さないと気づけない。**
+       ⚠ **PC は縦のまま。**⚠ 横に広げると、⚠ 写真（本命）を横に隠す。 */
+    .big .zoombar{flex-direction:row}
   }
   .big.map-loading .loading{display:block}
   .big.map-loading .loading::after{content:"地図を読み込んでいます…"}
