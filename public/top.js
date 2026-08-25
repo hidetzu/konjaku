@@ -426,10 +426,40 @@ function bigLayer(fr,id,on){
   return `<div class="lyr${on?" on":""}" id="${id}">${under}${draw(fr,ERA_ALPHA(fr))}</div>`;
 }
 
+// ⚠ **写真は「余り」を取る**（2026-08-25。hidetzu/konjaku#176 の続き）。
+//
+// ⚠ **定数をやめる。**⚠ 以前は `max-height:calc(100dvh - 31.5rem)` のように、
+//   ⚠ **上に積んだものの合計を、⚠ CSS に手で書き写していた。**
+//   ⚠ **ビューポート単位と rem の引き算**なので、⚠ 文字を大きくすると引く量だけが増え、
+//     ⚠ **写真が 2px まで潰れた。**⚠ しかも上に積むものが変わるたびに測り直していた（⚠ 3 回）。
+//
+// ⚠ **測って渡す。**⚠ 写真の高さは、⚠ **上に積んだもの**と**下の「重ねる」**で決まる。
+//   ⚠ **どちらも写真の高さに依存しない。**⚠ だから 1 回で決まる（⚠ 環にならない）。
+//
+// ⚠ **JS が動かなくても壊れない。**⚠ CSS 側に既定値を残してある（`var(--big-above, 24rem)`）。
+// ⚠ **下限（112px）は CSS が持つ**（⚠ 帰属表示 44 ＋ ＋− 68 の足し算。⚠ ここでは触らない）。
+function fitBig(){
+  const big=document.querySelector(".verdict > .big");
+  if(!big) return;
+  const r=big.getBoundingClientRect();
+  // ⚠ **文書の上端から測る**（⚠ 初期画面の上端が 0）。⚠ スクロールしていても同じ値になる
+  const above=r.top+scrollY;
+  const ov=document.getElementById("ovRow");
+  let below=0;
+  if(ov){
+    const o=ov.getBoundingClientRect();
+    // ⚠ **すき間 ＋ 行の高さ。**⚠ どちらも写真の高さでは変わらない
+    below=(o.top-r.bottom)+o.height;
+  }
+  document.documentElement.style.setProperty("--big-above", `${Math.round(above+below)}px`);
+}
+
 // モザイクを枠いっぱいに置く。判定した点を縦の基準にする（object-fit:cover と同じ考え）
 function layoutBig(){
   const big=document.getElementById("big");
   if(!big||!mosaic) return null;
+  // ⚠ **枠の高さを先に決めてから、⚠ 中身を置く**（⚠ 逆にすると 1 回ぶん古い高さで置く）
+  fitBig();
   const r=big.getBoundingClientRect(), W=r.width, H=r.height;
   const S=W;                                  // モザイク（正方形）の表示辺
   const top=(H-S)*(mosaic.my/512);            // はみ出す縦を、判定点の割合で配る
@@ -1641,7 +1671,12 @@ function wireStrip(){
   if(big) big.addEventListener("click",(e)=>{
     if(e.target.closest("#unzoom,.zoombar,.say,#map")) return;
     if(zoomOn) unzoom(); });
-  addEventListener("resize",()=>{ if(evState&&!evState.loading) renderEvents(); },{passive:true});
+  // ⚠ **画面の大きさが変わったら、⚠ 写真の取り分も測り直す**（2026-08-25）。
+  //   ⚠ **既にある resize に相乗りする**（⚠ 同じ要素へ 2 か所からイベントを足さない）。
+  addEventListener("resize",()=>{
+    layoutBig();
+    if(evState&&!evState.loading) renderEvents();
+  },{passive:true});
 }
 
 // 明治期の地形は「する事」ではなく、その場所の事実。

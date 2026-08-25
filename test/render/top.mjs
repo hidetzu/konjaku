@@ -2073,11 +2073,11 @@ export const CASES = [
         { w: 320, h: 640, scale: 100, wantOv: true, wantWhole: true },
         { w: 375, h: 667, scale: 125, wantOv: true },
         { w: 375, h: 667, scale: 150, wantOv: true },
-        // ⚠ **320×640 は、⚠ 125% でも 150% でも「重ねる」が入らない。**
-        //   ⚠ **直す前も入っていない**（⚠ そのうえ写真が 2px だった）。⚠ **ここでは写真だけ求める。**
-        //   ⚠ 求めると、⚠ **写真を 16px まで潰す値**を選ぶことになる（実測）。
-        { w: 320, h: 640, scale: 125, wantOv: false },
-        { w: 320, h: 640, scale: 150, wantOv: false },
+        // ⚠ **320×640 も入るようになった**（2026-08-25。⚠ 写真が「余り」を取る形にした）。
+        //   ⚠ 直す前は 125% で +28px・150% で +31px はみ出していた。
+        //   ⚠ **写真を潰して入れたのではない**（⚠ 125% 160 → 171px ／ 150% 112 → 120px）。
+        { w: 320, h: 640, scale: 125, wantOv: true },
+        { w: 320, h: 640, scale: 150, wantOv: true },
         // ⚠ **横向き。**⚠ 既定の文字サイズでも写真が 2px だった。⚠ 「重ねる」は求めない
         { w: 667, h: 375, scale: 100, wantOv: false },
         { w: 844, h: 390, scale: 100, wantOv: false },
@@ -2163,6 +2163,65 @@ export const CASES = [
         } finally { await ctx.close(); }
       }
       return out.join(" ／ ");
+    },
+  },
+
+  {
+    // ⚠ **写真は「余り」を取る**（2026-08-25。hidetzu/konjaku#176 の続き）。
+    //
+    //   ⚠ **以前は定数だった**（`max-height:calc(100dvh - 31.5rem)`）。⚠ **上に積んだものの合計を
+    //     CSS へ手で書き写していた**ので、⚠ **上が増えても写真は縮まず、⚠ 「重ねる」が押し出された。**
+    //   ⚠ **測り直すたびに別の条件が落ちた**（⚠ 実際に 3 回測り直した）。
+    //
+    //   ⚠ **この検査は「値」ではなく「仕組み」を見る。**
+    //     ⚠ **上に高さを足して、⚠ 写真が同じだけ縮むか**を見る。
+    //     ⚠ **定数へ戻すと、⚠ 写真は縮まず「重ねる」が画面外へ出る**ので落ちる。
+    //   ⚠ **足す量は 60px**（⚠ 端数で丸めに埋もれない大きさ）。
+    //
+    //   ⚠ **縦の短い画面で見る**（375×560）。⚠ **上限と下限のどちらも効かない幅**が要る:
+    //     ⚠ 375×667（既定）は **上限が効いていない**（⚠ 写真が 4:3 の自然な高さ 232px で収まる）。
+    //       ⚠ **足しても縮まない。**⚠ 1 回目はそれで落ちた。
+    //     ⚠ 375×520 は **足したら下限（112px）にぶつかる**（⚠ 152 → 112 で 40px しか縮まない）。
+    //       ⚠ 2 回目はそれで落ちた。
+    //     ⚠ **どちらも「仕組みが壊れた」のではなく、⚠ 測る場所が悪かった。**
+    name: "写真は、上に積んだものに合わせて縮む", path: `/?${TOYOSU}`,
+    viewport: { width: 375, height: 560 }, hasTouch: true,
+    async check(page) {
+      await waitVerdict(page);
+      await waitStrip(page);
+      await page.waitForSelector("#ovRow", { state: "attached", timeout: 30000 });
+      await settleAfterCondition(page);
+      const read = () => page.evaluate(() => {
+        const big = document.querySelector(".verdict > .big").getBoundingClientRect();
+        const ov = document.getElementById("ovRow").getBoundingClientRect();
+        return { photo: Math.round(big.height), ovB: Math.round(ov.bottom), vh: innerHeight };
+      });
+      const before = await read();
+      must(before.ovB <= before.vh,
+        `足す前から「重ねる」が初期画面の外（${before.ovB} / ${before.vh}）`);
+      // ⚠ **写真の上へ 60px 足す。**⚠ 判定カードの中に入れる（⚠ 外だと上に積んだことにならない）
+      const GROW = 60;
+      await page.evaluate((px) => {
+        const big = document.querySelector(".verdict > .big");
+        const pad = document.createElement("div");
+        pad.id = "renderPad";
+        pad.style.height = `${px}px`;
+        big.parentNode.insertBefore(pad, big);
+        // ⚠ **測り直させる**（⚠ 画面の大きさが変わったときと同じ道を通す）
+        dispatchEvent(new Event("resize"));
+      }, GROW);
+      await settleAfterCondition(page);
+      const after = await read();
+      const shrank = before.photo - after.photo;
+      // ⚠ **同じだけ縮んだか。**⚠ 丸めのぶんだけ許す
+      must(Math.abs(shrank - GROW) <= 2,
+        `上に ${GROW}px 足したのに、写真が ${shrank}px しか縮んでいない`
+        + `（${before.photo} → ${after.photo}px。⚠ 定数だと縮まない）`);
+      // ⚠ **縮んだ結果、⚠ 「重ねる」は初期画面に残っていること**
+      must(after.ovB <= after.vh,
+        `上に足したら「重ねる」が初期画面の外へ出た（${after.ovB} / ${after.vh}）`);
+      return `写真 ${before.photo} → ${after.photo}px（上に ${GROW}px 足した）`
+        + ` ／ 重ねる ${before.ovB} → ${after.ovB}（画面 ${after.vh}）`;
     },
   },
 
