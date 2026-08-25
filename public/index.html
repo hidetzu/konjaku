@@ -112,8 +112,16 @@
        ⚠ rem なので、設定を上げれば一緒に大きくなる。 */
   html,body{margin:0;min-height:100%;background:var(--bg);color:var(--ink)}
   body{font:0.875rem/1.65 -apple-system,"Hiragino Sans","Noto Sans JP",sans-serif}
-  .wrap{max-width:680px;margin:0 auto;padding:34px 18px 90px}
-  header{margin-bottom:20px}
+  /* ⚠ **狭い幅では、⚠ 上の余白を詰める**（2026-08-25。hidetzu/konjaku#176 の続き）。
+     ⚠ **この画面は「狭い幅が既定」**なので、⚠ ここが詰めた側。⚠ **広い幅で戻す**（`.claude/rules/css.md`）。
+     ⚠ **px 固定なので、⚠ 文字サイズに関係なく同じだけ効く。**⚠ そこが効き目の理由。
+     ⚠ 実測（320×640・豊洲・SW 無効・hasTouch・文字サイズは読み込みの前に効かせた）:
+       ⚠ **34px + 20px + 9px のうち 33px を返すと、⚠ 150% で「重ねる」が初めて初期画面に入る**
+         （⚠ 671 / 640 → 640 / 640）。⚠ **写真は 1px も減っていない。**
+     ⚠ **16px + 8px 案では 1px 足りなかった**（⚠ 641 / 640）。⚠ **1px の余裕で出さない**
+       （⚠ この repo は 6px の余裕で破れた前例がある）。 */
+  .wrap{max-width:680px;margin:0 auto;padding:12px 18px 90px}
+  header{margin-bottom:6px}
   h1{margin:0 0 3px;font-size:var(--fs-sign);letter-spacing:.05em;font-weight:500}
   /* サブコピー。順位は h1（--fs-sign 19px）＞ここ＞但し書き（--fs-note 12px）。
      ⚠ 12px（--fs-note）のままだと、画面に残った唯一の文が但し書きと同じ格になる。
@@ -382,7 +390,7 @@
   .here-msg b{color:var(--estimate);font-weight:500}
   .here-msg .dim{color:var(--ink-dim)}
   /* 場所を選んだ時点の「事実」。コマンドではないので一覧の外に置く */
-  .verdict{display:flex;align-items:center;gap:10px;margin-top:9px;padding:11px 14px;
+  .verdict{display:flex;align-items:center;gap:10px;margin-top:6px;padding:11px 14px;
     border-radius:10px;border:1px solid rgba(126,224,165,.28);background:rgba(126,224,165,.07);
     font-size:var(--fs-body)}
   .verdict.w{border-color:rgba(91,163,224,.35);background:rgba(91,163,224,.09);color:var(--water)}
@@ -1027,6 +1035,10 @@
   @keyframes flashnote-in{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
   a{color:var(--action)}
   @media(min-width:681px){
+    /* ⚠ **上の余白は、⚠ 広い幅では元に戻す**（2026-08-25）。⚠ 詰めたのは狭い幅の事情。 */
+    .wrap{padding-top:34px}
+    header{margin-bottom:20px}
+    .verdict{margin-top:9px}
     /* ⚠ **同じ形のセレクタで戻す**（上と同じ 0-0-3 / 0-1-2）。⚠ 形が違うと負ける */
     footer .f-main a, footer .f-author a, footer .f-more summary{min-height:0;min-width:0}
   }
