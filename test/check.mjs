@@ -311,6 +311,32 @@ head("0. 数え方そのもの");
           + `（⚠ 落ちるのではなく、⚠ 名乗る数が静かに変わる形の事故）`);
   }
 
+  // ⚠ **別セッションの作業場所が、⚠ git の追跡外であること**（2026-08-26。hidetzu/konjaku#276）。
+  //   ⚠ **検査が歩かないだけでは足りない。**⚠ **`git add -A` が巻き込む**
+  //     （`CLAUDE.md` §8: ⚠ **`git add -A` で他の作業を巻き込まない**）。
+  //   ⚠ **実測（2026-08-26・足す前）**: ⚠ worktree を 1 本置くと、
+  //     ⚠ **`git status` に `?? .claude/worktrees/` が出ていた。**
+  //   ⚠ **網は 2 つ要る。**⚠ **git 側（ここ）と、⚠ 検査側（上の walkFiles）。**
+  //     ⚠ **どちらか片方だと、⚠ もう片方の道で入ってくる。**
+  //
+  // ⚠ **`.gitignore` を読むだけにしない。**⚠ **git が実際にどう扱っているかも見る**
+  //   （⚠ `guard.mjs` の計測の検査と同じ流儀）。
+  {
+    const WT = ".claude/worktrees/";
+    const fails = [];
+    try {
+      const t = execFileSync("git", ["ls-files", WT], { encoding: "utf8", cwd: ROOT }).trim();
+      if (t) fails.push(`git に入っている: ${t.split("\n").slice(0, 3).join("、")}`);
+    } catch { fails.push("git ls-files が使えない（追跡されていないことを確かめていない）"); }
+    const ig = await readFile(join(ROOT, ".gitignore"), "utf8").catch(() => "");
+    if (!ig.split("\n").map((l) => l.trim()).includes(WT))
+      fails.push(`.gitignore が ${WT} を外していない`);
+    fails.length
+      ? bad(`別セッションの作業場所が git の追跡外になっていない: ${fails.join(" / ")}`
+          + `（⚠ 検査が歩かないだけでは足りない。⚠ git add -A が巻き込む）`)
+      : ok(`別セッションの作業場所は git の追跡外（${WT} を .gitignore が外している・追跡 0 件）`);
+  }
+
   // ⚠ **`.claude` を歩く検査が、⚠ また自前の走査を持ち直していないか**
   //   （2026-08-26。hidetzu/konjaku#276）。⚠ **前は `guard.mjs` と `links.mjs` が別々に持っていた。**
   //   ⚠ **`guard.mjs` だけが飛ばしていて、⚠ `links.mjs` は歩いていた**（⚠ 同じ問いに 2 つの答え）。

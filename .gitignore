@@ -16,6 +16,13 @@ node_modules/
 tmp/
 scratch/
 
+# 別セッションの作業場所（git worktree）。
+# ⚠ 中身は**この repo の別の版そのもの**。追跡すると `git add -A` が巻き込む
+#   （CLAUDE.md §8「git add -A で他の作業を巻き込まない」）。
+# ⚠ **検査が歩かないことは別に見ている**（test/check/lib.mjs の walkFiles）。
+#   こちらは git 側の網で、あちらは検査側の網。どちらか片方では足りない。
+.claude/worktrees/
+
 # 開発の計測（.claude/hooks/telemetry.mjs が書く）。
 # ⚠ 配信の計測（D1 の tick / health）とは別もの。こちらは手元の作業の記録で、
 #   外へも git へも出さない。誰がいつ何を頼んだかは、共有物にしない。
