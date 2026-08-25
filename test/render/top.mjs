@@ -3437,9 +3437,32 @@ export const CASES = [
         null, { timeout: 30000 }).catch(() => {});
       must(await page.locator(".ev-it").count() > 0, "一覧が出ていない");
 
-      const deep = () => reqs.filter((u) =>
-        /cyberjapandata\.gsi\.go\.jp\/xyz\/\w+\/(1[7-9])\//.test(u)).length;
-      must(deep() === 0, `寄る前から高いズームのタイルを取っている: ${deep()} 件`);
+      const deepU = () => reqs.filter((u) =>
+        /cyberjapandata\.gsi\.go\.jp\/xyz\/\w+\/(1[7-9])\//.test(u));
+      const deep = () => deepU().length;
+      // ⚠ **落ちたときに、⚠ 何が起きていたかまで出す**（2026-08-26。hidetzu/konjaku#275）。
+      //   ⚠ **この 1 行は 2 回落ちている**（2026-08-24 と 2026-08-25。⚠ どちらも 12 件）。
+      //   ⚠ **どちらも「12 件」しか残っておらず、⚠ 原因を追えなかった。**
+      //   ⚠ **実測（2026-08-26・`main` = `720ef48`）: ⚠ 手元では 50 回回して 1 度も落ちない**
+      //     （⚠ 単独 30 ／ まとめて 3 ／ 実描画 3 本を同時に走らせながら 17）。
+      //     ⚠ **50 回とも出力が 1 文字も同じ。**⚠ **再現しないものは、⚠ 推測で直せない。**
+      //   ⚠ **だから、⚠ 次に落ちたときに原因が確定するようにしておく。**
+      //     ⚠ **どの層を・どのズームで取りに行ったか**（⚠ 地図なのか写真なのか）
+      //     ⚠ **地図が起きていたか**（⚠ `#map canvas` の有無）
+      //     ⚠ **枠がどれだけ広かったか**（⚠ `mapZoomForBox()` は枠幅から決まる）
+      if (deep() > 0) {
+        const st = await page.evaluate(() => {
+          const b = document.getElementById("big")?.getBoundingClientRect();
+          return { bigW: b ? Math.round(b.width) : null, bigH: b ? Math.round(b.height) : null,
+                   mapAwake: !!document.querySelector("#map canvas"),
+                   evIt: document.querySelectorAll(".ev-it").length };
+        }).catch((e) => ({ 画面を読めない: String(e).slice(0, 60) }));
+        const layers = [...new Set(deepU().map((u) =>
+          (/xyz\/(\w+)\/(\d+)\//.exec(u) ?? []).slice(1, 3).join(" z")))];
+        must(false, `寄る前から高いズームのタイルを取っている: ${deep()} 件`
+          + ` ／ 層 ${layers.join("・")} ／ 画面 ${JSON.stringify(st)}`
+          + ` ／ 全 ${reqs.length} 本 ／ 例 ${deepU()[0]}`);
+      }
 
       await page.locator(".ev-it").first().click();
       await page.waitForFunction(() => document.querySelector("#big.map-on")
