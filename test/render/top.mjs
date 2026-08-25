@@ -2037,6 +2037,7 @@ export const CASES = [
     },
   },
 
+
   {
     // ⚠ **答えに出ている区分名の意味が、「なぜそう言える？」を押さずに分かる**
     //   （2026-08-22。hidetzu/konjaku#148）。
@@ -3921,9 +3922,17 @@ export const CASES = [
       await waitStrip(page);
       await page.waitForSelector("#ovRow", { state: "attached", timeout: 30000 });
       // 明治期のコマは空中写真ではない。幅のある見出しの側で、そう名乗る
+      // ⚠ **字を書き写さない**（2026-08-25。hidetzu/konjaku#176）。
+      //   ⚠ 以前はここに「空中写真ではありません」と直接書いていた。
+      //   ⚠ **言い直したとき、⚠ 製品ではなくこの検査が落ちた。**⚠ 持ち主から取る。
       const yr = await page.locator("#yrBig").textContent();
-      must(yr.includes("空中写真ではありません"),
-        `明治期の見出しが、空中写真と区別できない: ${yr}`);
+      must(yr.includes(WORDS.MEIJI_NOT_PHOTO),
+        `明治期の見出しが、持ち主の字と違う: ${yr}`);
+      // ⚠ **字を借りるだけだと、⚠ 持ち主が「地図」だけになっても緑になる。**
+      //   ⚠ **主張そのもの（写真ではない）が立っていることまで見る。**
+      //   ⚠ 「写真」と否定が、⚠ **同じ 1 文の中で結びついていること**（CLAUDE.md §9）。
+      must(/写真(?:で|じゃ)(?:は)?(?:ない|なく|ありません)/.test(WORDS.MEIJI_NOT_PHOTO),
+        `明治期の見出しが「写真ではない」と言っていない: ${WORDS.MEIJI_NOT_PHOTO}`);
       const cell = await page.locator("#strip .f.meiji .yr").textContent();
       must(cell.trim() === "明治期", `帯のコマの見出しが変わっている: ${cell}`);
       // ⚠ この検査は以前、**明治期のコマでは操作を出さない**ことを求めていた。

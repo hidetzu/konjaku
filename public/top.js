@@ -293,10 +293,12 @@ function buildFrames(f){
   const m=f.byKey.meiji;
   // ⚠ **ここは「どんなコマか」を作るだけ。**⚠ **足すかどうかは下の `hasMeiji` が決める。**
   // ⚠ subBig は写真の上の見出しだけで使う。帯の 1 コマは幅が無く、入れると読めなくなる。
-  //   ⚠ 改行は自分で入れる。任せると 375px で「空中写真ではありま／せん」と語の途中で割れた
-  //     （2026-08-16 実測・豊洲）。
+  //   ⚠ 以前は「低湿地データ<br>（空中写真ではありません）」で、⚠ **自分で改行を入れていた**
+  //     （任せると 375px で「空中写真ではありま／せん」と語の途中で割れたため。2026-08-16 実測）。
+  //   ⚠ **2026-08-25 に短くして、⚠ 字は `words.js` へ移した**（hidetzu/konjaku#176）。
+  //     ⚠ **ここに書かない。**⚠ 書くと、⚠ 言い直すたびに 2 か所を直すことになる。
   const meijiFrame = { id:"swale", label:"明治期", sub:"低湿地データ",
-    subBig:"低湿地データ<br>（空中写真ではありません）", ext:"png", min:6, max:16,
+    subBig:KonjakuWords.MEIJI_NOT_PHOTO, ext:"png", min:6, max:16,
     // 低湿地は区分の塗りだけなので、下に淡色地図を敷かないと何も見えない
     under:"pale", px:t.px, py:t.py, meiji:true };
   // ⚠ **段の作り方は `public/eras.js` の 1 か所**（hidetzu/konjaku#170）。
