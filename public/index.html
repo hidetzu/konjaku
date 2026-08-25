@@ -451,7 +451,7 @@
        ⚠ 実測: 667×375 ／ 740×360 ／ 844×390 は、⚠ **既定の文字サイズでも写真が 2px** だった
          （⚠ `100dvh - 24rem` が負になる）。⚠ **そこでは「重ねる」を諦めて写真を取る。**
        ⚠ **写真を 2px まで潰しても、⚠ まだ 58〜90px 足りない**（実測）。⚠ **潰す意味が無い。** */
-  .verdict > .big{max-height:calc(100dvh - 24rem);min-height:112px}
+  .verdict > .big{max-height:calc(100dvh - var(--big-above, 24rem));min-height:112px}
 
   /* ============ 判定が出たあとに引っ込めるもの（2026-08-25。hidetzu/konjaku#176） ============
      ⚠ **この画面は「狭い幅が既定」。**⚠ ここに書いたものは PC にも効く（`.claude/rules/css.md`）。
@@ -1150,7 +1150,7 @@
          ⚠ **文字 150% で写真が 2px・判定点が枠の外**（⚠ 35.5rem だと引き算が負になる）。
        ⚠ 実測（30rem）: 既定 320px（⚠ 232px から戻った）／125% 200px／150% 80px。⚠ 3 段とも入る。
        ⚠ **上の 30rem（＝横を使ったぶん縦が増えるのを止める）とは別の数字。**⚠ 偶然そろっただけ。 */
-    .verdict > .big{max-height:min(30rem, calc(100dvh - 30rem))}
+    .verdict > .big{max-height:min(30rem, calc(100dvh - var(--big-above, 30rem)))}
   }
 
 </style>
