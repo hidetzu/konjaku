@@ -340,3 +340,66 @@ head("7. 外部から来た文字列");
       : ok(`公開物が名指ししている外部の相手は ${seen.size} 件（表のとおり）`);
   }
 }
+
+// ⚠ **外に出す文に、作業環境のことを書いていないか**（2026-08-26。`CLAUDE.md` の「8-1」）。
+//
+// ⚠ **このリポジトリは公開されている。**⚠ **コミット本文も PR も Issue も、⚠ 誰でも読める。**
+// ⚠ 実際に踏んだ（2026-08-26）: ⚠ **AI の作業セッションの URL が、
+//   ⚠ コミット本文 85 件・PR 本文 84 件・Issue 本文 3 件・コメント 14 件に入っていた**
+//   （⚠ 7 セッションぶん）。⚠ **道具の既定がそう書くようになっていたため、⚠ 誰も止めなかった。**
+// ⚠ **消すのに履歴の書き換えと force push が要った。**⚠ **それでも、⚠ 古い commit は
+//   ⚠ SHA を知っていれば読めるまま残る**（⚠ 実測: 認証なしで status=200）。⚠ **出す前に止める。**
+//
+// ⚠ **見るのは 2 か所。**⚠ **片方だけでは足りない**（⚠ 消すときも 2 か所だった）:
+//     追跡ファイルの中身   ⚠ `git ls-files`
+//     コミット本文         ⚠ `git log`
+//
+// ⚠ **`CLAUDE.md` の規則そのものを拾わない。**⚠ あちらは伏せ字で書いてある。
+//   ⚠ **ここが見るのは、⚠ 本物の ID が続いている形だけ**（⚠ `session_` ＋ 英数 8 文字以上）。
+//   ⚠ **字として組み立てる**（⚠ そのまま書くと、⚠ この検査が自分の行を拾う。⚠ この repo で 4 回以上）。
+head("外に出す文");
+{
+  const { execFileSync: exS } = await import("node:child_process");
+  const RE = new RegExp("claude\\.ai/code/" + "session_[A-Za-z0-9]{8,}");
+  const git = (args) => exS("git", args, { encoding: "utf8", cwd: ROOT, maxBuffer: 64 * 1024 * 1024 });
+
+  // ---- 追跡ファイルの中身 ----
+  {
+    let files = [];
+    try { files = git(["ls-files"]).split("\n").filter(Boolean); }
+    catch { bad("git ls-files が使えない（⚠ この検査が何も見ていない）"); }
+    const hit = [];
+    for (const f of files) {
+      let buf; try { buf = await readFile(join(ROOT, f)); } catch { continue; }
+      if (buf.includes(0)) continue;                       // ⚠ バイナリは読まない
+      if (RE.test(buf.toString("utf8"))) hit.push(f);
+    }
+    if (!files.length) bad("追跡ファイルが 1 つも無い（⚠ この検査が何も見ていない）");
+    else if (hit.length)
+      bad(`作業セッションの URL が、配るファイルに入っている: ${hit.join("、")}`
+        + `（⚠ 公開リポジトリ。⚠ CLAUDE.md「8-1」）`);
+    else ok(`追跡ファイルに作業セッションの URL は無い（${files.length} ファイルを見た）`);
+  }
+
+  // ---- コミット本文 ----
+  // ⚠ **浅い clone では、⚠ 全部を見ていない。**⚠ **そのときは「無い」と言わない**
+  //   （`CLAUDE.md`「いちばん上の原則」: ⚠ **確認できないことを「検査済み」と呼ばない**）。
+  //   ⚠ CI の静的検査は `fetch-depth: 0` で全部取っている。
+  {
+    let shallow = "false";
+    try { shallow = git(["rev-parse", "--is-shallow-repository"]).trim(); } catch { /* 下で出る */ }
+    let msgs = null;
+    try { msgs = git(["log", "--all", "--format=%B%x00"]); } catch { /* 下で出る */ }
+    // ⚠ **件名だけでは足りない。**⚠ **URL は本文の末尾に付いていた**ので、⚠ 本文ごと見る
+    const bodies = msgs === null ? [] : msgs.split("\0").filter((m) => m.trim());
+    const leaked = bodies.filter((m) => RE.test(m)).length;
+    if (msgs === null) bad("git log が使えない（⚠ コミット本文を 1 つも見ていない）");
+    else if (leaked)
+      bad(`作業セッションの URL が、コミット本文に残っている（${leaked} 件 / ${bodies.length} 件中）`
+        + `（⚠ 消すには履歴の書き換えが要る。⚠ CLAUDE.md「8-1」）`);
+    else if (shallow === "true")
+      bad(`浅い clone なので、⚠ コミット本文を全部見ていない（見たのは ${bodies.length} 件だけ）`
+        + `（⚠ fetch-depth: 0 で取り直す。⚠ ここで「無い」と言わない）`);
+    else ok(`コミット本文に作業セッションの URL は無い（${bodies.length} 件を見た・浅い clone ではない）`);
+  }
+}
