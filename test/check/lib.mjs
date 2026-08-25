@@ -18,7 +18,11 @@
 //   ⚠ **それらは、⚠ その節と一緒に動く。**
 
 import { readFile, readdir } from "node:fs/promises";
+import { readdirSync } from "node:fs";
 import { join, extname } from "node:path";
+// ⚠ **計測の置き場所は `.claude/telemetry-dir.mjs` の 1 か所**（2026-08-24 に寄せた）。
+//   ⚠ **ここで字を持ち直さない。**
+import { TELEMETRY_DIR_NAME } from "../../.claude/telemetry-dir.mjs";
 
 export const ROOT = new URL("../..", import.meta.url).pathname;
 export const PUB = join(ROOT, "public");
@@ -26,6 +30,58 @@ export const PUB = join(ROOT, "public");
 // ⚠ **本番の住所**（⚠ 2 か所以上が見るのでここに置く。2026-08-24）。
 //   ⚠ OGP の `og:url` と、⚠ 外部リンクの「外かどうか」の判定が、⚠ 同じ値を見る。
 export const SITE = "https://konjaku.hidetzu.work";
+
+// ---------- 歩く先 ----------
+// ⚠ **`.claude/` を歩くのは、⚠ ここ 1 か所**（2026-08-26。hidetzu/konjaku#276）。
+//
+// ⚠ **飛ばす先が 2 つある。**⚠ **どちらも「この repo の中にあるが、⚠ この repo ではない」もの。**
+//     worktrees   ⚠ **別セッションの作業場所。**⚠ 中身は ⚠ **この repo の別の版そのもの**
+//     telemetry   ⚠ **手元の作業の記録。**⚠ git の外で、⚠ **作業のたびに増える**
+//
+// ⚠ **歩くと落ちるのではない。**⚠ **数が静かに変わる。**⚠ **こちらのほうが危ない。**
+//   ⚠ **実測（2026-08-26・`main` = `00ee43b`・⚠ worktree を 1 本置いただけ）**:
+//       文書の `npm run` は全部実在する（ 61 ファイル）  →（128 ファイル）
+//       文書どうしのリンクは全部生きている（58 / 141 本）→（122 / 304 本）
+//   ⚠ **CI に worktree は無い。**⚠ **手元と CI で答えが変わる**（⚠ 突き合わせる人が誤解する）。
+//
+// ⚠ **前は `guard.mjs` だけが自分で持っていた**（2026-08-24。hidetzu/konjaku#246）。
+//   ⚠ **`links.mjs` は持っていなかった。**⚠ だから ⚠ **そちらだけ数が化けた。**
+//   ⚠ **同じ問いに答える実装を 2 つ持たない**（`CLAUDE.md` §3）。⚠ **ここへ寄せる。**
+const WALK_SKIP = new Set(["worktrees", TELEMETRY_DIR_NAME]);
+
+// ⚠ **読む相手を差し替えられる形にする**（⚠ **本物に触らずに確かめるため**。`CLAUDE.md` §9）。
+//   ⚠ 既定は実物。⚠ **検査は手で書いた木を渡して、⚠ 本当に飛ばしているかを見る。**
+// ⚠ **読めない場所を渡されても落とさない**（⚠ `.claude` がまだ無い repo もある）。
+const realEntries = (d) => { try { return readdirSync(d, { withFileTypes: true }); } catch { return []; } };
+
+// ⚠ **飛ばさずに全部歩く。**⚠ **`walkFiles` の中からしか呼ばない。**
+const walkAll = (dir, entriesOf) => {
+  const out = [];
+  for (const e of entriesOf(dir)) {
+    const p = join(dir, e.name);
+    if (e.isDirectory()) out.push(...walkAll(p, entriesOf));
+    else out.push(p);
+  }
+  return out;
+};
+
+/** `dir` の下のファイルを集める。⚠ **`WALK_SKIP` の名前は飛ばす。**
+ *
+ *  ⚠ **飛ばすのは、⚠ 渡した場所の直下だけ**（⚠ **`.claude/worktrees/` はそこにある**）。
+ *  ⚠ **深いところの同名は飛ばさない。**⚠ **名前だけで判断を広げない**
+ *    （⚠ この検査が主張してよいのは、⚠ **その 1 か所を歩いていないこと**だけ）。
+ *
+ *  ⚠ 返す形は、⚠ **渡した `dir` の続き**（⚠ 絶対で渡せば絶対・相対で渡せば相対）。 */
+export const walkFiles = (dir, entriesOf = realEntries) => {
+  const out = [];
+  for (const e of entriesOf(dir)) {
+    if (e.isDirectory() && WALK_SKIP.has(e.name)) continue;
+    const p = join(dir, e.name);
+    if (e.isDirectory()) out.push(...walkAll(p, entriesOf));
+    else out.push(p);
+  }
+  return out;
+};
 
 // ---------- コメントを落とす ----------
 // ⚠ **検査が文書やコードを読むときは、⚠ コメントを先に落とす**（`CLAUDE.md` §5）。

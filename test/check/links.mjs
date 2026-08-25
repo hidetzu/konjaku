@@ -26,7 +26,7 @@ import { readFile, readdir } from "node:fs/promises";
 import { existsSync, readFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { join, dirname, extname, basename } from "node:path";
-import { ROOT, PUB, SITE, ok, bad, warn, head, htmlFiles, jsFiles, src , BLOCK_COMMENT, HTML_COMMENT, dropComment } from "./lib.mjs";
+import { ROOT, PUB, SITE, ok, bad, warn, head, htmlFiles, jsFiles, src , BLOCK_COMMENT, HTML_COMMENT, dropComment, walkFiles } from "./lib.mjs";
 
 // ⚠ **外へ実際に出るかどうかの指定**（⚠ `test/check.mjs` から一緒に持ってきた）。
 const CHECK_LINKS = process.argv.includes("--links");
@@ -169,12 +169,14 @@ head("6. 外部リンク");
 //   件数がずれるのは見た目の問題だが、**コマンド名の誤りは押して何も起きない導線**で、
 //   この製品が置かないと決めているもの（掟: 押しても何も起きない導線を置かない）。
 {
-  const { readFileSync: rf, readdirSync: rd } = await import("node:fs");
+  const { readFileSync: rf } = await import("node:fs");
   const scripts = Object.keys(JSON.parse(rf("package.json", "utf8")).scripts ?? {});
-  // ⚠ 無い場所を渡されても落とさない（.claude はまだ無いリポジトリもある）
-  const walk = (d) => { try { return rd(d, { withFileTypes: true }).flatMap((e) =>
-    e.isDirectory() ? walk(`${d}/${e.name}`) : [`${d}/${e.name}`]); } catch { return []; } };
-  const files = [...walk("docs"), ...walk(".github"), ...walk(".claude"),
+  // ⚠ **歩き方は `lib.mjs` の `walkFiles` の 1 か所**（2026-08-26。hidetzu/konjaku#276）。
+  //   ⚠ **前はここに自前の `walk` があり、⚠ `.claude/worktrees/` の中まで歩いていた。**
+  //   ⚠ **落ちない。**⚠ **下の 2 つの名乗りが、⚠ 手元だけ倍近くに増えていた**
+  //     （⚠ 実測 2026-08-26: ⚠ 61 → 128 ファイル ／ 58 ファイル 141 本 → 122 ファイル 304 本）。
+  //   ⚠ **無い場所を渡されても落とさない**のも、⚠ 向こうが持っている。
+  const files = [...walkFiles("docs"), ...walkFiles(".github"), ...walkFiles(".claude"),
     "README.md", "CLAUDE.md"]
     .filter((f) => /\.(md|yml|yaml)$/.test(f));
   const miss = [];

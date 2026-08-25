@@ -19,10 +19,10 @@
 //
 // ⚠ **道具は `test/check/lib.mjs` の 1 か所**（⚠ ここで持ち直さない）。
 
-import { readFile, readdir } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { ROOT, ok, bad, head, dropCommentOrHash } from "./lib.mjs";
+import { ROOT, ok, bad, head, dropCommentOrHash, walkFiles } from "./lib.mjs";
 // ⚠ **計測の置き場所は `.claude/telemetry-dir.mjs` の 1 か所**（2026-08-24 に寄せた）。
 //   ⚠ **ここで字を持ち直さない。**⚠ **持ち直すと、⚠ 寄せた意味が無くなる。**
 import { TELEMETRY_DIR_NAME, TELEMETRY_IGNORE_LINE } from "../../.claude/telemetry-dir.mjs";
@@ -153,23 +153,12 @@ head("人の判断を飛ばさない");
 // ⚠ **`.claude/` の中だけを見る。**この検査自身（scripts/）や、禁じ手を説明している
 //   文書まで拾うと、書いた瞬間に落ちる（コメントを先に落とす規則と同じ話）。
 {
-  const dir = join(ROOT, ".claude");
-  // ⚠ **計測の出力は読まない**（2026-08-24）。⚠ `.claude/telemetry/` は git の外で、
-  //   ⚠ **作業のたびに増える。**⚠ 読むと、⚠ **名乗るファイル数が回すたびに変わる**
-  //   （⚠ `CLAUDE.md` §9: ⚠ **判定の字を変更前後で突き合わせられなくなる**）。
-  // ⚠ **`worktrees/` も読まない。**⚠ **中身はこの repo の別の版そのもの**なので、
-  //   ⚠ **読むと、⚠ 同じファイルを 2 度見たうえに、⚠ 数が作業中かどうかで変わる。**
-  const SKIP = new Set([TELEMETRY_DIR_NAME, "worktrees"]);
-  const walk = async (d) => {
-    const out = [];
-    for (const e of await readdir(d, { withFileTypes: true })) {
-      const full = join(d, e.name);
-      if (e.isDirectory()) { if (!SKIP.has(e.name)) out.push(...await walk(full)); }
-      else out.push(full);
-    }
-    return out;
-  };
-  const files = existsSync(dir) ? await walk(dir) : [];
+  // ⚠ **歩き方は `lib.mjs` の `walkFiles` の 1 か所**（2026-08-26。hidetzu/konjaku#276）。
+  //   ⚠ **飛ばす先（`telemetry/` ／ `worktrees/`）の理由も、⚠ 向こうに書いてある。**
+  //   ⚠ **ここで持ち直さない。**⚠ **持ち直すと、⚠ 片方だけ古くなる**（`CLAUDE.md` §5）。
+  // ⚠ **起点も同じ行に置く**（⚠ **`check.mjs` の見張りが、⚠ 行で見ているため**）。
+  //   ⚠ **無い場所を渡されても落ちない**のは `walkFiles` が持っている（⚠ 前は `existsSync` で見ていた）。
+  const files = walkFiles(join(ROOT, ".claude"));
   const FORBIDDEN = [
     { re: /--add-label[^\n]*ready-for-ai|ready-for-ai[^\n]*--add-label/, why: "ready-for-ai を自分で付けている" },
     { re: /gh\s+pr\s+merge[^\n]*--auto/, why: "PR を自動 merge している" },

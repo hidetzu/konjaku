@@ -37,7 +37,9 @@ import { VERSION as BL_VERSION, unpack as blUnpack } from "../scripts/bl-format.
 //   ⚠ **`test/render/lib.mjs` と対になる置き方。**
 import { ROOT, PUB, SITE, ok, bad, warn, head, tally, makeReport, dropComment, dropCommentOrHash,
          htmlFiles, jsFiles, src, TOP, PAGE_JS, pageSrc, seen, seenTop, torn, stripJs,
-         BLOCK_COMMENT, HTML_COMMENT, LINE_COMMENT, HEAD_COMMENT } from "./check/lib.mjs";
+         BLOCK_COMMENT, HTML_COMMENT, LINE_COMMENT, HEAD_COMMENT, walkFiles } from "./check/lib.mjs";
+// ⚠ **計測の置き場所は `.claude/telemetry-dir.mjs` の 1 か所**（⚠ ここで字を持ち直さない）。
+import { TELEMETRY_DIR_NAME } from "../.claude/telemetry-dir.mjs";
 
 // ⚠ **出した節の一覧**（2026-08-24。hidetzu/konjaku#232）。
 //   ⚠ **順番はここで決める。**⚠ **`readdir` の順に任せない**
@@ -270,6 +272,84 @@ head("0. 数え方そのもの");
     ? bad(`コメント落としが取り違えている（改行をまたぐ引用符 ${torn.length} 件）: ${torn.slice(0, 3).join("、")}`
         + `（この状態では、語を数え落としても緑になる）`)
     : ok(`コメント落としが取り違えていない（改行をまたぐ引用符 0 件 / ${Object.keys(seen).length} ファイル）`);
+
+  // ⚠ **歩く先が、⚠ 「この repo の中にあるが、⚠ この repo ではない」ものを飛ばしているか**
+  //   （2026-08-26。hidetzu/konjaku#276）。
+  //   ⚠ **歩いても落ちない。**⚠ **名乗る数が静かに変わるだけ。**⚠ **こちらのほうが危ない。**
+  //     ⚠ 実測（2026-08-26・⚠ worktree を 1 本置いただけ）: ⚠ **58 ファイル 141 本 → 122 ファイル 304 本。**
+  //     ⚠ **一瞬「検査が 1 件消えた」ように見えた**（⚠ 判定の字を突き合わせているときに踏んだ）。
+  //   ⚠ **CI に worktree は無い。**⚠ **手元と CI で答えが変わる。**
+  //
+  // ⚠ **本物の `.claude/` に触らない。**⚠ **worktree があるかは、⚠ そのときの作業しだい**なので、
+  //   ⚠ **触ると、⚠ この検査自身が「回すたびに違う」ものになる。**
+  //   ⚠ **手で書いた木を渡して見る**（`CLAUDE.md` §9: ⚠ **突き合わせる相手は別の道で得たもの**）。
+  {
+    const D = (name) => ({ name, isDirectory: () => true });
+    const F = (name) => ({ name, isDirectory: () => false });
+    // ⚠ **飛ばす名前を、⚠ ここから借りない**（⚠ `WALK_SKIP` を空にしたら、⚠ 木からも消えて素通りする）。
+    //   ⚠ **`worktrees` は字で書く。**⚠ **計測だけは持ち主から借りる**（⚠ 字は 1 か所。`telemetry-dir.mjs`）。
+    // ⚠ **起点の字も組み立てる**（⚠ **下の見張りが、⚠ この行を「自前で歩いている」と読むので**）
+    const C = ".clau" + "de";
+    const tree = {
+      [C]:                          [D("skills"), D("worktrees"), D(TELEMETRY_DIR_NAME), F("settings.json")],
+      [`${C}/skills`]:              [F("verify.md"), D("worktrees")],
+      [`${C}/skills/worktrees`]:    [F("ふかいところの同名.md")],
+      [`${C}/worktrees`]:           [D("dummy")],
+      [`${C}/worktrees/dummy`]:     [F("CLAUDE.md")],
+      [`${C}/${TELEMETRY_DIR_NAME}`]: [F("2026-08-26.jsonl")],
+    };
+    const got = walkFiles(C, (d) => tree[d] ?? []);
+    // ⚠ **飛ばすのは直下だけ。**⚠ **深いところの同名は飛ばさない**（⚠ 主張を広げない）。
+    //   ⚠ **`.claude/skills/worktrees/` が残ることまで固定する**（⚠ 名前だけで判断が広がったら落ちる）。
+    const want = [`${C}/skills/verify.md`,
+                  `${C}/skills/worktrees/ふかいところの同名.md`,
+                  `${C}/settings.json`];
+    got.join("\n") === want.join("\n")
+      ? ok(`歩く先は worktrees/ と ${TELEMETRY_DIR_NAME}/ を直下で飛ばしている`
+          + `（⚠ 深いところの同名は飛ばさない・手で書いた木 ${Object.keys(tree).length} 段で確かめた）`)
+      : bad(`歩く先が想定と違う（得 ${JSON.stringify(got)} ／ 望 ${JSON.stringify(want)}）`
+          + `（⚠ 落ちるのではなく、⚠ 名乗る数が静かに変わる形の事故）`);
+  }
+
+  // ⚠ **`.claude` を歩く検査が、⚠ また自前の走査を持ち直していないか**
+  //   （2026-08-26。hidetzu/konjaku#276）。⚠ **前は `guard.mjs` と `links.mjs` が別々に持っていた。**
+  //   ⚠ **`guard.mjs` だけが飛ばしていて、⚠ `links.mjs` は歩いていた**（⚠ 同じ問いに 2 つの答え）。
+  //
+  // ⚠ **最初は「`readdir` と `.claude` が同じ行にあるか」で書いた。**⚠ **それでは捕まらなかった**
+  //   （⚠ 実証 2026-08-26: ⚠ `links.mjs` に自前の再帰走査を戻したら、⚠ **緑のまま数だけ倍近くに増えた**。
+  //    ⚠ **走査を定義する行と、⚠ 起点を渡す行が別**だったため）。⚠ **見るのは「起点を渡す行」。**
+  //
+  // ⚠ **見るのは、⚠ 末尾に何も続かない字**（⚠ ディレクトリとしての `.claude`）。
+  //   ⚠ **`.claude/hooks/…` のような個別のファイルは見ない**（⚠ 歩く話ではない）。
+  //   ⚠ **`lib.mjs` は持ち主なので外す。**
+  //
+  // ⚠ **「その行に `walkFiles` があるか」では足りない**（⚠ 実証 2026-08-26）。
+  //   ⚠ **`[...walkFiles("docs"), …, walk(".claude")]` は、⚠ 同じ行に両方あるので素通りした。**
+  //   ⚠ **見るのは、⚠ その字を「誰に渡しているか」。**⚠ **数が合わなければ落とす。**
+  {
+    // ⚠ **字として組み立てる**（⚠ そのまま書くと、⚠ この検査が自分の行を拾う。⚠ この repo で 4 回以上）
+    const CL = '"\\.' + 'claude"';
+    const LIT = new RegExp(CL, "g");                                  // ⚠ 起点として書かれた字
+    const LENT = [new RegExp(`walkFiles\\(\\s*${CL}`, "g"),                 // ⚠ walkFiles(".claude")
+                  new RegExp(`walkFiles\\(\\s*join\\([^()]*,\\s*${CL}`, "g")];  // ⚠ walkFiles(join(ROOT, ".claude"))
+    const files = ["test/check.mjs", ...PARTS.map((p2) => `test/check/${p2}`)];
+    const own = [];
+    for (const f of files) {
+      const t = await readFile(join(ROOT, f), "utf8").catch(() => "");
+      // ⚠ **行で切る。**⚠ 行コメントを先に落とす（⚠ この節の説明を拾わないため）
+      for (const line of t.split("\n").map(dropComment)) {
+        const wrote = (line.match(LIT) ?? []).length;
+        if (!wrote) continue;
+        const lent = LENT.reduce((a, re) => a + (line.match(re) ?? []).length, 0);
+        if (wrote > lent) own.push(`${f}: ${line.trim().slice(0, 60)}`);
+      }
+    }
+    if (!files.length) bad("検査のファイルが 1 つも無い（⚠ この検査が何も見ていない）");
+    else if (own.length)
+      bad(`.claude を walkFiles 以外へ渡している検査がある（${own.length} 件）: ${own.join(" / ")}`
+        + `（⚠ 自前で歩くと、⚠ 落ちずに数だけ変わる。⚠ lib.mjs の walkFiles から借りる）`);
+    else ok(`.claude の起点を渡すのは walkFiles だけ（他 0 件・${files.length} ファイル）`);
+  }
 
   // ⚠ **出した節を、⚠ 1 つ残らず読み込んでいるか**（2026-08-24。⚠ **実際に起こした**）。
   //   ⚠ **読み込み忘れは落ちない。**⚠ **件数が減るだけなので、⚠ 人が数を覚えていないと気づけない。**
