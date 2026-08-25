@@ -2045,6 +2045,126 @@ export const CASES = [
     },
   },
 
+  {
+    // ⚠ **文字サイズを上げても、⚠ 写真が資料として残る**（2026-08-25。hidetzu/konjaku#176）。
+    //
+    //   ⚠ **既存の「着いた直後の画面に…」は、⚠ 既定の文字サイズしか見ていない。**
+    //   ⚠ **既存の「文字サイズを上げると、字が大きくなる」は、⚠ 横あふれしか見ていない。**
+    //     ⚠ **縦（初期画面に入るか）と、⚠ 写真が潰れていないかは、⚠ 誰も見ていなかった。**
+    //   ⚠ 直す前の実測（375×667）: ⚠ **125% で写真 37px・150% で 2px。**
+    //     ⚠ **150% では「重ねる」も画面外**（734 / 667）。
+    //
+    //   ⚠ **文字サイズは「読み込む前」に効かせる。**
+    //     ⚠ **あとから効かせると `layoutBig()` が置き直さず、⚠ 判定点の位置が嘘になる**
+    //       （⚠ 2026-08-25 に踏んだ。⚠ 「判定点が枠の外」と誤って報告した）。
+    //   ⚠ **その大きさで読み込む**（伸縮すると写真が前の高さを保つ）。
+    //   ⚠ **hasTouch を付ける**（付けないと (hover:none) が効かず 14px ずれる）。
+    //
+    //   ⚠ **320×640 の 125% は入らない**（⚠ 直す前も入っていない）。⚠ **ここでは求めない。**
+    //     ⚠ 求めると、⚠ **写真を 16px まで潰す値**を選ぶことになる（実測）。
+    name: "文字サイズを上げても、写真が資料として残る", path: "/", group: "core",
+    async check(page) {
+      // ⚠ **どの条件で「重ねる」まで求めるか。**⚠ 求めないものは、⚠ 写真だけ見る
+      const CASES = [
+        // ⚠ **既定も対にして見る**（⚠ 片側だけだと、⚠ 既定を壊しても緑になる）。
+        //   ⚠ **既定では、⚠ 写真を切り落とさない。**⚠ 直す前は 375×667 で 309×163（⚠ 比 1.90）
+        //     ⚠ ＝ **正方形のモザイクの 53% しか見せていなかった**。⚠ 上限が食っていた。
+        { w: 375, h: 667, scale: 100, wantOv: true, wantWhole: true },
+        { w: 320, h: 640, scale: 100, wantOv: true, wantWhole: true },
+        { w: 375, h: 667, scale: 125, wantOv: true },
+        { w: 375, h: 667, scale: 150, wantOv: true },
+        // ⚠ **320×640 は、⚠ 125% でも 150% でも「重ねる」が入らない。**
+        //   ⚠ **直す前も入っていない**（⚠ そのうえ写真が 2px だった）。⚠ **ここでは写真だけ求める。**
+        //   ⚠ 求めると、⚠ **写真を 16px まで潰す値**を選ぶことになる（実測）。
+        { w: 320, h: 640, scale: 125, wantOv: false },
+        { w: 320, h: 640, scale: 150, wantOv: false },
+        // ⚠ **横向き。**⚠ 既定の文字サイズでも写真が 2px だった。⚠ 「重ねる」は求めない
+        { w: 667, h: 375, scale: 100, wantOv: false },
+        { w: 844, h: 390, scale: 100, wantOv: false },
+      ];
+      // ⚠ **これを割ったら「資料」と呼べない。**⚠ 利用者役 4 名が「写真だと思わなかった」と
+      //   ⚠ 言ったのが 37px（2026-08-25。⚠ **実在の利用者ではない**）。⚠ その上に置く
+      // ⚠ **112px は足し算で決まる**（`index.html` の `.verdict > .big` を読む）:
+      //   ⚠ 帰属表示 44px ＋ ＋−（PC は縦積み 32+4+32＝68px）。
+      //   ⚠ **これを割ると、⚠ ＋− が出典を隠さずに置けない。**
+      const FLOOR = 112;
+      const out = [];
+      for (const c of CASES) {
+        const ctx = await page.context().browser().newContext({
+          viewport: { width: c.w, height: c.h }, hasTouch: true, serviceWorkers: "block" });
+        try {
+          const p2 = await ctx.newPage();
+          // ⚠ **最初の 1 文字が来る前に効かせる**（上のコメント）
+          await p2.addInitScript((px) => {
+            const put = () => { if (!document.head || document.getElementById("k176")) return;
+              const st = document.createElement("style"); st.id = "k176";
+              st.textContent = `:root{font-size:${px}px !important}`;
+              document.head.appendChild(st); };
+            const t = setInterval(() => { if (document.head) { put(); clearInterval(t); } }, 4);
+            document.addEventListener("DOMContentLoaded", put);
+          }, 16 * c.scale / 100);
+          await p2.goto(`${BASE}/?${TOYOSU}`, { waitUntil: "domcontentloaded", timeout: 45000 });
+          await waitVerdict(p2);
+          await waitStrip(p2);
+          await p2.waitForSelector("#ovRow", { state: "attached", timeout: 30000 });
+          await settleAfterCondition(p2);
+          const g = await p2.evaluate(() => {
+            const R = (s) => { const e = document.querySelector(s);
+              if (!e || !e.checkVisibility()) return null;
+              const b = e.getBoundingClientRect();
+              return { t: Math.round(b.top), b: Math.round(b.bottom),
+                h: Math.round(b.height), w: Math.round(b.width) }; };
+            const big = document.querySelector(".verdict > .big").getBoundingClientRect();
+            const mk = document.querySelector(".big .mk").getBoundingClientRect();
+            const d = document.documentElement;
+            return { root: parseFloat(getComputedStyle(d).fontSize),
+              photo: R(".verdict > .big"), ov: R("#ovRow"),
+              // ⚠ **判定している点が、⚠ 写真の中に残っていること**
+              mkIn: mk.top >= big.top - 1 && mk.bottom <= big.bottom + 1,
+              vh: innerHeight, over: d.scrollWidth - d.clientWidth };
+          });
+          // ⚠ **＋− は、⚠ 写真を画面に出してから押す。**
+          //   ⚠ `elementFromPoint` は **画面の外を見ない**ので、⚠ 写真が下にあると
+          //     ⚠ **「押せない」と出る**（⚠ 2026-08-25 に踏んだ。⚠ 横向きで誤検知した）。
+          //   ⚠ **横向きでは、⚠ 写真が初期画面の外にあるのが正しい姿**（上のコメント）。
+          //   ⚠ **上の寸法は scroll 0 で測ってある。**⚠ ここから先だけスクロールする。
+          const zoom = await p2.evaluate(() => {
+            document.querySelector(".verdict > .big").scrollIntoView({ block: "center" });
+            // ⚠ **座標を押して届くか**で見る。⚠ computed style は切られても 44×44 のまま
+            const hit = (id) => { const e = document.getElementById(id);
+              if (!e) return false;
+              const r = e.getBoundingClientRect();
+              const at = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+              return !!at && (at === e || e.contains(at)); };
+            return { zIn: hit("zIn"), zOut: hit("zOut") };
+          });
+          const at = `${c.w}×${c.h}/${c.scale}%`;
+          // ⚠ **文字サイズが本当に効いていること。**⚠ 効いていないと、⚠ 既定を測って緑になる
+          must(Math.abs(g.root - 16 * c.scale / 100) < 0.51,
+            `${at}: 文字サイズが効いていない（ルート ${g.root}px）`);
+          must(g.photo, `${at}: 写真が見えていない`);
+          must(g.photo.h >= FLOOR, `${at}: 写真が ${FLOOR}px を割っている（${g.photo.h}px）`);
+          // ⚠ **既定では、⚠ 切り落としが小さいこと。**⚠ 写真は正方形のモザイクを切り出した窓で、
+          //   ⚠ **上限が食うほど、⚠ 見えている割合が減る**（比が大きいほど細い帯になる）。
+          //   ⚠ **下限だけでは守れない**（⚠ 下限は「潰れない」しか言わない）。
+          if (c.wantWhole) {
+            const ratio = g.photo.w / g.photo.h;
+            must(ratio <= 1.5, `${at}: 既定なのに写真が細い（比 ${ratio.toFixed(2)}。1.5 まで）`);
+          }
+          must(g.mkIn, `${at}: 判定している点が、写真の枠の外にある`);
+          // ⚠ **写真の中の ＋− が押せること。**⚠ 短い写真で枠から出ていた
+          must(zoom.zIn && zoom.zOut, `${at}: 写真の ＋− が押せない（＋ ${zoom.zIn} / − ${zoom.zOut}）`);
+          if (c.wantOv) {
+            must(g.ov, `${at}: 重ねるが見えていない`);
+            must(g.ov.b <= g.vh, `${at}: 重ねるが初期画面の外にある（下端 ${g.ov.b} / 画面 ${g.vh}）`);
+          }
+          must(g.over <= 0, `${at}: 横にあふれている（${g.over}px）`);
+          out.push(`${at} 写真${g.photo.h}px${c.wantOv ? `／重ねる${g.ov.b}` : ""}`);
+        } finally { await ctx.close(); }
+      }
+      return out.join(" ／ ");
+    },
+  },
 
   {
     // ⚠ **答えに出ている区分名の意味が、「なぜそう言える？」を押さずに分かる**
