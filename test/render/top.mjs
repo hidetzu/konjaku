@@ -2014,14 +2014,22 @@ export const CASES = [
             return { ans: R(".v-head"), big: R("#big"), ov: R("#ovRow"),
               gq: [...document.querySelectorAll(".verdict .gq")]
                 .filter((e) => e.checkVisibility()).map((e) => e.textContent.trim()),
+              gqAll: document.querySelectorAll(".verdict .gq").length,
               lines: [...document.querySelectorAll(".v-head .tx")].length,
               vh: innerHeight, over: d.scrollWidth - d.clientWidth };
           });
-          // ⚠ **問いの見出しが 2 つ出ている**（第1層・第2層）
-          must(g.gq.length === 2, `${w}×${h}: 問いの見出しが 2 つでない（${g.gq.length} 個: ${g.gq.join(" / ")}）`);
+          // ⚠ **判定が出たあとは、⚠ 1 つ目の問いの見出しを畳む**（2026-08-25。hidetzu/konjaku#176）。
+          //   ⚠ **答えの文が「この土地は 旧水部」と、⚠ 既に問いを含んでいる。**
+          //   ⚠ 実測（375×667）: 文字 150% でこの行が 25px。⚠ 見出し 94px・検索欄 72px と同じ話で、
+          //     ⚠ **答えを出すための道具が、⚠ 答えを読んでいるあいだも画面を占めていた。**
+          //   ⚠ **2 つ目（昔はどんな土地？）は残す。**⚠ 年代の帯が何の話かを言う唯一の行。
+          must(g.gq.length === 1, `${w}×${h}: 問いの見出しが 1 つでない（${g.gq.length} 個: ${g.gq.join(" / ")}）`);
           // ⚠ **字は words.js の 1 か所から。**⚠ ここへ書き写さない
-          must(g.gq[0] === WORDS.layerTitle(1) && g.gq[1] === WORDS.layerTitle(2),
+          must(g.gq[0] === WORDS.layerTitle(2),
             `${w}×${h}: 見出しが words.js と違う（${g.gq.join(" / ")}）`);
+          // ⚠ **1 つ目は「消した」のではなく「畳んだ」。**⚠ DOM には残っている
+          //   （⚠ 場所を選ぶ前は出る。⚠ 判定後だけ畳む）。
+          must(g.gqAll === 2, `${w}×${h}: 問いの見出しが DOM から消えている（${g.gqAll} 個）`);
           // ⚠ **成因と人工改変は行を分ける**（ADR 0030 §4-4）
           must(g.lines === 2, `${w}×${h}: 答えが 2 行になっていない（${g.lines} 行）`);
           // ⚠ **3 つとも初期画面に入る**
