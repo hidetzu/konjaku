@@ -12,7 +12,7 @@
 // ⚠ **ここは「読めるか」までしか言えない**（`CLAUDE.md` §1）。
 //   ⚠ **実際の画面がその色みで出るかは、⚠ ここでは分からない。**
 //     ⚠ **色みを選ぶ操作は、⚠ まだ無い**（theme.css の見出しに書いてある）。
-//     ⚠ **規則へ直に書いた色が 77 か所残っている**（⚠ 実測 2026-08-26。⚠ ほぼ「素性のない色」）。
+//     ⚠ **規則へ直に書いた色が 47 か所残っている**（⚠ 実測 2026-08-26。⚠ ほぼ「灰の段」）。
 //     ⚠ だから ⚠ **「明るい色みが完成した」とは言わない。**⚠ **定義が読めることだけを言う。**
 //
 // ⚠ **道具は `test/check/lib.mjs` の 1 か所**（⚠ ここで持ち直さない）。
@@ -107,7 +107,7 @@ else {
   //     ⚠ 画面の根（`:root` / `html`）に、⚠ **色の宣言が 1 つも無いこと**
   // ⚠ **部品の中に閉じた色（`#list{--why:…}` など）は咎めない。**⚠ **画面全体の地ではない。**
   // ⚠ **規則へ直に書いた色（`.prov.ok{background:rgba(…)}` など）も咎めない。**
-  //   ⚠ **77 か所ある**（実測 2026-08-26）。⚠ **それは次の段の仕事**で、
+  //   ⚠ **47 か所ある**（実測 2026-08-26）。⚠ **それは次の段の仕事**で、
   //     ⚠ **いま落とすと、⚠ この検査が「直せない指摘」を出し続けることになる。**
   {
     const names = new Set(Object.keys(blocks.get(DARK)));
@@ -173,8 +173,12 @@ else {
     ["暗い色み", "--ink-faint", 3.82],
     ["暗い色み・地図の上", "--ink-faint", 4.15],
   ];
-  const INK = ["--ink", "--ink-dim", "--ink-faint", "--action", "--water",
-               "--evidence", "--estimate", "--missing"];
+  // ⚠ **地／面の上に載る文字**（2026-08-26 に 6 色足した。hidetzu/konjaku#96 の 4 段目）。
+  //   ⚠ **`--action-ink` はここに入れない。**⚠ **地ではなく `--action` の上に載る**（⑧ が見る）。
+  //   ⚠ **`--wash` / `--shadow` も入れない。**⚠ 文字ではない。
+  const INK = ["--ink", "--ink-dim", "--ink-faint", "--action", "--water", "--land",
+               "--evidence", "--estimate", "--missing", "--mine",
+               "--evidence-ink", "--estimate-ink", "--land-ink", "--water-ink"];
   {
     const fails = [], short = [], said = [];
     for (const [name, sel, baseSel] of SURFACES) {
@@ -265,6 +269,36 @@ else {
     fails.length
       ? bad(`色みの定義が届かない経路がある: ${fails.join(" / ")}`)
       : ok("両ページが theme.css を読み、/peel に地図の上の印があり、SHELL に入っている");
+  }
+
+  // ---------- ⑧ 色の「上」に載る文字 ----------
+  // ⚠ **2026-08-26・hidetzu/konjaku#96 の 4 段目。**
+  //
+  // ⚠ **`--action-ink` は、⚠ 地ではなく `--action` の上に載る。**
+  //   ⚠ **③ の一覧に入れると、⚠ 暗い色みで「地に対して読めない」と落ちる**（⚠ 当たり前で、
+  //     ⚠ **地の上には載らない色**だから）。⚠ **乗る相手に対して測る。**
+  //
+  // ⚠ **「`*-ink` は元の色より控えめ」は、⚠ 検査にしなかった**（2026-08-26）。
+  //   ⚠ **足してみたら落ちた。**⚠ **いまの暗い色みがそうなっていない**:
+  //     ⚠ `--water-ink`（8.88）は `--water`（7.14）より **強い**。
+  //     ⚠ `--estimate-ink` は `--estimate` より **弱い**。⚠ **揃っていない。**
+  //   ⚠ **検査は「守るべきこと」を固定する。**⚠ **いま成り立っていない主張を固定しない**
+  //     （`CLAUDE.md` §9: ⚠ 検査を足すときは、⚠ その主張が本当に正しいかを疑う）。
+  //   ⚠ **読めることは ③ が見ている。**⚠ ここで重ねて言わない。
+  {
+    const fails = [], said = [];
+    for (const [name, sel, baseSel] of SURFACES) {
+      const t = { ...(baseSel ? blocks.get(baseSel) : {}), ...blocks.get(sel) };
+      const act = parseColor(t["--action"]), actInk = parseColor(t["--action-ink"]);
+      if (!act || !actInk) { fails.push(`${name} に --action か --action-ink が無い`); continue; }
+      const r = contrast(composite(actInk, act), act);
+      if (r < AA) fails.push(`${name} の --action-ink が ${r.toFixed(2)}（${AA} 未満・乗る相手は --action）`);
+      said.push(`${name} ${r.toFixed(2)}`);
+    }
+    fails.length
+      ? bad(`操作の色の上に載る文字が読めない: ${fails.join(" / ")}`
+          + `（⚠ 押されているボタンの字。⚠ 地ではなく --action の上に載る）`)
+      : ok(`操作の色の上の文字は、⚠ **乗る相手（--action）に対して** ${AA} 以上（${said.join(" ／ ")}）`);
   }
 
   // ---------- ⑦ 意味を持つ色の「濃さ違い」を、規則へ直に書かない ----------
