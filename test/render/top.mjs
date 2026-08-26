@@ -19,10 +19,35 @@ import {
   timelineSettled, stepLabels, tauNow, effOpacity, waitOpacity, peelReady,
   settleAfterCondition, waited, waitOptional, settleAfterClick, settleAfterScroll, SWALE_ROUTE,
   LFC_ROUTE, DEM_ROUTE, forbid,
-  must, assertToyosu3dAnswer, openPanel
+  must, assertToyosu3dAnswer, openPanel, themeColors, sameColor
 } from "./lib.mjs";
 
 export const CASES = [
+  {
+    // ⚠ **色みの定義が、⚠ この画面で本当にその値になっているか**（2026-08-26・hidetzu/konjaku#96）。
+    //   ⚠ **理由と踏んだ話は `test/render/peel.mjs` の同じ名前のケースに全文がある。**
+    //   ⚠ **ここは地図の上ではない**ので、⚠ **印が付いていないこと**まで見る
+    //     （⚠ 付いていると、⚠ トップの面が地図用の暗い半透明になる）。
+    name: "この画面の色は、地の色みに解決されている", path: "/", group: "core",
+    async check(page) {
+      const theme = await themeColors();
+      const base = theme[":root"];
+      must(base, "theme.css から地の色みを読めない（⚠ この検査が何も見ていない）");
+      const names = Object.keys(base);
+      must(names.length >= 8, `theme.css の色が ${names.length} 個しかない（⚠ 読み方が壊れている）`);
+      const got = await page.evaluate((ns) => {
+        const cs = getComputedStyle(document.documentElement);
+        return { mark: document.documentElement.getAttribute("data-backdrop"),
+                 vals: Object.fromEntries(ns.map((n) => [n, cs.getPropertyValue(n)])) };
+      }, names);
+      must(got.mark === null, `トップに地図の上の印が付いている（${JSON.stringify(got.mark)}）`);
+      const wrong = names.filter((n) => !sameColor(got.vals[n], base[n]));
+      must(!wrong.length, `色が theme.css の値になっていない: `
+        + wrong.map((n) => `${n}（期待 ${base[n]} ／ 実際 ${got.vals[n].trim()}）`).join("、"));
+      return `/ ／ 印なし ／ theme.css の ${names.length} 色と一致`
+        + `（例 --bg ${got.vals["--bg"].trim()} ／ --ink ${got.vals["--ink"].trim()}）`;
+    },
+  },
   {
     // ⚠ **トップの URL の座標が読めないとき、⚠ 黙って別の場所を出さない**（2026-08-24）。
     //

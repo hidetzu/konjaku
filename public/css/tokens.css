@@ -5,12 +5,12 @@
  *     片方だけ直すと、2 画面で見た目がずれる（ADR 0021）。
  *
  * ⚠ **意味で名前を付ける。**色名（green-400 など）に置き換えない
- *   （docs/DOMAIN.md）。--evidence / --estimate / --missing は
- *   この製品固有の意味を持つ。
+ *   （docs/DOMAIN.md）。
  *
- * ⚠ **画面ごとに値が違うものは、ここに置かない。**
- *   --bg / --ink / --ink-dim / --line / --surface の 5 つは値が違う。
- *   ⚠ どちらが正かは決めていないので、各ページに残す。
+ * ⚠ **色は、ここには無い**（2026-08-26・hidetzu/konjaku#96）。
+ *   ⚠ **`public/css/theme.css` の 1 か所へ移した。**⚠ **値は 1 つも変えていない。**
+ *   ⚠ **ここに色を書き戻さない。**⚠ 2 か所に持つと、⚠ **色みを足したとき片方だけ切り替わる。**
+ *   ⚠ **検査が見ている**（`test/check/color.mjs`）。
  */
 :root {
   /* 文字の段（⚠ px 固定。rem 化は別 Issue） */
@@ -46,16 +46,6 @@
   --fs-lead: var(--text-md);
   --fs-note: var(--text-xs);
   --fs-sign: var(--text-3xl);
-
-  /* 出どころの色（⚠ 意味を持つ。色名に置き換えない） */
-  --evidence: #7ee0a5;
-  --estimate: #e6c47a;
-  --missing: #e08a7a;
-
-  /* そのほかの色 */
-  --action: #6fc3ff;
-  --water: #5ba3e0;
-  --ink-faint: #6b7683;
 
   /* 指の的 */
   --tap: 44px;

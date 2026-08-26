@@ -18,7 +18,7 @@
 //   一度来た人に古い `/` と `/share.js` が出続けた。しかもローカルは初回訪問なので
 //   絶対に再現せず、CI も全部通る。流入を測り始める直前に一度踏みかけた。
 //   なぜハッシュにしたかの全文は scripts/sw-hash.mjs の頭にある。
-const VERSION = "konjaku-ce534d88";
+const VERSION = "konjaku-8b0c3c9e";
 // ⚠ addAll は1件でも 404 すると install ごと reject し、キャッシュが丸ごと死ぬ。
 //   この一覧を足し引きしたときも版は変わる（一覧そのものもハッシュの材料に入れてある）。
 const SHELL = [
@@ -30,10 +30,12 @@ const SHELL = [
   // ⚠ land.js も同じ性質。**来ないと両ページが土地情報を頼む先を失う**
   //   （2 画面が取得の層を直接呼ばず、ここだけを見る作りにしてある）。
   "/esc.js", "/photos.js", "/eras.js", "/place-arg.js", "/words.js", "/top.js", "/verify.js", "/land.js", "/gsi-address-search.js", "/places.js", "/share.js", "/events.js",
-  // ⚠ 2 画面で共通の見た目の定義。**来ないと両ページの色も文字サイズも決まらない**
+  // ⚠ 2 画面で共通の見た目の定義。**来ないと両ページの文字サイズが決まらない**
   //   （esc.js と同じ性質。オフラインでも画面が成り立つための最小限）。
   //   ⚠ 68 KB の地図 CSS とは別物で、実測 1,650 バイト。
-  "/css/tokens.css",
+  // ⚠ **色みは theme.css**（2026-08-26・hidetzu/konjaku#96）。⚠ **来ないと両ページの色が
+  //   1 つも決まらない**（地も文字も枠も）。⚠ tokens.css と対で入れる。
+  "/css/tokens.css", "/css/theme.css",
   // ⚠ **EraControlPanel**（hidetzu/konjaku#171）。⚠ **来ないと /peel の年代 UI が出ない。**
   //   ⚠ **動的キャッシュの規則は「直下の .js」しか一致しない**（下の RUNTIME を読む）。
   //     ⚠ components の下は一致しないので、⚠ **ここに入れないと配られない**（オフラインで落ちる）。

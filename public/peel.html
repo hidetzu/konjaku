@@ -1,5 +1,7 @@
 <!doctype html>
-<html lang="ja">
+<!-- ⚠ data-backdrop="map" は「地図の上に重ねている画面」の印（2026-08-26・hidetzu/konjaku#96）。
+     ⚠ 面が暗くて半透明なのは **peel だからではなく、地図の上だから**。色は theme.css が持つ。 -->
+<html lang="ja" data-backdrop="map">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -32,18 +34,17 @@
 <link rel="apple-touch-icon" href="/icon-192.png">
 <link rel="stylesheet" href="./vendor/maplibre-gl.css">
 <!-- ⚠ 2 画面で共通の見た目の定義。**ここが唯一の出どころ**（ADR 0021）。
-     ⚠ 画面ごとに値が違うものは、下の <style> に残してある。 -->
+     ⚠ 色は持たない（→ theme.css）。画面ごとに違う文字の段は、下の <style> に残してある。 -->
 <link rel="stylesheet" href="./css/tokens.css">
+<!-- ⚠ 色みの定義。**色の値はここが唯一の出どころ**（2026-08-26・hidetzu/konjaku#96）。
+     ⚠ この画面の色は theme.css の [data-backdrop="map"]（<html> に付けてある）。
+     ⚠ 下の <style> に色を書き戻さない（書くと、色みを足したとき片方だけ切り替わる）。 -->
+<link rel="stylesheet" href="./css/theme.css">
 <style>
-  /* 色の意味は index.html と同じ。⚠ 値だけ違う（地図の上なので、面はより暗い）。
-     名前を揃えてあるので、テーマを足すときは両方に同じ名前で書けばよい。 */
+  /* ⚠ 色は public/css/theme.css が持つ（2026-08-26）。⚠ **値は 1 つも変えていない。**
+     ⚠ 地図の上なので面はより暗い、という違いは、「画面ごと」ではなく
+        [data-backdrop="map"] として theme.css 側にある。 */
   :root{
-    --bg:#080b0f;
-    --surface:rgba(12,16,22,.84);
-    --line:rgba(255,255,255,.13);
-    --ink:#eef1f5;
-    --ink-dim:#8e99a6;
-
     /* 文字の大きさ。⚠ 名前も段も index.html と揃える。
        二層にしてあり、**値は --text-* にしか書かない**。使う側は --fs-* を書く。
        理由と実測は index.html の同じ節に全文がある。 */
