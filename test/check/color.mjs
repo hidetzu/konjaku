@@ -12,7 +12,7 @@
 // ⚠ **ここは「読めるか」までしか言えない**（`CLAUDE.md` §1）。
 //   ⚠ **実際の画面がその色みで出るかは、⚠ ここでは分からない。**
 //     ⚠ **色みを選ぶ操作は、⚠ まだ無い**（theme.css の見出しに書いてある）。
-//     ⚠ **規則へ直に書いた色が 173 か所残っている**（⚠ 実測 2026-08-26）。
+//     ⚠ **規則へ直に書いた色が 77 か所残っている**（⚠ 実測 2026-08-26。⚠ ほぼ「素性のない色」）。
 //     ⚠ だから ⚠ **「明るい色みが完成した」とは言わない。**⚠ **定義が読めることだけを言う。**
 //
 // ⚠ **道具は `test/check/lib.mjs` の 1 か所**（⚠ ここで持ち直さない）。
@@ -107,7 +107,7 @@ else {
   //     ⚠ 画面の根（`:root` / `html`）に、⚠ **色の宣言が 1 つも無いこと**
   // ⚠ **部品の中に閉じた色（`#list{--why:…}` など）は咎めない。**⚠ **画面全体の地ではない。**
   // ⚠ **規則へ直に書いた色（`.prov.ok{background:rgba(…)}` など）も咎めない。**
-  //   ⚠ **173 か所ある**（実測 2026-08-26）。⚠ **それは次の段の仕事**で、
+  //   ⚠ **77 か所ある**（実測 2026-08-26）。⚠ **それは次の段の仕事**で、
   //     ⚠ **いま落とすと、⚠ この検査が「直せない指摘」を出し続けることになる。**
   {
     const names = new Set(Object.keys(blocks.get(DARK)));
@@ -296,11 +296,17 @@ else {
     const styleOf = (t) => (/<style>([\s\S]*?)<\/style>/.exec(t ?? "")?.[1] ?? "");
     const era = await readFile(join(PUB, "components", "era-control", "era-control.css"), "utf8").catch(() => "");
     const hits = [], mixes = [], odd = [];
+    let masked = 0;
     for (const [f, css0] of [["index.html", styleOf(src["index.html"])],
                              ["peel.html", styleOf(src["peel.html"])],
                              ["era-control.css", era]]) {
       // ⚠ **コメントを先に落とす**（⚠ この決めごとを説明した字を、⚠ この検査自身が拾う）
-      const css = css0.replace(BLOCK_COMMENT, " ");
+      // ⚠ **`mask-image` の中も落とす**（2026-08-26）。⚠ **あそこの `#000` は色ではない。**
+      //   ⚠ `linear-gradient(transparent 0, #000 26px, …)` が言っているのは
+      //     ⚠ **「ここから先を出す」**であって、⚠ **黒く塗るという意味ではない。**
+      //   ⚠ **色みに寄せてはいけない。**⚠ **ここで見ないことを、⚠ 下で名乗る。**
+      const css = css0.replace(BLOCK_COMMENT, " ")
+        .replace(/(-webkit-)?mask-image\s*:[^;}]*/g, (m) => { masked++; return " "; });
       for (const m of css.matchAll(/#[0-9a-fA-F]{3,8}\b|rgba?\([^)]*\)/g)) {
         const tok = tokenOf.get(rgbOf(m[0]));
         if (!tok) continue;
@@ -341,6 +347,7 @@ else {
             + `（⚠ in srgb と transparent の形でだけ、⚠ 元の rgba() と同じ画素になる）`)
         : ok(`意味を持つ色の濃さ違いは、全部その色から作っている（color-mix ${mixes.length} か所・`
             + `直書き 0 か所。⚠ **決めた上で残しているのは ${ALLOW.length} 件**: `
-            + `${ALLOW.map(([f, v]) => `${f} の ${v}`).join("、")}）`);
+            + `${ALLOW.map(([f, v]) => `${f} の ${v}`).join("、")}`
+            + `。⚠ **mask-image の中は見ていない（${masked} 件）**— 色ではなく「隠す／出す」の指定）`);
   }
 }

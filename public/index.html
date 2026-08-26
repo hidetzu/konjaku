@@ -260,7 +260,7 @@
      ⚠ 見出しに危険の中身は書かない。要約すると、原典より強くも弱くもなる（掟: 根拠のないことは書かない）。
        書けるのは「どの区分についての、誰の記述か」まで。 */
   .risk{margin-top:9px;padding:7px 10px;border-radius:8px;font-size:var(--fs-note);line-height:1.6;
-    background:rgba(255,255,255,.04);border-left:2px solid var(--ink-dim);color:#c3ccd6}
+    background:color-mix(in srgb, var(--wash) 4%, transparent);border-left:2px solid var(--ink-dim);color:#c3ccd6}
   .risk>summary{cursor:pointer;list-style:none;display:flex;flex-wrap:wrap;
     align-items:baseline;gap:4px 8px;min-height:26px}
   .risk>summary::-webkit-details-marker{display:none}
@@ -286,7 +286,7 @@
      ⚠ **文を削って合わせない。** 落とせない中身（別の資料・時期が書かれていない・分母）は
        すでに 1 行ずつに詰めてある。ここは余白で払う。 */
   .area{margin-top:8px;padding:8px 11px;border-radius:9px;
-    background:rgba(255,255,255,.035);border:1px solid var(--line)}
+    background:color-mix(in srgb, var(--wash) 3.5%, transparent);border:1px solid var(--line)}
   .area-lead{font-size:var(--fs-body);color:var(--ink);line-height:1.6}
   .area-lead b{font-weight:600}
   .area-list{list-style:none;margin:7px 0 0;padding:0;display:flex;flex-wrap:wrap;gap:4px 14px}
@@ -295,7 +295,7 @@
   .area-list b{color:var(--ink);font-variant-numeric:tabular-nums}
   /* ⚠ 色の四角は、細い枠を付ける。淡い色（干潟・砂浜）が地に溶けて見えなくなる */
   .area-list .sw{width:12px;height:12px;border-radius:3px;flex:none;
-    border:1px solid rgba(255,255,255,.35)}
+    border:1px solid color-mix(in srgb, var(--wash) 35%, transparent)}
   /* ⚠ 分母。小さくするが、消さない（掟4: 数字は必ず主張範囲の分母で書く）。
      初見の人は「最初は読み飛ばしたが、読んで必要だと思った。これが無いと
      浦安ぜんぶの話だと勘違いしていた」と答えた */
@@ -304,18 +304,18 @@
   /* 打ち切った残り。⚠ 色は持たない（凡例に無いものに色を付けると、絵と対応しない） */
   .area-list .rest{opacity:.75}
   .area-list .sw-rest{background:repeating-linear-gradient(45deg,
-    rgba(255,255,255,.22) 0 3px, rgba(255,255,255,.06) 3px 6px)}
+    color-mix(in srgb, var(--wash) 22%, transparent) 0 3px, color-mix(in srgb, var(--wash) 6%, transparent) 3px 6px)}
   /* 区分を押すと出る解説。⚠ **こちらでは書かない**（凡例の解説文をそのまま出す）。
      ⚠ カーソルオーバにしない。スマホで hover が効かない */
   .area-list .area-item{display:inline-flex;align-items:center;gap:6px;
     padding:3px 6px;margin:-3px -6px;border:0;border-radius:6px;background:transparent;
     color:inherit;font:inherit;font-size:var(--fs-note);cursor:pointer;text-align:left}
-  .area-list .area-item:hover{background:rgba(255,255,255,.06)}
+  .area-list .area-item:hover{background:color-mix(in srgb, var(--wash) 6%, transparent)}
   .area-list .area-item[aria-expanded="true"]{background:color-mix(in srgb, var(--action) 14%, transparent)}
   /* ⚠ 指で押せる高さを取る。見た目を弱めるのと、押しにくくするのは別のこと */
   @media (hover:none){ .area-list .area-item{min-height:var(--tap);padding:6px} }
   .area-why{margin-top:8px;padding:8px 10px;border-radius:8px;
-    background:rgba(255,255,255,.04);border-left:2px solid var(--action);
+    background:color-mix(in srgb, var(--wash) 4%, transparent);border-left:2px solid var(--action);
     font-size:var(--fs-note);color:var(--ink-dim);line-height:1.65}
   .area-why-tx{margin-top:3px;color:var(--ink)}
   /* 出典。⚠ 消さない（引用なので出典を添える。掟3） */
@@ -325,8 +325,8 @@
   /* 数えた範囲を、写真の上に白い枠で出す。
      ⚠ 「204m 四方」と書いても画面のどこか分からない、と 2 人が言った。
         言葉ではなく枠で示す。⚠ 押せる見た目にしない（枠だけ。当たり判定も持たせない） */
-  .big .areabox{position:absolute;border:1.5px solid rgba(255,255,255,.85);
-    border-radius:2px;pointer-events:none;box-shadow:0 0 0 1px rgba(0,0,0,.35)}
+  .big .areabox{position:absolute;border:1.5px solid color-mix(in srgb, var(--wash) 85%, transparent);
+    border-radius:2px;pointer-events:none;box-shadow:0 0 0 1px color-mix(in srgb, var(--shadow) 35%, transparent)}
   .share-msg{margin-top:8px;padding:6px 9px;border-radius:7px;font-size:var(--fs-note);
     background:color-mix(in srgb, var(--evidence) 10%, transparent);border-left:2px solid var(--evidence);color:#9ed3b4}
   .quick{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
@@ -348,7 +348,7 @@
      ⚠ **当たり判定は下げない。** 見た目を弱めるのと、押しにくくするのは別のこと
        （下の @media (hover:none) の min-height はそのまま）。 */
   .quick button{padding:4px 11px;border:1px solid transparent;border-radius:999px;
-    background:rgba(255,255,255,.045);
+    background:color-mix(in srgb, var(--wash) 4.5%, transparent);
     color:var(--ink-dim);font:inherit;font-size:var(--fs-note);cursor:pointer}
   /* ⚠ 指で押す端末では、押せる高さを var(--tap) 取る（Apple の指針の値）。
      実測（375px）: 高さ 29px のまま10個を2行に詰めると、行の間隔が 6px しかなく、
@@ -531,7 +531,7 @@
        選ぶ場所の隣にないと、何をすればよいか分からない。
      ⚠ 警告色（err）にはしない。壊れてはいない。共有元と別のものを見ている、という断り書き */
   .era-miss{margin:0 0 7px;padding:6px 9px;border-radius:7px;border:1px solid var(--line);
-    background:rgba(255,255,255,.04);color:var(--ink-dim);font-size:var(--fs-note);line-height:1.5}
+    background:color-mix(in srgb, var(--wash) 4%, transparent);color:var(--ink-dim);font-size:var(--fs-note);line-height:1.5}
   /* 昔 → 今 の向きを、端に置いた2文字だけで示す。
      枠が狭い端末では年代ラベルを畳むので、向きの手がかりがこれだけになる */
   /* 帯を動かす操作。⚠ **帯のすぐ上**に置く。動かす相手は帯（年代）なので、
@@ -579,7 +579,7 @@
   .strip .im>img+img{position:absolute;inset:0}
   /* 判定した地点そのもの。object-position と同じ割合で置くので、枠が何pxでも同じ場所を指す */
   .strip .mk{position:absolute;width:7px;height:7px;margin:-4px 0 0 -4px;border-radius:50%;
-    border:1.5px solid rgba(255,255,255,.9);box-shadow:0 0 0 1px rgba(0,0,0,.6)}
+    border:1.5px solid color-mix(in srgb, var(--wash) 90%, transparent);box-shadow:0 0 0 1px color-mix(in srgb, var(--shadow) 60%, transparent)}
   .strip .yr{display:none;margin-top:4px;font-size:var(--fs-note);line-height:1.2;color:var(--ink-dim);
     text-align:center;font-variant-numeric:tabular-nums}
   .strip .f.on .yr{color:var(--ink)}
@@ -618,7 +618,7 @@
   .big .lyr .t{position:absolute;display:block}
   .big .lyr.on{opacity:1}
   .big .mk{position:absolute;width:11px;height:11px;margin:-6px 0 0 -6px;border-radius:50%;
-    border:2px solid rgba(255,255,255,.95);box-shadow:0 0 0 1.5px rgba(0,0,0,.65)}
+    border:2px solid color-mix(in srgb, var(--wash) 95%, transparent);box-shadow:0 0 0 1.5px color-mix(in srgb, var(--shadow) 65%, transparent)}
   /* 主役は年代。写真の上に、読める大きさで置く（TimeMap の年バッジと同じ役割） */
   /* ⚠ 年バッジと「寄せたものの名前」は、同じ積み上げに入れて位置を決める。
        以前 .fx を bottom:46px で別に置いていたら、sub を持つ年代
@@ -745,9 +745,9 @@
   .ev-y{flex:none;font-size:var(--fs-evidence);color:var(--estimate);font-variant-numeric:tabular-nums}
   /* 無くなったものは、できたものと同じ顔で並べない */
   .ev-row.gone .ev-y{color:var(--ink-dim)}
-  .ev-row.gone .ev-l{color:var(--ink-dim);text-decoration:line-through;text-decoration-color:rgba(255,255,255,.25)}
+  .ev-row.gone .ev-l{color:var(--ink-dim);text-decoration:line-through;text-decoration-color:color-mix(in srgb, var(--wash) 25%, transparent)}
   .ev-k{flex:none;font-size:var(--fs-label);padding:1px 6px;border-radius:999px;
-    background:rgba(255,255,255,.07);color:var(--ink-dim)}
+    background:color-mix(in srgb, var(--wash) 7%, transparent);color:var(--ink-dim)}
   /* ⚠ flex:1 だと名前枠と説明枠が余白を折半し、説明の頭が名前の長さで動く
        （PC 実測: 8 行 7 通り・幅 91.7px。表なのに列が揃わない）。名前は左に寄せきる。 */
   .ev-l{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -783,7 +783,7 @@
     .ev-row{gap:8px}
   }
   .ev-note{padding:7px 10px;border-radius:8px;font-size:var(--fs-note);line-height:1.6;
-    background:rgba(255,255,255,.04);color:var(--ink-dim)}
+    background:color-mix(in srgb, var(--wash) 4%, transparent);color:var(--ink-dim)}
   .ev-note.warn{background:color-mix(in srgb, var(--estimate) 9%, transparent);border-left:2px solid var(--estimate);color:#cbb98f}
   /* ⚠ 指で押せる大きさ（var(--tap)）。ピンを 29→var(--tap) に上げたのと同じ理由。
      ここは初めて来た人が最初に触る可能性のある唯一の一歩なので、外させない */
@@ -806,7 +806,7 @@
      ⚠ 見た目は注記のまま、⚠ **当たり判定だけ全面**。 */
   .ev-more.step{display:block;width:100%;text-align:left;font:inherit;
     font-size:var(--fs-note);line-height:1.6;cursor:pointer;padding:7px 10px;
-    border-radius:8px;background:rgba(255,255,255,.04);
+    border-radius:8px;background:color-mix(in srgb, var(--wash) 4%, transparent);
     border:1px solid var(--line);border-left:2px solid var(--action);color:var(--ink-dim)}
   .ev-more.step:hover{border-color:var(--action)}
   /* ⚠ 指で押す端末では var(--tap) を割らない */
@@ -880,7 +880,7 @@
      ⚠ **max-width で頭打ちにし、あふれたら … で切る。**
        ⚠ 切れても押せるし、⚠ **全文は吹き出し（title）に残す**。 */
   .badge{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:999px;
-    font-size:var(--fs-note);letter-spacing:.01em;border:1px solid var(--line);background:rgba(255,255,255,.04);
+    font-size:var(--fs-note);letter-spacing:.01em;border:1px solid var(--line);background:color-mix(in srgb, var(--wash) 4%, transparent);
     color:var(--ink-dim);white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis}
   .badge i{font-style:normal;font-size:var(--fs-note)}
   .badge.water{color:var(--water);border-color:color-mix(in srgb, var(--water) 35%, transparent);background:color-mix(in srgb, var(--water) 10%, transparent)}
@@ -909,8 +909,8 @@
   .kbd kbd{display:inline-block;min-width:19px;padding:2px 6px;border-radius:5px;
     font:inherit;font-size:var(--fs-note);line-height:1.4;text-align:center;color:var(--ink);
     background:linear-gradient(180deg,#232a33,#1a2028);
-    border:1px solid rgba(255,255,255,.14);border-bottom-color:rgba(0,0,0,.6);
-    box-shadow:0 1px 0 rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.06)}
+    border:1px solid color-mix(in srgb, var(--wash) 14%, transparent);border-bottom-color:color-mix(in srgb, var(--shadow) 60%, transparent);
+    box-shadow:0 1px 0 color-mix(in srgb, var(--shadow) 50%, transparent),inset 0 1px 0 color-mix(in srgb, var(--wash) 6%, transparent)}
   /* タッチ端末には出さない。物理キーが無いので説明として使えないうえ、
      画面下端に貼り付くぶん候補が2行隠れる（実測 375×667・候補10件）。
      使えない説明のために見える候補を減らすのは、どちらの目的も達していない。 */
@@ -956,7 +956,7 @@
     background:transparent;color:var(--ink-dim);font-size:var(--fs-body);cursor:pointer;padding:0}
   .stars button.on{color:#ffc861;border-color:rgba(255,200,97,.45);background:rgba(255,200,97,.10)}
   #memo{width:100%;min-height:66px;padding:9px 11px;border-radius:9px;border:1px solid var(--line);
-    background:rgba(0,0,0,.25);color:var(--ink);font:inherit;font-size:var(--fs-badge);resize:vertical}
+    background:color-mix(in srgb, var(--shadow) 25%, transparent);color:var(--ink);font:inherit;font-size:var(--fs-badge);resize:vertical}
   #memo:focus{outline:none;border-color:var(--action)}
   .saveline{display:flex;justify-content:space-between;align-items:center;margin-top:7px;
     font-size:var(--fs-note);color:var(--ink-dim)}
@@ -995,7 +995,7 @@
   footer .f-main a, footer .f-author a, footer .f-more summary{
     display:inline-flex;align-items:center;min-height:44px;min-width:44px}
   footer .f-body{margin-top:7px;padding:10px 12px;border-radius:8px;
-    background:rgba(255,255,255,.03);border:1px solid var(--line);font-size:var(--fs-note);line-height:1.75}
+    background:color-mix(in srgb, var(--wash) 3%, transparent);border:1px solid var(--line);font-size:var(--fs-note);line-height:1.75}
   footer .f-body b{color:var(--ink-dim);font-weight:500}
   /* ⚠ **フッターのリンクは、⚠ 通常はグレー**（2026-08-23。Owner 判断）。
      ⚠ 実測（2026-08-23・375×667）: ⚠ **出典リンクのコントラストが 10.06 で、⚠ 画面で最大**
@@ -1016,7 +1016,7 @@
      ⚠ **新しい CSS なので class で組む**（`.claude/rules/css.md`）。 */
   .flashnote{display:flex;align-items:flex-start;gap:8px;
     margin:0 0 10px;padding:9px 10px;border-radius:8px;
-    border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.05);
+    border:1px solid color-mix(in srgb, var(--wash) 18%, transparent);background:color-mix(in srgb, var(--wash) 5%, transparent);
     color:var(--ink-dim);font-size:var(--fs-note);line-height:1.6}
   .flashnote__text{flex:1;min-width:0}
   /* ⚠ **自動で閉じるものにも、⚠ 手で閉じる道を残す。**⚠ 44×44 を割らない */
