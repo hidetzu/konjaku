@@ -219,10 +219,10 @@
   .land-alt{font-size:var(--fs-badge);font-weight:600;line-height:1.35;color:var(--ink);
     font-variant-numeric:tabular-nums}
   .land-num small{font-size:var(--fs-badge);margin-left:1px}
-  .land-what{font-size:var(--fs-note);line-height:1.5;color:#cbd3dc}
+  .land-what{font-size:var(--fs-note);line-height:1.5;color:var(--ink-2)}
   .land-what b{color:var(--water);font-weight:600}
   .land-den{margin-top:3px;font-size:var(--fs-note);line-height:1.5;color:var(--ink-dim)}
-  .land-den b{color:#cbd3dc;font-weight:600}
+  .land-den b{color:var(--ink-2);font-weight:600}
   .land-sub{margin-top:2px;font-size:var(--fs-note);line-height:1.5;color:var(--ink-faint)}
   /* 層。⚠ **確実性の高い順に積む**（ADR 0030）。⚠ 層の名前は「その層の問い」 */
   /* ⚠ **問いのあいだに区切りを入れる**（2026-08-22。Owner 判断）。
@@ -431,7 +431,7 @@
     border:1px solid var(--line);background:transparent;color:var(--ink-dim);
     font:inherit;font-size:var(--fs-note);cursor:pointer;-webkit-tap-highlight-color:transparent}
   .peek:hover{border-color:var(--action);color:var(--action)}
-  .peek:active{background:var(--action);color:#0b1017;border-color:var(--action)}
+  .peek:active{background:var(--action);color:var(--bg);border-color:var(--action)}
   /* ⚠ 実測 163×24px。自分で宣言している --tap:44px を割っていた。
        指の的にはマウスの的と同じ寸法を使わない（.ev-note.step / .quick button と同じ書き方） */
   @media (hover:none){ .peek{min-height:var(--tap)}}
@@ -441,11 +441,11 @@
   .prov span.d{color:var(--ink-dim)}
   /* 押した場所に出すカード。⚠ 左パネルの中だけに書いていたときは、実測で
      y=672（スマホ・パネル閉）／y=721（PC・内スクロールの外）と、両方の端末で画面の外だった。 */
-  .pick-pop .maplibregl-popup-content{background:rgba(11,14,19,.94);backdrop-filter:blur(10px);
+  .pick-pop .maplibregl-popup-content{background:color-mix(in srgb, var(--bg) 94%, transparent);backdrop-filter:blur(10px);
     border:1px solid var(--line);border-radius:9px;padding:10px 12px;
     box-shadow:0 8px 28px color-mix(in srgb, var(--shadow) 50%, transparent)}
-  .pick-pop .maplibregl-popup-tip{border-top-color:rgba(11,14,19,.94);
-    border-bottom-color:rgba(11,14,19,.94)}
+  .pick-pop .maplibregl-popup-tip{border-top-color:color-mix(in srgb, var(--bg) 94%, transparent);
+    border-bottom-color:color-mix(in srgb, var(--bg) 94%, transparent)}
   .pick-pop .card{background:none;padding:0}
   .pick-pop .maplibregl-popup-close-button{color:var(--ink-dim);font-size:var(--fs-era);padding:2px 7px}
   /* ⚠ 指で押せる大きさ（var(--tap)）。ピンと同じ理由 */
@@ -490,7 +490,7 @@
     /* ⚠ **下の余白は 10px 1 つ**（2026-08-23）。⚠ **前は padding 8 ＋ margin 10 = 18px。**
        ⚠ **敷き（`background`）が要るのは的の高さまで**なので、⚠ padding は要らない。 */
     margin:0 0 10px;
-    background:var(--panel-bg,rgba(10,14,20,.96))}
+    background:var(--panel-bg,color-mix(in srgb, var(--bg) 96%, transparent))}
   .chrome-row a,.chrome-row button{position:relative;z-index:1;pointer-events:auto}
   /* ⚠ **補足の層。**⚠ 敷きは自前で持つ（航空写真の上で字が沈まないように）。
      ⚠ 検査は敷きを**祖先まで辿って**見る（render.mjs）。⚠ 敷きを外すと落ちる。
@@ -528,12 +528,12 @@
        ⚠ `#hud` は `pointer-events:none` なので `elementFromPoint` では見つからない。
          矩形の交差で見ること（検査もそうしてある）。 */
   .maplibregl-ctrl-bottom-right{z-index:14}
-  .maplibregl-ctrl-attrib{background:rgba(12,16,22,.82)!important;backdrop-filter:blur(8px);
+  .maplibregl-ctrl-attrib{background:var(--surface)!important;backdrop-filter:blur(8px);
     border-radius:6px 0 0 0;font-size:var(--fs-label);margin:0!important}
-  .maplibregl-ctrl-attrib,.maplibregl-ctrl-attrib a{color:#9aa5b1!important}
+  .maplibregl-ctrl-attrib,.maplibregl-ctrl-attrib a{color:var(--ink-3)!important}
   .maplibregl-ctrl-attrib a:hover{color:var(--action)!important}
-  .maplibregl-ctrl-attrib-button{background-color:rgba(154,165,177,.9)!important}
-  .maplibregl-ctrl-group{background:rgba(12,16,22,.8)!important;backdrop-filter:blur(10px);
+  .maplibregl-ctrl-attrib-button{background-color:color-mix(in srgb, var(--ink-3) 90%, transparent)!important}
+  .maplibregl-ctrl-group{background:var(--surface)!important;backdrop-filter:blur(10px);
     border:1px solid color-mix(in srgb, var(--wash) 14%, transparent)}
   /* ⚠ MapLibre の +/− は白背景を前提にした濃い色のアイコン。
      パネルを暗くしただけだと黒地に黒になり、実測でボタンの存在すら見えなかった。
@@ -590,7 +590,7 @@
     .d-it{flex:0 0 88px;height:var(--tap);scroll-snap-align:center;display:flex;
       align-items:center;justify-content:center;background:transparent;
       border:1px solid transparent;border-radius:10px;
-      color:#98a4b1;font:inherit;font-size:var(--fs-note);white-space:nowrap;
+      color:var(--ink-3);font:inherit;font-size:var(--fs-note);white-space:nowrap;
       padding:0 4px;cursor:pointer;transition:color .15s}
     /* ⚠ いま選ばれている段。**拡大しない。**scale(1.12) を掛けたら 88 → 99px に膨らみ、
          真ん中の印（88px）からはみ出した（実測 2026-08-18）。
