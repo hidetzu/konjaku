@@ -69,23 +69,23 @@
   #ruler #rlSub:empty{display:none}
   /* ⚠ 44×44 を割らない（掟）。記号は小さくても、的は削らない */
   #rlPrev,#rlNext{flex:none;width:var(--tap);height:var(--tap);border-radius:11px;
-    border:1px solid var(--line);background:rgba(255,255,255,.06);color:var(--ink);
+    border:1px solid var(--line);background:color-mix(in srgb, var(--wash) 6%, transparent);color:var(--ink);
     font:inherit;font-size:var(--fs-ruler-arrow);line-height:1;cursor:pointer}
   #rlPrev:disabled,#rlNext:disabled{opacity:.32;cursor:default}
-  #rlPrev:not(:disabled):hover,#rlNext:not(:disabled):hover{background:rgba(255,255,255,.14)}
+  #rlPrev:not(:disabled):hover,#rlNext:not(:disabled):hover{background:color-mix(in srgb, var(--wash) 14%, transparent)}
   /* 軸。⚠ 行そのものが指の面（44px）。刻みは押せる顔にしない */
   #rlAxis{display:flex;align-items:center;gap:8px;height:var(--tap);touch-action:none}
   #ruler .rl-end{flex:none;font-size:var(--fs-note);color:#9aa7b4;white-space:nowrap}
   #ruler .rl-line{position:relative;flex:1;height:var(--tap);display:flex;align-items:center}
   #ruler .rl-line::before{content:"";position:absolute;left:0;right:0;height:2px;
-    background:rgba(255,255,255,.22);border-radius:2px}
+    background:color-mix(in srgb, var(--wash) 22%, transparent);border-radius:2px}
   #rlTicks{position:absolute;left:0;right:0;height:14px;pointer-events:none}
   #rlTicks i{position:absolute;top:0;width:2px;height:9px;margin-left:-1px;
-    background:rgba(255,255,255,.34);border-radius:1px}
+    background:color-mix(in srgb, var(--wash) 34%, transparent);border-radius:1px}
   /* ⚠ 明治期は写真ではない。刻みの形を変えて、仕切りを入れる */
   #rlTicks i.rl-meiji{width:9px;height:9px;margin-left:-4px;border-radius:2px;
     transform:rotate(45deg);background:#8fc6f5}
-  #rlTicks i.rl-cut{width:1px;height:16px;top:-3px;background:rgba(255,255,255,.5)}
+  #rlTicks i.rl-cut{width:1px;height:16px;top:-3px;background:color-mix(in srgb, var(--wash) 50%, transparent)}
   /* ⚠ **間の段の名前**（2026-08-22。hidetzu/konjaku#166）。
      ⚠ **軸の下に置く。**⚠ 刻みにも棒にも重ねない。
      ⚠ **押せる顔にしない**（的は軸そのもの 44px。`pointer-events:none`）。
@@ -98,7 +98,7 @@
   /* ⚠ 名前のぶんだけ場所を空ける。⚠ **軸そのものは 44px のまま**（的を削らない）。 */
   #rlAxis{margin-bottom:16px}
   #rlKnob{position:absolute;width:16px;height:16px;margin-left:-8px;border-radius:50%;
-    background:#eef3f8;box-shadow:0 2px 8px rgba(0,0,0,.5);pointer-events:none}
+    background:#eef3f8;box-shadow:0 2px 8px color-mix(in srgb, var(--shadow) 50%, transparent);pointer-events:none}
   #rlNote{margin-top:5px;font-size:var(--fs-note);color:#9aa7b4;text-align:center;line-height:1.4}
   #rlNote:empty{display:none}
   .time-panel .s{font-size:var(--fs-note);letter-spacing:.16em;color:#cbd3dc}
@@ -120,8 +120,8 @@
      ⚠ **横は幅で変える**（狭い幅は 10px。⚠ ものさしのノブが画面の縁から 10px だと
        端末の「戻る」スワイプと喧嘩するため。実測 2026-08-18）。⚠ **縦は共通。** */
   .time-panel{--pad-x:10px;--pad-y:8px;
-    pointer-events:auto;width:min(720px,100%);border:1px solid rgba(255,255,255,.22);
-    border-radius:14px;background:rgba(8,12,18,.88);box-shadow:0 12px 38px rgba(0,0,0,.42);
+    pointer-events:auto;width:min(720px,100%);border:1px solid color-mix(in srgb, var(--wash) 22%, transparent);
+    border-radius:14px;background:rgba(8,12,18,.88);box-shadow:0 12px 38px color-mix(in srgb, var(--shadow) 42%, transparent);
     backdrop-filter:blur(16px);overflow:hidden}
   /* ⚠ **中身は左に寄せる**（2026-08-22。Owner 判断）。
      ⚠ 畳みボタンだけは右端に残す（`margin-left:auto`）。⚠ **44×44 の的と位置は変えない。** */
@@ -151,7 +151,7 @@
        PC      padding 7px 14px 10px  ⚠ 下の @media(min-width:681px) に 1 行だけ */
   /* ⚠ **見た目は class**（`.claude/rules/css.md`: 新しい CSS で #id を使わない）。
      ⚠ **id は残す。**⚠ JS（`getElementById`）と検査が掴んでいる。 */
-  .time-panel__body{border-top:1px solid rgba(255,255,255,.12);padding:var(--pad-y) var(--pad-x)}
+  .time-panel__body{border-top:1px solid color-mix(in srgb, var(--wash) 12%, transparent);padding:var(--pad-y) var(--pad-x)}
   /* 左端のノブは track の外へ半径ぶん出る。再生ボタンとの間隔は、ノブの外周を含めて空ける。 */
   /* ⚠ **ノブは track の左へ半径ぶん（16px）はみ出す。**gap をそのぶん足さないと、
        見た目の隙間はゼロに近づく。実測: ノブを 25→32px にしたら gap 26px でも
@@ -168,7 +168,7 @@
      ⚠ **左端のノブとの隙間が 5px しか無かった**（実測 2026-08-18・375/320 とも）。
        「現在」へ戻そうとしてノブを掴み損ね、再生が始まる。#bar の gap で空ける。 */
   #play{flex:none;width:var(--tap);height:var(--tap);border-radius:9px;cursor:pointer;font-size:var(--fs-body);
-    border:1px solid rgba(255,255,255,.22);background:rgba(255,255,255,.06);color:#cbd3dc;
+    border:1px solid color-mix(in srgb, var(--wash) 22%, transparent);background:color-mix(in srgb, var(--wash) 6%, transparent);color:#cbd3dc;
     transition:.15s}
   #play:hover{border-color:var(--action);color:var(--action)}
   #play[aria-pressed="true"]{background:var(--action);color:#07121c;border-color:var(--action)}
@@ -179,7 +179,7 @@
        **箱を広げれば当たり判定も広がる**。高さを増やすのはそのため。 */
   #track{position:relative;flex:1;height:72px;cursor:pointer}
   #track .rail{position:absolute;top:19px;left:0;right:0;height:5px;border-radius:999px;
-    background:rgba(255,255,255,.32)}
+    background:color-mix(in srgb, var(--wash) 32%, transparent)}
   #track .fill{position:absolute;top:19px;left:0;height:5px;border-radius:999px;background:var(--action)}
   /* 1本が steps の1層。ラベルは狭い画面で間引いても、層の区切り自体は全て残す。 */
   #track .tick{position:absolute;top:14px;width:2px;height:15px;margin-left:-1px;
@@ -201,8 +201,8 @@
        文字から 25px 下に離れて手掛かりにならなかった（実測 2026-08-18）。 */
   #track .lab{position:absolute;top:28px;height:44px;display:flex;align-items:center;
     font-size:var(--fs-note);color:#bec8d3;
-    text-decoration:underline dotted rgba(255,255,255,.5);text-underline-offset:4px;
-    text-shadow:0 1px 5px #000;transform:translateX(-50%);white-space:nowrap}
+    text-decoration:underline dotted color-mix(in srgb, var(--wash) 50%, transparent);text-underline-offset:4px;
+    text-shadow:0 1px 5px var(--shadow);transform:translateX(-50%);white-space:nowrap}
   /* 名前を間引いた段は的にしない（押しても何が選ばれたか読めない）。枠も出さない */
   #track .lab:empty{display:none}
   #track .lab.selected{color:var(--ink);font-weight:600;
@@ -215,7 +215,7 @@
        **文字のタップ**（44px）を主役にする。掴むのは補助。 */
   #track .knob{position:absolute;top:6px;width:32px;height:32px;border:3px solid #07121c;
     border-radius:50%;background:var(--ink);margin-left:-16px;
-    box-shadow:0 0 0 2px rgba(255,255,255,.48),0 3px 14px rgba(0,0,0,.75);transition:background .2s}
+    box-shadow:0 0 0 2px color-mix(in srgb, var(--wash) 48%, transparent),0 3px 14px color-mix(in srgb, var(--shadow) 75%, transparent);transition:background .2s}
   #track.meiji .knob{background:var(--water)}
   /* ⚠ 飾りは指を受け取らない。**年代の文字も含めて**、操作は range input に一本化する。
      実測（2026-08-14・375px）: 飾りが input を覆っていた頃は、年代の文字5つは全滅、

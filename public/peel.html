@@ -144,7 +144,7 @@
   body{font:0.875rem/1.6 -apple-system,"Hiragino Sans","Noto Sans JP",sans-serif}
   #map{position:absolute;inset:0;transition:filter .25s linear}
   #vig{position:absolute;inset:0;z-index:3;pointer-events:none;
-    background:radial-gradient(ellipse at 50% 45%,rgba(0,0,0,0) 45%,rgba(0,0,0,.55) 100%)}
+    background:radial-gradient(ellipse at 50% 45%,rgba(0,0,0,0) 45%,color-mix(in srgb, var(--shadow) 55%, transparent) 100%)}
   #grade{position:absolute;inset:0;z-index:4;pointer-events:none;opacity:0;
     background:linear-gradient(180deg,rgba(20,60,110,.18),rgba(10,35,70,.42));mix-blend-mode:multiply}
 
@@ -267,7 +267,7 @@
   /* 共有された状態を復元できなかったときの1行。
      ⚠ 警告色にはしない。壊れてはいない。共有元と別のものを見ている、という断り書き */
   #stateMiss{margin:0 0 7px;padding:6px 9px;border-radius:7px;
-    border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.05);
+    border:1px solid color-mix(in srgb, var(--wash) 18%, transparent);background:color-mix(in srgb, var(--wash) 5%, transparent);
     color:var(--ink-dim);font-size:var(--fs-note);line-height:1.5}
   #stateMiss[hidden]{display:none}
 
@@ -371,7 +371,7 @@
 
   /* 検索 */
   #q{width:100%;padding:8px 10px;border-radius:7px;border:1px solid var(--line);
-    background:rgba(255,255,255,.06);color:var(--ink);font:inherit;font-size:var(--fs-input)}
+    background:color-mix(in srgb, var(--wash) 6%, transparent);color:var(--ink);font:inherit;font-size:var(--fs-input)}
   #q:focus{outline:none;border-color:var(--action)}
   #cands{margin-top:6px;max-height:190px;overflow-y:auto}
   #cands button{display:block;width:100%;text-align:left;padding:6px 9px;margin-bottom:3px;
@@ -420,7 +420,7 @@
      ⚠ **建物の内訳（`.swatch`）とは形を変える**（⚠ あちらは水／陸の 2 色で、⚠ 分母も違う）。
      ⚠ **色だけで区別しない。**⚠ 区分名が必ず隣にある（`ui-ux-review`）。 */
   .stat .legend{display:inline-block;width:10px;height:10px;margin-right:6px;
-    border-radius:2px;border:1px solid rgba(255,255,255,.22);vertical-align:baseline}
+    border-radius:2px;border:1px solid color-mix(in srgb, var(--wash) 22%, transparent);vertical-align:baseline}
   .swatch{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px}
   .prov{font-size:var(--fs-evidence);line-height:1.55;padding:7px 9px;border-radius:6px;margin-bottom:5px}
   .prov.ok{background:color-mix(in srgb, var(--evidence) 9%, transparent);border-left:2px solid var(--evidence)}
@@ -443,7 +443,7 @@
      y=672（スマホ・パネル閉）／y=721（PC・内スクロールの外）と、両方の端末で画面の外だった。 */
   .pick-pop .maplibregl-popup-content{background:rgba(11,14,19,.94);backdrop-filter:blur(10px);
     border:1px solid var(--line);border-radius:9px;padding:10px 12px;
-    box-shadow:0 8px 28px rgba(0,0,0,.5)}
+    box-shadow:0 8px 28px color-mix(in srgb, var(--shadow) 50%, transparent)}
   .pick-pop .maplibregl-popup-tip{border-top-color:rgba(11,14,19,.94);
     border-bottom-color:rgba(11,14,19,.94)}
   .pick-pop .card{background:none;padding:0}
@@ -534,7 +534,7 @@
   .maplibregl-ctrl-attrib a:hover{color:var(--action)!important}
   .maplibregl-ctrl-attrib-button{background-color:rgba(154,165,177,.9)!important}
   .maplibregl-ctrl-group{background:rgba(12,16,22,.8)!important;backdrop-filter:blur(10px);
-    border:1px solid rgba(255,255,255,.14)}
+    border:1px solid color-mix(in srgb, var(--wash) 14%, transparent)}
   /* ⚠ MapLibre の +/− は白背景を前提にした濃い色のアイコン。
      パネルを暗くしただけだと黒地に黒になり、実測でボタンの存在すら見えなかった。
      eras 側は既定の白パネルなので見えていた（見た目を暗くしたこちらだけの事故） */
@@ -599,12 +599,12 @@
     /* 真ん中の印。⚠ どこで選ばれるのかを、回す前に見せる */
     /* ⚠ スクロールしない側（#drumWrap）に置く。中に入れると中身と一緒に流れる */
     #drumMark{display:block;position:absolute;left:50%;top:0;width:88px;height:var(--tap);
-      margin-left:-44px;border-radius:10px;border:1px solid rgba(255,255,255,.30);
-      background:rgba(255,255,255,.07);pointer-events:none}
+      margin-left:-44px;border-radius:10px;border:1px solid color-mix(in srgb, var(--wash) 30%, transparent);
+      background:color-mix(in srgb, var(--wash) 7%, transparent);pointer-events:none}
     /* 全体のどこにいるか。⚠ **押せない**（位置を知らせるだけ） */
     #drumPos{display:flex;align-items:center;justify-content:center;gap:6px;
       height:14px;pointer-events:none}
-    #drumPos i{width:5px;height:5px;border-radius:50%;background:rgba(255,255,255,.30)}
+    #drumPos i{width:5px;height:5px;border-radius:50%;background:color-mix(in srgb, var(--wash) 30%, transparent)}
     #drumPos i.on{width:16px;border-radius:3px;background:var(--action)}
 
     /* ============ 根拠は「全画面で読む」（2026-08-18） ============
