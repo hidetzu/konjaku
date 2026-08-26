@@ -59,6 +59,11 @@ const TO_SUITE = [
   [/^public\/places\.js$/,           "top"],
   [/^public\/gsi-address-search\.js$/, "top"],
   [/^test\/render\/top\.mjs$/,       "top"],
+  // ⚠ **問いごとに割ったファイル**（2026-08-26。hidetzu/konjaku#277）。
+  //   ⚠ **1 つずつ書き足さない。**⚠ 書き足す形にすると、⚠ **足し忘れたものが黙って全部に倒れる**
+  //     （⚠ 落ちない。⚠ **多く回る向きなので CI は緑のまま**。⚠ この repo で 2 回踏んでいる）。
+  [/^test\/render\/top-[\w-]+\.mjs$/,  "top"],
+  [/^test\/render\/peel-[\w-]+\.mjs$/, "peel"],
 ];
 
 // ⚠ **全部回すときの一覧。**⚠ **ここ 1 か所で持つ**（2026-08-22。hidetzu/konjaku#190）。
