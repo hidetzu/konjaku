@@ -14,7 +14,7 @@ import {
   timelineSettled, stepLabels, tauNow, effOpacity, waitOpacity, peelReady,
   settleAfterCondition, waited, waitOptional, settleAfterClick, settleAfterScroll, SWALE_ROUTE,
   LFC_ROUTE, DEM_ROUTE, forbid,
-  must, assertToyosu3dAnswer, openPanel, provText, themeColors, sameColor
+  must, assertToyosu3dAnswer, openPanel, provText, themeColors, sameColor, LIGHT_MQ
 } from "./lib.mjs";
 import { readFile } from "node:fs/promises";
 
@@ -63,6 +63,40 @@ ${peel.slice(i, j)}
 }
 
 export const CASES = [
+  {
+    // ⚠ **端末の設定が「明るい」とき、⚠ 地図の上の色みになるか**（2026-08-26・hidetzu/konjaku#96）。
+    //   ⚠ **理由と作りは `test/render/top.mjs` の同じ名前のケースに全文がある。**
+    //   ⚠ **ここは地図の上**なので、⚠ **明るい色みの上書きが当たること**まで見る。
+    name: "端末の設定が明るいとき、この画面は明るい色みになる",
+    path: `/peel?${TOYOSU}`, group: "core", colorScheme: "light",
+    async check(page) {
+      await peelReady(page);
+      const here = await page.evaluate(() => location.pathname);
+      must(here === "/peel", `/peel に居ない（${here}）。⚠ この検査が別の画面を測っている`);
+      const theme = await themeColors();
+      const light = theme[`${LIGHT_MQ} :root`];
+      const lightMap = theme[`${LIGHT_MQ} :root[data-backdrop="map"]`];
+      const darkMap = theme[':root[data-backdrop="map"]'];
+      must(light && lightMap && darkMap, "theme.css から色みを読めない（⚠ この検査が何も見ていない）");
+      const names = Object.keys(light);
+      const got = await page.evaluate((ns) => {
+        const cs = getComputedStyle(document.documentElement);
+        return { scheme: matchMedia("(prefers-color-scheme: light)").matches,
+                 mark: document.documentElement.getAttribute("data-backdrop"),
+                 vals: Object.fromEntries(ns.map((n) => [n, cs.getPropertyValue(n)])) };
+      }, names);
+      must(got.scheme, "⚠ ブラウザが「明るい」になっていない（⚠ この検査が暗い画面を測っている）");
+      must(got.mark === "map", `<html> に地図の上の印が無い（${JSON.stringify(got.mark)}）`);
+      const wrong = names.filter((n) => !sameColor(got.vals[n], lightMap[n] ?? light[n]));
+      must(!wrong.length, `明るい色みの値になっていない: `
+        + wrong.map((n) => `${n}（期待 ${lightMap[n] ?? light[n]} ／ 実際 ${got.vals[n].trim()}）`).join("、"));
+      // ⚠ **地図の上の上書きが、⚠ 暗いほうのままになっていないこと**
+      for (const n of Object.keys(lightMap))
+        must(!sameColor(got.vals[n], darkMap[n]), `${n} が暗い色みの上書きのまま（${got.vals[n].trim()}）`);
+      return `明るい端末 ／ /peel ／ 印 map ／ theme.css の ${names.length} 色と一致`
+        + `（地図の上の上書き ${Object.keys(lightMap).length} 色。例 --surface ${got.vals["--surface"].trim()}）`;
+    },
+  },
   {
     // ⚠ **色みの定義が、⚠ この画面で本当にその値になっているか**（2026-08-26・hidetzu/konjaku#96）。
     //

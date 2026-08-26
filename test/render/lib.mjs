@@ -526,14 +526,31 @@ export const provText = (page) => page.evaluate(() =>
 export const themeColors = async () => {
   const css = (await readFile(new URL("../../public/css/theme.css", import.meta.url), "utf8"))
     .replace(/\/\*[\s\S]*?\*\//g, " ");   // ⚠ コメントを先に落とす（見出しの実測値を拾わないため）
+  // ⚠ **入れ子を数えて読む**（2026-08-26。⚠ **`@media` の中に色みが入った**）。
+  //   ⚠ **鍵は「どの `@media` の中か ＋ セレクタ」**（⚠ 素の `:root` と区別するため）。
+  //   ⚠ **`test/check/color.mjs` と同じ読み方**（⚠ 片方だけ古くならないように、⚠ 形を揃える）。
   const out = {};
-  for (const b of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
-    const decls = {};
-    for (const d of b[2].matchAll(/(--[a-z0-9-]+)\s*:\s*([^;}]+)/g)) decls[d[1]] = d[2].trim();
-    out[b[1].trim().replace(/\s+/g, " ")] = decls;
+  const stack = [];
+  let buf = "";
+  const put = (decl) => {
+    const sel = stack.filter((x) => !x.startsWith("@")).join(" ");
+    const at = stack.filter((x) => x.startsWith("@")).join(" ");
+    if (!sel) return;
+    const key = at ? `${at} ${sel}` : sel;
+    const d = /^\s*(--[a-z0-9-]+)\s*:\s*([\s\S]+)$/.exec(decl);
+    if (!d) return;
+    (out[key] ??= {})[d[1]] = d[2].trim();
+  };
+  for (const ch of css) {
+    if (ch === "{") { stack.push(buf.trim().replace(/\s+/g, " ")); buf = ""; }
+    else if (ch === "}") { put(buf); stack.pop(); buf = ""; }
+    else if (ch === ";") { put(buf); buf = ""; }
+    else buf += ch;
   }
   return out;
 };
+// ⚠ **明るい色みの節の鍵**（⚠ 2 か所で使うので、⚠ ここが持つ）。
+export const LIGHT_MQ = "@media (prefers-color-scheme: light)";
 // ⚠ **色の字は書き方が揺れる**（`rgba(12,16,22,.84)` と `rgba(12, 16, 22, .84)`）。
 //   ⚠ **空白と大小文字だけを均す。**⚠ **値そのものは変えない**（⚠ 変えると差が消える）。
 export const sameColor = (a, b) => (a ?? "").replace(/\s+/g, "").toLowerCase()
