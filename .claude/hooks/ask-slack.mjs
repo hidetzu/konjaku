@@ -68,7 +68,10 @@ try {
   const fromFile = (name) => {
     for (const f of [join(ROOT, ".envrc"), join(ROOT, ".env")]) {
       if (!existsSync(f)) continue;
-      const m = new RegExp(`^\\s*(?:export\\s+)?${name}\\s*=\\s*(.*)$`, "m").exec(readFileSync(f, "utf8"));
+      // ⚠ 水平方向の空白だけ（[ \t]。\s ではない）。⚠ \s は改行を跨ぐので、値が空の代入
+      //   （NAME=）だと次の非空行を値として拾ってしまう。⚠ 「未設定」が「別物が設定済み」
+      //   と読まれ、ターミナルへのフォールバックが発火しない。
+      const m = new RegExp(`^[ \\t]*(?:export[ \\t]+)?${name}[ \\t]*=[ \\t]*([^\\n]*)$`, "m").exec(readFileSync(f, "utf8"));
       if (!m) continue;
       let v = m[1].trim();
       if (/^".*"$/.test(v) || /^'.*'$/.test(v)) v = v.slice(1, -1); else v = v.replace(/\s+#.*$/, "");
