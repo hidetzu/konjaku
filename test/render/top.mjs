@@ -37,15 +37,13 @@ import { CASES as SEARCH_CASES } from "./top-search.mjs";
 import { CASES as ANSWER_CASES } from "./top-answer.mjs";
 import {
   WORDS, PORT, BASE, OUT, TOYOSU, SAPPORO,
-  NAGOYA_LL, UNSURVEYED, YUMENOSHIMA, KIYOSUMI, KARUIZAWA, UENO,
-  NIIGATA, URAYASU, openGroups, suggestionsOf, rowsOf, groupsOf,
-  WEB_SEARCH, waitVerdict, WD, wdItem, WD_SHIBUYA, stubWikidata,
-  photoFrames, waitStrip, LIES,
-  RE_ESC, G1_MARK, G1_HEAD, VERDICT_SENTENCE, GSI_ROUTE, PHOTO_ROUTE,
-  pngOf, whitePng, photoPng, eraRoute, ERA_TILE_IDS, stubMapPictures,
-  timelineSettled, stepLabels, tauNow, effOpacity, waitOpacity, peelReady,
-  settleAfterCondition, waited, waitOptional, settleAfterClick, settleAfterScroll, SWALE_ROUTE,
-  LFC_ROUTE, DEM_ROUTE, forbid,
+  NAGOYA_LL, YUMENOSHIMA, KIYOSUMI, KARUIZAWA, UENO, NIIGATA,
+  URAYASU, openGroups, suggestionsOf, rowsOf, groupsOf, WEB_SEARCH,
+  waitVerdict, WD, wdItem, stubWikidata, photoFrames, waitStrip,
+  LIES, RE_ESC, G1_MARK, G1_HEAD, VERDICT_SENTENCE, GSI_ROUTE,
+  PHOTO_ROUTE, pngOf, whitePng, photoPng, eraRoute, ERA_TILE_IDS,
+  timelineSettled, stepLabels, tauNow, waitOpacity, settleAfterCondition, waited,
+  waitOptional, settleAfterClick, settleAfterScroll, SWALE_ROUTE, LFC_ROUTE, forbid,
   must, assertToyosu3dAnswer, openPanel, themeColors, sameColor, LIGHT_MQ
 } from "./lib.mjs";
 
