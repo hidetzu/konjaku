@@ -14,7 +14,7 @@ import {
   timelineSettled, stepLabels, tauNow, effOpacity, waitOpacity, peelReady,
   settleAfterCondition, waited, waitOptional, settleAfterClick, settleAfterScroll, SWALE_ROUTE,
   LFC_ROUTE, DEM_ROUTE, forbid,
-  must, assertToyosu3dAnswer, openPanel, provText
+  must, assertToyosu3dAnswer, openPanel, provText, themeColors, sameColor
 } from "./lib.mjs";
 import { readFile } from "node:fs/promises";
 
@@ -31,10 +31,11 @@ async function openEraControl(browser, { width = 1280, height = 400 } = {}) {
   if (i < 0 || j <= i) throw new Error("peel.html から #timePanel を切り出せない（この検査が何も見ていない）");
   const rootCss = /:root\{([\s\S]*?)\}/.exec(peel)?.[1] ?? "";
   if (!rootCss.includes("--text-hero")) throw new Error("peel.html の :root を読めない（この検査が何も見ていない）");
-  const html = `<!doctype html><html lang="ja"><head><meta charset="utf-8">
+  const html = `<!doctype html><html lang="ja" data-backdrop="map"><head><meta charset="utf-8">
 <link rel="stylesheet" href="/css/tokens.css">
+<link rel="stylesheet" href="/css/theme.css">
 <link rel="stylesheet" href="/components/era-control/era-control.css">
-<style>:root{${rootCss}} body{background:#0b0e13;margin:0;padding:20px;
+<style>:root{${rootCss}} body{background:var(--bg);margin:0;padding:20px;
   font:14px/1.65 -apple-system,sans-serif;color:var(--ink)}</style></head><body>
 ${peel.slice(i, j)}
 <script src="/esc.js"></script>
@@ -62,6 +63,53 @@ ${peel.slice(i, j)}
 }
 
 export const CASES = [
+  {
+    // ⚠ **色みの定義が、⚠ この画面で本当にその値になっているか**（2026-08-26・hidetzu/konjaku#96）。
+    //
+    // ⚠ **静的検査（`test/check/color.mjs`）は「定義がある」までしか言えない。**
+    //   ⚠ **段の順で負けても、⚠ 印を付け忘れても、⚠ 読み込みを忘れても、⚠ 落ちない。**
+    //
+    // ⚠ **実際に踏んだ**（2026-08-26。⚠ **色を集めた当日**）:
+    //   ⚠ 手元で確かめようとして `/peel` を場所なしで開いたら、⚠ **トップへ飛ばされていた。**
+    //   ⚠ **測っていたのはトップの色。**⚠ **`/peel` の色だと思い込んで 5 個の差を報告しかけた。**
+    //   ⚠ **だから、⚠ ここでは「いま `/peel` に居ること」から確かめる。**
+    //
+    // ⚠ **突き合わせる相手は、⚠ 別の道で得たものにする**（`CLAUDE.md` §9）:
+    //   ⚠ **`public/css/theme.css` に書いてある値** × ⚠ **ブラウザが解決した値。**
+    //   ⚠ **検査に色の値を書き写さない**（⚠ 写すと 2 か所になって、片方だけ古くなる）。
+    //
+    // ⚠ **`/peel` は地図の上**なので、⚠ **地の色みではなく `[data-backdrop="map"]` が当たる。**
+    //   ⚠ **上書きしていない色**（出どころの 3 色など）は、⚠ **地の色みから降りてくること**も見る。
+    name: "この画面の色は、地図の上の色みに解決されている", path: `/peel?${TOYOSU}`, group: "core",
+    async check(page) {
+      await peelReady(page);
+      // ⚠ **まず、⚠ いま `/peel` に居ること**（⚠ 飛ばされていたら、⚠ 別の画面を測っている）
+      const here = await page.evaluate(() => location.pathname);
+      must(here === "/peel", `/peel に居ない（${here}）。⚠ この検査が別の画面を測っている`);
+      const theme = await themeColors();
+      const base = theme[":root"], map = theme[':root[data-backdrop="map"]'];
+      must(base && map, "theme.css から色みの節を読めない（⚠ この検査が何も見ていない）");
+      const names = Object.keys(base);
+      must(names.length >= 8, `theme.css の色が ${names.length} 個しかない（⚠ 読み方が壊れている）`);
+      const got = await page.evaluate((ns) => {
+        const cs = getComputedStyle(document.documentElement);
+        return { mark: document.documentElement.getAttribute("data-backdrop"),
+                 vals: Object.fromEntries(ns.map((n) => [n, cs.getPropertyValue(n)])) };
+      }, names);
+      must(got.mark === "map", `<html> に地図の上の印が無い（${JSON.stringify(got.mark)}）`);
+      // ⚠ 上書きがあるものは上書きの値、⚠ 無いものは地の色みの値になること
+      const wrong = names.filter((n) => !sameColor(got.vals[n], map[n] ?? base[n]));
+      must(!wrong.length, `色が theme.css の値になっていない: `
+        + wrong.map((n) => `${n}（期待 ${map[n] ?? base[n]} ／ 実際 ${got.vals[n].trim()}）`).join("、"));
+      // ⚠ **上書きが本当に効いていること**（⚠ 上書きが 1 つも効いていなくても、上の判定は通りうる
+      //   ⚠ ＝ 地の色みと同じ値を書いていた場合）。⚠ **地と違う値であることまで見る。**
+      const overridden = Object.keys(map).filter((n) => !sameColor(map[n], base[n]));
+      must(overridden.length >= 4,
+        `地図の上で上書きしている色が ${overridden.length} 個しかない（⚠ 上書きが消えている）`);
+      return `/peel ／ 印 map ／ theme.css の ${names.length} 色と一致`
+        + `（うち地図の上で上書き ${overridden.length} 色。例 --surface ${got.vals["--surface"].trim()}）`;
+    },
+  },
   {
     // ⚠ **答えが、⚠ どの幅で、⚠ 何手で読めるか**（2026-08-23。hidetzu/konjaku#217 で置き場所が変わった）。
     // ⚠ **`docs/SPEC.md` は同じことを言うが、⚠ 寸法は書かない**（⚠ **寸法はここが持つ**）。
@@ -2689,11 +2737,14 @@ export const CASES = [
         //   ⚠ **peel.html の :root をそのまま借りる**（字面を写さない）。
         const rootCss = /:root\{([\s\S]*?)\}/.exec(peel)?.[1] ?? "";
         // ⚠ **--tap は tokens.css 側**（peel.html の :root には無い）。⚠ ここにある値で確かめる
+        // ⚠ **色は theme.css 側**（2026-08-26・hidetzu/konjaku#96）。⚠ `data-backdrop="map"` を
+        //   ⚠ **本物と同じように付けてある**（付けないと、⚠ 地図の上ではない色で測ることになる）
         must(rootCss.includes("--text-hero"), "peel.html の :root を読めない（この検査が何も見ていない）");
-        const html = `<!doctype html><html lang="ja"><head><meta charset="utf-8">
+        const html = `<!doctype html><html lang="ja" data-backdrop="map"><head><meta charset="utf-8">
 <link rel="stylesheet" href="/css/tokens.css">
+<link rel="stylesheet" href="/css/theme.css">
 <link rel="stylesheet" href="/components/era-control/era-control.css">
-<style>:root{${rootCss}} body{background:#0b0e13;margin:0;padding:20px;
+<style>:root{${rootCss}} body{background:var(--bg);margin:0;padding:20px;
   font:14px/1.65 -apple-system,sans-serif;color:var(--ink)}</style></head><body>
 ${dom}
 <script src="/esc.js"></script>

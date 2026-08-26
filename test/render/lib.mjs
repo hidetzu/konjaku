@@ -516,3 +516,25 @@ export async function openPanel(page) {
 export const provText = (page) => page.evaluate(() =>
   [...document.querySelectorAll("#panel .prov-q")]
     .map((e) => e.textContent ?? "").join(" ").replace(/\s+/g, " ").trim());
+
+// ⚠ **色みの定義を、⚠ 実物の `public/css/theme.css` から読む**（2026-08-26・hidetzu/konjaku#96）。
+//   ⚠ **検査に値を書き写さない。**⚠ 写すと 2 か所になって、⚠ 片方だけ古くなる（掟）。
+//   ⚠ **突き合わせる相手は、⚠ 別の道で得たものにする**（`CLAUDE.md` §9）:
+//     ⚠ **ファイルに書いてある値**（ここ） × ⚠ **ブラウザが実際に解決した値**（ケース側）。
+//   ⚠ **静的検査は「定義がある」までしか言えない。**⚠ 段の順で負けても、
+//     ⚠ 印が付いていなくても、⚠ 読み込み忘れても、⚠ **気づけるのはここだけ。**
+export const themeColors = async () => {
+  const css = (await readFile(new URL("../../public/css/theme.css", import.meta.url), "utf8"))
+    .replace(/\/\*[\s\S]*?\*\//g, " ");   // ⚠ コメントを先に落とす（見出しの実測値を拾わないため）
+  const out = {};
+  for (const b of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    const decls = {};
+    for (const d of b[2].matchAll(/(--[a-z0-9-]+)\s*:\s*([^;}]+)/g)) decls[d[1]] = d[2].trim();
+    out[b[1].trim().replace(/\s+/g, " ")] = decls;
+  }
+  return out;
+};
+// ⚠ **色の字は書き方が揺れる**（`rgba(12,16,22,.84)` と `rgba(12, 16, 22, .84)`）。
+//   ⚠ **空白と大小文字だけを均す。**⚠ **値そのものは変えない**（⚠ 変えると差が消える）。
+export const sameColor = (a, b) => (a ?? "").replace(/\s+/g, "").toLowerCase()
+  === (b ?? "").replace(/\s+/g, "").toLowerCase();

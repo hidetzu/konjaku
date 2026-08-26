@@ -34,7 +34,9 @@ head("見た目の決め方");
   const { readFileSync: rfc } = await import("node:fs");
     // ⚠ **共通の定義（tokens.css）も見る。**2026-08-20 に 26 個をここへ寄せた。
     //   ⚠ 入れ忘れると、全部が「定義の無い変数」に見える（実際にそうなった）。
-    const files = ["public/css/tokens.css",
+    // ⚠ **色は theme.css**（2026-08-26・hidetzu/konjaku#96）。⚠ **入れ忘れると、
+    //   ⚠ 色の変数が全部「定義が無い」に見える**（⚠ 移した直後に実際にそうなった）。
+    const files = ["public/css/tokens.css", "public/css/theme.css",
       "public/index.html", "public/peel.html", "public/peel3d.js",
     "public/share.js", "public/verify.js", "public/places.js", "public/events.js"];
   const defined = new Set(), used = new Map(), self = [];
@@ -78,8 +80,11 @@ head("見た目の決め方");
     const ALLOW = [];   // ⚠ **空。**⚠ 増やすときは、ここに理由と一緒に書く
     const css = await readFile(join(PUB, "css", "tokens.css"), "utf8");
     const found = [];
+    // ⚠ **theme.css も見る**（2026-08-26・hidetzu/konjaku#96）。⚠ **色みは media query を持ちうる**
+    //   （⚠ 次の段で `prefers-color-scheme` が入る）。⚠ **見ない先に書かれたら気づけない。**
+    const theme = await readFile(join(PUB, "css", "theme.css"), "utf8").catch(() => "");
     for (const [f, s0] of [["index.html", src["index.html"]], ["peel.html", src["peel.html"]],
-                           ["css/tokens.css", css]]) {
+                           ["css/tokens.css", css], ["css/theme.css", theme]]) {
       // ⚠ **コメントを先に落とす。**⚠ 落とさないと、⚠ **この決めごとを説明した字を拾う**
       const bare = (s0 ?? "").replace(HTML_COMMENT, " ").replace(BLOCK_COMMENT, " ");
       for (const m of bare.matchAll(/@media[^{]*\(\s*max-width\s*:\s*([^)]+?)\s*\)/g))
@@ -203,8 +208,10 @@ head("見た目の決め方");
 // 2 画面で共通の見た目の定義は、1 か所にしか書かないこと。
 // ⚠ 実測（2026-08-20）: 同じ名前・同じ値が **26 個**、index.html と peel.html の
 //   両方に書いてあった。⚠ 片方だけ直すと、2 画面で見た目がずれる（ADR 0021）。
-// ⚠ **値が違うものは、ここでは咎めない**（--bg / --ink / --ink-dim / --line / --surface の 5 つ。
-//   ⚠ どちらが正かは決まっていないので、各ページに残してある）。
+// ⚠ **色は、ここでは見ない**（2026-08-26・hidetzu/konjaku#96）。⚠ **`public/css/theme.css` へ移した。**
+//   ⚠ 値が違っていた 5 つ（--bg / --ink / --ink-dim / --line / --surface）は、
+//     ⚠ **「画面ごと」ではなく「地図の上かどうか」として theme.css が持つ。**
+//   ⚠ **色の出どころが 1 か所であることは `test/check/color.mjs` が見る。**
 {
   const fails = [];
   const styleOf = (t) => {
@@ -236,7 +243,7 @@ head("見た目の決め方");
     ? bad(`2 画面で共通の見た目の定義が 1 か所になっていない: ${fails.slice(0, 5).join(" / ")}`
         + `（片方だけ直すと、2 画面で見た目がずれる）`)
     : ok(`2 画面で共通の見た目の定義は tokens.css の 1 か所（${Object.keys(shared).length} 個。`
-        + `⚠ 値が違う 5 つは各ページに残す）`);
+        + `⚠ 色は theme.css が持つ）`);
 }
 
 // ============================================================
