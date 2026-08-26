@@ -266,4 +266,81 @@ else {
       ? bad(`色みの定義が届かない経路がある: ${fails.join(" / ")}`)
       : ok("両ページが theme.css を読み、/peel に地図の上の印があり、SHELL に入っている");
   }
+
+  // ---------- ⑦ 意味を持つ色の「濃さ違い」を、規則へ直に書かない ----------
+  // ⚠ **2026-08-26・hidetzu/konjaku#96 の 2 段目。**⚠ **43 か所を寄せた。**
+  //
+  // ⚠ **なぜ落とすか**: ⚠ `rgba(126,224,165,.09)` は ⚠ **`--evidence` の 9% の帯**だが、
+  //   ⚠ **色みが変わっても、⚠ この字は変わらない。**⚠ **明るい色みで、⚠ 帯だけ暗い色のまま残る。**
+  //   ⚠ **落ちない。**⚠ **「実測の帯」が、⚠ 実測の色と合わなくなるだけ**（`CLAUDE.md` §1）。
+  //
+  // ⚠ **寄せ方**: `color-mix(in srgb, var(--evidence) 9%, transparent)`。
+  //   ⚠ **重ねたあとの画素まで同じ**（⚠ 2026-08-26 に 32 通りを実測）。
+  //   ⚠ **`in srgb` と `transparent` の形でだけ同じ**。⚠ `in oklab` にすると値が変わるので、
+  //     ⚠ **書き方そのものも見る。**
+  {
+    // ⚠ **`/peel` の `--bg` は別の値**（`#080b0f`）なので、⚠ **`var(--bg)` にすると値が変わる。**
+    //   ⚠ **この回は「1 つも変えない」を守った。**⚠ 何色にするかを決めてから寄せる。
+    const ALLOW = [["peel.html", "rgba(11,14,19,.94)", "地図の上の吹き出し。/peel の --bg は #080b0f なので、"
+      + "var(--bg) にすると値が変わる（⚠ 何色にするかを決めてから寄せる）"]];
+    const rgbOf = (s) => {
+      const c = parseColor(s);
+      return c && c[3] > 0 ? `${Math.round(c[0])},${Math.round(c[1])},${Math.round(c[2])}` : null;
+    };
+    // ⚠ **地の色みの、⚠ 不透明な色だけ**を相手にする（⚠ 半透明どうしは重なり方が違う）
+    const tokenOf = new Map();
+    for (const [n, v] of Object.entries(blocks.get(DARK))) {
+      const c = parseColor(v);
+      if (c && c[3] === 1) tokenOf.set(rgbOf(v), n);
+    }
+    const styleOf = (t) => (/<style>([\s\S]*?)<\/style>/.exec(t ?? "")?.[1] ?? "");
+    const era = await readFile(join(PUB, "components", "era-control", "era-control.css"), "utf8").catch(() => "");
+    const hits = [], mixes = [], odd = [];
+    for (const [f, css0] of [["index.html", styleOf(src["index.html"])],
+                             ["peel.html", styleOf(src["peel.html"])],
+                             ["era-control.css", era]]) {
+      // ⚠ **コメントを先に落とす**（⚠ この決めごとを説明した字を、⚠ この検査自身が拾う）
+      const css = css0.replace(BLOCK_COMMENT, " ");
+      for (const m of css.matchAll(/#[0-9a-fA-F]{3,8}\b|rgba?\([^)]*\)/g)) {
+        const tok = tokenOf.get(rgbOf(m[0]));
+        if (!tok) continue;
+        const raw = m[0].replace(/\s+/g, "");
+        if (ALLOW.some(([af, av]) => af === f && av === raw)) continue;
+        hits.push(`${f} の ${m[0]}（＝ ${tok}）`);
+      }
+      // ⚠ **寄せた側の書き方も見る。**⚠ `in srgb` ／ `transparent` 以外は値が変わる。
+      // ⚠ **括弧を数えて切り出す。**⚠ `[^)]*` で切ると、⚠ **中の `var(--x)` の `)` で終わってしまい、
+      //   ⚠ 1 つも拾えない**（⚠ 2026-08-26 に実際にそうなった。⚠ **わざと壊しても素通りした**）。
+      for (let i = css.indexOf("color-mix("); i >= 0; i = css.indexOf("color-mix(", i + 1)) {
+        let depth = 0, j = i + "color-mix".length;
+        for (; j < css.length; j++) {
+          if (css[j] === "(") depth++;
+          else if (css[j] === ")" && --depth === 0) break;
+        }
+        const whole = css.slice(i, j + 1);
+        mixes.push(whole);
+        const inner = whole.slice("color-mix(".length, -1);
+        const space = /^\s*in\s+([a-z-]+)/.exec(inner)?.[1];
+        // ⚠ **最後の引数**（⚠ 中の括弧を数えてから、⚠ 一番外側の `,` で割る）
+        let d = 0, last = "";
+        for (const part of inner.split(",")) {
+          if (d === 0) last = ""; else last += ",";
+          last += part;
+          d += (part.match(/\(/g) ?? []).length - (part.match(/\)/g) ?? []).length;
+        }
+        if (space !== "srgb" || last.trim() !== "transparent")
+          odd.push(`${f}: color-mix(in ${space} … ${last.trim()}）`);
+      }
+    }
+    hits.length
+      ? bad(`意味を持つ色の濃さ違いを、規則へ直に書いている（${hits.length} か所）: ${hits.slice(0, 6).join("、")}`
+          + `（⚠ 色みを変えても、⚠ この字は変わらない。`
+          + `⚠ color-mix(in srgb, var(--…) N%, transparent) で書く）`)
+      : odd.length
+        ? bad(`color-mix の書き方が違う: ${odd.join("、")}`
+            + `（⚠ in srgb と transparent の形でだけ、⚠ 元の rgba() と同じ画素になる）`)
+        : ok(`意味を持つ色の濃さ違いは、全部その色から作っている（color-mix ${mixes.length} か所・`
+            + `直書き 0 か所。⚠ **決めた上で残しているのは ${ALLOW.length} 件**: `
+            + `${ALLOW.map(([f, v]) => `${f} の ${v}`).join("、")}）`);
+  }
 }
