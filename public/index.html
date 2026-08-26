@@ -34,7 +34,11 @@
 <meta name="twitter:image:alt" content="この土地は、昔なんだったのか？ — 土地の成り立ちを、根拠とともに見る">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="manifest" href="/manifest.webmanifest">
-<meta name="theme-color" content="#0b0e13">
+<!-- ⚠ ブラウザの枠の色。⚠ **色みと揃える**（2026-08-26・hidetzu/konjaku#96）。
+     ⚠ **`media` で分ける。**⚠ 1 行だけだと、⚠ 明るい端末でも枠だけ暗いまま残る。
+     ⚠ **値は theme.css の --bg と同じ。**⚠ ここには CSS 変数を書けない（meta は解決しない）。 -->
+<meta name="theme-color" content="#0b0e13" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f7f8fa" media="(prefers-color-scheme: light)">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="今昔">

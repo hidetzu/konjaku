@@ -75,16 +75,36 @@ const deltaE = (a, b) => {
 const themeCss = await readFile(join(PUB, "css", "theme.css"), "utf8").catch(() => "");
 // ⚠ **コメントを先に落とす**（`CLAUDE.md` §5）。⚠ 落とさないと、
 //   ⚠ **theme.css の見出しに書いた実測値（`1.51` など）を、⚠ 宣言として拾う。**
+// ⚠ **入れ子を数えて読む**（2026-08-26。⚠ **`@media` の中に色みが入った**）。
+//   ⚠ **選択子と中身を 1 つの正規表現で取る形では読めない**（`@media (…) {` の中で全部ずれる）。
+//   ⚠ **鍵は「どの `@media` の中か ＋ セレクタ」**にする（⚠ 素の `:root` と区別するため）。
 const blocks = new Map();
-for (const m of themeCss.replace(BLOCK_COMMENT, " ").matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
-  const decls = {};
-  for (const d of m[2].matchAll(/(--[a-z0-9-]+)\s*:\s*([^;}]+)/g)) decls[d[1]] = d[2].trim();
-  blocks.set(m[1].trim().replace(/\s+/g, " "), decls);
+{
+  const css = themeCss.replace(BLOCK_COMMENT, " ");
+  const stack = [];
+  let buf = "";
+  const put = (decl) => {
+    const sel = stack.filter((x) => !x.startsWith("@")).join(" ");
+    const at = stack.filter((x) => x.startsWith("@")).join(" ");
+    if (!sel) return;
+    const key = at ? `${at} ${sel}` : sel;
+    const d = /^\s*(--[a-z0-9-]+)\s*:\s*([\s\S]+)$/.exec(decl);
+    if (!d) return;
+    if (!blocks.has(key)) blocks.set(key, {});
+    blocks.get(key)[d[1]] = d[2].trim();
+  };
+  for (const ch of css) {
+    if (ch === "{") { stack.push(buf.trim().replace(/\s+/g, " ")); buf = ""; }
+    else if (ch === "}") { put(buf); stack.pop(); buf = ""; }
+    else if (ch === ";") { put(buf); buf = ""; }
+    else buf += ch;
+  }
 }
 
 // ⚠ **色みと文脈の一覧。**⚠ **ここが theme.css と食い違ったら落とす**（下ですぐ見る）。
-const DARK = ":root", LIGHT = ':root[data-theme="light"]';
-const DARK_MAP = ':root[data-backdrop="map"]', LIGHT_MAP = ':root[data-theme="light"][data-backdrop="map"]';
+const MQ = "@media (prefers-color-scheme: light)";
+const DARK = ":root", LIGHT = `${MQ} :root`;
+const DARK_MAP = ':root[data-backdrop="map"]', LIGHT_MAP = `${MQ} :root[data-backdrop="map"]`;
 const SURFACES = [
   ["暗い色み", DARK, null],
   ["暗い色み・地図の上", DARK_MAP, DARK],
@@ -279,9 +299,27 @@ else {
       fails.push("index.html に data-backdrop が付いている（トップは地図の上ではない）");
     const sw = await readFile(join(PUB, "sw.js"), "utf8").catch(() => "");
     if (!/"\/css\/theme\.css"/.test(sw)) fails.push("sw.js の SHELL に /css/theme.css が無い（オフラインで色が消える）");
+    // ⚠ **ブラウザの枠の色（`theme-color`）は、⚠ CSS 変数を書けない**（meta は解決しない）。
+    //   ⚠ **だから値を写している。**⚠ **写した先は、⚠ 機械で突き合わせる**（`CLAUDE.md` §3）。
+    //   ⚠ **1 行だけだと、⚠ 明るい端末で枠だけ暗いまま残る。**⚠ **色みごとに要る。**
+    const want = { dark: blocks.get(DARK)["--bg"], light: blocks.get(LIGHT)["--bg"] };
+    for (const f of ["index.html", "peel.html"]) {
+      const metas = [...(src[f] ?? "").matchAll(
+        /<meta\s+name="theme-color"\s+content="([^"]+)"\s+media="\(prefers-color-scheme:\s*(dark|light)\)"/g)];
+      const got = Object.fromEntries(metas.map((m) => [m[2], m[1].trim()]));
+      for (const k of ["dark", "light"]) {
+        if (!got[k]) fails.push(`${f} に ${k} の theme-color が無い（枠の色が色みに追いてこない）`);
+        else if (got[k].toLowerCase() !== want[k].toLowerCase())
+          fails.push(`${f} の ${k} の theme-color が ${got[k]}（theme.css の --bg は ${want[k]}）`);
+      }
+      // ⚠ **media の付いていない theme-color を残さない**（⚠ 残すと、そちらが勝つ端末がある）
+      if (/<meta\s+name="theme-color"\s+content="[^"]*"\s*\/?>/.test(src[f] ?? ""))
+        fails.push(`${f} に media の無い theme-color が残っている`);
+    }
     fails.length
       ? bad(`色みの定義が届かない経路がある: ${fails.join(" / ")}`)
-      : ok("両ページが theme.css を読み、/peel に地図の上の印があり、SHELL に入っている");
+      : ok("両ページが theme.css を読み、/peel に地図の上の印があり、SHELL に入っている。"
+          + "⚠ ブラウザの枠の色も、⚠ 2 つの色みとも theme.css の --bg と一致");
   }
 
   // ---------- ⑧ 色の「上」に載る文字 ----------

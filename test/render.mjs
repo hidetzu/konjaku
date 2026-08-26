@@ -162,8 +162,14 @@ async function runCase(c, attempt) {
   //   通らない**ため、落としたはずの経路が素通りして検査が不安定になった
   //   （落ちたり通ったりする＝いずれ無視される検査になる）。
   //   ここで見たいのは画面の振る舞いで、SW の振る舞いは別に見るべきもの。
+  // ⚠ **色みを明示する**（2026-08-26・hidetzu/konjaku#96）。
+  //   ⚠ **`prefers-color-scheme` を見るようにしたので、⚠ 既定に任せると
+  //     ⚠ ブラウザの既定（明るい）で全部が走る。**
+  //   ⚠ **いまあるケースは、⚠ 暗い色みの画面に対して書かれている。**⚠ だから ⚠ **暗いに固定する。**
+  //   ⚠ **明るい色みは、⚠ `colorScheme: "light"` を指定したケースが見る**（⚠ 混ぜない）。
   const page = await browser.newPage({
     viewport: c.viewport ?? { width: 1200, height: 780 }, hasTouch: !!c.hasTouch,
+    colorScheme: c.colorScheme ?? "dark",
     serviceWorkers: "block" });
   const errors = [], reqs = [];
   page.on("pageerror", (e) => errors.push(String(e).slice(0, 160)));
