@@ -979,3 +979,52 @@ head("8. CI の固定");
     ? bad("scripts/cost.mjs が TILE_HOSTS を写している（public/sw.js から読むこと。写すとずれる）")
     : ok("棚の対象の定義は public/sw.js の1か所だけ（cost.mjs はそこを読む）");
 }
+
+// ⚠ **問いごとに割った実描画のケースが、⚠ 1 つ残らず走者に届いているか**
+//   （2026-08-26。hidetzu/konjaku#277 の 1 本目）。
+//
+// ⚠ **`check.mjs` には同じ見張りがある**（⚠ 「出した節を 1 つ残らず読み込んでいる」）。
+//   ⚠ **`render` 側には無かった。**⚠ **hidetzu/konjaku#232 で踏んだのと同じ形。**
+//
+// ⚠ **上の「分けて回しても 1 件も落ちない」とは、⚠ 別の問い**（`CLAUDE.md` §3）。
+//   ⚠ あちらは ⚠ **走者が数えた数**と ⚠ **`TOP.length + PEEL.length`** を比べる。
+//   ⚠ **どちらも親から来るので、⚠ 親が子を取り込み忘れたら、⚠ 両方が同じだけ減る**
+//     （⚠ 実証: ⚠ spread を消しても ⚠ **あちらは緑のまま**だった）。
+//   ⚠ **こちらは、⚠ 子のファイルを直に読んで、⚠ 親に入っているかを見る**（⚠ 別の道）。
+//
+// ⚠ **実証（2026-08-26）**: ⚠ `top.mjs` から `...ESCAPE_CASES,` の 1 行を消すと、
+//   ⚠ **`--count` は 105 → 102 になるのに、⚠ `npm run render` は落ちない。**
+//   ⚠ **180 → 177 件に静かに減るだけ**なので、⚠ **人が数を覚えていないと気づけない。**
+//
+// ⚠ **`git ls-files` ではなく実物を歩く**（⚠ 追跡前のファイルも見る。`CLAUDE.md` §9）。
+// ⚠ **数は数えさせる。**⚠ **一覧を書き写さない**（⚠ 割るたびに古くなる）。
+{
+  const { readdirSync: rdP } = await import("node:fs");
+  const dir = join(ROOT, "test/render");
+  // ⚠ **親（走者が suite として読むもの）と、⚠ 子（問いごとに割ったもの）**
+  const PARENT = { top: "top.mjs", peel: "peel.mjs" };
+  const parts = rdP(dir).filter((f) => /^(top|peel)-[\w-]+\.mjs$/.test(f)).sort();
+  const missing = [], empty = [];
+  for (const f of parts) {
+    const suite = f.split("-")[0];
+    // ⚠ **字ではなく、⚠ 実際に読み込んで数える**（⚠ 取り込み名を書き写すと、⚠ 改名で外れる）
+    const child = await import(pathToFileURL(join(dir, f)).href).catch(() => null);
+    const parent = await import(pathToFileURL(join(dir, PARENT[suite])).href).catch(() => null);
+    if (!child?.CASES?.length) { empty.push(f); continue; }
+    if (!parent?.CASES) { missing.push(`${f}（親 ${PARENT[suite]} を読めない）`); continue; }
+    const names = new Set(parent.CASES.map((c) => c.name));
+    const lost = child.CASES.map((c) => c.name).filter((n) => !names.has(n));
+    if (lost.length) missing.push(`${f}: ${lost.join("、")}`);
+  }
+  if (!parts.length)
+    ok("実描画のケースは、まだ問いごとに割っていない（top.mjs / peel.mjs の 2 本）");
+  else if (empty.length)
+    bad(`割ったのにケースが 1 件も無いファイルがある: ${empty.join("、")}`
+      + `（⚠ 走者に届かない。⚠ 件数が静かに減る）`);
+  else if (missing.length)
+    bad(`割ったケースが走者に届いていない: ${missing.join(" ／ ")}`
+      + `（⚠ 落ちない。⚠ **件数が減るだけ**なので、⚠ 人が数を覚えていないと気づけない）`);
+  else
+    ok(`問いごとに割った ${parts.length} ファイルのケースは、全部が親に入っている`
+      + `（${parts.join("、")}）`);
+}
