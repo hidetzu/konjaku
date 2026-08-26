@@ -388,7 +388,7 @@
   .here:hover{border-color:var(--action);color:var(--action)}
   .here[disabled]{opacity:.5;cursor:default}
   .here-msg{margin-top:7px;padding:8px 10px;border-radius:7px;font-size:var(--fs-note);line-height:1.65;
-    background:rgba(230,196,122,.09);border-left:2px solid var(--estimate);color:#cbb98f}
+    background:color-mix(in srgb, var(--estimate) 9%, transparent);border-left:2px solid var(--estimate);color:#cbb98f}
   .here-msg b{color:var(--estimate);font-weight:500}
   .here-msg .dim{color:var(--ink-dim)}
 
@@ -423,9 +423,9 @@
     border-radius:2px;border:1px solid rgba(255,255,255,.22);vertical-align:baseline}
   .swatch{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px}
   .prov{font-size:var(--fs-evidence);line-height:1.55;padding:7px 9px;border-radius:6px;margin-bottom:5px}
-  .prov.ok{background:rgba(126,224,165,.09);border-left:2px solid var(--evidence)}
-  .prov.est{background:rgba(230,196,122,.09);border-left:2px solid var(--estimate)}
-  .prov.no{background:rgba(224,138,122,.09);border-left:2px solid var(--missing)}
+  .prov.ok{background:color-mix(in srgb, var(--evidence) 9%, transparent);border-left:2px solid var(--evidence)}
+  .prov.est{background:color-mix(in srgb, var(--estimate) 9%, transparent);border-left:2px solid var(--estimate)}
+  .prov.no{background:color-mix(in srgb, var(--missing) 9%, transparent);border-left:2px solid var(--missing)}
   /* 押している間だけ光らせる。状態を残さないので、既定の絵（99.6% の色）を壊さない */
   .peek{display:inline-block;margin-top:5px;padding:3px 9px;border-radius:999px;
     border:1px solid var(--line);background:transparent;color:var(--ink-dim);
