@@ -171,7 +171,7 @@
     border:1px solid color-mix(in srgb, var(--wash) 22%, transparent);background:color-mix(in srgb, var(--wash) 6%, transparent);color:#cbd3dc;
     transition:.15s}
   #play:hover{border-color:var(--action);color:var(--action)}
-  #play[aria-pressed="true"]{background:var(--action);color:#07121c;border-color:var(--action)}
+  #play[aria-pressed="true"]{background:var(--action);color:var(--action-ink);border-color:var(--action)}
   /* ⚠ 高さ 56px では、年代の文字の当たり判定が **19px** しか取れなかった
        （実測 2026-08-18: 「現在」24×19px / 「1984–86」53×19px）。
        文字は押すと**その段へ飛ぶ**（下の peel3d.js）のに、指の目安 44px を大きく割っていた。
@@ -213,7 +213,7 @@
   /* ⚠ 実測 25×25px。掴む的としては小さい（この画面の他の操作は 44px にそろえてある）。
      ⚠ 44px まで広げるとレールの上で目盛りを覆うので、32px までにして
        **文字のタップ**（44px）を主役にする。掴むのは補助。 */
-  #track .knob{position:absolute;top:6px;width:32px;height:32px;border:3px solid #07121c;
+  #track .knob{position:absolute;top:6px;width:32px;height:32px;border:3px solid var(--action-ink);
     border-radius:50%;background:var(--ink);margin-left:-16px;
     box-shadow:0 0 0 2px color-mix(in srgb, var(--wash) 48%, transparent),0 3px 14px color-mix(in srgb, var(--shadow) 75%, transparent);transition:background .2s}
   #track.meiji .knob{background:var(--water)}
