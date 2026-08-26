@@ -205,6 +205,50 @@ head("見た目の決め方");
     : ok(`文字の段は両方の画面で揃っている（index ${scale["index.html"].size} 段 / peel ${scale["peel.html"].size} 段）`);
 }
 
+// ⚠ **箱の内側の余白は、⚠ 段から借りる**（2026-08-27・hidetzu/konjaku#312 の 1 回目）。
+//
+// ⚠ **色でやったのと同じ形**（hidetzu/konjaku#96）: ⚠ **段に在る値を、⚠ 規則へ直に書かない。**
+//   ⚠ **これが無いと、⚠ 「段に無いから直に書く」が積み上がって元に戻る。**
+//   ⚠ **`font-size` には既に同じ見張りがある**（⚠ 生の値を書いたら落とす）。
+//
+// ⚠ **落とすのは「段に在る値を直に書いたとき」だけ。**
+//   ⚠ **段に無い値は咎めない。**⚠ **206 件のうち 196 件はまだ段に無い**ので、
+//     ⚠ **いま咎めると、⚠ 直せない指摘を出し続けることになる**（⚠ 段の刻みは未決）。
+//   ⚠ **代わりに、⚠ 残っている数を名乗る**（hidetzu/konjaku#312 の Acceptance Criteria）。
+{
+  const css = await readFile(join(PUB, "css", "tokens.css"), "utf8");
+  const bare = css.replace(BLOCK_COMMENT, " ");
+  const steps = new Map();          // 値 → トークン名
+  for (const m of bare.matchAll(/(--pad-[a-z0-9-]+)\s*:\s*([^;}]+)/g))
+    steps.set(m[2].trim().replace(/\s+/g, " "), m[1]);
+  const raw = [], hit = [];
+  let left = 0;
+  for (const [f, s0] of [["index.html", src["index.html"]], ["peel.html", src["peel.html"]],
+                         ["era-control.css", await readFile(join(PUB, "components", "era-control",
+                           "era-control.css"), "utf8").catch(() => "")]]) {
+    const t = (s0 ?? "").replace(HTML_COMMENT, " ").replace(BLOCK_COMMENT, " ");
+    const body = f.endsWith(".html") ? (/<style>([\s\S]*?)<\/style>/.exec(t)?.[1] ?? "") : t;
+    for (const m of body.matchAll(/padding\s*:\s*([^;{}]+)/g)) {
+      const v = m[1].trim().replace(/\s+/g, " ");
+      if (steps.has(v)) raw.push(`${f} の padding:${v}（${steps.get(v)} がある）`);
+    }
+    // ⚠ **段に在る名前だけ数える。**⚠ `era-control` の `--pad-x` / `--pad-y` は
+    //   ⚠ **部品の中に閉じた別のもの**（`.claude/rules/css.md`）。⚠ ここで数えると嘘になる。
+    for (const m of body.matchAll(/var\((--pad-[a-z0-9-]+)\)/g))
+      if ([...steps.values()].includes(m[1])) hit.push(m[1]);
+    // ⚠ **まだ段に無い余白の数**（⚠ 落とさない。⚠ **数を出すだけ**）
+    for (const m of body.matchAll(/(padding|margin)[a-z-]*\s*:\s*([^;{}]*)/g))
+      if (/\d+px/.test(m[2])) left++;
+  }
+  if (!steps.size) bad("tokens.css に箱の内側の余白の段が無い（⚠ この検査が何も見ていない）");
+  else if (raw.length)
+    bad(`段に在る余白を、規則へ直に書いている: ${raw.join("、")}`
+      + `（⚠ 段から借りる。⚠ 直に書くと、⚠ 段を変えても そこだけ変わらない）`);
+  else
+    ok(`箱の内側の余白は段から借りている（段 ${steps.size} 個・使用 ${hit.length} 箇所・直書き 0）。`
+      + `⚠ **まだ段に無い余白が ${left} 件ある**（⚠ 刻みが未決なので落とさない。hidetzu/konjaku#312）`);
+}
+
 // 2 画面で共通の見た目の定義は、1 か所にしか書かないこと。
 // ⚠ 実測（2026-08-20）: 同じ名前・同じ値が **26 個**、index.html と peel.html の
 //   両方に書いてあった。⚠ 片方だけ直すと、2 画面で見た目がずれる（ADR 0021）。

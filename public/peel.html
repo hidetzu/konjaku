@@ -270,7 +270,7 @@
      3D で 100% 言えるのは足元だけなので、そこへ誘う1行は出す価値がある。 */
   /* 共有された状態を復元できなかったときの1行。
      ⚠ 警告色にはしない。壊れてはいない。共有元と別のものを見ている、という断り書き */
-  #stateMiss{margin:0 0 7px;padding:6px 9px;border-radius:7px;
+  #stateMiss{margin:0 0 7px;padding:var(--pad-sm);border-radius:7px;
     border:1px solid color-mix(in srgb, var(--wash) 18%, transparent);background:color-mix(in srgb, var(--wash) 5%, transparent);
     color:var(--ink-dim);font-size:var(--fs-note);line-height:1.5}
   #stateMiss[hidden]{display:none}
@@ -378,7 +378,7 @@
     background:color-mix(in srgb, var(--wash) 6%, transparent);color:var(--ink);font:inherit;font-size:var(--fs-input)}
   #q:focus{outline:none;border-color:var(--action)}
   #cands{margin-top:6px;max-height:190px;overflow-y:auto}
-  #cands button{display:block;width:100%;text-align:left;padding:6px 9px;margin-bottom:3px;
+  #cands button{display:block;width:100%;text-align:left;padding:var(--pad-sm);margin-bottom:3px;
     border:1px solid var(--line);border-radius:6px;background:transparent;color:var(--ink);
     font:inherit;font-size:var(--fs-note);cursor:pointer}
   #cands button:hover{border-color:var(--action);color:var(--action)}
