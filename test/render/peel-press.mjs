@@ -78,6 +78,9 @@ export const CASES = [
       const note = await page.evaluate(() =>
         (document.getElementById("rlNote")?.textContent ?? "").replace(/\s+/g, " ").trim());
       must(/明治期は地図/.test(note), `注記が「明治期は地図」と言っていない: 「${note}」`);
+      // ⚠ **年が無いことも、⚠ ここで言う**（2026-08-28。hidetzu/konjaku#142 でトップから移した）。
+      //   ⚠ **トップに残っていないことは `top-next.mjs` が見る**（⚠ 対で見る。`verify` §5）。
+      must(/年は無い/.test(note), `明治期に年が無いことを言っていない: 「${note}」`);
       return `${labels.length} 段（右端 ${labels.at(-1)}）／注記「${note}」`;
     },
   },
