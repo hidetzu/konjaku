@@ -84,6 +84,22 @@ const TRIPS = [
       }
       await page.waitForTimeout(1500);
     } },
+  // ⚠ **共有まで押した**（2026-08-28。hidetzu/konjaku#355）。
+  //   ⚠ **押したこと（`share.tap`）と結末を数えるようにした**ので、⚠ **ここが最大になる。**
+  //   ⚠ **この環境に共有の口は無い**ので、⚠ **画像の保存へ落ちる。**
+  //     ⚠ **送る本数は同じ 2 件**（⚠ `share.tap` ＋ 結末 1 つ。⚠ 結末は排他）。
+  { name: "共有まで押した", async run(page) {
+      await page.goto(`${BASE}/?ll=35.65480,139.79750&q=%E8%B1%8A%E6%B4%B2`,
+        { waitUntil: "domcontentloaded" });
+      await waitVerdict(page);
+      const n = await page.$$eval("#strip .f", (e) => e.length);
+      for (let i = 0; i < n; i++) {
+        await page.$eval(`#strip .f[data-i="${i}"]`, (e) => e.click());
+        await page.waitForTimeout(500);
+      }
+      await page.$eval("#shareBtn", (e) => e.click());
+      await page.waitForTimeout(2500);
+    } },
   { name: "3D まで開いた", async run(page) {
       await page.goto(`${BASE}/peel?ll=35.65480,139.79750&q=%E8%B1%8A%E6%B4%B2`,
         { waitUntil: "domcontentloaded" });

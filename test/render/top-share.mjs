@@ -229,4 +229,94 @@ export const CASES = [
       return `カードに「広い区分」あり／${text.slice(0, 50)}…`;
     },
   },
+  // ⚠ **共有の 3 つの結末**（2026-08-28。hidetzu/konjaku#355）。
+  //
+  // ⚠ **`shared` と `saved` しか送っていなかったので、⚠ 0 件が何を意味するか分からなかった。**
+  //   ⚠ **押していない ／ 押したがやめた ／ 押したが壊れた**が、⚠ **同じ 0 に見えていた**
+  //   （⚠ D1 実測 2026-08-28: ⚠ 17 日間 `shared` 0 件）。
+  //
+  // ⚠ **ここで見るのは「何本送ったか」。**⚠ **結末が 2 つ送られると、⚠ 合計が分母を超える。**
+  //   ⚠ **字面（`tick()` の並び）は `test/check/data.mjs` が見る。**⚠ **ここは実際に押して数える。**
+  //
+  // ⚠ **共有の口はブラウザに無い**ので、⚠ **`addInitScript` で置く**（⚠ goto より前に要る）。
+  {
+    name: "共有できたら、押した1件と共有1件だけを数える", path: `/?${TOYOSU}`,
+    setup: async (page) => {
+      page.__ticks = [];
+      await page.route("**/t", (r) => { page.__ticks.push(r.request().postData()); r.fulfill({ status: 204 }); });
+      await page.addInitScript(() => {
+        // ⚠ **画像つきは通さない**（⚠ リンク共有の枝を通す。⚠ どちらでも `shared` は同じ）
+        Object.defineProperty(navigator, "canShare", { value: () => false, configurable: true });
+        Object.defineProperty(navigator, "share", { value: async () => {}, configurable: true });
+      });
+    },
+    async check(page) {
+      await waitVerdict(page);
+      await page.click("#shareBtn");
+      const got = await settleTicks(page, 2);
+      must(got.join("|") === "share.tap|shared",
+        `押したときに送ったものが違う: ${got.join("|") || "（無し）"}`);
+      return `${got.join(" → ")}（⚠ 結末は 1 つだけ）`;
+    },
+  },
+  {
+    // ⚠ **やめたのに 1 件も残らなかった。**⚠ **「押していない」と同じ 0 に見えていた。**
+    name: "共有をやめたら、やめたと数える（保存へ落とさない）", path: `/?${TOYOSU}`,
+    setup: async (page) => {
+      page.__ticks = [];
+      await page.route("**/t", (r) => { page.__ticks.push(r.request().postData()); r.fulfill({ status: 204 }); });
+      await page.addInitScript(() => {
+        Object.defineProperty(navigator, "canShare", { value: () => false, configurable: true });
+        Object.defineProperty(navigator, "share", { value: async () => {
+          // ⚠ **共有シートを閉じたときにブラウザが投げるもの**
+          const e = new Error("cancelled by user"); e.name = "AbortError"; throw e;
+        }, configurable: true });
+      });
+    },
+    async check(page) {
+      await waitVerdict(page);
+      await page.click("#shareBtn");
+      const got = await settleTicks(page, 2);
+      must(got.join("|") === "share.tap|share.cancelled",
+        `やめたときに送ったものが違う: ${got.join("|") || "（無し）"}`);
+      // ⚠ **やめたのに保存へ落ちていないこと**（⚠ 落ちると結末が 2 つになり、⚠ 分母を超える）
+      must(!got.includes("saved"), "やめたのに、画像の保存まで走っている（⚠ 結末が 2 つになる）");
+      return `${got.join(" → ")}（⚠ 保存へ落ちていない）`;
+    },
+  },
+  {
+    // ⚠ **壊れたときは、⚠ 画面にだけ出て、⚠ 計測には 1 件も残らなかった。**
+    // ⚠ **`blobOf()` は `try` の外に在った**ので、⚠ ここが落ちても何も数えなかった。
+    name: "共有が壊れたら、壊れたと数えて、画面にも出す", path: `/?${TOYOSU}`,
+    setup: async (page) => {
+      page.__ticks = [];
+      await page.route("**/t", (r) => { page.__ticks.push(r.request().postData()); r.fulfill({ status: 204 }); });
+      await page.addInitScript(() => {
+        // ⚠ **絵を PNG にする所を壊す**（⚠ 以前は、⚠ ここが `try` の外だった）
+        HTMLCanvasElement.prototype.toBlob = () => { throw new Error("toBlob broken"); };
+      });
+    },
+    async check(page) {
+      await waitVerdict(page);
+      await page.click("#shareBtn");
+      const got = await settleTicks(page, 2);
+      must(got.join("|") === "share.tap|share.failed",
+        `壊れたときに送ったものが違う: ${got.join("|") || "（無し）"}`);
+      // ⚠ **数えるようにしたせいで、⚠ 画面から消えていないこと**（⚠ 握りつぶすと消える）
+      const msg = (await page.locator("#shareMsg").textContent())?.trim() ?? "";
+      must(msg === "共有できませんでした", `壊れたのに画面の字が違う: 「${msg}」`);
+      return `${got.join(" → ")}／画面「${msg}」`;
+    },
+  },
 ];
+
+// ⚠ **共有に関わる本文だけを、⚠ 落ち着くまで待って返す。**
+//
+// ⚠ **器ではなく、⚠ 結果の字を待つ**（`CLAUDE.md` §9）。⚠ **固定で待つと、⚠ 遅い所で取りこぼす。**
+// ⚠ **`want` 本そろっても、⚠ もう一息待つ**（⚠ **多すぎることを見たい**ので、⚠ 早く切ると見逃す）。
+async function settleTicks(page, want) {
+  const pick = () => page.__ticks.filter((t) => t === "shared" || t === "saved" || t?.startsWith("share."));
+  for (let i = 0; i < 100 && pick().length < want; i++) await page.waitForTimeout(100);
+  await page.waitForTimeout(700);
+  return pick();
+}
