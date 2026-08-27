@@ -91,7 +91,7 @@
      ⚠ **上だけだと、⚠ 補足情報と最初の問いがひと組に読める**（⚠ 下が開いているため）。
      ⚠ **問いには線を付けない。**⚠ 付けると問いまで「節」になり、⚠ 短い板に線が 4 本並ぶ。
        ⚠ **問いは本文で、⚠ 補足情報は本文に差し込まれた断り。**⚠ 格が違う。 */
-  .sec-note{margin:12px 0;padding:12px 0;
+  .sec-note{margin:var(--gap-block) 0;padding:12px 0;
     border-top:1px solid var(--line);border-bottom:1px solid var(--line);
     display:flex;align-items:flex-start;gap:8px}
   .sec-note > ul{flex:1;min-width:0}
@@ -136,7 +136,7 @@
   /* ⚠ **「光らせる」は PC でも 44 を割らない**（`.claude/rules/css.md`）。
      ⚠ 実測（2026-08-22・1280×800）: ⚠ **220×27**。⚠ 狭い幅では 44 あった（PC だけ割れていた）。 */
   .peek{min-height:var(--tap)}
-  .drill{margin-top:6px}
+  .drill{margin-top:var(--gap-row)}
   .drill>summary{display:flex;align-items:center;gap:6px;min-height:var(--tap);
     cursor:pointer;color:var(--action);font-size:var(--fs-note);list-style:none}
   .drill>summary::-webkit-details-marker{display:none}
@@ -225,14 +225,14 @@
   .land-num small{font-size:var(--fs-badge);margin-left:1px}
   .land-what{font-size:var(--fs-note);line-height:1.5;color:var(--ink-2)}
   .land-what b{color:var(--water);font-weight:600}
-  .land-den{margin-top:3px;font-size:var(--fs-note);line-height:1.5;color:var(--ink-dim)}
+  .land-den{margin-top:var(--gap-sub);font-size:var(--fs-note);line-height:1.5;color:var(--ink-dim)}
   .land-den b{color:var(--ink-2);font-weight:600}
-  .land-sub{margin-top:2px;font-size:var(--fs-note);line-height:1.5;color:var(--ink-faint)}
+  .land-sub{margin-top:var(--gap-sub);font-size:var(--fs-note);line-height:1.5;color:var(--ink-faint)}
   /* 層。⚠ **確実性の高い順に積む**（ADR 0030）。⚠ 層の名前は「その層の問い」 */
   /* ⚠ **問いのあいだに区切りを入れる**（2026-08-22。Owner 判断）。
      ⚠ **先頭の問いには入れない**（⚠ すぐ上に補足の囲みの下線がある。⚠ 線が 2 本並ぶ）。 */
   .land-layer+.land-layer,.land-layer+.land-miss,.land-miss+.land-layer{
-    margin-top:12px;padding-top:12px;border-top:1px solid var(--line)}
+    margin-top:var(--gap-block);padding-top:12px;border-top:1px solid var(--line)}
   /* ⚠ 第1層は主語つき。値だけ強く（docs/DOMAIN.md §2-1） */
   .land-g1{font-size:var(--fs-note);color:var(--ink-dim)}
   .land-g1 b{font-size:var(--fs-lead);color:var(--ink);font-weight:600}
@@ -242,7 +242,7 @@
        ⚠ **答えの本文より小さかった**（実測 2026-08-22: 問い 11px / 答え 15px）。
      ⚠ **問いが答えより小さいと、⚠ どこからどこまでが 1 つの問いか読めない。** */
   .land-q{font-size:var(--fs-claim);color:var(--ink);letter-spacing:.05em;
-    margin:14px 0 4px;font-weight:600}
+    margin:var(--gap-block) 0 4px;font-weight:600}
   /* ⚠ **答えは箇条書き**（2026-08-22。Owner 判断）。
      ⚠ **数字は残す**（Owner 判断。掟 §6・ADR 0020: ⚠ 主張範囲の分母で書く）。
      ⚠ **印は `-`。**⚠ `⚠` を使わない（この画面では災害リスク専用）。 */
@@ -364,7 +364,7 @@
   .brand{align-items:center}
 .brand b{font-weight:500;letter-spacing:.22em}
 
-  .sec{margin-top:13px;padding-top:11px;border-top:1px solid var(--line)}
+  .sec{margin-top:var(--gap-block);padding-top:11px;border-top:1px solid var(--line)}
   /* ⚠ **いちばん上の節は、⚠ 自分で上の余白と区切りを作らない**（2026-08-23）。
      ⚠ **すぐ上に `.chrome-row` があり、⚠ あちらが敷きを持つので区切りになっている。**
      ⚠ **実測（375×667・渋谷）**: ⚠ **▾ の下端 y=70 から 地名 y=113 まで 43px が余白だけ**だった。
@@ -377,21 +377,21 @@
   #q{width:100%;padding:8px 10px;border-radius:7px;border:1px solid var(--line);
     background:color-mix(in srgb, var(--wash) 6%, transparent);color:var(--ink);font:inherit;font-size:var(--fs-input)}
   #q:focus{outline:none;border-color:var(--action)}
-  #cands{margin-top:6px;max-height:190px;overflow-y:auto}
+  #cands{margin-top:var(--gap-row);max-height:190px;overflow-y:auto}
   #cands button{display:block;width:100%;text-align:left;padding:var(--pad-sm);margin-bottom:3px;
     border:1px solid var(--line);border-radius:6px;background:transparent;color:var(--ink);
     font:inherit;font-size:var(--fs-note);cursor:pointer}
   #cands button:hover{border-color:var(--action);color:var(--action)}
   #cands button small{display:block;color:var(--ink-dim);font-size:var(--fs-note)}
-  .quick{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px}
+  .quick{display:flex;flex-wrap:wrap;gap:5px;margin-top:var(--gap-row)}
   .quick button{padding:3px 9px;border:1px solid var(--line);border-radius:999px;background:transparent;
     color:var(--ink-dim);font:inherit;font-size:var(--fs-note);cursor:pointer}
   .quick button:hover{border-color:var(--action);color:var(--action)}
-  .here{width:100%;margin-top:7px;padding:7px;border-radius:7px;border:1px solid var(--line);
+  .here{width:100%;margin-top:var(--gap-row);padding:7px;border-radius:7px;border:1px solid var(--line);
     background:transparent;color:var(--ink);font:inherit;font-size:var(--fs-note);cursor:pointer}
   .here:hover{border-color:var(--action);color:var(--action)}
   .here[disabled]{opacity:.5;cursor:default}
-  .here-msg{margin-top:7px;padding:8px 10px;border-radius:7px;font-size:var(--fs-note);line-height:1.65;
+  .here-msg{margin-top:var(--gap-row);padding:8px 10px;border-radius:7px;font-size:var(--fs-note);line-height:1.65;
     background:color-mix(in srgb, var(--estimate) 9%, transparent);border-left:2px solid var(--estimate);color:var(--estimate-ink)}
   .here-msg b{color:var(--estimate);font-weight:500}
   .here-msg .dim{color:var(--ink-dim)}
@@ -401,7 +401,7 @@
   #status .err{color:var(--missing)}
   #status .go{color:var(--action)}
   /* 取れなかったときの復帰手段。断定の代わりに必ずこれを出す（掟: 取れなかったを「無い」と言わない） */
-  #status .retry-btn{margin-top:6px;padding:4px 10px;border:1px solid var(--line);border-radius:6px;
+  #status .retry-btn{margin-top:var(--gap-row);padding:4px 10px;border:1px solid var(--line);border-radius:6px;
     background:transparent;color:var(--action);font:inherit;font-size:var(--fs-note);cursor:pointer}
   #status .retry-btn:hover{border-color:var(--action)}
 
@@ -409,7 +409,7 @@
   /* 数字を出せないとき（「判定できません」「水域なし」）。文なので数字より小さい */
   .hero .hero-alt{font-size:var(--fs-hero-sm)}
   .hero small{font-size:var(--fs-lead);color:var(--ink-dim);margin-left:3px}
-  .hero-cap{font-size:var(--fs-evidence);color:var(--ink-dim);margin-top:5px;line-height:1.5}
+  .hero-cap{font-size:var(--fs-evidence);color:var(--ink-dim);margin-top:var(--gap-row);line-height:1.5}
   /* ⚠ **地名はパネルの主語**（2026-08-22。⚠ 何について答えているか）。
      ⚠ 実測（2026-08-22・1280×800）: ⚠ **12.5px で、⚠ その下の問い（15px）より小さかった。**
        ⚠ **階層が逆転していた。**⚠ 主語がいちばん大きい。 */
@@ -431,7 +431,7 @@
   .prov.est{background:color-mix(in srgb, var(--estimate) 9%, transparent);border-left:2px solid var(--estimate)}
   .prov.no{background:color-mix(in srgb, var(--missing) 9%, transparent);border-left:2px solid var(--missing)}
   /* 押している間だけ光らせる。状態を残さないので、既定の絵（99.6% の色）を壊さない */
-  .peek{display:inline-block;margin-top:5px;padding:3px 9px;border-radius:999px;
+  .peek{display:inline-block;margin-top:var(--gap-row);padding:3px 9px;border-radius:999px;
     border:1px solid var(--line);background:transparent;color:var(--ink-dim);
     font:inherit;font-size:var(--fs-note);cursor:pointer;-webkit-tap-highlight-color:transparent}
   .peek:hover{border-color:var(--action);color:var(--action)}
@@ -453,7 +453,7 @@
   .pick-pop .card{background:none;padding:0}
   .pick-pop .maplibregl-popup-close-button{color:var(--ink-dim);font-size:var(--fs-era);padding:2px 7px}
   /* ⚠ 指で押せる大きさ（var(--tap)）。ピンと同じ理由 */
-  .pick-say{display:inline-flex;align-items:center;min-height:var(--tap);margin-top:8px;
+  .pick-say{display:inline-flex;align-items:center;min-height:var(--tap);margin-top:var(--gap-row);
     padding:0 12px;border:1px solid var(--line);border-radius:999px;background:transparent;
     color:var(--action);font:inherit;font-size:var(--fs-note);cursor:pointer}
   .pick-say:hover{border-color:var(--action)}
@@ -461,8 +461,8 @@
      ⚠ **吹き出し側だけ残す。**⚠ 使われない見た目を残すと、⚠ 戻せてしまう。 */
   .pick-pop .name{font-weight:700;font-size:var(--fs-body);line-height:1.35;margin-bottom:5px}
   .pick-pop .v{font-size:var(--fs-lead)}.pick-pop .v.w{color:var(--water)}
-  .pick-pop .meta{color:var(--ink-dim);font-size:var(--fs-evidence);margin-top:8px}
-  .pick-pop .meta>div+div{margin-top:3px}
+  .pick-pop .meta{color:var(--ink-dim);font-size:var(--fs-evidence);margin-top:var(--gap-row)}
+  .pick-pop .meta>div+div{margin-top:var(--gap-sub)}
   .hint{font-size:var(--fs-note);color:var(--ink-dim);line-height:1.55}
   /* パネルは主役（3Dの絵）を隠すので、いつでも畳めるようにする。
      スマホでは画面の4割を占めるため、既定で閉じる。 */
