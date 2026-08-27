@@ -20,7 +20,7 @@
 
 import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
-import { ROOT, PUB, ok, bad, head, src, htmlFiles, seen } from "./lib.mjs";
+import { ROOT, PUB, ok, bad, head, src, htmlFiles } from "./lib.mjs";
 
 head("出典");
 

@@ -20,7 +20,7 @@
 
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { ROOT, PUB, ok, bad, warn, head, src, BLOCK_COMMENT } from "./lib.mjs";
+import { PUB, ok, bad, warn, head, src, BLOCK_COMMENT } from "./lib.mjs";
 
 head("色み");
 

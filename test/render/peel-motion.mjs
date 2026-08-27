@@ -15,7 +15,7 @@
 //
 // ⚠ **道具は `test/render/lib.mjs` の 1 か所**（⚠ ここで持ち直さない）。
 
-import { TOYOSU, whitePng, stubMapPictures, settleAfterCondition, must } from "./lib.mjs";
+import { TOYOSU, stubMapPictures, settleAfterCondition, must } from "./lib.mjs";
 
 export const CASES = [
   {
@@ -77,7 +77,7 @@ export const CASES = [
     //   ⚠ **外へ 1151 本 ／ 15.9 秒**。⚠ **9 段を送るあいだ、⚠ 段ごとに新しいタイルを取り続けていた。**
     // ⚠ **だから、⚠ 地図の絵だけ白で返す。**⚠ **傾斜・向き・年代の判定は 1 つも変えない。**
     //   ⚠ **fixture のファイルは置かない**（置くと「画素を読んで判定する」という主張が
-    //     置いた画像に対する主張へ化ける）。⚠ **その場で組み立てる**（`whitePng`）。
+    //     置いた画像に対する主張へ化ける）。⚠ **その場で組み立てる**（`photoPng`）。
     name: "「動きを減らす」でない人には、深掘りの再生でカメラが振れる",
     path: `/peel?${TOYOSU}`, group: "core",
     setup: async (page) => {

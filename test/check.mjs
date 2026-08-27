@@ -26,19 +26,10 @@
 //     数の名乗り            ⚠ 全部走ったあと、⚠ 1 回だけ件数を名乗る
 
 import { readFile, readdir } from "node:fs/promises";
-import { existsSync, readFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
-import { join, extname, basename, dirname } from "node:path";
-import { pathToFileURL } from "node:url";
-import { VERSION_RE, hashOf, readSw } from "../scripts/sw-hash.mjs";
-import { VERSION as BL_VERSION, unpack as blUnpack } from "../scripts/bl-format.mjs";
-// ⚠ **数え方と読む先は `test/check/lib.mjs` の 1 か所**（2026-08-24。hidetzu/konjaku#232）。
-//   ⚠ **節を別ファイルへ出すには、⚠ どの節も使う道具を先に出す必要がある。**
-//   ⚠ **`test/render/lib.mjs` と対になる置き方。**
-import { ROOT, PUB, SITE, ok, bad, warn, head, tally, makeReport, dropComment, dropCommentOrHash,
-         htmlFiles, jsFiles, src, TOP, PAGE_JS, pageSrc, seen, seenTop, torn, stripJs,
-         BLOCK_COMMENT, HTML_COMMENT, LINE_COMMENT, HEAD_COMMENT, walkFiles } from "./check/lib.mjs";
-// ⚠ **計測の置き場所は `.claude/telemetry-dir.mjs` の 1 か所**（⚠ ここで字を持ち直さない）。
+import { join } from "node:path";
+import { ROOT, ok, bad, warn, head, tally, makeReport, dropComment, dropCommentOrHash,
+         seen, torn, LINE_COMMENT, HEAD_COMMENT, walkFiles } from "./check/lib.mjs";
 import { TELEMETRY_DIR_NAME } from "../.claude/telemetry-dir.mjs";
 
 // ⚠ **出した節の一覧**（2026-08-24。hidetzu/konjaku#232）。
@@ -46,7 +37,7 @@ import { TELEMETRY_DIR_NAME } from "../.claude/telemetry-dir.mjs";
 //     （⚠ 節の並びは、⚠ そのまま判定の字の並びになる）。
 //   ⚠ **読み込むのは、⚠ 元の節があった位置**（⚠ 下のほう）。⚠ **並びを変えないため。**
 //   ⚠ **漏れが無いことは「0. 数え方そのもの」が見る**（⚠ `test/check/` を実際に読む）。
-const PARTS = ["links.mjs", "style.mjs", "color.mjs", "motion.mjs", "land.mjs", "place.mjs", "era.mjs", "words.mjs", "roles.mjs", "vocab.mjs", "data.mjs", "privacy.mjs", "credit.mjs", "claim.mjs", "syntax.mjs", "answer.mjs", "guard.mjs", "eval.mjs", "safety.mjs", "deliver.mjs", "docs.mjs"];
+const PARTS = ["links.mjs", "style.mjs", "color.mjs", "motion.mjs", "land.mjs", "place.mjs", "era.mjs", "words.mjs", "roles.mjs", "vocab.mjs", "data.mjs", "privacy.mjs", "credit.mjs", "claim.mjs", "syntax.mjs", "answer.mjs", "guard.mjs", "eval.mjs", "safety.mjs", "deliver.mjs", "docs.mjs", "imports.mjs"];
 
 
 

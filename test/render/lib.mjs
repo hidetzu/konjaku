@@ -15,8 +15,7 @@
 // 実行: node scripts/render.mjs
 //   （事前に  npm i --no-save playwright && npx playwright install chromium）
 
-import { spawn } from "node:child_process";
-import { mkdir, readFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { deflateSync } from "node:zlib";
 // ⚠ **一覧行のタグの字は public/words.js が持つ。**⚠ **ここに書き写さない。**
 //   ⚠ 2026-08-20 に踏んだ: この検査が「根拠あり」を直接書いていて、
