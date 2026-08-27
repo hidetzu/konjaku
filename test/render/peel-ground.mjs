@@ -18,7 +18,7 @@
 //
 // ⚠ **道具は `test/render/lib.mjs` の 1 か所**（⚠ ここで持ち直さない）。
 
-import { WORDS, TOYOSU, SAPPORO, LIES, peelReady, settleAfterCondition, settleAfterClick, must } from "./lib.mjs";
+import { WORDS, TOYOSU, SAPPORO, peelReady, settleAfterCondition, settleAfterClick, must } from "./lib.mjs";
 
 export const CASES = [
   {
