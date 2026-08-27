@@ -292,7 +292,7 @@ export const CASES = [
           `画面は「無くなった」なのに、声がそう言っていない: 「${said}」`);
       // ⚠ 画面に無いものを喋らない。作文の混入をここで止める
       const invented = ["このころ", "でしょう", "と思われ", "だったようです", "栄え", "賑わ"];
-      for (const w of invented) must(said.includes(w), `作文が混ざっている: 「${w}」`);
+      for (const w of invented) must(!said.includes(w), `作文が混ざっている: 「${w}」`);
 
       // 端末の中で合成していることを、画面にも書いてあること。
       // ⚠ 置き場所は footer の .f-priv（プライバシーの話は1か所にまとめた）。
