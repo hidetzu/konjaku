@@ -272,7 +272,11 @@ head("見た目の決め方");
   const css = await readFile(join(PUB, "css", "tokens.css"), "utf8");
   const bare = css.replace(BLOCK_COMMENT, " ");
   const steps = new Map();          // 値 → トークン名
-  for (const m of bare.matchAll(/(--gap-[a-z0-9-]+)\s*:\s*(\d+)px/g)) steps.set(+m[2], m[1]);
+  // ⚠ **段は `rem`**（2026-08-27・hidetzu/konjaku#349）。⚠ **規則の側はまだ px** なので、
+  //   ⚠ **既定の 16px 基準で px に直してから突き合わせる**（⚠ `0.4375rem` = 7px）。
+  //   ⚠ **px で書いてある段も読む**（⚠ 戻されたら、⚠ 単位を見る別の節が落とす）。
+  for (const m of bare.matchAll(/(--gap-[a-z0-9-]+)\s*:\s*([\d.]+)(px|rem)/g))
+    steps.set(m[3] === "rem" ? Math.round(+m[2] * 16) : +m[2], m[1]);
   // ⚠ **節と節の間**（⚠ 3 件とも 1 回ずつしか出てこない＝くり返された決め打ちではない）。
   //   ⚠ **揃えると 12px 動く。**⚠ **意図した差だと考えて残した**（hidetzu/konjaku#312 の 2 回目）。
   const ALLOW = new Map([[22, "index.html .group"], [26, "index.html #result"], [34, "index.html footer"]]);
@@ -303,6 +307,39 @@ head("見た目の決め方");
     ok(`縦の間は段から借りている（段 ${steps.size} 個・使用 ${used.length} 箇所・直書き 0）。`
       + `⚠ **決めた上で残しているのは ${ALLOW.size} 件**: `
       + `${[...ALLOW].map(([v, w]) => `${w} の ${v}px`).join("、")}（節と節の間）`);
+}
+
+// ⚠ **余白の段は `rem`、⚠ 指の的は `px`**（2026-08-27・hidetzu/konjaku#349）。
+//
+// ⚠ **文字は rem 化済み**（hidetzu/konjaku#91）なのに、⚠ **余白だけ px で取り残されていた。**
+//   ⚠ **文字を大きくすると、⚠ 本文だけ伸びて余白が据え置かれ、⚠ 相対的に窮屈になる。**
+//   ⚠ 実測（2026-08-27・トップ 375）: ⚠ 文字 20px で段は 7px のまま、⚠ 24px でも 7px のまま。
+//
+// ⚠ **`--tap` だけは `px` のまま。**⚠ **指の大きさは、⚠ 文字設定と連動しない。**
+//   ⚠ 実測: ⚠ `2.75rem` にすると ⚠ **文字 12px の人で 33px**、⚠ **14px の人で 38.5px**。
+//   ⚠ **`.claude/rules/css.md` の「押せるものは 44×44 を割らない」は MUST。**
+//   ⚠ **だから、⚠ ここを rem にしたら落とす。**
+{
+  const css = await readFile(join(PUB, "css", "tokens.css"), "utf8");
+  const bare = css.replace(BLOCK_COMMENT, " ");
+  const fails = [], rem = [];
+  // ⚠ **余白の段は rem**
+  for (const m of bare.matchAll(/(--(?:gap|pad)-[a-z0-9-]+)\s*:\s*([^;}]+)/g)) {
+    const [, name, v] = m;
+    if (/\d\s*(px|pt)\b/.test(v)) fails.push(`${name}: ${v.trim()}（⚠ rem で書く）`);
+    else rem.push(name);
+  }
+  // ⚠ **指の的は px**（⚠ rem にすると、⚠ 文字を小さくする人で 44px を割る）
+  const tap = /--tap\s*:\s*([^;}]+)/.exec(bare)?.[1]?.trim();
+  if (!tap) fails.push("--tap が無い（⚠ この検査が何も見ていない）");
+  else if (!/^\d+px$/.test(tap))
+    fails.push(`--tap: ${tap}（⚠ **px で書く**。⚠ rem にすると、`
+      + `⚠ 文字を小さくする人で 44px を割る。⚠ 指の大きさは文字設定と連動しない）`);
+  if (!rem.length) fails.push("余白の段が 1 つも無い（⚠ この検査が何も見ていない）");
+  fails.length
+    ? bad(`余白の単位が決まりと違う: ${fails.join(" / ")}`)
+    : ok(`余白の段は rem（${rem.length} 個）／ ⚠ **指の的だけ px**（--tap: ${tap}）。`
+        + `⚠ 文字サイズ設定に、⚠ 余白は追いてきて、⚠ 指の的は追いてこない`);
 }
 
 // 2 画面で共通の見た目の定義は、1 か所にしか書かないこと。
