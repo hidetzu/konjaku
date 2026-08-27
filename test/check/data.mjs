@@ -521,3 +521,85 @@ head("配っている現物");
     ? bad(`計測の対象の列挙が、送る側と受ける側で食い違っている: ${fails.join(" / ")}`)
     : ok(`計測の対象は、送る側と受ける側で揃っている（${TARGETS.size} 種: ${[...TARGETS].sort().join("・")}）`);
 }
+
+
+// ⚠ **イベントの列挙も、⚠ 送る側と受ける側で突き合わせる**（2026-08-28・hidetzu/konjaku#355）。
+//
+// ⚠ **上の突き合わせは `health:<対象>:<状態>` だけを見ていた。**⚠ `EVENTS` は見ていなかった。
+//   ⚠ **同じ穴が空きうる**（⚠ 受け側にだけ足す → ⚠ 永遠に 0 件。⚠ 「起きていない」と読める）。
+//
+// ⚠ **両向きに見る。**
+//     受ける気でいるのに送られない  ⚠ **永遠に 0 件**（⚠ hidetzu/konjaku#354 と同じ形）
+//     送るのに受けない              ⚠ **黙って捨てられる**（⚠ 受け側は列挙外を 204 で捨てる）
+//
+// ⚠ **コメントを先に落とす**（`CLAUDE.md` §5）。⚠ **落とさないと、⚠ 説明に書いた名前を自分で拾う**
+//   （⚠ `worker.js` の `EVENTS` にも、⚠ `share.js` にも、⚠ コメントに名前がそのまま書いてある）。
+{
+  const bare = (t) => t.replace(HTML_COMMENT, " ").replace(BLOCK_COMMENT, " ").replace(LINE_COMMENT, "$1");
+  const worker = bare(await readFile(join(ROOT, "worker.js"), "utf8"));
+  const EVENTS = new Set([...(/const EVENTS = new Set\(\[([\s\S]*?)\]\)/.exec(worker)?.[1] ?? "")
+    .matchAll(/"([^"]+)"/g)].map((m) => m[1]));
+
+  // ⚠ **`/t` へ本文を渡しうる公開物**。⚠ **`peel.html` は `tick()` を通さず直に叩く**ので、ここに要る
+  const FILES = ["share.js", "top.js", "peel.html", "peel3d.js"];
+  const bodies = await Promise.all(FILES.map((f) => readFile(join(PUB, f), "utf8").then(bare)));
+  const all = bodies.join("\n");
+
+  // ⚠ **送っている名前**: ⚠ `tick("X")` に直に渡したものと、⚠ `/t` を直に叩くときの本文
+  const sent = new Set();
+  for (const m of all.matchAll(/\btick\(\s*"([^"]+)"/g)) sent.add(m[1]);
+  for (const m of all.matchAll(/"\/t"\s*,\s*"([^"]+)"/g)) sent.add(m[1]);
+  for (const m of all.matchAll(/body\s*:\s*"([^"]+)"/g)) sent.add(m[1]);
+  // ⚠ **`outcome()` は 1 語に畳んでから `tick()` へ渡す**ので、⚠ 中の `return` も送る側
+  //   ⚠ **三項で返している行がある**ので、⚠ `return` 文の中の文字列を全部拾う
+  //   （⚠ `return "X"` だけを見ていたら、⚠ `judged.ok` / `judged.coarse` を取り落とした）
+  const oc = /function outcome\(f\) \{([\s\S]*?)\n  \}/.exec(bodies[0]);
+  for (const r of (oc?.[1] ?? "").matchAll(/return ([^;]*);/g))
+    for (const m of r[1].matchAll(/"([^"]+)"/g)) sent.add(m[1]);
+
+  const fails = [];
+  if (!EVENTS.size) fails.push("worker.js の EVENTS を読めない（⚠ この検査が何も見ていない）");
+  if (!sent.size) fails.push("公開物から送る名前を読めない（⚠ この検査が何も見ていない）");
+  for (const e of [...EVENTS].sort())
+    if (!sent.has(e)) fails.push(`${e}: 受けるのに、⚠ **どこからも送っていない**`
+      + `（⚠ 永遠に 0 件になり、⚠ 「起きていない」と読めてしまう）`);
+  for (const e of [...sent].sort())
+    // ⚠ **`health:` と `from:` は上の突き合わせが見る**（⚠ ここでは二重に見ない）
+    if (!EVENTS.has(e) && !e.startsWith("health:") && !e.startsWith("from:"))
+      fails.push(`${e}: 送っているのに、⚠ **受け側が捨てる**`);
+  fails.length
+    ? bad(`計測のイベントの列挙が、送る側と受ける側で食い違っている: ${fails.join(" / ")}`)
+    : ok(`計測のイベントは、送る側と受ける側で揃っている（${EVENTS.size} 種）`);
+}
+
+// ⚠ **共有の結末が、⚠ 排他であること**（2026-08-28・hidetzu/konjaku#355）。
+//
+// ⚠ **`share.tap` は分母。**⚠ **結末が 2 つ送られると、⚠ 合計が分母を超える。**
+//   ⚠ **超えた表は、⚠ 読んだ人が「そんなはずはない」と気づくまで、⚠ 静かに間違ったままになる。**
+// ⚠ **ここは字面で見る**（⚠ 実際に押したときの本数は、⚠ 実描画が数える）。
+{
+  const share = (await readFile(join(PUB, "share.js"), "utf8"))
+    .replace(BLOCK_COMMENT, " ").replace(LINE_COMMENT, "$1");
+  const body = /async function share\(f, title, url, say\) \{([\s\S]*?)\n  \}/.exec(share)?.[1];
+  const fails = [];
+  if (!body) fails.push("share() の中を読めない（⚠ この検査が何も見ていない）");
+  else {
+    // ⚠ **押したことは、⚠ 1 回だけ数える**
+    const taps = [...body.matchAll(/tick\("share\.tap"\)/g)].length;
+    if (taps !== 1) fails.push(`押したことを ${taps} 回数えている（⚠ 分母は 1 回）`);
+    // ⚠ **結末は、⚠ どれも 1 回だけ**
+    for (const [name, want] of [["share.cancelled", 1], ["share.failed", 1]]) {
+      const n = [...body.matchAll(new RegExp(`tick\\("${name.replace(".", "\\.")}"\\)`, "g"))].length;
+      if (n !== want) fails.push(`${name} を ${n} 回送っている（⚠ ${want} 回のはず）`);
+    }
+    // ⚠ **やめたときは、⚠ そこで返す**（⚠ 返さないと保存へ落ちて `saved` も送る＝結末が 2 つ）
+    if (!/tick\("share\.cancelled"\); return "cancelled";/.test(body))
+      fails.push("やめたときに、⚠ **数えてすぐ返していない**（⚠ 結末が 2 つ送られる）");
+    // ⚠ **壊れたときは、⚠ 投げ直す**（⚠ 画面の出方を変えないため。⚠ 握りつぶさない）
+    if (!/tick\("share\.failed"\);\s*\n\s*throw err;/.test(body))
+      fails.push("壊れたときに、⚠ **数えたあと投げ直していない**（⚠ 画面に何も出なくなる）");
+  }
+  fails.length
+    ? bad(`共有の結末の数え方が壊れている: ${fails.join(" / ")}`)
+    : ok("共有の結末は排他で、⚠ 押した 1 件と結末 1 件しか送らない");
+}

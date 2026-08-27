@@ -202,29 +202,50 @@ window.KonjakuShare = (function (w) {
 
   // 共有する。files 共有が使えるならそれ、駄目ならリンク共有、それも駄目なら保存。
   // どれに落ちても、何が起きたかは画面に出す（黙って何もしないのが最悪）。
+  //
+  // ⚠ **結末を数え分ける**（2026-08-28・hidetzu/konjaku#355）。
+  //   ⚠ **以前は `shared` と `saved` しか送っていなかった。**
+  //   ⚠ **押していない ／ 押したがやめた ／ 押したが壊れた**が、⚠ **同じ 0 に見えていた**
+  //   （⚠ D1 実測 2026-08-28: ⚠ 17 日間 `shared` 0 件）。
+  //   ⚠ **`CLAUDE.md` §1「取れなかった ≠ 無い」が、⚠ 計測そのものに当てはまっていた。**
+  //
+  // ⚠ **`share.tap` が分母**（⚠ 押した回数）。⚠ **結末は排他**なので、⚠ 1 共有あたり最大 2 件。
+  // ⚠ **画面の出方は変えない。**⚠ 落ちたときは、⚠ **数えてから、そのまま投げ直す**
+  //   （⚠ 呼び出し側の `catch` が、⚠ いままでどおり「共有できませんでした」を出す）。
   async function share(f, title, url, say) {
-    const cv = draw(f, title);
-    const blob = await blobOf(cv);
-    const file = blob ? new File([blob], `konjaku-${title}.png`, { type: "image/png" }) : null;
-    const text = `${title}: ${Konjaku.narrate(f)[0]}`;
-
+    // ⚠ **絵を作る前に数える。**⚠ `draw()` と `blobOf()` の失敗も「押した」に含める
+    //   （⚠ 以前は、⚠ **この 2 つが `try` の外に在って、⚠ 落ちても 1 件も残らなかった**）。
+    tick("share.tap");
     try {
-      if (file && navigator.canShare?.({ files: [file] })) {
-        await navigator.share({ files: [file], text, url });
-        tick("shared"); say?.("共有しました");
-        return "shared";
+      const cv = draw(f, title);
+      const blob = await blobOf(cv);
+      const file = blob ? new File([blob], `konjaku-${title}.png`, { type: "image/png" }) : null;
+      const text = `${title}: ${Konjaku.narrate(f)[0]}`;
+
+      try {
+        if (file && navigator.canShare?.({ files: [file] })) {
+          await navigator.share({ files: [file], text, url });
+          tick("shared"); say?.("共有しました");
+          return "shared";
+        }
+        if (navigator.share) {
+          await navigator.share({ title: `今昔 — ${title}`, text, url });
+          tick("shared"); say?.("共有しました");
+          return "shared";
+        }
+      } catch (err) {
+        // 利用者が共有シートを閉じただけ。失敗として扱わない
+        // ⚠ **ただし「起きなかった」でもない。**⚠ 数えないと、⚠ 「押していない」と同じ 0 になる
+        if (err?.name === "AbortError") { tick("share.cancelled"); return "cancelled"; }
+        // ⚠ **それ以外は、⚠ ここでは止めない。**⚠ 下の保存へ落として、⚠ 結末は `saved` になる
+        //   （⚠ 元からの振る舞い。⚠ ここを変えると画面の出方が変わる）
       }
-      if (navigator.share) {
-        await navigator.share({ title: `今昔 — ${title}`, text, url });
-        tick("shared"); say?.("共有しました");
-        return "shared";
-      }
+      // 共有APIが無い環境（多くのPC）。画像を保存に落とす
+      return saveImage(cv, title, say);
     } catch (err) {
-      // 利用者が共有シートを閉じただけ。失敗として扱わない
-      if (err?.name === "AbortError") return "cancelled";
+      tick("share.failed");
+      throw err;
     }
-    // 共有APIが無い環境（多くのPC）。画像を保存に落とす
-    return saveImage(cv, title, say);
   }
 
   function saveImage(cv, title, say) {
