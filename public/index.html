@@ -304,7 +304,7 @@
      初見の人は「最初は読み飛ばしたが、読んで必要だと思った。これが無いと
      浦安ぜんぶの話だと勘違いしていた」と答えた */
   /* 分母は％のすぐ上（初見の 2 人が「地図全体の話だと思って読んだ」）。⚠ 小さくても消さない */
-  .area-where{margin-top:var(--gap-sub);font-size:var(--fs-evidence);color:var(--ink-faint);line-height:1.5}
+  .area-where{margin-top:var(--gap-sub);font-size:var(--fs-evidence);color:var(--ink-dim);line-height:1.5}
   /* 打ち切った残り。⚠ 色は持たない（凡例に無いものに色を付けると、絵と対応しない） */
   .area-list .rest{opacity:.75}
   .area-list .sw-rest{background:repeating-linear-gradient(45deg,
@@ -887,9 +887,9 @@
     font-size:var(--fs-note);letter-spacing:.01em;border:1px solid var(--line);background:color-mix(in srgb, var(--wash) 4%, transparent);
     color:var(--ink-dim);white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis}
   .badge i{font-style:normal;font-size:var(--fs-note)}
-  .badge.water{color:var(--water);border-color:color-mix(in srgb, var(--water) 35%, transparent);background:color-mix(in srgb, var(--water) 10%, transparent)}
-  .badge.land{color:var(--land);border-color:color-mix(in srgb, var(--land) 30%, transparent);background:color-mix(in srgb, var(--land) 8%, transparent)}
-  .badge.warn{color:var(--estimate);border-color:color-mix(in srgb, var(--estimate) 35%, transparent);background:color-mix(in srgb, var(--estimate) 10%, transparent)}
+  .badge.water{color:var(--water);border-color:color-mix(in srgb, var(--water) 35%, transparent)}
+  .badge.land{color:var(--land);border-color:color-mix(in srgb, var(--land) 30%, transparent)}
+  .badge.warn{color:var(--estimate);border-color:color-mix(in srgb, var(--estimate) 35%, transparent)}
   /* 取れなかったときの行。断定の代わりに、状態と復帰手段だけを出す（掟: 取れなかったを「無い」と言わない） */
   .retry-msg{margin-top:var(--gap-block);padding:var(--pad-md);border-radius:8px;font-size:var(--fs-note);line-height:1.7;
     background:color-mix(in srgb, var(--estimate) 9%, transparent);border-left:2px solid var(--estimate);color:var(--estimate-ink)}
