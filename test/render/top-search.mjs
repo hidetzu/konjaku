@@ -22,6 +22,56 @@ import { TOYOSU, waitVerdict, must } from "./lib.mjs";
 
 export const CASES = [
   {
+    // ⚠ **入口の生死を数える**（2026-08-28・hidetzu/konjaku#354）。
+    //
+    // ⚠ **受け側の列挙に `search` は前から在ったのに、⚠ どこからも送っていなかった。**
+    //   ⚠ **D1 に 17 日間 1 行も無かった**（実測 2026-08-28）。
+    //   ⚠ **入口が全滅しても、⚠ 記録がゼロになるだけ。**⚠ **ゼロは「無事」と読める。**
+    //
+    // ⚠ **外へは出さない。**⚠ 住所検索の応答を差し替えて、⚠ **落ちた状態を作る。**
+    name: "住所検索が落ちたら、入口が落ちたことを数える", path: "/", group: "core",
+    setup: async (page) => {
+      page.__ticks = [];
+      await page.route("**/t", (r) => { page.__ticks.push(r.request().postData()); r.fulfill({ status: 204 }); });
+      // ⚠ **500 を返す。**⚠ 口は 1 回だけ再試行してから投げる
+      await page.route("**/address-search/**", (r) => r.fulfill({ status: 500, body: "" }));
+    },
+    async check(page) {
+      await page.fill("#q", "豊洲");
+      await page.waitForFunction(() => (window.__t ?? 0) >= 0 && document.querySelector("#list .warn"),
+        null, { timeout: 30000 });
+      const h = page.__ticks.filter((t) => t?.startsWith("health:search:"));
+      must(h.length === 1, `入口の生死を ${h.length} 回送っている: ${page.__ticks.join(" / ")}`);
+      must(h[0] === "health:search:fail", `落ちたのに ${h[0]} を送っている`);
+      // ⚠ **語も座標も送らない**（⚠ 本文は 2 通りしかない）
+      must(!page.__ticks.some((t) => /豊洲|139\.|35\./.test(t ?? "")),
+        `検索した語か座標が計測に混ざっている: ${page.__ticks.join(" / ")}`);
+      return `${h[0]} を 1 回（⚠ 語も座標も混ざっていない）`;
+    },
+  },
+  {
+    // ⚠ **反対側。**⚠ **失敗だけ数えると、⚠ 失敗率が出せない**（⚠ 分母が無い）。
+    // ⚠ **「候補 0 件」も ok**（⚠ 記録に無いだけで、⚠ 壊れてはいない。`CLAUDE.md` §1）。
+    name: "住所検索が返ってきたら、候補が 0 件でも入口は無事と数える", path: "/", group: "core",
+    setup: async (page) => {
+      page.__ticks = [];
+      await page.route("**/t", (r) => { page.__ticks.push(r.request().postData()); r.fulfill({ status: 204 }); });
+      // ⚠ **200 で空の一覧。**⚠ **これは「壊れた」ではない**
+      await page.route("**/address-search/**", (r) => r.fulfill({
+        status: 200, contentType: "application/json", body: "[]" }));
+    },
+    async check(page) {
+      await page.fill("#q", "そんな地名はない");
+      await page.waitForTimeout(2000);
+      const h = page.__ticks.filter((t) => t?.startsWith("health:search:"));
+      must(h.length === 1, `入口の生死を ${h.length} 回送っている: ${page.__ticks.join(" / ")}`);
+      must(h[0] === "health:search:ok",
+        `⚠ 候補 0 件を「壊れた」と数えている: ${h[0]}（⚠ 記録に無いだけで壊れてはいない）`);
+      return `${h[0]} を 1 回（⚠ 候補 0 件でも ok）`;
+    },
+  },
+
+  {
     name: "検索（確度が高いので先頭を選ぶ）", dep: "search", path: "/",
     async check(page) {
       await page.fill("#q", "渋谷");

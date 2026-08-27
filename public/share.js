@@ -57,6 +57,23 @@ window.KonjakuShare = (function (w) {
   // ⚠ 壊れたときだけ。正常時に送ると /t が1件増え、無料枠の天井が下がる
   function events(state) { if (state === "fail") tick("health:events:fail"); }
 
+  // ⚠ **住所検索の生死**（2026-08-28・hidetzu/konjaku#354）。
+  //   ⚠ **`worker.js` の `TARGETS` に `search` は前から在ったのに、⚠ どこからも送っていなかった。**
+  //   ⚠ **入口が全滅しても記録がゼロ**で、⚠ **17 日間、⚠ D1 に 1 行も無かった**（2026-08-28 実測）。
+  //
+  // ⚠ **入口が落ちると、⚠ 場所を選べない＝判定まで到達しない。**
+  //   ⚠ **そのとき `judged.*` も減る**が、⚠ **「面白くなかった」のか「壊れていた」のかを
+  //     区別できない。**⚠ `health` は、⚠ **まさにその区別のために在る表。**
+  //
+  // ⚠ **`ok` も送る。**⚠ **失敗だけだと、⚠ 失敗率が出せない**（⚠ 分母が無い）。
+  //   ⚠ `events` が「壊れたときだけ」なのは、⚠ **あちらは分母が `judged.*` で代用できる**から。
+  //   ⚠ **検索は判定の前に起きる**ので、⚠ 代用できる分母が無い。
+  //
+  // ⚠ **「候補 0 件」は `ok`。**⚠ **記録に無いだけで、⚠ 壊れてはいない**（`CLAUDE.md` §1）。
+  // ⚠ **古い応答（stale）は数えない。**⚠ **起きたことではなく、⚠ 追い越されただけ。**
+  // ⚠ **検索した語も座標も送らない。**⚠ 本文は `health:search:ok` か `health:search:fail` だけ。
+  function searchHealth(state) { tick(`health:search:${state === "fail" ? "fail" : "ok"}`); }
+
   // 判定の結果を1語に畳む。分子（shared）と突き合わせる分母になる
   function outcome(f) {
     const l = f?.byKey?.landform;
@@ -234,5 +251,5 @@ window.KonjakuShare = (function (w) {
     if (from) tick(`from:${from.slice(0, 16)}`);
   } catch { /* 計測は落ちてよい */ }
 
-  return { draw, share, save, tick, outcome, health, events };
+  return { draw, share, save, tick, outcome, health, events, searchHealth };
 })(window);
