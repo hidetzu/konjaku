@@ -29,7 +29,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import { VERSION as BL_VERSION } from "../../scripts/bl-format.mjs";
-import { ROOT, PUB, ok, bad, head, src, TOP, seen, BLOCK_COMMENT, HTML_COMMENT, HEAD_COMMENT } from "./lib.mjs";
+import { ROOT, PUB, ok, bad, head, src, TOP, seen, BLOCK_COMMENT, HTML_COMMENT, HEAD_COMMENT, LINE_COMMENT } from "./lib.mjs";
 
 // 事物の索引の読み方。⚠ **ここ1か所**にする（z12 の束ごとに、中の z14 を1ビットずつ）。
 //   写すと、索引の持ち方を変えたときに片方だけ直して、同じ問いに違う答えが出る。
@@ -477,4 +477,47 @@ head("配っている現物");
       if (bare.includes(g)) { bad(`${f} が data/${g} を読もうとしている（もう配っていない）`); reads++; }
   }
   if (!reads) ok("公開物のどれも、消した 3 件を読みに行っていない");
+}
+
+
+// ⚠ **送る側と受ける側の列挙が、⚠ 食い違っていないか**（2026-08-28・hidetzu/konjaku#354）。
+//
+// ⚠ **これが無かったので、⚠ 不具合が「直した体」で 17 日間残った。**
+//   ⚠ `worker.js` の受け側の列挙に `search` は在り、⚠ **コメントも「送っていなかった」と書いていた**が、
+//   ⚠ **送る側にはどこにも無かった。**⚠ **D1 の記録に 1 行も無い**（実測 2026-08-28）。
+//
+// ⚠ **落ちない不具合。**⚠ **入口が全滅しても、⚠ 記録がゼロになるだけ。**
+//   ⚠ **ゼロは「壊れていない」と読める**ので、⚠ **見ている人ほど誤解する。**
+//
+// ⚠ **両向きに見る。**
+//     受ける気でいるのに送られない  ⚠ **永遠に 0 件。**⚠ 「無事」と読めてしまう
+//     送るのに受けない              ⚠ **黙って捨てられる**（⚠ 受け側は列挙外を 204 で捨てる）
+//
+// ⚠ **コメントを先に落とす**（`CLAUDE.md` §5）。⚠ **落とさないと、⚠ この説明に書いた字を拾う**
+//   （⚠ 受け側のコメントにも、⚠ 送る側のコメントにも、⚠ 対象名がそのまま書いてある）。
+{
+  const bare = (t) => t.replace(BLOCK_COMMENT, " ").replace(LINE_COMMENT, "$1");
+  const worker = bare(await readFile(join(ROOT, "worker.js"), "utf8"));
+  const share = bare(await readFile(join(PUB, "share.js"), "utf8"));
+  const setOf = (name, code) => {
+    const m = new RegExp(`const ${name} = new Set\\(\\[([\\s\\S]*?)\\]\\)`).exec(code);
+    return new Set([...(m?.[1] ?? "").matchAll(/"([^"]+)"/g)].map((x) => x[1]));
+  };
+  const TARGETS = setOf("TARGETS", worker);
+  // ⚠ **送る側が作れる対象**: ⚠ 直接書いた `health:<名前>:` と、⚠ 一覧を回して作る形の両方
+  const sent = new Set();
+  for (const m of share.matchAll(/health:([a-z]+):/g)) sent.add(m[1]);
+  for (const m of share.matchAll(/for \(const name of \[([^\]]*)\]\)/g))
+    for (const x of m[1].matchAll(/"([^"]+)"/g)) sent.add(x[1]);
+  const fails = [];
+  if (!TARGETS.size) fails.push("worker.js の受け側の列挙を読めない（⚠ この検査が何も見ていない）");
+  if (!sent.size) fails.push("share.js から送る対象を読めない（⚠ この検査が何も見ていない）");
+  for (const t of [...TARGETS].sort())
+    if (!sent.has(t)) fails.push(`${t}: 受けるのに、⚠ **どこからも送っていない**`
+      + `（⚠ 永遠に 0 件になり、⚠ 「無事」と読めてしまう）`);
+  for (const t of [...sent].sort())
+    if (!TARGETS.has(t)) fails.push(`${t}: 送っているのに、⚠ **受け側が捨てる**`);
+  fails.length
+    ? bad(`計測の対象の列挙が、送る側と受ける側で食い違っている: ${fails.join(" / ")}`)
+    : ok(`計測の対象は、送る側と受ける側で揃っている（${TARGETS.size} 種: ${[...TARGETS].sort().join("・")}）`);
 }
