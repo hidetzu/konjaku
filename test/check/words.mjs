@@ -50,8 +50,15 @@ head("言葉は 1 か所から");
   //   ⚠ **正規表現リテラルの中の `/*` を拾って、本物のコードを大量に消していた**
   //   （2026-08-20 に踏んだ。⚠ **わざと壊しても緑のままだった**）。CLAUDE.md §5。
   // ⚠ **ケースは suite が持つ**（2026-08-22 に割った）。⚠ **走者だけ見ると、⚠ 何も見なくなる。**
-  const files = ["test/render.mjs", "test/render/lib.mjs",
-    "test/render/top.mjs", "test/render/peel.mjs"];
+  // ⚠ **その suite も、⚠ 問いごとに割った**（2026-08-27。hidetzu/konjaku#277）。
+  //   ⚠ **`top.mjs` / `peel.mjs` を名指しで読んでいたので、⚠ ケースが出ていくたびに
+  //     ⚠ この検査の見る範囲が減っていた**（⚠ **`peel.mjs` は自前のケースが 0 件になった**）。
+  //   ⚠ **落ちないので気づけない。**⚠ **同じ罠を 1 段深いところで踏んだ。**
+  //   ⚠ **名指しをやめて、⚠ `test/render/` の `.mjs` を全部読む。**⚠ **足しても勝手に入る。**
+  const { readdirSync: rdk } = await import("node:fs");
+  const files = ["test/render.mjs",
+    ...rdk(join(ROOT, "test/render")).filter((f) => f.endsWith(".mjs"))
+      .sort().map((f) => `test/render/${f}`)];
   const copied = new Set();
   for (const f of files) {
     const bare = stripJs(await readFile(join(ROOT, f), "utf8").catch(() => ""), f);
