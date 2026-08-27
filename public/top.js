@@ -2268,6 +2268,11 @@ async function searchPlace(q){
   //   npm run check がその名前を追っている。同じ名前を別の意味で使うと監査できなくなる。
   const res=await search.run(q,10);
   if(res.state==="stale") return;              // 遅れて返った古い応答。画面に触らない
+  // ⚠ **入口の生死を数える**（2026-08-28・hidetzu/konjaku#354）。
+  //   ⚠ **stale より後・画面を触る前**。⚠ 追い越された分は数えない（起きたことではない）。
+  //   ⚠ **「候補 0 件」は ok**（⚠ 記録に無いだけで壊れていない。`CLAUDE.md` §1）。
+  //   ⚠ **語も座標も送らない**（⚠ 送るのは `health:search:ok|fail` だけ）。
+  KonjakuShare.searchHealth(res.state==="error"?"fail":"ok");
   if(res.state==="error"){
     items=[]; sel=-1;
     listEl.innerHTML=`<div class="note warn" style="padding:6px 2px">
