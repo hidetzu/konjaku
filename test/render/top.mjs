@@ -11,6 +11,9 @@ import { CASES as ESCAPE_CASES } from "./top-escape.mjs";
 // ⚠ **記録より強く言わないは `top-claim.mjs` へ出した**（2026-08-27。hidetzu/konjaku#277）。
 //   ⚠ **連続した 4 件を、⚠ 元ファイルの見出し 2 本ごと運んだ**ので、⚠ **並びは動かない。**
 import { CASES as CLAIM_CASES } from "./top-claim.mjs";
+// ⚠ **色みは `top-theme.mjs` へ出した**（2026-08-27。hidetzu/konjaku#277）。
+//   ⚠ **連続した 2 件をそのままの並びで運んだ**ので、⚠ **並びは動かない。**
+import { CASES as THEME_CASES } from "./top-theme.mjs";
 // ⚠ **共有と、そのときに数えるものは `top-share.mjs` へ出した**（2026-08-26。hidetzu/konjaku#277）。
 //   ⚠ **散らばった 6 件を集めたので、⚠ 並びは動く**（⚠ 件数と判定の字は変わらない）。
 import { CASES as SHARE_CASES } from "./top-share.mjs";
@@ -50,73 +53,11 @@ import {
   PHOTO_ROUTE, pngOf, whitePng, photoPng, eraRoute, ERA_TILE_IDS,
   timelineSettled, stepLabels, tauNow, waitOpacity, settleAfterCondition, waited,
   waitOptional, settleAfterClick, settleAfterScroll, SWALE_ROUTE, LFC_ROUTE, forbid,
-  must, assertToyosu3dAnswer, openPanel, themeColors, sameColor, LIGHT_MQ
+  must, assertToyosu3dAnswer, openPanel
 } from "./lib.mjs";
 
 export const CASES = [
-  {
-    // ⚠ **端末の設定が「明るい」とき、⚠ 画面が明るい色みになるか**（2026-08-26・hidetzu/konjaku#96）。
-    //
-    // ⚠ **静的検査は「明るい色みの定義がある」までしか言えない。**
-    //   ⚠ `@media` の条件を書き間違えても、⚠ 読み込みを忘れても、⚠ **落ちない。**
-    //
-    // ⚠ **走者は既定で「暗い」に固定してある**（`test/render.mjs`）。
-    //   ⚠ **ここだけ `colorScheme: "light"` にして、⚠ 端末の設定が明るい人を作る。**
-    //
-    // ⚠ **「明るい色みの値と一致する」だけでは足りない。**
-    //   ⚠ **暗い色みと違うことまで見る**（⚠ 両方が同じ値なら、⚠ 何も切り替わっていなくても通る）。
-    name: "端末の設定が明るいとき、この画面は明るい色みになる",
-    path: "/", group: "core", colorScheme: "light",
-    async check(page) {
-      const theme = await themeColors();
-      const dark = theme[":root"], light = theme[`${LIGHT_MQ} :root`];
-      must(dark && light, "theme.css から色みを読めない（⚠ この検査が何も見ていない）");
-      const names = Object.keys(light);
-      must(names.length >= 8, `明るい色みの色が ${names.length} 個しかない（⚠ 読み方が壊れている）`);
-      const got = await page.evaluate((ns) => {
-        const cs = getComputedStyle(document.documentElement);
-        return { scheme: matchMedia("(prefers-color-scheme: light)").matches,
-                 vals: Object.fromEntries(ns.map((n) => [n, cs.getPropertyValue(n)])) };
-      }, names);
-      must(got.scheme, "⚠ ブラウザが「明るい」になっていない（⚠ この検査が暗い画面を測っている）");
-      const wrong = names.filter((n) => !sameColor(got.vals[n], light[n]));
-      must(!wrong.length, `明るい色みの値になっていない: `
-        + wrong.map((n) => `${n}（期待 ${light[n]} ／ 実際 ${got.vals[n].trim()}）`).join("、"));
-      // ⚠ **本当に切り替わったか**（⚠ 暗い色みと違う色が、⚠ ちゃんと違っていること）
-      const moved = names.filter((n) => !sameColor(dark[n], light[n]));
-      must(moved.length >= 8, `暗い色みと違う色が ${moved.length} 個しかない（⚠ 切り替わっていない）`);
-      for (const n of moved)
-        must(!sameColor(got.vals[n], dark[n]), `${n} が暗い色みのまま（${got.vals[n].trim()}）`);
-      return `明るい端末 ／ theme.css の ${names.length} 色と一致 ／ 暗い色みと違うのは ${moved.length} 色`
-        + `（例 --bg ${got.vals["--bg"].trim()} ／ --ink ${got.vals["--ink"].trim()}）`;
-    },
-  },
-  {
-    // ⚠ **色みの定義が、⚠ この画面で本当にその値になっているか**（2026-08-26・hidetzu/konjaku#96）。
-    //   ⚠ **理由と踏んだ話は `test/render/peel-theme.mjs` の対になるケースに全文がある**
-    //     （⚠ 2026-08-27 に `peel.mjs` から出した。hidetzu/konjaku#277）。
-    //   ⚠ **ここは地図の上ではない**ので、⚠ **印が付いていないこと**まで見る
-    //     （⚠ 付いていると、⚠ トップの面が地図用の暗い半透明になる）。
-    name: "この画面の色は、地の色みに解決されている", path: "/", group: "core",
-    async check(page) {
-      const theme = await themeColors();
-      const base = theme[":root"];
-      must(base, "theme.css から地の色みを読めない（⚠ この検査が何も見ていない）");
-      const names = Object.keys(base);
-      must(names.length >= 8, `theme.css の色が ${names.length} 個しかない（⚠ 読み方が壊れている）`);
-      const got = await page.evaluate((ns) => {
-        const cs = getComputedStyle(document.documentElement);
-        return { mark: document.documentElement.getAttribute("data-backdrop"),
-                 vals: Object.fromEntries(ns.map((n) => [n, cs.getPropertyValue(n)])) };
-      }, names);
-      must(got.mark === null, `トップに地図の上の印が付いている（${JSON.stringify(got.mark)}）`);
-      const wrong = names.filter((n) => !sameColor(got.vals[n], base[n]));
-      must(!wrong.length, `色が theme.css の値になっていない: `
-        + wrong.map((n) => `${n}（期待 ${base[n]} ／ 実際 ${got.vals[n].trim()}）`).join("、"));
-      return `/ ／ 印なし ／ theme.css の ${names.length} 色と一致`
-        + `（例 --bg ${got.vals["--bg"].trim()} ／ --ink ${got.vals["--ink"].trim()}）`;
-    },
-  },
+  ...THEME_CASES,
   {
     // ⚠ **トップの URL の座標が読めないとき、⚠ 黙って別の場所を出さない**（2026-08-24）。
     //
