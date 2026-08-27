@@ -249,6 +249,53 @@ head("見た目の決め方");
       + `⚠ **まだ段に無い余白が ${left} 件ある**（⚠ 刻みが未決なので落とさない。hidetzu/konjaku#312）`);
 }
 
+// ⚠ **縦の間は、⚠ 役割の段から借りる**（2026-08-27・hidetzu/konjaku#312 の 2 回目）。
+//
+// ⚠ **`padding` の段（上）より強い主張をしている。**
+//   ⚠ `padding` は「段に在る値を直に書くな」だけ（⚠ 段に無い値は咎めない）。
+//   ⚠ **こちらは「段から選べ」。**⚠ **段に無い値も咎める。**
+//   ⚠ **そうしてよい理由**: ⚠ **Owner が「揃える」と決めた**（2026-08-27）。
+//     ⚠ Issue の Owner Decisions が ⚠ **「尺度に無い値が要るなら、⚠ それは尺度のほうを
+//     ⚠ 見直す合図」**と言っている。⚠ **だから、⚠ 落ちるのが正しい。**
+//
+// ⚠ **決めた上で残しているものだけ、⚠ 一覧に書く。**⚠ **理由も一緒に。**
+{
+  const css = await readFile(join(PUB, "css", "tokens.css"), "utf8");
+  const bare = css.replace(BLOCK_COMMENT, " ");
+  const steps = new Map();          // 値 → トークン名
+  for (const m of bare.matchAll(/(--gap-[a-z0-9-]+)\s*:\s*(\d+)px/g)) steps.set(+m[2], m[1]);
+  // ⚠ **節と節の間**（⚠ 3 件とも 1 回ずつしか出てこない＝くり返された決め打ちではない）。
+  //   ⚠ **揃えると 12px 動く。**⚠ **意図した差だと考えて残した**（hidetzu/konjaku#312 の 2 回目）。
+  const ALLOW = new Map([[22, "index.html .group"], [26, "index.html #result"], [34, "index.html footer"]]);
+  const onStep = [], offStep = [], used = [];
+  for (const [f, s0] of [["index.html", src["index.html"]], ["peel.html", src["peel.html"]],
+                         ["era-control.css", await readFile(join(PUB, "components", "era-control",
+                           "era-control.css"), "utf8").catch(() => "")]]) {
+    const t = (s0 ?? "").replace(HTML_COMMENT, " ").replace(BLOCK_COMMENT, " ");
+    const body = f.endsWith(".html") ? (/<style>([\s\S]*?)<\/style>/.exec(t)?.[1] ?? "") : t;
+    const look = (prop, re) => {
+      for (const m of body.matchAll(re)) {
+        const v = +m[1];
+        if (steps.has(v)) onStep.push(`${f} の ${prop}:${v}px（${steps.get(v)} がある）`);
+        else if (!ALLOW.has(v)) offStep.push(`${f} の ${prop}:${v}px`);
+      }
+    };
+    look("margin-top", /margin-top\s*:\s*(\d+)px/g);
+    look("margin", /margin\s*:\s*(\d+)px\s+[^;{}]*/g);
+    for (const m of body.matchAll(/var\((--gap-[a-z0-9-]+)\)/g)) used.push(m[1]);
+  }
+  if (!steps.size) bad("tokens.css に縦の間の段が無い（⚠ この検査が何も見ていない）");
+  else if (onStep.length)
+    bad(`段に在る縦の間を、規則へ直に書いている: ${onStep.join("、")}（⚠ 段から借りる）`);
+  else if (offStep.length)
+    bad(`段に無い縦の間を書いている: ${offStep.join("、")}`
+      + `（⚠ **尺度に無い値が要るなら、⚠ 尺度のほうを見直す合図**。hidetzu/konjaku#312 の Owner Decisions）`);
+  else
+    ok(`縦の間は段から借りている（段 ${steps.size} 個・使用 ${used.length} 箇所・直書き 0）。`
+      + `⚠ **決めた上で残しているのは ${ALLOW.size} 件**: `
+      + `${[...ALLOW].map(([v, w]) => `${w} の ${v}px`).join("、")}（節と節の間）`);
+}
+
 // 2 画面で共通の見た目の定義は、1 か所にしか書かないこと。
 // ⚠ 実測（2026-08-20）: 同じ名前・同じ値が **26 個**、index.html と peel.html の
 //   両方に書いてあった。⚠ 片方だけ直すと、2 画面で見た目がずれる（ADR 0021）。

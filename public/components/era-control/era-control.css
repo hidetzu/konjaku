@@ -99,7 +99,7 @@
   #rlAxis{margin-bottom:16px}
   #rlKnob{position:absolute;width:16px;height:16px;margin-left:-8px;border-radius:50%;
     background:var(--ink);box-shadow:0 2px 8px color-mix(in srgb, var(--shadow) 50%, transparent);pointer-events:none}
-  #rlNote{margin-top:5px;font-size:var(--fs-note);color:var(--ink-3);text-align:center;line-height:1.4}
+  #rlNote{margin-top:var(--gap-row);font-size:var(--fs-note);color:var(--ink-3);text-align:center;line-height:1.4}
   #rlNote:empty{display:none}
   .time-panel .s{font-size:var(--fs-note);letter-spacing:.16em;color:var(--ink-2)}
   /* ⚠ 接続の話は、写真の話と**別の行**に置く。混ぜるとどちらが事実か読めなくなる。
