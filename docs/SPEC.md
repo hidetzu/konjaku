@@ -127,16 +127,19 @@ search 群だけ 1 回やり直す（やり直した回数は必ず出力する�
 
 | 種類 | 中身 |
 |---|---|
-| イベント | `judged.ok` / `judged.coarse` / `judged.none` / `judged.fail` / `shared` / `saved` / `era.moved`（1つの場所につき1回）/ `open.peel` / `open.speak` |
+| イベント | `judged.ok` / `judged.coarse` / `judged.none` / `judged.fail` / `shared` / `saved` / `share.tap`（押した＝分母）/ `share.cancelled`（やめた）/ `share.failed`（壊れた）/ `era.moved`（1つの場所につき1回）/ `open.peel` / `open.speak` |
 | 依存の生死 | `health:<all\|landform\|meiji\|elevation\|photos\|search\|events>:<ok\|fail>` |
 | 流入の出所 | `from:<zenn\|x\|note\|qiita\|github\|hatena>` |
 
 - **唯一の指標は共有率**（`shared` / `judged.*`）。判定が 100 件たまるまでは読まない
+- ⚠ **共有が 0 件のとき、⚠ 「押していない」「やめた」「壊れた」を分けて読む**
+  （`share.tap` が分母。⚠ **結末は排他**なので、⚠ 1 共有につき最大 2 件）。⚠ **指標そのものは変えない**
 - Origin が自分のオリジンでないものは落とす（204 を返し、理由は教えない）
 - 本文は **48 バイトまで**。`Content-Length` を見て、**読む前に**落とす（無いものも落とす）。
-  受け付ける本文は **29 種**で、最長は `health:elevation:fail` の **21 文字**（2026-08-15 実測）
-- 1人あたりの `/t` は実測で **最大3回**（判定だけ 2／年代まで動かして 3／`/peel` は 1）。
-  無料枠（Worker 10万req/日・D1 書き込み10万行/日）から、**1日 33,333 人まで無料**
+  受け付ける本文は **32 種**で、最長は `health:elevation:fail` の **21 文字**（2026-08-28 実測）
+- 1人あたりの `/t` は実測で **最大5回**（判定だけ 2／年代まで動かして 3／**共有まで押して 5**／`/peel` は 1）。
+  無料枠（Worker 10万req/日・D1 書き込み10万行/日）から、**1日 20,000 人まで無料**
+  （2026-08-28 実測。`node scripts/cost.mjs` が毎回測り直す。⚠ **全員が共有まで押した場合**）
 
 ---
 
