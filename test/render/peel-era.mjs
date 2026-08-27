@@ -16,6 +16,13 @@
 //     時間座標   ⚠ **段を間引いても、⚠ 時間座標が詰まらない**
 //                （⚠ **間引いた年代のぶんの隙間は残す。**⚠ 詰めると年代の間隔が嘘になる）
 //
+// ⚠ **3 つの状態が、⚠ ここに揃った**（2026-08-27。hidetzu/konjaku#277 の 24 本目）:
+//     `[]`（正常に 0 件）／ `null`（取れていない）／ 待っている最中
+//   ⚠ **21 本目で 2 件だけ先に運び、⚠ 3 件目が `peel.mjs` に取り残されていた。**
+//   ⚠ **元の見出し「建物 0 件を、取得中・取得失敗と混ぜない」が言っていたのは、⚠ この 3 つ。**
+//   ⚠ **直したのは表示だけではなく取得側**（⚠ `[]` と `null` を分けた）。
+//   ⚠ **3 つを、⚠ それぞれ別の経路で再現して確かめる。**
+//
 // ⚠ **`取れなかった ≠ 無い` の建物版**（⚠ `peel-unreachable.mjs` は断りの文、⚠ ここは取得そのもの）。
 //
 // ⚠ **道具は `test/render/lib.mjs` の 1 か所**（⚠ ここで持ち直さない）。
@@ -23,6 +30,39 @@
 import { BASE, TOYOSU, UNSURVEYED, waitVerdict, LIES, whitePng, eraRoute, stepLabels, tauNow, peelReady, settleAfterCondition, must, provText } from "./lib.mjs";
 
 export const CASES = [
+  {
+    name: "取り込み済みで 0 件なら、Overpass に出ない", path: `/peel?${TOYOSU}`,
+    // 索引はそのまま（＝「この区画は見た」）にして、中身だけ 0 件のタイルに差し替える。
+    // ⚠ **詰めた形（v=3）で返す。** 形が違うと読む側が捨てて Overpass へ落ちるので、
+    //   この検査は何も確かめないまま緑になる（実際に v=2 で試して確認した）。
+    setup: (page) => page.route("**/data/bl/14/**", (r) => r.fulfill({
+      status: 200, contentType: "application/json",
+      body: JSON.stringify({ v: 3, tile: [0, 0], at: "2026-08-16", q: 100000,
+        o: [0, 0], k: [], n: [null], m: [null], b: [] }),
+    })),
+    async check(page, reqs) {
+      await page.waitForFunction(() => /OSM に登録された建物は 0 件/.test(
+        document.getElementById("status")?.textContent ?? ""), null, { timeout: 60000 });
+      must(reqs.filter((u) => /overpass/i.test(u)).length === 0,
+        "取り込み済みで 0 件と分かっているのに、Overpass へ出ている");
+      // ⚠ ここには「別の事前生成データ（豊洲だけの GeoJSON）で上書きしない」を
+      //   見る行があった。⚠ **2026-08-20 にその落ち先ごと消えたので、
+      //   ここに残しても何も主張していない**（掟: 検証していないことを確認済みと呼ばない）。
+      //   ⚠ **主張は消していない。**「土地ごとの例外が生えていないこと」は
+      //   check.mjs の「3.5. 土地ごとの例外を作っていない」が見ている。
+      // ⚠ **0 件のときは、⚠ 層 3 が `missing` になるので `#breakdown` が作られない**
+      //   （2026-08-23 に踏んだ。⚠ 再試行の的を置こうとしたときと同じ理由）。
+      //   ⚠ **主張は「0 件を『取れなかった』と言わない」。**⚠ **問いの側を読む。**
+      const bd = await page.evaluate(() =>
+        (document.getElementById("landAll")?.textContent ?? "").replace(/\s+/g, " "));
+      const prov = await provText(page);
+      for (const [where, t] of [["問い", bd], ["台帳", prov]])
+        for (const w of ["取得中", "取得できませんでした", "欠落"])
+          must(!t.includes(w), `正常に 0 件なのに${where}が「${w}」と出している: ${t.slice(0, 90)}`);
+      must(/取り込み済みの建物データで/.test(prov), `台帳に 0 件の出所が無い: ${prov.slice(0, 90)}`);
+      return `Overpass 0 本／台帳「取り込み済みの建物データで建物 0 件」`;
+    },
+  },
   {
     name: "Overpass が 0 件を返したら、取れなかったと言わない", path: `/peel?${UNSURVEYED}`,
     setup: (page) => Promise.all([
