@@ -7,8 +7,9 @@
 | [`check.mjs`](check.mjs) | 静的検査（⚠ **全追跡ファイルを走査する**。`docs/` も読む） |
 | [`render.mjs`](render.mjs) | 実描画を走らせる（⚠ ケースは持たない） |
 | [`render/lib.mjs`](render/lib.mjs) | 実描画の道具 |
-| [`render/top.mjs`](render/top.mjs) | トップ（`/`）のケース |
-| [`render/peel.mjs`](render/peel.mjs) | 深掘り（`/peel`）のケース |
+| [`render/top.mjs`](render/top.mjs) | トップ（`/`）の suite（⚠ **束ねるだけ**） |
+| [`render/peel.mjs`](render/peel.mjs) | 深掘り（`/peel`）の suite（⚠ **束ねるだけ**。⚠ 自前のケースは 0 件） |
+| `render/top-*.mjs` ／ `render/peel-*.mjs` | ⚠ **問いごとのケース。**⚠ **足すときはここへ入れる** |
 | [`render-scope.mjs`](render-scope.mjs) | ⚠ **変更ファイル → どの検査を回すか** |
 | [`search-check.mjs`](search-check.mjs) | 検索の入口の回帰（42 語）。⚠ **fixture で回す。⚠ 外へ出ない** |
 | [`repository-check.mjs`](repository-check.mjs) | ⚠ **住所検索の口の作り**（1検索1リクエスト・再試行・時間切れ・形）。⚠ **外へ出ない** |

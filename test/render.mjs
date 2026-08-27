@@ -4,7 +4,8 @@
 //   node scripts/render.mjs --suite=peel        ⚠ 深掘りの画面だけ
 //   node scripts/render.mjs --suite=top --group=core
 //
-// ⚠ **ケースはここに書かない**（`render/top.mjs` / `render/peel.mjs`）。
+// ⚠ **ケースはここに書かない**（⚠ 問いごとの `render/top-*.mjs` / `render/peel-*.mjs`。
+//   ⚠ **`render/top.mjs` / `render/peel.mjs` はそれを束ねるだけ**）。
 // ⚠ **道具もここに書かない**（`render/lib.mjs`）。
 // ⚠ **走った suite と件数は、⚠ 出力の1行目で名乗る**（⚠ 黙って絞らない）。
 
