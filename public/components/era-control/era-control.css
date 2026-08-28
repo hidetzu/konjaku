@@ -69,7 +69,7 @@
   #ruler #rlSub:empty{display:none}
   /* ⚠ 44×44 を割らない（掟）。記号は小さくても、的は削らない */
   #rlPrev,#rlNext{flex:none;width:var(--tap);height:var(--tap);border-radius:11px;
-    border:1px solid var(--line);background:color-mix(in srgb, var(--wash) 6%, transparent);color:var(--ink);
+    border:1px solid var(--line-strong);background:color-mix(in srgb, var(--wash) 6%, transparent);color:var(--ink);
     font:inherit;font-size:var(--fs-ruler-arrow);line-height:1;cursor:pointer}
   #rlPrev:disabled,#rlNext:disabled{opacity:.32;cursor:default}
   #rlPrev:not(:disabled):hover,#rlNext:not(:disabled):hover{background:color-mix(in srgb, var(--wash) 14%, transparent)}

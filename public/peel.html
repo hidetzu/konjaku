@@ -101,7 +101,7 @@
     background:none;border:0;color:var(--ink-dim);font-size:var(--fs-body);line-height:1;
     cursor:pointer}
   .note-help > span[aria-hidden]{display:inline-flex;align-items:center;justify-content:center;
-    width:22px;height:22px;border:1px solid var(--line);border-radius:50%}
+    width:22px;height:22px;border:1px solid var(--line-strong);border-radius:50%}
   .note-help[aria-expanded="true"]{color:var(--ink)}
   /* ⚠ **字間は 0.08em**（2026-08-22）。⚠ 大きさは `.sec>.label`（出典）と同じまま。
      ⚠ 実測: 12px に 0.15em で、⚠ **「補 足 情 報」と読めていた**
@@ -282,7 +282,7 @@
        ＝ ⚠ **262px 使える。**⚠ 小さい状態はその中に収める。 */
   #panel{position:absolute;top:14px;left:14px;z-index:11;width:300px;
     max-height:calc(100% - 190px);overflow-y:auto;
-    background:var(--surface);border:1px solid var(--line);border-radius:11px;padding:15px;
+    background:var(--surface);border:1px solid var(--line-strong);border-radius:11px;padding:15px;
     backdrop-filter:blur(16px);transition:opacity .45s ease,transform .45s ease}
   /* ⚠ **`.hide` は無くなった**（2026-08-22）。⚠ 透明にして押せなくするのをやめた。 */
   /* ⚠ **押せる的は 44×44 を割らない**（`.claude/rules/css.md`）。
@@ -374,20 +374,20 @@
   .sec>.label{font-size:var(--fs-note);letter-spacing:.08em;color:var(--ink-dim);margin-bottom:8px}
 
   /* 検索 */
-  #q{width:100%;padding:8px 10px;border-radius:7px;border:1px solid var(--line);
+  #q{width:100%;padding:8px 10px;border-radius:7px;border:1px solid var(--line-strong);
     background:color-mix(in srgb, var(--wash) 6%, transparent);color:var(--ink);font:inherit;font-size:var(--fs-input)}
   #q:focus{outline:none;border-color:var(--action)}
   #cands{margin-top:var(--gap-row);max-height:190px;overflow-y:auto}
   #cands button{display:block;width:100%;text-align:left;padding:var(--pad-sm);margin-bottom:3px;
-    border:1px solid var(--line);border-radius:6px;background:transparent;color:var(--ink);
+    border:1px solid var(--line-strong);border-radius:6px;background:transparent;color:var(--ink);
     font:inherit;font-size:var(--fs-note);cursor:pointer}
   #cands button:hover{border-color:var(--action);color:var(--action)}
   #cands button small{display:block;color:var(--ink-dim);font-size:var(--fs-note)}
   .quick{display:flex;flex-wrap:wrap;gap:5px;margin-top:var(--gap-row)}
-  .quick button{padding:3px 9px;border:1px solid var(--line);border-radius:999px;background:transparent;
+  .quick button{padding:3px 9px;border:1px solid var(--line-strong);border-radius:999px;background:transparent;
     color:var(--ink-dim);font:inherit;font-size:var(--fs-note);cursor:pointer}
   .quick button:hover{border-color:var(--action);color:var(--action)}
-  .here{width:100%;margin-top:var(--gap-row);padding:7px;border-radius:7px;border:1px solid var(--line);
+  .here{width:100%;margin-top:var(--gap-row);padding:7px;border-radius:7px;border:1px solid var(--line-strong);
     background:transparent;color:var(--ink);font:inherit;font-size:var(--fs-note);cursor:pointer}
   .here:hover{border-color:var(--action);color:var(--action)}
   .here[disabled]{opacity:.5;cursor:default}
@@ -401,7 +401,7 @@
   #status .err{color:var(--missing)}
   #status .go{color:var(--action)}
   /* 取れなかったときの復帰手段。断定の代わりに必ずこれを出す（掟: 取れなかったを「無い」と言わない） */
-  #status .retry-btn{margin-top:var(--gap-row);padding:4px 10px;border:1px solid var(--line);border-radius:6px;
+  #status .retry-btn{margin-top:var(--gap-row);padding:4px 10px;border:1px solid var(--line-strong);border-radius:6px;
     background:transparent;color:var(--action);font:inherit;font-size:var(--fs-note);cursor:pointer}
   #status .retry-btn:hover{border-color:var(--action)}
 
@@ -432,7 +432,7 @@
   .prov.no{background:color-mix(in srgb, var(--missing) 9%, transparent);border-left:2px solid var(--missing)}
   /* 押している間だけ光らせる。状態を残さないので、既定の絵（99.6% の色）を壊さない */
   .peek{display:inline-block;margin-top:var(--gap-row);padding:3px 9px;border-radius:999px;
-    border:1px solid var(--line);background:transparent;color:var(--ink-dim);
+    border:1px solid var(--line-strong);background:transparent;color:var(--ink-dim);
     font:inherit;font-size:var(--fs-note);cursor:pointer;-webkit-tap-highlight-color:transparent}
   .peek:hover{border-color:var(--action);color:var(--action)}
   .peek:active{background:var(--action);color:var(--bg);border-color:var(--action)}
@@ -446,7 +446,7 @@
   /* 押した場所に出すカード。⚠ 左パネルの中だけに書いていたときは、実測で
      y=672（スマホ・パネル閉）／y=721（PC・内スクロールの外）と、両方の端末で画面の外だった。 */
   .pick-pop .maplibregl-popup-content{background:color-mix(in srgb, var(--bg) 94%, transparent);backdrop-filter:blur(10px);
-    border:1px solid var(--line);border-radius:9px;padding:10px 12px;
+    border:1px solid var(--line-strong);border-radius:9px;padding:10px 12px;
     box-shadow:0 8px 28px color-mix(in srgb, var(--shadow) 50%, transparent)}
   .pick-pop .maplibregl-popup-tip{border-top-color:color-mix(in srgb, var(--bg) 94%, transparent);
     border-bottom-color:color-mix(in srgb, var(--bg) 94%, transparent)}
@@ -454,7 +454,7 @@
   .pick-pop .maplibregl-popup-close-button{color:var(--ink-dim);font-size:var(--fs-era);padding:2px 7px}
   /* ⚠ 指で押せる大きさ（var(--tap)）。ピンと同じ理由 */
   .pick-say{display:inline-flex;align-items:center;min-height:var(--tap);margin-top:var(--gap-row);
-    padding:0 12px;border:1px solid var(--line);border-radius:999px;background:transparent;
+    padding:0 12px;border:1px solid var(--line-strong);border-radius:999px;background:transparent;
     color:var(--action);font:inherit;font-size:var(--fs-note);cursor:pointer}
   .pick-say:hover{border-color:var(--action)}
   /* ⚠ **`#pick` の見た目は消した**（2026-08-21）。⚠ パネルの板そのものを消したため。
@@ -503,7 +503,7 @@
   /* ⚠ **押せる的は 44×44 を割らない**（`.claude/rules/css.md`）。
      ⚠ 実測（2026-08-22・小さい状態）: ⚠ **「← 今昔へ」が 38×44** だった（字が隠れて記号だけ）。 */
   .chrome-row a,.chrome-row button{height:var(--tap);min-width:var(--tap);padding:0 12px;border-radius:9px;
-    border:1px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer;
+    border:1px solid var(--line-strong);background:var(--surface);color:var(--ink);cursor:pointer;
     backdrop-filter:blur(16px);font:inherit;font-size:var(--fs-note);text-decoration:none;
     display:inline-flex;align-items:center;gap:6px;transition:opacity .25s}
   .chrome-row a:hover,.chrome-row button:hover{border-color:var(--action);color:var(--action)}
@@ -628,7 +628,7 @@
     /* ⚠ **全画面になるのは、⚠ 広げたときだけ**（2026-08-22。Owner 判断）。
        ⚠ **小さい状態は上側に置く**（⚠ 中央 ＝ 調べている地点を覆わない）。 */
     #panel{top:14px;left:14px;right:14px;bottom:auto;width:auto;max-width:none;
-      max-height:calc(50% - 26px);border-radius:11px;border:1px solid var(--line);padding:11px 14px}
+      max-height:calc(50% - 26px);border-radius:11px;border:1px solid var(--line-strong);padding:11px 14px}
     #panel.open{top:0;left:0;right:0;bottom:0;max-height:none;
       border-radius:0;border:0;padding:10px 14px 24px;
       /* ⚠ HUD（z-index 12）と地図の帰属表示（14）より上に出す。
@@ -693,12 +693,12 @@
          （実描画 3 件が page.click の時間切れで落ちた）。 */
     #panel{position:absolute;top:14px;left:14px;right:auto;bottom:auto;z-index:11;
       width:300px;max-width:none;max-height:calc(100% - 190px);
-      border-radius:11px;border:1px solid var(--line);padding:15px}
+      border-radius:11px;border:1px solid var(--line-strong);padding:15px}
     /* ⚠ **PC は広げても左の縦パネルのまま**（2026-08-22）。
        ⚠ **狭い幅の「広げたら全画面」を打ち消す**（⚠ 既定は狭い幅なので、PC にも効いてしまう）。
        ⚠ 実測（2026-08-22）: 打ち消し忘れて、⚠ **PC で 300×800 の全画面高**になった。 */
     #panel.open{top:14px;left:14px;right:auto;bottom:auto;
-      max-height:calc(100% - 190px);border-radius:11px;border:1px solid var(--line);
+      max-height:calc(100% - 190px);border-radius:11px;border:1px solid var(--line-strong);
       padding:15px}
     /* ⚠ `.hide` は廃止（PC も常時出す） */
     /* ⚠ **PC では、板を開いていても HUD を出す。**⚠ 狭い幅は 3D を隠さないために消している。
