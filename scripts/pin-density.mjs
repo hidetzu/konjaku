@@ -1,11 +1,14 @@
 // ⚠ **「地図を開いた瞬間、⚠ ピンが何本見えるか」**を測る。
 //
-// ⚠ **`docs/adr/0049` の前提**（⚠ 情報がある場所にピンを出す）が成り立つかを見る。
+// ⚠ **測っているのは「β 版が配信しているタイルの範囲」だけ。**
+// ⚠ **「世の中にどれだけ点データがあるか」ではない**（⚠ 2026-08-29 に取り違えていた）。
+//
+// ⚠ **β 版の取り込み条件は `scripts/ingest-wikidata.mjs` の `KINDS` 13 分類**で、
+// ⚠ **どれも「現存する施設」**（⚠ 城跡・遺跡・寺社・古墳・廃駅・伝承碑は 1 つも入っていない）。
+// ⚠ **この走者の出力を「世の中に点が少ない」の根拠にしない**（`docs/adr/0049`）。
+//
 // ⚠ **数字を ADR に書き写さない。**⚠ **走らせて出す**（`CLAUDE.md` §6）。
 // ⚠ **回し方**: `node scripts/pin-density.mjs`
-//
-// ⚠ **点（Wikidata の `ev/`）と面（土地条件・低湿地）は、⚠ 配っている範囲がまるで違う。**
-// ⚠ **面はほぼ全国で答えが出るが、⚠ 点は一部の区画にしか無い。**⚠ **そこを数字にする。**
 import { readFileSync, existsSync } from "node:fs";
 
 const idx = JSON.parse(readFileSync("public/data/ev/index.json", "utf8"));
@@ -18,12 +21,12 @@ const lat2y = (lat, z) => { const r = lat * Math.PI / 180;
 //   ⚠ ズーム 16 なら 1px ≒ 2.4m（緯度 35 度）→ 375px ≒ 900m ／ 667px ≒ 1600m。
 // ---- ⚠ 自己検査（`--selftest`）----
 //
-// ⚠ **`docs/adr/0049` が、⚠ この走者の出力を根拠にしている。**
-// ⚠ **確かめるのは、⚠ ADR が寄りかかっている 1 点**:
+// ⚠ **確かめるのは 1 点**:
 //
-//     ⚠ **点を配っている区画が、⚠ 日本の面積のごく一部にとどまる**
+//     ⚠ **β 版が点を配っている区画が、⚠ ごく一部にとどまる**
 //
-// ⚠ **「ごく一部」の線は 5%。**⚠ **ここを超えたら、⚠ ADR の判断を見直す合図。**
+// ⚠ **「ごく一部」の線は 5%。**⚠ **ここを超えたら、⚠ `docs/adr/0049` の記述を見直す合図。**
+// ⚠ **これは「世の中の点の量」ではない**（⚠ 上の注記）。
 if (process.argv.includes("--selftest")) {
   const 枚 = Object.keys(idx.tiles).length;
   const km2 = 枚 * 9.8 * 9.8;
@@ -33,7 +36,7 @@ if (process.argv.includes("--selftest")) {
     console.error(`点を配っている範囲が ${割合.toFixed(2)}%（⚠ 5% 未満のはず。⚠ 広がったなら ADR 0049 を見直す）`);
     process.exit(1);
   }
-  console.log(`✓ 点（ev）を配っているのは ${枚} 区画・日本の ${割合.toFixed(2)}%（⚠ 面はほぼ全国）`);
+  console.log(`✓ β 版が点を配っているのは ${枚} 区画・日本の ${割合.toFixed(2)}%（⚠ 世の中の点の量ではない）`);
   process.exit(0);
 }
 
@@ -63,5 +66,6 @@ for (const [name, lat, lon] of 場所) {
   const top = [...kind].sort((a, b) => b[1] - a[1]).slice(0, 4).map(([k, n]) => `${k}:${n}`).join(" ");
   console.log(`${name.padEnd(10)} ${String(near.length).padStart(4)}   ${top || "（0）"}`);
 }
-console.log(`\n⚠ 配っている ev タイル ${Object.keys(idx.tiles).length} 枚（z=${Z}）`);
-console.log("⚠ **配っていない土地では 0 本になる。**⚠ そこは測っていない。");
+console.log(`\n⚠ β 版が配っている ev タイル ${Object.keys(idx.tiles).length} 枚（z=${Z}）`);
+console.log("⚠ **配っていない土地では 0 本になる。**⚠ **それは「そこに何も無い」ではない。**");
+console.log("⚠ **取り込み条件は現存する施設 13 分類**（scripts/ingest-wikidata.mjs の KINDS）。");
