@@ -142,7 +142,10 @@ if (arg("compose")) {
 }
 
 // ---------- 撮る ----------
-const url = arg("url"), sel = arg("sel", "body"), label = arg("label", "shot");
+const url = arg("url"), sel = arg("sel", "body");
+// ⚠ **ラベルはファイル名になる**。⚠ **`/` を入れると階層と読まれ、⚠ 別の名前で保存される**
+//   （⚠ 2026-08-28 に踏んだ。⚠ 「いま 1.28 / 1.48」が「いま 1.28 」になった）。
+const label = String(arg("label", "shot")).replace(/[\/\\:*?"<>|]/g, "_");
 if (!url) { console.log("⚠ --url が要る（例 --url=/ ／ --url=/peel?ll=…）"); process.exit(1); }
 if (!existsSync("scripts/serve.mjs")) { console.log("⚠ repo の根で回すこと"); process.exit(1); }
 
