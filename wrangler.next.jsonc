@@ -1,0 +1,28 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	// ⚠ **v0.1.0 の器**（⚠ 2026-08-28。`docs/adr/0050`）。
+	//
+	// ⚠ **β 版（`wrangler.jsonc` / `konjaku`）とは、⚠ 別の Worker。**
+	//   ⚠ **β 版に一切触らない**ことが目的。⚠ `judged.ok` の観測が続く必要がある
+	//   （⚠ `docs/adr/0047` の 3〜5 段目が、⚠ その観測に乗っている）。
+	//
+	// ⚠ **回し方**: `npx wrangler deploy -c wrangler.next.jsonc`
+	//   ⚠ **Workers Builds には足していない**（2026-08-28。Owner 判断）。
+	//   ⚠ **出すときは、⚠ そのつど許可を取る**（`CLAUDE.md` §8）。
+	"name": "konjaku-next",
+	"compatibility_date": "2026-08-11",
+
+	// ⚠ **配るのは `public-next/` だけ。**⚠ `public/` を混ぜない。
+	//   ⚠ **混ぜると「β 版を前提にしない」が、⚠ その時点で崩れる**
+	//   （`tmp/next-konjaku.md` の決め事）。
+	"assets": {
+		"directory": "./public-next"
+	}
+
+	// ⚠ **`main`（Worker のコード）を書かない。**⚠ 静的配信だけで始める。
+	//   ⚠ **足すのは、⚠ 静的では足りないことが出てきてから**（`CLAUDE.md` §3）。
+	//
+	// ⚠ **D1 を繋がない**（2026-08-28。Owner 判断で「何も引き継がない」）。
+	//   ⚠ **β 版の計測（`tick` / `health`）と混ざると、⚠ 分母が壊れる**（`CLAUDE.md` §6）。
+	//   ⚠ **繋ぐなら、⚠ 別の DB を作る。**⚠ **同じ DB に 2 本刺さない。**
+}
