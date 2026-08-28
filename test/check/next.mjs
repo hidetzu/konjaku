@@ -72,6 +72,29 @@ else {
     ? bad(`v0.1.0 が β 版のファイルを引き込んでいる: ${未申告.join(" ／ ")}（⚠ 運ぶなら test/check/next.mjs の一覧に理由と一緒に書く）`)
     : ok(`v0.1.0 は β 版のファイルを引き込んでいない（⚠ ${files.length} ファイルを見た）`);
 
+
+  // ---- ⚠ ④ 配信物に、⚠ こちらの作業メモを載せていないか ----
+  // ⚠ **2026-08-28 に実際に出した。**⚠ **HTML のコメントは、⚠ そのまま配信される。**
+  //   ⚠ **`dev.konjaku.hidetzu.work` を開いたら、⚠ ADR の番号と、
+  //   ⚠ 中で何を迷っているかが、⚠ 誰でも読める状態だった。**
+  // ⚠ **ADR 自体は公開リポジトリにあるので秘密ではない。**
+  //   ⚠ **問題は、⚠ 配信物にこちらの作業メモを載せていること**（`CLAUDE.md` §8-1 の筋）。
+  // ⚠ **なぜそう書いたかは、⚠ `public-next/README.md` か ADR に置く。**
+  const 作業メモの印 = /docs\/adr\/|Owner 判断|⚠ \*\*まだ何も決まっていない|CLAUDE\.md|\.claude\//;
+  const 漏れ = [];
+  for (const f of files) {
+    if (!/\.(html|js|css)$/.test(f)) continue;
+    const src = readFileSync(f, "utf8");
+    // ⚠ **コメントの中だけを見る**（⚠ 本文に出す語とは別の話）
+    for (const m of src.matchAll(/<!--([\s\S]*?)-->/g))
+      if (作業メモの印.test(m[1])) 漏れ.push(`${relative(ROOT, f)}（HTML コメント）`);
+    for (const m of src.matchAll(/\/\*([\s\S]*?)\*\//g))
+      if (作業メモの印.test(m[1])) 漏れ.push(`${relative(ROOT, f)}（ブロックコメント）`);
+  }
+  [...new Set(漏れ)].length
+    ? bad(`v0.1.0 の配信物に、こちらの作業メモが載っている: ${[...new Set(漏れ)].join(" ／ ")}（⚠ 理由は public-next/README.md か ADR に置く）`)
+    : ok("v0.1.0 の配信物に、こちらの作業メモが載っていない");
+
   // ---- ⚠ ③ β 版へ戻る道が、⚠ 1 本だけ残っているか ----
   // ⚠ **「いま見られるのは β」だと言えないと、⚠ 空の器を見せられた人が行き先を失う**
   //   （`CLAUDE.md` §4-1: ⚠ **できないことを言うなら、⚠ 代わりにできることを添える**）。
