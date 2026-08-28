@@ -178,10 +178,17 @@ try {
     // ⚠ **案を見せるのに、⚠ 製品を書き換えない**（⚠ `--css` は撮るときだけ効く）。
     //   ⚠ **これで撮った絵は「案」であって、⚠ 実装ではない。**⚠ **そう明記して渡すこと。**
     const css = arg("css");
-    if (css) await p.addStyleTag({ content: css });
     if (waitSel) await p.waitForFunction((s) =>
       (document.querySelector(s)?.textContent ?? "").trim().length > 0, waitSel, { timeout: 60000 }).catch(() => {});
     await p.waitForTimeout(Number(arg("settle", 4000)));
+    // ⚠ **案は撮るときだけ当てる**（⚠ 製品を書き換えない）。
+    //   ⚠ **効いたかを、⚠ 道具の側で自動判定しようとしてやめた**（2026-08-28）。
+    //   ⚠ **当てる前後で画面自体が動き続ける**ので（⚠ 地図・写真が遅れて入る）、
+    //     ⚠ **色が変わった要素を数えても、⚠ 3 通り試して同じ数になった。**
+    //   ⚠ **嘘を言う見張りは、⚠ 無いより悪い。**⚠ **外した。**
+    //   ⚠ **効いたかは人が数字で確かめる**（`.claude/skills/visual-decision` §3）。
+    //     ⚠ **`--fold` の「N px 出ている」や、⚠ 別途 `getComputedStyle` で読む。**
+    if (css) { await p.addStyleTag({ content: css }); await p.waitForTimeout(200); }
     // ⚠ **`--fold` を付けると、⚠ 初期画面（折り返しまで）を撮り、⚠ 相手がその中に在るかを言う。**
     //   ⚠ **「画面外へ出た」は、⚠ 相手だけ切り取ると見えない**（⚠ hidetzu/konjaku#281 で実際にそうだった）。
     const box = await p.evaluate(({ s, pad, fold }) => {
