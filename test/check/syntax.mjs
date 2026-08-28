@@ -22,6 +22,7 @@
 // ⚠ **道具は `test/check/lib.mjs` の 1 か所**（⚠ ここで持ち直さない）。
 
 import { execFileSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { ROOT, ok, bad, head, src, TOP, pageSrc, htmlFiles, jsFiles } from "./lib.mjs";
 
@@ -78,4 +79,23 @@ for (const f of htmlFiles) {
   bad2.length === 0
     ? ok("テンプレートリテラル内の HTML コメントに、バッククォートが無い")
     : bad(`HTML コメントにバッククォートがある（文字列がそこで切れる）: ${bad2.join(" ／ ")}`);
+}
+
+// ---------- ⚠ 見て決める材料を作る道具 ----------
+// ⚠ **`scripts/visual-decision.mjs` は落ちない道具**（⚠ 検査ではない。ADR 0042）。
+//   ⚠ **落ちないぶん、⚠ 引数の読み方が壊れても気づけない。**
+//   ⚠ **実際に一度壊している**（⚠ `--size` を足す前、⚠ 一覧の先頭しか撮れなかった）。
+//   ⚠ **道具自身の自己検査を、⚠ ここから呼ぶ**（⚠ ブラウザは立てない。⚠ 実測 40ms）。
+//   ⚠ **4 幅は `.claude/skills/ui-ux-review` §0 が決めたもの。**⚠ **道具側で増やしていないことも見る。**
+{
+  const p = join(ROOT, "scripts/visual-decision.mjs");
+  if (!existsSync(p)) bad("scripts/visual-decision.mjs が無い（ADR 0042 の道具）");
+  else {
+    try {
+      const out = execFileSync(process.execPath, [p, "--selftest"], { encoding: "utf8", timeout: 20000 });
+      ok(`見て決める材料の道具は、引数を正しく読む（${out.trim().replace(/^✓ /, "")}）`);
+    } catch (e) {
+      bad(`見て決める材料の道具の自己検査が落ちた: ${String(e.stdout ?? e.message).trim().slice(0, 160)}`);
+    }
+  }
 }

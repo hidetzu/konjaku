@@ -124,6 +124,15 @@ Review Plan（change-review ／ 画面を変えるなら ui-ux-review も）
 
 ⚠ **`AskUserQuestion` で聞く。**本文に混ぜない。
 
+### ⚠ 見て決める問題なら、⚠ 先に絵を作る
+
+⚠ **聞く相手が「見え方」なら、⚠ 文章と px だけで聞かない。**
+→ [`visual-decision`](../visual-decision/SKILL.md) を通す（⚠ **いま／案／推す案**まで作ってから聞く）。
+
+⚠ **Controller はここでも判断基準を持たない。**⚠ **見て決める問題かどうかは、⚠ その Skill が決める。**
+
+⚠ **実測（2026-08-28）**: ⚠ **見え方を決めた Issue 45 件のうち、⚠ 判断材料に絵があったのは 1 件。**
+
 ### ⚠ 承認が意味すること（実行契約）
 
 Owner が承認したら、⚠ **その Issue 1 件に限り**次を許可したものとして扱う。
@@ -161,7 +170,8 @@ Inner Verify（verify の Inner Loop）
    ↓ PASS
 Final Verify（verify の Final Gate）
    ↓ PASS
-Review（change-review ／ 画面を変えたなら ui-ux-review も）
+Review（change-review ／ 画面を変えたなら ui-ux-review も
+        ／ ⚠ 見え方を Owner に見せるなら visual-decision）
    ↓ PASS
 PR へ
 ```

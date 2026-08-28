@@ -206,3 +206,6 @@ Human Decision:
 ⚠ **読み方が割れたら、それ自体が結果。**多数決で消さない。
 
 `AskUserQuestion` を使うと Slack にも飛ぶ（`.claude/hooks/ask-slack.mjs`）。
+
+⚠ **Owner に見せ方を決めてもらうときは、⚠ 文章と px だけで聞かない。**
+→ [`visual-decision`](../visual-decision/SKILL.md)（⚠ **いま／案／推す案**を撮って並べる）。

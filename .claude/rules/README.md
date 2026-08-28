@@ -30,4 +30,5 @@
 | どの検査を、どの順で回すか | `.claude/skills/verify/SKILL.md` |
 | 変更を見直す観点（範囲・掟・⚠ 非同期の結果の鮮度） | `.claude/skills/change-review/SKILL.md` |
 | 画面の見直し（4 幅・重複・アクセシビリティの下限） | `.claude/skills/ui-ux-review/SKILL.md` |
+| ⚠ 見え方の判断を Owner に仰ぐとき（いま／案／推す案） | `.claude/skills/visual-decision/SKILL.md` |
 | Issue が渡せる形か | `.claude/skills/issue-ready/SKILL.md` |

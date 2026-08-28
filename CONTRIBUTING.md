@@ -92,6 +92,25 @@ npm i --no-save playwright@1.62.1 && npx playwright install chromium
 
 ---
 
+## ⚠ 見え方を決めてもらうとき
+
+⚠ **色・余白・文字サイズ・レイアウト・画面に収まるか・要素を残すか消すか。**
+⚠ **こうした「見て決める」ことは、⚠ 文章と px だけで聞かない。**
+
+```
+問題を見つける → いまと案を同じ切り取りで撮る → 推す案と、何を失うかを書く → 決めてもらう
+```
+
+```bash
+node scripts/visual-decision.mjs --url="/?ll=…&q=…" --sel="#ovRow" --label=いま
+node scripts/visual-decision.mjs --url="/?ll=…&q=…" --sel="#ovRow" --label=案A --css="…"
+node scripts/visual-decision.mjs --compose --title="…" --cond="…" --note="…"
+```
+
+⚠ **これは検査ではありません。**⚠ **落ちません。**⚠ **決めるのは人のままです。**
+判断は [`docs/adr/0042`](docs/adr/0042-見え方は絵で決める.md)、
+決め方は `.claude/skills/visual-decision/`。
+
 ## Issue
 
 | 種類 | どこへ |
