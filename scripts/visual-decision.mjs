@@ -31,7 +31,10 @@
 //   ⚠ **出力先は追跡しない**（⚠ `tmp/` は `.gitignore` に入っている）。
 //   ⚠ **色みは両方撮る**（⚠ 片方だけ見て決めると、⚠ もう片方で割れる。⚠ hidetzu/konjaku#282 で実際に起きた）。
 
-import { chromium } from "playwright";
+// ⚠ **`playwright` は、⚠ 撮るときにだけ読み込む**（2026-08-28。⚠ 実際に CI で落とした）。
+//   ⚠ **静的検査のジョブに `playwright` は入っていない**（⚠ 実描画のジョブでだけ入れている）。
+//   ⚠ **上に `import` を書くと、⚠ `--selftest` へ届く前に読み込みで落ちる。**
+//   ⚠ **`CLAUDE.md` §9 が既に書いている**: ⚠ 「数えるだけの口は、⚠ 重いものを読み込まない」。
 import { spawn } from "node:child_process";
 import { mkdir, readFile, writeFile, readdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
@@ -154,6 +157,7 @@ const pad = Number(arg("pad", 12));
 const waitSel = arg("wait", null);
 
 await mkdir(OUT, { recursive: true });
+const { chromium } = await import("playwright");
 const srv = spawn("node", ["scripts/serve.mjs"],
   { env: { ...process.env, PORT: String(PORT) }, stdio: "ignore" });
 await new Promise((r) => setTimeout(r, 1500));

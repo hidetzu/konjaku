@@ -95,7 +95,14 @@ for (const f of htmlFiles) {
       const out = execFileSync(process.execPath, [p, "--selftest"], { encoding: "utf8", timeout: 20000 });
       ok(`見て決める材料の道具は、引数を正しく読む（${out.trim().replace(/^✓ /, "")}）`);
     } catch (e) {
-      bad(`見て決める材料の道具の自己検査が落ちた: ${String(e.stdout ?? e.message).trim().slice(0, 160)}`);
+      // ⚠ **理由を出す。**⚠ **`stdout` だけ見て空になった**（2026-08-28。⚠ CI で実際に踏んだ）。
+      //   ⚠ **読み込みで落ちると、⚠ 中身は `stderr` に出る**（⚠ `playwright` が無いジョブがある）。
+      // ⚠ **手元の絶対パスを出さない**（⚠ CI のログは誰でも読める。`CLAUDE.md` §8-1）
+      const why = [e.stdout, e.stderr, e.message].map((x) => String(x ?? "").trim())
+        .filter(Boolean).join(" ／ ").replace(/\s+/g, " ")
+        .replaceAll(ROOT, "<repo>").replace(/\/(home|Users)\/[^\s"']+/g, "<path>")
+        .slice(0, 220);
+      bad(`見て決める材料の道具の自己検査が落ちた: ${why || "（理由が出ていない）"}`);
     }
   }
 }
