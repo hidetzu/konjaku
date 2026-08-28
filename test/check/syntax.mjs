@@ -130,3 +130,53 @@ for (const f of htmlFiles) {
     }
   }
 }
+
+// ---------- ⚠ 端末をまたぐときの大きさを測る走者 ----------
+// ⚠ **`scripts/handoff-size.mjs` は落ちない走者**（⚠ 検査ではない。ADR 0048）。
+//   ⚠ **ADR 0048 が、⚠ この走者の出力を根拠にしている**
+//     （⚠ 「50 件までは URL に収まる」＝ ⚠ **サーバも識別子も要らない**、という判断）。
+//   ⚠ **壊れたら、⚠ ADR の根拠が黙って変わる。**
+//   ⚠ **数字は ADR に書き写していない。**⚠ **走らせて出す**（`CLAUDE.md` §6）。
+//   ⚠ **最初、⚠ 同じ記録を 50 件並べて測っていた**（⚠ 圧縮が効きすぎて 170 文字になった）。
+//     ⚠ **自己検査は、⚠ そこも見る。**
+{
+  const p = join(ROOT, "scripts/handoff-size.mjs");
+  if (!existsSync(p)) bad("scripts/handoff-size.mjs が無い（ADR 0048 の走者）");
+  else {
+    try {
+      const out = execFileSync(process.execPath, [p, "--selftest"], { encoding: "utf8", timeout: 20000 });
+      ok(`端末をまたぐ大きさの走者は生きている（${out.trim().replace(/^✓ /, "")}）`);
+    } catch (e) {
+      // ⚠ **手元の絶対パスを出さない**（`CLAUDE.md` §8-1）
+      const why = [e.stdout, e.stderr, e.message].map((x) => String(x ?? "").trim())
+        .filter(Boolean).join(" ／ ").replace(/\s+/g, " ")
+        .replaceAll(ROOT, "<repo>").replace(/\/(home|Users)\/[^\s"']+/g, "<path>")
+        .slice(0, 220);
+      bad(`端末をまたぐ大きさの走者の自己検査が落ちた: ${why || "（理由が出ていない）"}`);
+    }
+  }
+}
+
+// ---------- ⚠ 点をどれだけ配っているかを測る走者 ----------
+// ⚠ **`scripts/pin-density.mjs` は落ちない走者**（⚠ 検査ではない。ADR 0049）。
+//   ⚠ **ADR 0049 が「情報がある場所にピンを出す」を前提にしている。**
+//   ⚠ **その前提が成り立つ範囲を、⚠ この走者が数字にする。**
+//   ⚠ **点（Wikidata の `ev/`）と面（土地条件・低湿地）は、⚠ 配っている範囲がまるで違う。**
+//   ⚠ **広がったら落ちる**（⚠ 5% を超えたら ADR を見直す合図。⚠ **落ちるのが正しい**）。
+{
+  const p = join(ROOT, "scripts/pin-density.mjs");
+  if (!existsSync(p)) bad("scripts/pin-density.mjs が無い（ADR 0049 の走者）");
+  else {
+    try {
+      const out = execFileSync(process.execPath, [p, "--selftest"], { encoding: "utf8", timeout: 20000 });
+      ok(`点をどれだけ配っているかの走者は生きている（${out.trim().replace(/^✓ /, "")}）`);
+    } catch (e) {
+      // ⚠ **手元の絶対パスを出さない**（`CLAUDE.md` §8-1）
+      const why = [e.stdout, e.stderr, e.message].map((x) => String(x ?? "").trim())
+        .filter(Boolean).join(" ／ ").replace(/\s+/g, " ")
+        .replaceAll(ROOT, "<repo>").replace(/\/(home|Users)\/[^\s"']+/g, "<path>")
+        .slice(0, 220);
+      bad(`点をどれだけ配っているかの走者の自己検査が落ちた: ${why || "（理由が出ていない）"}`);
+    }
+  }
+}
