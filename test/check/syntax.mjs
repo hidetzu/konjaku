@@ -106,3 +106,27 @@ for (const f of htmlFiles) {
     }
   }
 }
+
+// ---------- ⚠ 改善候補を出す道具 ----------
+// ⚠ **`.claude/tools/improvement.mjs` も落ちない道具**（⚠ 検査ではない。ADR 0044）。
+//   ⚠ **落ちないぶん、⚠ 判定が壊れても気づけない。**
+//   ⚠ **判定は道具の中で 1 つの関数になっており、⚠ 自己検査はそれを呼ぶ**
+//     （⚠ **写すと素通りする。**⚠ **実際に踏んだ**: 2026-08-28。⚠ 本体を壊しても緑だった）。
+//   ⚠ **`gh` を叩かない。**⚠ **ネットに触らない**（⚠ 実測 21ms）。
+{
+  const p = join(ROOT, ".claude/tools/improvement.mjs");
+  if (!existsSync(p)) bad(".claude/tools/improvement.mjs が無い（ADR 0044 の道具）");
+  else {
+    try {
+      const out = execFileSync(process.execPath, [p, "--selftest"], { encoding: "utf8", timeout: 20000 });
+      ok(`改善候補を出す道具の判定は生きている（${out.trim().replace(/^✓ /, "")}）`);
+    } catch (e) {
+      // ⚠ **手元の絶対パスを出さない**（`CLAUDE.md` §8-1）
+      const why = [e.stdout, e.stderr, e.message].map((x) => String(x ?? "").trim())
+        .filter(Boolean).join(" ／ ").replace(/\s+/g, " ")
+        .replaceAll(ROOT, "<repo>").replace(/\/(home|Users)\/[^\s"']+/g, "<path>")
+        .slice(0, 220);
+      bad(`改善候補を出す道具の自己検査が落ちた: ${why || "（理由が出ていない）"}`);
+    }
+  }
+}
