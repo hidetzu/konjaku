@@ -1,0 +1,101 @@
+/* 今昔 v0.1.0 のスタイル。理由と決めごとは public-next/README.md に書いてある。 */
+
+:root{
+  --bg:#f2f5f7; --surface:#fff; --ink:#10161d; --ink-2:#3d4b57; --ink-3:#6b7a86;
+  --line:#c9d3db; --line-strong:#9daab4; --action:#175c90; --action-ink:#fff;
+  --tap:44px;
+  --gap-sub:.25rem; --gap-row:.5rem; --gap-block:1rem;
+  --pad-sm:.5rem; --pad-md:.75rem;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --bg:#0b0f14; --surface:#131a21; --ink:#e7edf2; --ink-2:#b3c0cb; --ink-3:#8595a2;
+    --line:#28323c; --line-strong:#485763; --action:#69aede; --action-ink:#0b0f14;
+  }
+}
+
+*{box-sizing:border-box}
+html{font-size:100%}
+body{
+  margin:0; background:var(--bg); color:var(--ink);
+  font:1rem/1.6 system-ui,-apple-system,"Hiragino Kaku Gothic ProN",sans-serif;
+  overscroll-behavior:none;
+}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+
+#app{position:fixed;inset:0}
+
+/* ---- 地図（主役） ---- */
+#map{position:absolute;inset:0;background:var(--bg)}
+#map canvas{display:block}
+
+/* ---- 上の帯 ---- */
+#bar{
+  position:absolute; left:var(--pad-sm); right:var(--pad-sm);
+  top:calc(var(--pad-sm) + env(safe-area-inset-top));
+  display:flex; gap:var(--gap-row);
+}
+#find{flex:1;display:flex}
+#q{
+  flex:1; min-width:0; min-height:var(--tap);
+  padding:0 var(--pad-md); font:inherit; font-size:.9375rem;
+  background:var(--surface); color:var(--ink);
+  border:1px solid var(--line-strong); border-radius:.75rem;
+  box-shadow:0 1px 6px rgb(0 0 0 / .10);
+}
+#here{
+  min-width:var(--tap); min-height:var(--tap);
+  font-size:1.125rem; line-height:1;
+  background:var(--surface); color:var(--ink);
+  border:1px solid var(--line-strong); border-radius:.75rem;
+  box-shadow:0 1px 6px rgb(0 0 0 / .10); cursor:pointer;
+}
+#here:focus-visible,#q:focus-visible{outline:2px solid var(--action);outline-offset:2px}
+
+/* ---- 検索の候補 ---- */
+#hits{
+  position:absolute; left:var(--pad-sm); right:var(--pad-sm);
+  top:calc(var(--tap) + var(--pad-sm) * 2 + env(safe-area-inset-top));
+  margin:0; padding:0; list-style:none; max-height:52vh; overflow:auto;
+  background:var(--surface); border:1px solid var(--line-strong); border-radius:.75rem;
+  box-shadow:0 4px 18px rgb(0 0 0 / .16);
+}
+#hits[hidden]{display:none}
+#hits li{border-bottom:1px solid var(--line)}
+#hits li:last-child{border-bottom:0}
+#hits button{
+  display:block; width:100%; min-height:var(--tap);
+  padding:var(--pad-sm) var(--pad-md); text-align:left;
+  font:inherit; font-size:.875rem; color:var(--ink);
+  background:none; border:0; cursor:pointer;
+}
+#hits button:hover,#hits button:focus-visible{background:var(--bg);outline:none}
+
+/* ---- 足元のカード ---- */
+#card{
+  position:absolute; left:var(--pad-sm); right:var(--pad-sm);
+  bottom:calc(var(--pad-sm) + env(safe-area-inset-bottom));
+  padding:var(--pad-md);
+  background:var(--surface); border:1px solid var(--line-strong); border-radius:.875rem;
+  box-shadow:0 -2px 16px rgb(0 0 0 / .12);
+}
+.kick{
+  display:flex; align-items:center; gap:.375rem;
+  margin:0 0 var(--gap-sub); font-size:.75rem; color:var(--ink-3);
+}
+.dot{
+  width:.5rem;height:.5rem;border-radius:50%;
+  border:2px solid var(--action); background:var(--surface); flex:none;
+}
+.big{margin:0 0 var(--gap-sub); font-size:1.0625rem; font-weight:700; line-height:1.4}
+.gloss{margin:0; font-size:.8125rem; color:var(--ink-3); line-height:1.55}
+
+/* ---- 現在地の印 ---- */
+.me{
+  width:.875rem;height:.875rem;border-radius:50%;
+  background:var(--surface); border:3px solid var(--action);
+  box-shadow:0 0 0 .4375rem color-mix(in srgb, var(--action) 16%, transparent);
+}
+
+.beta{margin:var(--gap-row) 0 0;font-size:.6875rem;color:var(--ink-3)}
+.beta a{color:var(--action)}
