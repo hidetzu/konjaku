@@ -4,7 +4,13 @@
 //   ⚠ **相手先（地理院）の答えに寄りかかるものを、⚠ 検査にしない**（`CLAUDE.md` §9）。
 //   ⚠ **一度きりの調査を、⚠ 再現できる形で残すためのもの**（`CLAUDE.md` §6）。
 //
-// ⚠ **回し方**: `node scripts/survey-face.mjs`
+// ⚠ **回し方**（⚠ **分けて回す**）:
+//
+//     node scripts/survey-face.mjs 0 7
+//     node scripts/survey-face.mjs 7 13
+//
+// ⚠ **「落差」＝ 足元の区分が占める割合の、⚠ 300m と 1000m の差。**
+//   ⚠ **大きいほど「半径を広げると顔が変わる」。**⚠ **小さいほど「広げても同じ」。**
 //
 // ⚠ **測るのは 3 つ**: ⚠ 足元の区分 ／ ⚠ 半径ごとの内訳 ／ ⚠ いちばん近い別の区分までの距離。
 // ⚠ **`docs/adr/0053` が、⚠ この出力を根拠にしている。**⚠ **数字を ADR に書き写さない。**
@@ -31,8 +37,18 @@ const 標高 = async (lat, lon) => {
     return typeof j.elevation === "number" ? j.elevation : null; } catch { return null; }
 };
 
-const 場所 = [["浦安", 35.6536, 139.9021], ["春日部", 35.9756, 139.7522]];
-for (const [name, lat, lon] of 場所) {
+// ⚠ **`scripts/survey-pins.mjs` と同じ 13 か所**（⚠ 突き合わせられるように揃える）
+const 場所 = [
+  ["都心・渋谷", 35.6580, 139.7016], ["都心・梅田", 34.7024, 135.4959],
+  ["埋立・浦安", 35.6536, 139.9021], ["郊外・所沢", 35.7990, 139.4690],
+  ["郊外・春日部", 35.9756, 139.7522],
+  ["地方・高知", 33.5597, 133.5311], ["地方・松江", 35.4681, 133.0486],
+  ["地方・弘前", 40.6031, 140.4640], ["地方・佐賀", 33.2494, 130.2988],
+  ["城下町・松本", 36.2381, 137.9720], ["宿場・関宿", 34.8556, 136.3960],
+  ["農村・美瑛", 43.5883, 142.4700], ["漁村・鞆の浦", 34.3830, 133.3820],
+];
+const FROM = Number(process.argv[2] ?? 0), TO = Number(process.argv[3] ?? 99);
+for (const [name, lat, lon] of 場所.slice(FROM, TO)) {
   const polys = [];
   for (const dx of [-2, -1, 0, 1, 2]) for (const dy of [-2, -1, 0, 1, 2]) for (const base of [NAT, ART]) {
     try { const r = await fetch(`${base}/${Z}/${x_(lon, Z) + dx}/${y_(lat, Z) + dy}.geojson`,
@@ -45,12 +61,9 @@ for (const [name, lat, lon] of 場所) {
         for (const p of ps) polys.push({ 名, p });
       } } catch { }
   }
-  const 足元 = polys.find((q) => inPoly(lon, lat, q.p))?.名 ?? "⚠ 取れず";
+  const 足元 = polys.find((q) => inPoly(lon, lat, q.p))?.名 ?? "取れず";
   const h = await 標高(lat, lon);
-  console.log(`\n===== ${name}（${lat}, ${lon}）=====`);
-  console.log(`  足元          ${足元}`);
-  console.log(`  標高          ${h == null ? "⚠ 取れず" : h + "m"}`);
-
+  const 割合 = {};
   for (const r of [300, 500, 1000]) {
     const 種 = new Map();
     const dLat = r / 111320, dLon = r / (111320 * Math.cos(lat * Math.PI / 180));
@@ -62,11 +75,12 @@ for (const [name, lat, lon] of 場所) {
       const hit = polys.find((q) => inPoly(lo, la, q.p));
       if (hit) 種.set(hit.名, (種.get(hit.名) ?? 0) + 1);
     }
-    const 並び = [...種].sort((a, b) => b[1] - a[1]);
-    console.log(`  半径 ${String(r).padStart(4)}m  ${種.size} 種類  ` +
-      並び.map(([k, v]) => `${k} ${(v / n * 100).toFixed(0)}%`).join(" ／ "));
+    割合[r] = { 種, n };
   }
-  // ⚠ **いちばん近い「別の区分」までの距離**（⚠ 「50m 先から○○」が言えるか）
+  // ⚠ **足元の区分が占める割合**（⚠ これが下がるほど「顔が変わる」）
+  const 占有 = (r) => { const { 種, n } = 割合[r];
+    return n ? Math.round((種.get(足元) ?? 0) / n * 100) : null; };
+  // ⚠ **いちばん近い別の区分までの距離**
   const dLat = 1000 / 111320, dLon = 1000 / (111320 * Math.cos(lat * Math.PI / 180));
   let 近い = null;
   for (let i = 0; i < 60; i++) for (let j = 0; j < 60; j++) {
@@ -75,5 +89,9 @@ for (const [name, lat, lon] of 場所) {
     const hit = polys.find((q) => inPoly(lo, la, q.p));
     if (hit && hit.名 !== 足元 && (!近い || d < 近い.d)) 近い = { 名: hit.名, d: Math.round(d) };
   }
-  console.log(`  いちばん近い別の区分  ${近い ? `${近い.d}m 先に ${近い.名}` : "⚠ 1km 以内に無い"}`);
+  const 落差 = (占有(300) != null && 占有(1000) != null) ? 占有(300) - 占有(1000) : null;
+  console.log(`${name.padEnd(14)} ${String(足元).padEnd(12)} ${String(h ?? "?").padStart(6)}m  ` +
+    `${String(占有(300)).padStart(3)}% ${String(占有(500)).padStart(3)}% ${String(占有(1000)).padStart(3)}%  ` +
+    `落差 ${String(落差).padStart(3)}  ` +
+    `${近い ? `${String(近い.d).padStart(4)}m先 ${近い.名}` : "1km 以内に無し"}`);
 }
