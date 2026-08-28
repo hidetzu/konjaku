@@ -46,7 +46,7 @@
 //   echo 'これは JSON ではない'          | node .claude/hooks/ask-slack.mjs; echo "exit=$?"
 //   echo '{"tool_name":"Bash"}'          | node .claude/hooks/ask-slack.mjs; echo "exit=$?"
 //   printf ''                            | node .claude/hooks/ask-slack.mjs; echo "exit=$?"
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, appendFileSync } from "node:fs";
 import { join, dirname, basename } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
@@ -54,6 +54,47 @@ import { execFileSync } from "node:child_process";
 const WAIT_MS = 180_000;          // ⚠ 上限。これを超えて待たない
 const FREE = "__free__";          // 「✎ 自由に書く」の目印
 const bail = (why) => { if (why) process.stderr.write(`ask-slack: ${why}\n`); process.exit(0); };
+
+// ---- ⚠ 人に聞いたことを、⚠ 1 行だけ残す（hidetzu/konjaku#367。ADR 0044）----
+//
+// ⚠ **中身は持たない。**⚠ **問いの本文も、⚠ 答えの本文も、⚠ 誰が答えたかも書かない**
+//   （⚠ `telemetry.mjs` と同じ約束。⚠ **記録に人名や本文を散らさない**）。
+//
+// ⚠ **残すのは「往復があったこと」と「どう終わったか」だけ。**
+//
+//     questions   ⚠ いくつ聞いたか
+//     options     ⚠ 選択肢の数（⚠ 0 なら自由記述だけ）
+//     outcome     answered ／ free_text ／ timeout ／ unavailable
+//     waited_ms   ⚠ 実際に待った時間
+//
+// ⚠ **落ちても、⚠ 質問はせき止めない。**⚠ **この関数は絶対に投げない。**
+//   ⚠ **この Hook の筆頭の約束は「人に聞けなくなることだけは避ける」**（⚠ 上のコメント）。
+const note = (sid, rec) => {
+  try {
+    const { telemetryDir } = mod ?? {};
+    if (!telemetryDir) return;
+    const dir = telemetryDir();
+    // ⚠ **作らない。**⚠ **既にあるときだけ書く**（2026-08-28。⚠ 実際に固まった）。
+    //   ⚠ **`mkdirSync` は、⚠ 書けない場所（`/proc/…`）で返ってこないことがある**
+    //     （⚠ 実測: ⚠ 20 秒で終わらず、⚠ **質問ごと止まった**）。
+    //   ⚠ **記録のために質問を止めない**（⚠ この Hook の筆頭の約束）。
+    //   ⚠ **置き場は `telemetry.mjs` が作る。**⚠ **こちらは相乗りするだけ。**
+    if (!existsSync(dir)) return;
+    // ⚠ **どの Issue の作業中に聞いたか。**⚠ **`telemetry.mjs` が Session → Task を持っている。**
+    //   ⚠ **こちらは読むだけ。**⚠ **書かない**（⚠ 書くと、⚠ 2 か所が同じ表を書くことになる）。
+    //   ⚠ **読めなければ `null`。**⚠ **`null` を 0 と読ませない**（⚠ 分からない、という意味）。
+    let issue = null;
+    try {
+      const st = JSON.parse(readFileSync(join(dir, "state.json"), "utf8"));
+      const key = sid ? st?.sessions?.[sid] : null;
+      issue = key ? (st?.tasks?.[key]?.issue ?? null) : null;
+    } catch { /* ⚠ 無いのが普通（⚠ Issue の作業でないとき） */ }
+    appendFileSync(join(dir, "events.jsonl"),
+      `${JSON.stringify({ ts: new Date().toISOString(), event: "OwnerAsk", issue, ...rec })}\n`);
+  } catch { /* ⚠ 記録が取れないことより、⚠ 聞けなくなることのほうが悪い */ }
+};
+let mod = null;
+try { mod = await import("../telemetry-dir.mjs"); } catch { /* ⚠ 同上 */ }
 
 try {
   const INPUT = JSON.parse(readFileSync(0, "utf8") || "{}");
@@ -81,7 +122,8 @@ try {
   };
   const env = (n) => process.env[n] || fromFile(n);
   const APP = env("SLACK_APP_TOKEN"), BOT = env("SLACK_BOT_TOKEN"), CH = env("SLACK_CHANNEL_ID");
-  if (!APP || !BOT || !CH) bail("Slack の設定が無いので、端末で聞く");
+  if (!APP || !BOT || !CH) { note(INPUT.session_id, { questions: questions.length, options: 0, outcome: "unavailable", waited_ms: 0 });
+    bail("Slack の設定が無いので、端末で聞く"); }
 
   // どこで作業しているか。⚠ 毎回 cwd から出す（固定で持つと別の clone で嘘になる）
   const CWD = INPUT.cwd ?? "";
@@ -123,10 +165,14 @@ try {
   });
 
   const post = await api("chat.postMessage", BOT, { channel: CH, text: `${head}\n${plain}`, blocks });
-  if (!post.ok) bail(`投稿できなかった（${post.error}）ので、端末で聞く`);
+  if (!post.ok) { note(INPUT.session_id, { questions: questions.length, options: 0, outcome: "unavailable", waited_ms: 0 });
+    bail(`投稿できなかった（${post.error}）ので、端末で聞く`); }
 
   const conn = await api("apps.connections.open", APP);
-  if (!conn.ok) bail(`Socket Mode に繋げなかった（${conn.error}）ので、端末で聞く`);
+  if (!conn.ok) { note(INPUT.session_id, { questions: questions.length, options: 0, outcome: "unavailable", waited_ms: 0 });
+    bail(`Socket Mode に繋げなかった（${conn.error}）ので、端末で聞く`); }
+  const askedAt = Date.now();
+  const optionCount = questions.reduce((n, q) => n + optionsOf(q).length, 0);
 
   // ---- 上限つきで待つ ----
   const answers = new Array(questions.length).fill(null);
@@ -192,6 +238,8 @@ try {
       text: "⏱ 返事が無かったので、端末で聞いています。"
           + "（⚠ このスレッドに直接書いても読んでいません。ボタンか「✎ 自由に書く」でお願いします）",
     }).catch(() => {});
+    note(INPUT.session_id, { questions: questions.length, options: optionCount, outcome: "timeout",
+           waited_ms: Date.now() - askedAt });
     bail("時間切れ。端末で聞く");
   }
 
@@ -204,6 +252,11 @@ try {
         text: `*${q.question ?? ""}*\n→ ${result[i]}` } })),
       { type: "context", elements: [{ type: "mrkdwn", text: "✅ 回答ずみ" }] }],
   }).catch(() => {});
+
+  // ⚠ **ボタンで選んだのか、⚠ 自由に書いたのか**（⚠ 選択肢に無い答えなら自由記述）
+  const free = result.some((r, i) => !optionsOf(questions[i]).includes(r));
+  note(INPUT.session_id, { questions: questions.length, options: optionCount,
+         outcome: free ? "free_text" : "answered", waited_ms: Date.now() - askedAt });
 
   const said = questions.map((q, i) => `・${q.question ?? ""} → ${result[i]}`).join("\n");
   // ⚠ **同じ問いをもう一度出させない。**そう書かないと、この道具を呼び直して堂々巡りになる
