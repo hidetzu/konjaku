@@ -312,6 +312,37 @@ CASES.push(
   },
 
   {
+    // ⚠ **掟 §1 そのもの**: ⚠ **取得できなかった ≠ 存在しなかった。**
+    //   ⚠ **実際に踏んだ**（2026-08-29。⚠ この検査を書いていて見つけた）:
+    //   ⚠ **周辺の資料そのものを読めなくしても、⚠ 画面は資料が無い場所とまったく同じだった。**
+    //   ⚠ **「読み込めなかった」と「その地域の資料が無い」が、⚠ 見分けられなかった。**
+    // ⚠ **塞いで確かめる。**⚠ **「起きにくいから」で通さない**（`change-review` §4）。
+    name: "周辺の資料を読めないときと、資料が無いときを、言い分ける",
+    path: `/?${TOYOSU}`, origin: NEXT_BASE, viewport: SP,
+    setup: (page) => page.route("**/data/area-record.json", (r) => r.abort()),
+    async check(page) {
+      await waitAnswer(page);
+      await page.waitForTimeout(2500);
+      await page.locator(".why__sum").click();
+      await page.waitForTimeout(400);
+      const r = await page.evaluate(() => {
+        const row = document.getElementById("area").closest(".why__row");
+        return { 出る: !row.hidden, 字: document.getElementById("area").textContent.trim(),
+                 出典: document.getElementById("areaCite").textContent.trim() };
+      });
+      // ⚠ **黙ってはいけない。**⚠ 黙ると、⚠ その地域の資料が無い場所と見分けられない
+      must(r.出る, "周辺の資料を読めないのに、行ごと黙っている（⚠ 資料が無い場所と見分けられない）");
+      must(/読み込めませんでした/.test(r.字), `読めなかったことを言っていない: ${r.字}`);
+      must(/分かっていません/.test(r.字), `在るかどうかが分からない、と言っていない: ${r.字}`);
+      // ⚠ **「無い」と言わない**（掟 §1）
+      must(!/ありません$|記録はありません|無いです/.test(r.字), `読めなかったのに「無い」と言っている: ${r.字}`);
+      // ⚠ **読めていないのに出典を名乗らない**（⚠ どの資料かも分かっていない）
+      must(r.出典 === "", `読めていないのに出典を出している: ${r.出典}`);
+      return `「${r.字}」・出典は出さない`;
+    },
+  },
+
+  {
     // ⚠ **補助データが 1 つ取れないだけで、⚠ 画面全体を止めない**（`.claude/rules/javascript.md`）。
     //   ⚠ **町名は保存の瞬間に地理院へ聞く。**⚠ **届かないことがある。**
     //   ⚠ **そのとき保存が失敗したら、⚠ 散歩中に残せない。**
