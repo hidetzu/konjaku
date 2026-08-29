@@ -95,6 +95,20 @@ body{
 .near__from{margin:var(--gap-sub) 0 0; font-size:.75rem; color:var(--ink-3)}
 .near__from a{color:var(--ink-2)}
 
+/* 標高。散歩中は出さないと決めてある（ADR 0059。その 1 行に紙面を割く値打ちが
+   無かった）。帰宅後は前提が違う。「なぜ液状化のリスクがあるのか」に直接効く。 */
+.elev{margin:var(--gap-block) 0 0; font-size:1rem; color:var(--ink)}
+.elev .v{font-variant-numeric:tabular-nums; font-weight:700}
+.elev .from{display:block; margin-top:var(--gap-sub); font-size:.75rem; color:var(--ink-3)}
+
+/* 読んだもの。本当に読んだのかを、読んだ人が確かめられるようにする。
+   読み物としては重いので、いちばん下に置く。 */
+.read{margin:0; font-size:.8125rem; line-height:1.7}
+.read > div{display:flex; gap:var(--gap-row); padding:.1875rem 0}
+.read dt{flex:0 0 7rem; color:var(--ink-3); margin:0}
+.read dd{flex:1; min-width:0; margin:0; color:var(--ink-2); overflow-wrap:anywhere}
+.read a{color:var(--ink-2)}
+
 .cite{
   margin-top:3rem; padding-top:var(--gap-block); border-top:1px solid var(--line);
   font-size:.75rem; color:var(--ink-3); line-height:1.7;

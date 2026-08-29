@@ -15,6 +15,7 @@
   const whySec = $("whySec"), whyEl = $("why"), citeEl = $("cite");
   const nearSec = $("nearSec"), nearLead = $("nearLead"), yearsEl = $("years");
   const nearNote = $("nearNote"), nearFrom = $("nearFrom");
+  const readSec = $("readSec"), readEl = $("read");
   const aroundEl = $("around"), aroundLead = $("aroundLead");
   const sharesEl = $("shares"), aroundNote = $("aroundNote");
 
@@ -66,8 +67,73 @@
     glossEl.textContent = `ここは、${KonjakuWords.groundGloss(t.value)}`;
     termEl.textContent = `国土地理院の区分：${t.value}`;
     drawWhy(t);
+    drawElev(lon, lat, t);
     drawAround(lon, lat);
     drawNear(lon, lat);
+    drawRead(lon, lat, t);
+  }
+
+  // 標高。散歩中は出さないと決めてある（docs/adr/0059）。
+  //   その 1 行に紙面を割く値打ちが、散歩中の判断には無かった。
+  //   帰宅後は前提が違う。「なぜ液状化のリスクがあるのか」に直接効く（2026-08-29。Owner 判断）。
+  //   3 状態を言い分ける。取れなかったことを「無い」と言わない。
+  async function drawElev(lon, lat, t) {
+    const e = await KonjakuLand.elevation(lon, lat).catch(() => null);
+    const p = document.createElement("p");
+    p.className = "elev";
+    if (!e || e.state === Konjaku.STATE.UNREACHABLE) {
+      p.innerHTML = `<span class="why__none">標高は、いま読み込めませんでした</span>`;
+    } else if (!e.ok || !Number.isFinite(e.value)) {
+      p.innerHTML = `<span class="why__none">この場所の標高は、記録されていません</span>`;
+    } else {
+      // 海面より低いかどうかは、そのまま言う。言い換えない
+      const 低い = e.value < 0;
+      p.innerHTML =
+        `標高 <span class="v">${esc(e.value.toFixed(2))}m</span>`
+        + (低い ? "（海面より低い）" : "")
+        + `<span class="from">${esc(e.evidence?.source ?? "国土地理院")}から読んだ 1 点の値です。`
+        + `まわりの高さではありません</span>`;
+    }
+    // 起こりうることの直後に置く。risk の文と噛み合う
+    whyEl.appendChild(p);
+  }
+
+  // 読んだもの。本当に読んだのかを、読んだ人が確かめられるようにする。
+  //   β 版は出していた。読み物としては重いので、いちばん下に置く。
+  //   ⚠ 取れなかったものは、取れなかったと書く。空欄にしない（掟 §1）。
+  async function drawRead(lon, lat, t) {
+    const 行 = [];
+    const 足す = (名, 中身) => 行.push(
+      `<div><dt>${esc(名)}</dt><dd>${中身}</dd></div>`);
+    const リンク = (u) => `<a href="${esc(u)}" target="_blank" rel="noopener">${esc(u)}</a>`;
+
+    const ev = t.evidence ?? {};
+    if (ev.tile) 足す("地形分類", `${リンク(ev.tile)}<br>区分コード ${esc(String(ev.code ?? "—"))}`
+      + (ev.detail ? `・${esc(ev.detail)}` : ""));
+    if (ev.artificialTile) 足す("人工地形",
+      `${リンク(ev.artificialTile)}<br>区分コード ${esc(String(ev.artificialCode ?? "—"))}`);
+
+    const m = await KonjakuLand.meijiPoint(lon, lat).catch(() => null);
+    if (m?.evidence?.tile) {
+      const px = m.evidence.pixel;
+      足す("明治期の地形", `${リンク(m.evidence.tile)}`
+        + (px ? `<br>タイル ${esc(String(px[0]))}/${esc(String(px[1]))} の画素 (${esc(String(px[2]))}, ${esc(String(px[3]))})` : ""));
+    }
+    const e = await KonjakuLand.elevation(lon, lat).catch(() => null);
+    if (e?.evidence?.tile) 足す("標高", `${リンク(e.evidence.tile)}`
+      + (e.evidence.source ? `<br>${esc(e.evidence.source)}` : ""));
+
+    const f = await KonjakuLand.photos(lon, lat).catch(() => null);
+    if (f?.eras?.length) {
+      const 残る = f.eras.filter((x) => x.state === Konjaku.STATE.OK && !x.blank);
+      const 読めず = f.eras.filter((x) => x.state === Konjaku.STATE.UNREACHABLE);
+      足す("空中写真",
+        `${残る.length} 年代が残っていました（${esc(f.eras.length + "")} 年代を確かめた）`
+        + (読めず.length ? `<br>うち ${esc(読めず.length + "")} 年代は読み込めませんでした` : ""));
+    }
+    if (!行.length) return;
+    readSec.hidden = false;
+    readEl.innerHTML = 行.join("");
   }
 
   // この一帯の明治期。点ではなく面で数える。

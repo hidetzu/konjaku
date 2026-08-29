@@ -953,3 +953,71 @@ CASES.push(
     },
   },
 );
+
+CASES.push(
+  {
+    // ⚠ **標高は、⚠ 散歩中は出さないと決めてある**（`docs/adr/0059`）。
+    //   ⚠ **帰宅後は前提が違う**（2026-08-29。Owner 判断）。⚠ **「なぜ液状化のリスクがあるのか」に直接効く。**
+    // ⚠ **1 点の値であることを、⚠ 必ず言う**（⚠ まわりの高さではない）。
+    name: "深掘り画面は、標高を 1 点の値として出す",
+    path: `/deep.html?${TOYOSU}`, origin: NEXT_BASE, viewport: PC,
+    async check(page) {
+      await 待つ(page, () => !!document.querySelector(".elev"), "標高");
+      await page.waitForTimeout(500);
+      const r = await page.evaluate(() => {
+        const e = document.querySelector(".elev");
+        const risk = [...document.querySelectorAll(".why--risk")].pop();
+        return { 字: e.textContent.trim().replace(/\s+/g, " "),
+                 値: e.querySelector(".v")?.textContent.trim() ?? null,
+                 riskの下: risk ? e.getBoundingClientRect().top > risk.getBoundingClientRect().top : null };
+      });
+      must(r.値, `標高の値が出ていない: ${r.字}`);
+      must(/m$/.test(r.値), `単位が無い: ${r.値}`);
+      // ⚠ **1 点の値だと、⚠ 必ず言う**（⚠ 面の話と混ぜない）
+      must(/1 点の値/.test(r.字), `1 点の値だと言っていない: ${r.字}`);
+      must(/まわりの高さではありません/.test(r.字), `まわりの高さでないと言っていない: ${r.字}`);
+      // ⚠ **どこから読んだかを名乗る**
+      must(/メッシュ|国土地理院/.test(r.字), `どこから読んだかを名乗っていない: ${r.字}`);
+      // ⚠ **起こりうることの下に置く**（⚠ risk の文と噛み合わせる）
+      must(r.riskの下 !== false, "標高が、起こりうることより上に出ている");
+      return `${r.値}・「${r.字.slice(0, 30)}…」`;
+    },
+  },
+
+  {
+    // ⚠ **本当に読んだのかを、⚠ 読んだ人が確かめられるようにする**（⚠ β 版は出していた）。
+    //   ⚠ **読み物としては重いので、⚠ いちばん下に置く。**
+    // ⚠ **取れなかったものは、⚠ 取れなかったと書く。**⚠ **空欄にしない**（掟 §1）。
+    name: "深掘り画面は、読んだタイルと画素を出す",
+    path: `/deep.html?${TOYOSU}`, origin: NEXT_BASE, viewport: PC,
+    async check(page) {
+      await 待つ(page, () => document.querySelectorAll("#read div").length > 0, "読んだもの");
+      await page.waitForTimeout(1500);
+      const r = await page.evaluate(() => ({
+        行: [...document.querySelectorAll("#read div")].map((e) => ({
+          名: e.querySelector("dt").textContent.trim(),
+          先: e.querySelector("a")?.getAttribute("href") ?? null,
+          字: e.querySelector("dd").textContent.trim().replace(/\s+/g, " "),
+        })),
+        いちばん下: (() => {
+          const s = [...document.querySelectorAll(".sec")];
+          return s[s.length - 1]?.id === "readSec";
+        })(),
+      }));
+      must(r.行.length >= 4, `読んだものが足りない（${r.行.length} 件）`);
+      // ⚠ **タイルの URL が、⚠ 本当に地理院を指していること**
+      const リンク = r.行.filter((x) => x.先);
+      must(リンク.length >= 3, `タイルの行き先が足りない（${リンク.length} 件）`);
+      must(リンク.every((x) => /gsi\.go\.jp/.test(x.先)),
+        `地理院でない行き先がある: ${リンク.map((x) => x.先).join(" / ")}`);
+      // ⚠ **画素の位置まで出す**（⚠ 「どこを読んだか」が分かる）
+      must(r.行.some((x) => /画素/.test(x.字)), `読んだ画素が出ていない: ${r.行.map((x) => x.名).join("/")}`);
+      // ⚠ **空中写真は、⚠ 確かめた数と残っていた数を分ける**
+      const 写真 = r.行.find((x) => x.名 === "空中写真");
+      must(写真 && /確かめた/.test(写真.字), `空中写真の分母が無い: ${写真?.字}`);
+      // ⚠ **読み物としては重いので、⚠ いちばん下**
+      must(r.いちばん下, "読んだものが、いちばん下に無い");
+      return `${r.行.length} 件（${r.行.map((x) => x.名).join("・")}）`;
+    },
+  },
+);
