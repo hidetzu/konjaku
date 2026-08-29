@@ -189,7 +189,11 @@
     const x0 = Math.floor(left / TILE), x1 = Math.floor((left + w) / TILE);
     const y0 = Math.floor(top / TILE), y1 = Math.floor((top + h) / TILE);
     const tbl = await table();
-    if (!tbl || seq !== drawSeq) return;
+    // ⚠ **写真を出しているあいだは塗らない。**⚠ **待っているうちに切り替わることがある。**
+    //   ⚠ **実際に踏んだ**（2026-08-29。⚠ 実描画が捕まえた）: ⚠ **`clearRect` したあとに、
+    //   ⚠ 先に走っていた塗りが返ってきて、⚠ 写真の上へ 805394 画素を描いた。**
+    //   ⚠ **手元では出なかった。**⚠ **取得が終わってから押していたから。**
+    if (!tbl || seq !== drawSeq || era) return;
     const tally = new Map();
     // ⚠ **自然だけを塗る。**⚠ **人工レイヤは塗らない**（2026-08-29。⚠ 実機で踏んだ）。
     //   ⚠ **2 枚は重なっている。**⚠ 後に描いたほうが前を覆う。
@@ -200,7 +204,7 @@
     for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) {
       for (const src of ["experimental_landformclassification1"]) {
         const j = await geo(`https://maps.gsi.go.jp/xyz/${src}/${Z}/${x}/${y}.geojson`);
-        if (seq !== drawSeq) return;
+        if (seq !== drawSeq || era) return;   // ⚠ 待っているうちに写真へ切り替わることがある
         if (!j) continue;
         for (const f of j.features ?? []) {
           const nm = tbl.codes[String(f.properties?.code ?? "")];

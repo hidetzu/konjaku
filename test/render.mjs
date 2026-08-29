@@ -11,21 +11,22 @@
 
 import { CASES as TOP_CASES } from "./render/top.mjs";
 import { CASES as PEEL_CASES } from "./render/peel.mjs";
+import { CASES as NEXT_CASES } from "./render/next.mjs";
 import {
-  PORT, BASE, OUT, waited, kindOfRequest,
+  PORT, BASE, NEXT_PORT, NEXT_BASE, OUT, waited, kindOfRequest,
 } from "./render/lib.mjs";
 import { createShelf } from "./render/shelf.mjs";
 import { spawn } from "node:child_process";
 import { mkdir, readFile } from "node:fs/promises";
 
 // ⚠ **知らない suite を黙って無視しない**（⚠ 無視すると 0 件で緑になる）。
-const SUITES = { top: TOP_CASES, peel: PEEL_CASES };
+const SUITES = { top: TOP_CASES, peel: PEEL_CASES, next: NEXT_CASES };
 const SUITE = (process.argv.find((a) => a.startsWith("--suite=")) ?? "").split("=")[1] || null;
 if (SUITE && !SUITES[SUITE]) {
   console.log(`\x1b[31m--suite=${SUITE} は無い（ある: ${Object.keys(SUITES).join(" / ")}）\x1b[0m`);
   process.exit(1);
 }
-const CASES = SUITE ? SUITES[SUITE] : [...TOP_CASES, ...PEEL_CASES];
+const CASES = SUITE ? SUITES[SUITE] : [...TOP_CASES, ...PEEL_CASES, ...NEXT_CASES];
 
 // ⚠ **1件だけ回せるようにする。**
 //   79 件を全部回すと 5 分近くかかる。検査を1つ足すたび、あるいは
@@ -82,7 +83,13 @@ if (process.argv.includes("--count")) {
 const server = spawn(process.execPath, ["scripts/serve.mjs"], {
   env: { ...process.env, PORT: String(PORT) }, stdio: "ignore",
 });
-const stop = () => server.kill();
+// ⚠ **v0.1.0 は別の Worker なので、⚠ 別のサーバに立てる**（2026-08-29）。
+//   ⚠ **回すケースが 1 件も無いときは立てない**（⚠ 要らないポートを取らない）。
+const wantNext = RUN.some((c) => c.origin === NEXT_BASE);
+const nextServer = wantNext ? spawn(process.execPath, ["scripts/serve.mjs"], {
+  env: { ...process.env, PORT: String(NEXT_PORT), SERVE_ROOT: "public-next" }, stdio: "ignore",
+}) : null;
+const stop = () => { server.kill(); nextServer?.kill(); };
 process.on("exit", stop);
 
 await new Promise((r) => setTimeout(r, 1200));
@@ -107,6 +114,23 @@ await new Promise((r) => setTimeout(r, 1200));
     console.log(`\x1b[31m✗ ポート ${PORT} に居るのは、このワークツリーのサーバではない\x1b[0m`);
     console.log(`\x1b[31m  配られている VERSION 「${got ?? err}」／ここの public/sw.js 「${want}」\x1b[0m`);
     console.log(`\x1b[31m  ⚠ 別のワークツリーが実描画を回している可能性がある。\x1b[0m`);
+    console.log(`\x1b[31m  ⚠ KONJAKU_RENDER_PORT=8199 npm run render のように、ポートをずらして回す。\x1b[0m`);
+    process.exit(1);
+  }
+}
+// ⚠ **v0.1.0 側も、⚠ 自分が立てたサーバに当たっているかを確かめる。**
+//   ⚠ **`public-next/` に `sw.js` は無い**ので、⚠ **配られた `index.html` を手元と突き合わせる**
+//     （⚠ **1 バイトでも違えば、⚠ 別のワークツリーが配っている**）。
+if (wantNext) {
+  const local = await readFile(new URL("../public-next/index.html", import.meta.url), "utf8");
+  let got = null, err = null;
+  try {
+    const r = await fetch(`${NEXT_BASE}/index.html`, { signal: AbortSignal.timeout(5000) });
+    got = await r.text();
+  } catch (e) { err = e.name; }
+  if (got !== local) {
+    console.log(`\x1b[31m✗ ポート ${NEXT_PORT} に居るのは、このワークツリーの v0.1.0 ではない\x1b[0m`);
+    console.log(`\x1b[31m  配られた index.html ${got === null ? `を読めない（${err}）` : `が ${got.length} 字／ここのは ${local.length} 字`}\x1b[0m`);
     console.log(`\x1b[31m  ⚠ KONJAKU_RENDER_PORT=8199 npm run render のように、ポートをずらして回す。\x1b[0m`);
     process.exit(1);
   }
@@ -140,7 +164,8 @@ const measured = [];
 //   ⚠ **1 回目は必ず実物。**⚠ **返ってきたものをそのまま再生する**（`test/render/shelf.mjs`）。
 const shelf = createShelf();
 // ⚠ **外部とは「この検査が立てたサーバ以外」**。⚠ localhost は数えない
-const OUTSIDE = (u) => /^https?:\/\//.test(u) && !u.startsWith(BASE);
+// ⚠ **口が 2 つある**（β と v0.1.0）。⚠ **どちらも「外」ではない**（2026-08-29）。
+const OUTSIDE = (u) => /^https?:\/\//.test(u) && !u.startsWith(BASE) && !u.startsWith(NEXT_BASE);
 for (const c of RUN) {
   // ⚠ **再試行するのは `dep` が付いたケースだけ。** 付いていないケースの失敗は、
   //   こちらの不具合なので隠さない。付いているものも **1 回だけ**。
@@ -233,7 +258,7 @@ async function runCase(c, attempt) {
     return route.fulfill(rec);
   });
   await c.setup?.(page);
-    await page.goto(BASE + c.path, { waitUntil: "domcontentloaded", timeout: 45000 });
+    await page.goto((c.origin ?? BASE) + c.path, { waitUntil: "domcontentloaded", timeout: 45000 });
     const detail = await c.check(page, reqs);
     // 描画自体は通っても、裏でエラーが出ていれば見逃さない
     if (errors.length) throw new Error(`JSエラー: ${errors[0]}`);
