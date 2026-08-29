@@ -675,3 +675,93 @@ CASES.push({
     return `的 ${的.w}x${的.h}・「${後.字}」・${開いたとき} → ${送った先}`;
   },
 });
+
+// ⚠ **広い幅（帰宅後）**。⚠ **`docs/adr/0048` は「散歩＝スマホ、⚠ 家＝PC＝掘る」と分けている。**
+//   ⚠ **実測（2026-08-29・1280×950）**: ⚠ **スマホの形が横に伸びているだけだった。**
+//     ⚠ 答えの 1 文が 1238px 幅の 1 行 ／ ⚠ 年代が 1 つ 173px ／ ⚠ 右側の空きが 8px。
+const PC = { width: 1440, height: 950 };
+
+CASES.push(
+  {
+    // ⚠ **1200px から切り替える。**⚠ **その手前では、⚠ 狭い幅のまま。**
+    //   ⚠ **中途半端に 2 列にしない**（⚠ 地図が「主役」に見えなくなる）。
+    name: "広い幅では、保存した場所を左に立て、板を右に置く",
+    path: `/?${TOYOSU}`, origin: NEXT_BASE, viewport: PC,
+    async check(page) {
+      await waitAnswer(page);
+      await 待つ(page, () => !document.getElementById("save").hidden, "保存");
+      // ⚠ **1 件も保存していないうちは、⚠ 左を空けない**
+      const 前 = await page.evaluate(() => ({
+        一覧: !document.getElementById("savedSheet").hidden,
+        地図の左: Math.round(document.getElementById("map").getBoundingClientRect().x),
+      }));
+      must(!前.一覧, "1 件も保存していないのに、保存した場所が出ている");
+      must(前.地図の左 === 0, `保存が 0 件なのに、地図の左が空いている（${前.地図の左}px）`);
+
+      await page.locator("#save").click();
+      await 待つ(page,
+        () => document.getElementById("save").getAttribute("aria-pressed") === "true", "保存ずみ");
+      await page.waitForTimeout(2000);
+      const r = await page.evaluate(() => {
+        const R = (s) => { const e = document.querySelector(s);
+          const b = e.getBoundingClientRect();
+          return { w: Math.round(b.width), h: Math.round(b.height), x: Math.round(b.x), 出る: !e.hidden }; };
+        const 一覧 = R("#savedSheet"), 板 = R("#card"), 地図 = R("#map");
+        return {
+          一覧, 板, 地図,
+          入口: !document.getElementById("savedOpen").hidden,
+          閉じる: getComputedStyle(document.getElementById("savedClose")).display,
+          答えの幅: Math.round(document.getElementById("gloss").getBoundingClientRect().width),
+          なぜ開いている: document.getElementById("why").open,
+          出典の下端: Math.round(document.querySelector(".attrib").getBoundingClientRect().bottom),
+          板の下端: Math.round(document.getElementById("card").getBoundingClientRect().bottom),
+          横あふれ: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+        };
+      });
+      must(r.一覧.出る, "保存したのに、保存した場所が左に出ない");
+      must(r.一覧.x < r.地図.x, `保存した場所が左に無い（一覧 @${r.一覧.x} / 地図 @${r.地図.x}）`);
+      must(r.板.x > r.地図.x, `板が右に無い（板 @${r.板.x} / 地図 @${r.地図.x}）`);
+      must(!r.入口, "広い幅なのに、一覧への入口が出ている（⚠ 一覧はもう出ている）");
+      must(r.閉じる === "none", "広い幅なのに、閉じるボタンが出ている（⚠ 閉じると戻す道が無い）");
+      // ⚠ **読む行の幅を、⚠ 読める幅に戻したか**（⚠ 前は 1238px の 1 行だった）
+      must(r.答えの幅 < 600, `答えの 1 文が広すぎる（${r.答えの幅}px）`);
+      // ⚠ **帰宅後は「時間をかけて読む」側。**⚠ **開く操作を要求しない**
+      must(r.なぜ開いている, "広い幅なのに、根拠が畳まれている（⚠ 帰宅後は開く操作を要求しない）");
+      // ⚠ **出典は板の下。**⚠ **地図の上に浮かせない**（⚠ 板が右にあるので重なる）
+      must(r.出典の下端 > r.板の下端, `出典が板の下に無い（出典 ${r.出典の下端} / 板 ${r.板の下端}）`);
+      must(!r.横あふれ, "画面が横にあふれている");
+      // ⚠ **地図が主役。**⚠ **左右に立てたものより広いこと**
+      must(r.地図.w > r.一覧.w + r.板.w,
+        `地図が、左右に立てたものより狭い（地図 ${r.地図.w} / 一覧 ${r.一覧.w} + 板 ${r.板.w}）`);
+      return `一覧 ${r.一覧.w}px @${r.一覧.x}・地図 ${r.地図.w}px @${r.地図.x}・板 ${r.板.w}px @${r.板.x}・答え ${r.答えの幅}px`;
+    },
+  },
+
+  {
+    // ⚠ **切り替えの手前では、⚠ 狭い幅のまま**（⚠ 中途半端に 2 列にしない）。
+    //   ⚠ **1199px は 1200px の 1 つ手前。**⚠ **境目そのものを見る。**
+    name: "1400px の手前では、狭い幅のまま",
+    path: `/?${TOYOSU}`, origin: NEXT_BASE, viewport: { width: 1399, height: 950 },
+    async check(page) {
+      await waitAnswer(page);
+      await 待つ(page, () => !document.getElementById("save").hidden, "保存");
+      await page.locator("#save").click();
+      await 待つ(page,
+        () => document.getElementById("save").getAttribute("aria-pressed") === "true", "保存ずみ");
+      await page.waitForTimeout(1500);
+      const r = await page.evaluate(() => ({
+        一覧: !document.getElementById("savedSheet").hidden,
+        入口: !document.getElementById("savedOpen").hidden,
+        なぜ開いている: document.getElementById("why").open,
+        地図の左: Math.round(document.getElementById("map").getBoundingClientRect().x),
+        板の左: Math.round(document.getElementById("card").getBoundingClientRect().x),
+      }));
+      must(!r.一覧, "1399px なのに、保存した場所が立っている（⚠ 切り替えが早すぎる）");
+      must(r.入口, "1399px なのに、一覧への入口が出ていない");
+      must(!r.なぜ開いている, "1399px なのに、根拠が開いている");
+      must(r.地図の左 === 0, `1399px なのに、地図の左が空いている（${r.地図の左}px）`);
+      must(r.板の左 < 100, `1399px なのに、板が右に寄っている（@${r.板の左}）`);
+      return `一覧は出ない・入口が出る・根拠は畳んだまま・板 @${r.板の左}`;
+    },
+  },
+);
