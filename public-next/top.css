@@ -100,17 +100,22 @@ body{
 }
 .term::before{content:"国土地理院の区分：";}
 
-/* 明治期の低湿地。地形分類とは別の出典なので、行を分ける。
-   出典ごとに「無い」の意味が違うので、言葉も分ける。
-   同じ区分でも場所ごとに変わるのは、いまのところこれだけ。 */
-.meiji{
-  margin:var(--gap-row) 0 0; padding-top:var(--gap-row);
+/* 資料ごとに箱を分ける。
+   利用者役 3 名が「上は言い切っているのに、下は資料が無いと言う。矛盾に見える」と言った。
+   上は今の地形の分類、下は明治期の地図。別の資料の話。
+   画面でも別の話だと分かる形にしないと、片方の「無い」がもう片方に効いて見える。 */
+.src + .src{
+  margin-top:var(--gap-row); padding-top:var(--gap-row);
   border-top:1px solid var(--line);
-  font-size:.8125rem; color:var(--ink-2); line-height:1.55;
 }
-.meiji[hidden]{display:none}
-.meiji b{color:var(--ink);font-weight:700}
-.meiji .none{color:var(--ink-3)}
+.src[hidden]{display:none}
+.src__from{
+  margin:0 0 var(--gap-sub); font-size:.6875rem; color:var(--ink-3);
+  letter-spacing:.02em;
+}
+.src__body{margin:0; font-size:.875rem; color:var(--ink-2); line-height:1.55}
+.src__body b{color:var(--ink);font-weight:700}
+.src__body .none{color:var(--ink-3)}
 
 /* ---- 現在地の印 ----
    利用者役 3 名のうち 2 名が「自分がどこにいるか 5 秒で分からなかった」と答えた。

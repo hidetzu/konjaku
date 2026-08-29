@@ -24,7 +24,7 @@
   const map = $("map"), q = $("q"), hits = $("hits");
   const kickText = $("kickText"), nameEl = $("name"), glossEl = $("gloss"), legendEl = $("legend");
   const moreBtn = $("more"), sheet = $("sheet"), sheetList = $("sheetList"), sheetState = $("sheetState");
-  const meijiEl = $("meiji");
+  const meijiEl = $("meiji"), meijiBox = $("meijiBox");
 
   // ⚠ **地図はタイルを並べて作る**（⚠ β 版の `/peel` は MapLibre だが、⚠ 運んでいない）。
   //   ⚠ **この縦切りでは、⚠ 動かせる地図が要る。**⚠ 依存を足す前に、⚠ まず素で作る
@@ -322,21 +322,21 @@
   //     区分なし     → まだ分類されていない
   //     整備範囲外   → この地域ではこの資料が作られていない
   async function askMeiji(lon, lat, seq) {
-    meijiEl.hidden = true;
+    meijiBox.hidden = true;
     const m = await KonjakuLand.meijiPoint(lon, lat).catch(() => null);
     if (seq !== askSeq) return;
     if (!m) return;                                     // 取れなかった。黙る
     if (m.state === Konjaku.STATE.UNREACHABLE) return;  // 同上
-    meijiEl.hidden = false;
+    meijiBox.hidden = false;
     if (m.state === Konjaku.STATE.ABSENT) {
-      meijiEl.innerHTML = `明治期は<span class="none">、この地域ではこの資料が作られていません</span>`;
+      meijiEl.innerHTML = `<span class="none">この地域では、この資料が作られていません</span>`;
       return;
     }
     if (!m.value) {
-      meijiEl.innerHTML = `明治期は<span class="none">、この場所はまだ分類されていません</span>`;
+      meijiEl.innerHTML = `<span class="none">この場所は、まだ分類されていません</span>`;
       return;
     }
-    meijiEl.innerHTML = `明治期は <b>${esc(m.value)}</b> でした`;
+    meijiEl.innerHTML = `<b>${esc(m.value)}</b> でした`;
   }
 
   // ---- 動かす ----
