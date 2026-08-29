@@ -681,6 +681,17 @@ CASES.push({
 //     ⚠ 答えの 1 文が 1238px 幅の 1 行 ／ ⚠ 年代が 1 つ 173px ／ ⚠ 右側の空きが 8px。
 const PC = { width: 1440, height: 950 };
 
+// ⚠ **リンク（手渡し）の道は、⚠ 合言葉の板の中に畳んである**（`docs/adr/0072`）。
+//   ⚠ **入口を押す → 板が出る → 畳みを開く**、まで運ぶ。
+//   ⚠ **合言葉が取れなくても板は出る**（⚠ そのときは畳みが開いた状態で出る）。
+async function リンクの道を開く(page) {
+  await page.locator("#crossDev").click();
+  await 待つ(page, () => !document.getElementById("code").hidden, "合言葉の板");
+  const 開いている = await page.evaluate(() => document.getElementById("codeAlt").open);
+  if (!開いている) await page.locator("#codeAlt summary").click();
+  await 待つ(page, () => document.getElementById("codeAlt").open, "畳みが開くこと");
+}
+
 CASES.push({
   // ⚠ **広い幅でも、⚠ スマホと同じ形。**⚠ **横に並べ替えない。**
   //   ⚠ **一度 3 列にして、⚠ 実測で「操作しづらい」が出た**（2026-08-29）:
@@ -1101,6 +1112,9 @@ CASES.push({
     await page.waitForTimeout(2000);
     await page.locator("#savedOpen").click();
     await page.waitForTimeout(400);
+    // ⚠ **リンクの道は、⚠ 合言葉の板の中に畳んである**（2026-08-29。`docs/adr/0072`）。
+    //   ⚠ **入口を押して板を開き、⚠ 畳みを開いてから触る。**
+    await リンクの道を開く(page);
     const 的 = await page.evaluate(() => {
       const h = document.getElementById("handOut");
       const r = h.getBoundingClientRect();
@@ -1339,6 +1353,7 @@ CASES.push({
     await 待つ(page, () => !document.getElementById("savedOpen").hidden, "保存した場所の入口");
     await page.locator("#savedOpen").click();
     await page.waitForTimeout(400);
+    await リンクの道を開く(page);
     await page.locator("#handOut").click();
     await 待つ(page, () => globalThis.__shared.length > 0, "共有シートへ渡すもの");
     const 渡した = await page.evaluate(() => globalThis.__shared[0]);
@@ -1369,6 +1384,7 @@ CASES.push({
     await 待つ(page, () => !document.getElementById("savedOpen").hidden, "保存した場所の入口");
     await page.locator("#savedOpen").click();
     await page.waitForTimeout(400);
+    await リンクの道を開く(page);
     const 前の数 = await page.evaluate(() => Number(sessionStorage.getItem("__shared") ?? 0));
     await page.locator("#handOut").click();
     await page.waitForTimeout(1200);
@@ -1379,5 +1395,289 @@ CASES.push({
     must(後.渡した数 === 前の数, "長すぎるのに渡してしまった");
     must(/渡せません/.test(後.字), `長すぎるときに言っていない: ${後.字}`);
     return `100 件 = ${渡した.url.length} 文字を渡した ／ 1500 件は「${後.字}」`;
+  },
+});
+
+CASES.push({
+  // ⚠ **広い幅では、⚠ 柱 1 本にまとめる**（`docs/adr/0068` を取り消したあとの形）。
+  //   ⚠ **実際に踏んだ（2026-08-29・1440x950）**: ⚠ `@media (min-width:700px)` に
+  //   ⚠ **`#savedSheet` を入れ忘れ、⚠ 保存の板だけ 1424px のまま残っていた**
+  //   （⚠ 検索窓と答えの板は 608px）。⚠ **行の幅が 1398px になり、
+  //   ⚠ 町名は左端・日付は右端で、⚠ 目が 1400px 動いていた。**
+  // ⚠ **幅の値そのものを主張しない**（⚠ 38rem は変わりうる）。
+  //   ⚠ **「他の柱とそろっているか」を見る。**⚠ そろえることが決めたこと。
+  name: "広い幅では、保存した板も他の柱と同じ幅になる",
+  path: `/?${TOYOSU}`, origin: NEXT_BASE, viewport: PC,
+  async check(page) {
+    await waitAnswer(page);
+    await 待つ(page, () => !document.getElementById("save").hidden, "保存");
+    await page.locator("#save").click();
+    await 待つ(page,
+      () => document.getElementById("save").getAttribute("aria-pressed") === "true", "保存ずみ");
+    await page.waitForTimeout(2000);
+    await page.locator("#savedOpen").click();
+    await 待つ(page, () => !document.getElementById("savedSheet").hidden, "保存した場所の板");
+    const r = await page.evaluate(() => {
+      const w = (id) => {
+        const e = document.getElementById(id);
+        return e && e.checkVisibility() ? Math.round(e.getBoundingClientRect().width) : null;
+      };
+      const 行 = document.querySelector("#savedList li button");
+      return { 板: w("savedSheet"), 検索: w("bar"), 答え: w("bottom"),
+               行: 行 ? Math.round(行.getBoundingClientRect().width) : null,
+               画面: innerWidth };
+    });
+    must(r.板 === r.検索 && r.板 === r.答え,
+      `柱の幅がそろっていない（保存の板 ${r.板}px ／ 検索窓 ${r.検索}px ／ 答えの板 ${r.答え}px）`);
+    // ⚠ **画面いっぱいに広がっていないこと**（⚠ 上の主張は「3 つとも広い」でも通る）
+    must(r.板 < r.画面 * 0.7,
+      `保存の板が画面（${r.画面}px）いっぱいに広がっている（${r.板}px）`);
+    must(r.行 !== null && r.行 <= r.板, `一覧の行が板からはみ出している（行 ${r.行}px ／ 板 ${r.板}px）`);
+    return `保存の板 ${r.板}px = 検索窓 ${r.検索}px = 答えの板 ${r.答え}px ／ 行 ${r.行}px`;
+  },
+});
+
+CASES.push({
+  // ⚠ **合言葉の板**（`docs/adr/0072`）。⚠ **サーバはまだ無い**ので、⚠ **契約どおり返す偽物を置く。**
+  //   ⚠ **偽物は `docs/sync-api.md` の形に合わせる。**⚠ **ずれたら、⚠ 本物で動かない。**
+  // ⚠ **残り時間の字は、⚠ 返ってきた `ttl_sec` から作られること**を見る。
+  //   ⚠ **直書きだと、⚠ 設定を変えたとき画面だけ前の数字のまま残る。**
+  //   ⚠ **だから 300 ではなく 600 を返して、⚠ 「10 分」に変わることを確かめる。**
+  name: "合言葉を出すと、住所と合言葉と残り時間が出る",
+  path: `/?${TOYOSU}`, origin: NEXT_BASE, viewport: SP,
+  setup: (page) => page.route("**/api/handoff", (route) => {
+    if (route.request().method() !== "POST") return route.continue();
+    const body = JSON.parse(route.request().postData() ?? "{}");
+    if (!body.payload) return route.fulfill({ status: 400, body: '{"error":"bad_shape"}' });
+    return route.fulfill({ status: 200, contentType: "application/json",
+      body: JSON.stringify({ code: "K7QM3XVR", ttl_sec: 600,
+                             expires_at: 1756400000000 }) });
+  }),
+  async check(page) {
+    await waitAnswer(page);
+    await 待つ(page, () => !document.getElementById("save").hidden, "保存");
+    await page.locator("#save").click();
+    await 待つ(page,
+      () => document.getElementById("save").getAttribute("aria-pressed") === "true", "保存ずみ");
+    await page.waitForTimeout(2000);
+    await page.locator("#savedOpen").click();
+    await page.waitForTimeout(400);
+    await page.locator("#crossDev").click();
+    await 待つ(page, () => !document.getElementById("code").hidden, "合言葉の板");
+    await 待つ(page,
+      () => document.getElementById("codeWord").textContent.trim().length > 0, "合言葉");
+    const r = await page.evaluate(() => {
+      const t = (id) => document.getElementById(id).textContent.trim();
+      const 語 = document.getElementById("codeWord");
+      const q = 語.getBoundingClientRect();
+      return { 住所: t("codeUrl"), 合言葉: t("codeWord"), 断り: t("codeNote"),
+               畳み: document.getElementById("codeAlt").open,
+               字の大きさ: Math.round(parseFloat(getComputedStyle(語).fontSize)),
+               答えの字: Math.round(parseFloat(getComputedStyle(
+                 document.getElementById("gloss")).fontSize)),
+               板の中: q.bottom <= innerHeight && q.top >= 0 };
+    });
+    must(r.合言葉 === "K7QM3XVR", `合言葉が違う: ${r.合言葉}`);
+    must(/\/take$/.test(r.住所), `受け取り口の住所が出ていない: ${r.住所}`);
+    // ⚠ **ttl_sec から作っていること**（⚠ 600 秒 → 10 分。⚠ 直書きなら 5 分のまま）
+    must(/10 分/.test(r.断り), `残り時間が ttl_sec から作られていない: ${r.断り}`);
+    must(!/消えます/.test(r.断り), `「消えます」と言っている: ${r.断り}`);
+    // ⚠ **合言葉が主役。**⚠ **答えの字より大きい**（⚠ 打ち写すもの）
+    must(r.字の大きさ > r.答えの字,
+      `合言葉が主役になっていない（合言葉 ${r.字の大きさ}px ／ 答え ${r.答えの字}px）`);
+    must(!r.畳み, "リンクの道が最初から開いている（合言葉が出たときは畳んでおく）");
+    must(r.板の中, "合言葉が画面に収まっていない");
+    return `${r.合言葉}（${r.字の大きさ}px）／ ${r.住所} ／ ${r.断り.slice(0, 22)}…`;
+  },
+});
+
+CASES.push({
+  // ⚠ **預けられなかったとき**（`CLAUDE.md` §4-1）。⚠ **できないことから書き始めない。**
+  //   ⚠ **代わりにできること（リンク）を、⚠ 開いて見せる。**
+  // ⚠ **こちらの都合を、⚠ 相手や回線の都合のように言わない**（⚠ 「取得できませんでした」と書かない）。
+  name: "合言葉を出せなかったとき、リンクの道を開いて見せる",
+  path: `/?${TOYOSU}`, origin: NEXT_BASE, viewport: SP,
+  setup: (page) => page.route("**/api/handoff", (route) =>
+    route.fulfill({ status: 503, contentType: "application/json",
+                    body: '{"error":"store_unavailable"}' })),
+  async check(page) {
+    await waitAnswer(page);
+    await 待つ(page, () => !document.getElementById("save").hidden, "保存");
+    await page.locator("#save").click();
+    await 待つ(page,
+      () => document.getElementById("save").getAttribute("aria-pressed") === "true", "保存ずみ");
+    await page.waitForTimeout(2000);
+    await page.locator("#savedOpen").click();
+    await page.waitForTimeout(400);
+    await page.locator("#crossDev").click();
+    await 待つ(page, () => !document.getElementById("code").hidden, "合言葉の板");
+    const r = await page.evaluate(() => {
+      const alt = document.getElementById("codeAlt");
+      const link = document.getElementById("handOut");
+      return { 断り: document.getElementById("codeNote").textContent.trim(),
+               合言葉: document.getElementById("codeWord").textContent.trim(),
+               本体が出ている: !document.getElementById("codeBody").hidden,
+               畳み: alt.open, リンクが見える: link.checkVisibility(),
+               入口: document.getElementById("crossDevText").textContent.trim() };
+    });
+    must(r.畳み && r.リンクが見える, "代わりの道（リンク）が開いていない");
+    must(!r.本体が出ている && !r.合言葉,
+      `合言葉が出せていないのに、器だけ出している（${JSON.stringify(r.合言葉)}）`);
+    // ⚠ **「取得できませんでした」と書かない**（⚠ 利用者の回線の話に読める）
+    must(!/取得できません|通信できません|届いていません/.test(r.断り),
+      `こちらの都合を、相手や回線の都合のように言っている: ${r.断り}`);
+    must(/リンク/.test(r.断り), `代わりにできることを言っていない: ${r.断り}`);
+    must(/そのまま/.test(r.断り), `保存が無事だと言っていない: ${r.断り}`);
+    must(r.入口 === "PC やタブレットでも見る", `入口の字が戻っていない: ${r.入口}`);
+    return `「${r.断り.slice(0, 30)}…」／ リンクの道が開いている`;
+  },
+});
+
+// ⚠ **受け取り口（`/take.html`）**。⚠ **サーバはまだ無いので、⚠ 契約どおり返す偽物を置く。**
+//   ⚠ **偽物の形は `docs/sync-api.md`。**⚠ **ずれたら、⚠ 本物で動かない。**
+// ⚠ **荷物の字は、⚠ 実物の `saved.js` に作らせる**（⚠ 手で書かない。
+//   ⚠ **手で書くと、⚠ 詰め方を変えたときに検査だけ古いまま通る**）。
+const 受け口の偽物 = (page, 返す) => page.route("**/api/handoff/**", async (route) => {
+  const r = await 返す(decodeURIComponent(new URL(route.request().url()).pathname.split("/").pop()));
+  return route.fulfill({ status: r.status, contentType: "application/json",
+                         body: JSON.stringify(r.body ?? {}) });
+});
+
+CASES.push({
+  name: "受け取り口で合言葉を打つと、足す前に中身を見せる",
+  path: "/take.html", origin: NEXT_BASE, viewport: PC,
+  setup: async (page) => {
+    // ⚠ **荷物は、⚠ 実物の詰め方で作る**（⚠ ブラウザの中で `toText` を呼ぶ）
+    await page.addInitScript(() => { globalThis.__荷物 = null; });
+    await 受け口の偽物(page, async (code) => {
+      if (code !== "K7QM3XVR") return { status: 404, body: { error: "not_found" } };
+      return { status: 200, body: { payload: globalThis.__払い出す(), expires_at: 0 } };
+    });
+  },
+  async check(page) {
+    // ⚠ **`saved.js` は受け取り口にも読まれている。**⚠ **そこで荷物を作る**
+    await page.evaluate(async () => {
+      const 圧縮 = async (t) => {
+        const s = new Blob([t]).stream().pipeThrough(new CompressionStream("gzip"));
+        return KonjakuSaved.bytes2b64(new Uint8Array(await new Response(s).arrayBuffer()));
+      };
+      const list = [
+        { lat: 35.65531, lon: 139.79672, name: "東京都江東区豊洲三丁目", value: "旧水部", at: 3 },
+        { lat: 35.64, lon: 139.79, name: "東京都江東区東雲一丁目", value: "埋立地", at: 2 },
+      ];
+      globalThis.__字 = await KonjakuSaved.toText(list, 圧縮);
+    });
+    const 字 = await page.evaluate(() => globalThis.__字);
+    await page.route("**/api/handoff/**", (route) => {
+      const code = decodeURIComponent(new URL(route.request().url()).pathname.split("/").pop());
+      return route.fulfill({ status: code === "K7QM3XVR" ? 200 : 404,
+        contentType: "application/json",
+        body: JSON.stringify(code === "K7QM3XVR" ? { payload: 字, expires_at: 0 }
+                                                 : { error: "not_found" }) });
+    });
+    // ⚠ **打ち写しの揺れを、⚠ 実際に入れて確かめる**（⚠ 小文字と区切り）
+    await page.locator("#recvIn").fill("k7qm-3xvr");
+    await page.locator("#recvGo").click();
+    await 待つ(page, () => !document.getElementById("recvGot").hidden, "受け取った中身");
+    const 前 = await page.evaluate(() => ({
+      見出し: document.getElementById("gotTitle").textContent.trim(),
+      本文: document.getElementById("gotBody").textContent.trim(),
+      行: document.querySelectorAll("#gotList li").length,
+      断り: document.getElementById("gotNote").textContent.trim(),
+      控え: JSON.parse(localStorage.getItem("konjaku-next-saved-v1") ?? "[]").length,
+    }));
+    must(前.控え === 0, `押す前に混ざっている（控え ${前.控え} 件）`);
+    must(/2 件/.test(前.見出し), `件数を言っていない: ${前.見出し}`);
+    must(前.行 === 2, `中身を見せていない（${前.行} 行）`);
+    must(/消えません/.test(前.本文), `いまの保存が消えないと言っていない: ${前.本文}`);
+    must(/どこにも送りません/.test(前.断り), `どこにも送らないと言っていない: ${前.断り}`);
+
+    await page.locator("#gotYes").click();
+    await page.waitForTimeout(600);
+    const 後 = await page.evaluate(() => ({
+      見出し: document.getElementById("gotTitle").textContent.trim(),
+      控え: JSON.parse(localStorage.getItem("konjaku-next-saved-v1") ?? "[]").length,
+      名前: (JSON.parse(localStorage.getItem("konjaku-next-saved-v1") ?? "[]")[0] ?? {}).name,
+      地図へ: !document.getElementById("gotMap").hidden,
+    }));
+    must(後.控え === 2, `足したのに控えが 2 件でない（${後.控え} 件）`);
+    must(後.名前 === "東京都江東区豊洲三丁目", `名前が欠けている: ${JSON.stringify(後.名前)}`);
+    must(/足しました/.test(後.見出し), `足したと言っていない: ${後.見出し}`);
+    must(後.地図へ, "足したのに、地図へ行く道が出ない");
+    return `小文字と区切りつきで打って ${前.行} 件を見せ、押すと ${後.控え} 件`;
+  },
+});
+
+for (const [status, 名, 要る] of [
+  [410, "期限が切れていたとき", /過ぎ/],
+  [404, "合言葉が無いとき", /打ち間違い/],
+  [429, "続けて試したとき", /待って/],
+  [503, "預かり先が答えないとき", /そのまま/],
+]) {
+  CASES.push({
+    // ⚠ **できないことから書き始めない**（`CLAUDE.md` §4-1）。
+    //   ⚠ **1 行目は「できること」。**⚠ **手順は 410 も 404 も同じ。**⚠ **違うのは理由だけ。**
+    name: `受け取り口は、${名}も次にすることを先に出す`,
+    path: "/take.html", origin: NEXT_BASE, viewport: PC,
+    setup: (page) => 受け口の偽物(page, async () => ({ status, body: { error: "x" } })),
+    async check(page) {
+      await page.locator("#recvIn").fill("K7QM3XVR");
+      await page.locator("#recvGo").click();
+      await 待つ(page, () => !document.getElementById("recvAgain").hidden, "出し直しの案内");
+      const r = await page.evaluate(() => {
+        const 節 = document.getElementById("recvAgain");
+        const can = document.querySelector(".recv__can").getBoundingClientRect();
+        const why = document.getElementById("recvWhy").getBoundingClientRect();
+        return {
+          できること: document.querySelector(".recv__can").textContent.trim(),
+          手順: [...document.querySelectorAll(".recv__steps li")].map((e) => e.textContent.trim()),
+          理由: document.getElementById("recvWhy").textContent.trim(),
+          先に出ている: can.top < why.top,
+          入力欄: document.getElementById("recvIn").value,
+          的: document.activeElement?.id,
+          受け取った器: !document.getElementById("recvGot").hidden,
+        };
+      });
+      must(/すぐ受け取れます/.test(r.できること), `1 行目が「できること」でない: ${r.できること}`);
+      must(r.手順.length === 2, `手順が 2 つでない（${r.手順.length}）`);
+      must(r.先に出ている, "理由が、できることより先に出ている");
+      must(要る.test(r.理由), `理由が ${status} に合っていない: ${r.理由}`);
+      // ⚠ **こちらの都合を、⚠ 相手や回線の都合のように言わない**
+      must(!/取得できません|届いていません|通信できません/.test(r.理由),
+        `相手や回線の都合のように言っている: ${r.理由}`);
+      must(!r.受け取った器, "受け取れていないのに、中身の器を出している");
+      must(r.入力欄 === "", `入力欄が空になっていない: ${r.入力欄}`);
+      must(r.的 === "recvIn", `入力の的が移っていない（いま ${r.的}）`);
+      return `${status} → 「${r.できること}」＋手順 ${r.手順.length} ＋「${r.理由.slice(0, 20)}…」`;
+    },
+  });
+}
+
+CASES.push({
+  // ⚠ **字は届いたが、⚠ 読めなかったとき**（`CLAUDE.md` §1）。
+  //   ⚠ **「0 件を受け取りました」と言わない。**⚠ **読めなかったことと、⚠ 0 件は違う。**
+  // ⚠ **これは他の検査では見えない**（⚠ 実際に、⚠ この道を消しても素通りした）。
+  name: "受け取り口は、読めない字を「0 件」と言わない",
+  path: "/take.html", origin: NEXT_BASE, viewport: PC,
+  setup: (page) => 受け口の偽物(page, async () => ({
+    // ⚠ **知らない版**（⚠ 先頭が `9`）。⚠ `saved.js` は `null` を返す
+    status: 200, body: { payload: "9zzzz", expires_at: 0 },
+  })),
+  async check(page) {
+    await page.locator("#recvIn").fill("K7QM3XVR");
+    await page.locator("#recvGo").click();
+    await 待つ(page, () => !document.getElementById("recvAgain").hidden, "出し直しの案内");
+    const r = await page.evaluate(() => ({
+      理由: document.getElementById("recvWhy").textContent.trim(),
+      器: !document.getElementById("recvGot").hidden,
+      見出し: document.getElementById("gotTitle").textContent.trim(),
+      控え: JSON.parse(localStorage.getItem("konjaku-next-saved-v1") ?? "[]").length,
+    }));
+    must(!r.器, "読めなかったのに、受け取った中身の器を出している");
+    must(!/0 件/.test(r.見出し + r.理由), `「0 件」と言っている: ${r.見出し} ／ ${r.理由}`);
+    must(/読み取れません/.test(r.理由), `読めなかったと言っていない: ${r.理由}`);
+    must(/そのまま/.test(r.理由), `保存が無事だと言っていない: ${r.理由}`);
+    must(r.控え === 0, `読めなかったのに控えが増えている（${r.控え} 件）`);
+    return `「${r.理由.slice(0, 34)}…」`;
   },
 });
