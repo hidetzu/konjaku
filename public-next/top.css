@@ -160,6 +160,9 @@ body{
   background:transparent; border:0; font:inherit; text-align:left; color:var(--ink); cursor:pointer;
 }
 .saved__row{display:flex; justify-content:space-between; gap:var(--gap-row); font-size:.875rem; font-weight:700}
+/* 場所の名前は 1 行に収める。実在するいちばん長い組み合わせ（さいたま市浦和区 大字上木崎）が
+   320px でも切れないことは測ってあるが、原典が変われば長くなる。切れるより、詰めて出す。 */
+.saved__row > span:first-child{overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
 .saved__when{flex:none; color:var(--ink-3); font-weight:400; font-size:.75rem}
 .saved__gloss{display:block; margin-top:.125rem; font-size:.75rem; color:var(--ink-3)}
 .saved__note{margin:var(--gap-row) 0 0; font-size:.6875rem; color:var(--ink-3); line-height:1.5}

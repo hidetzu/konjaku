@@ -559,13 +559,26 @@
     return `${Math.floor(差 / 30)} か月前`;
   }
 
-  // 座標から町名を聞く。国土地理院の口。
+  // 市区町村コードから名前を引く表。保存するときに一度だけ読む。
+  //   一覧を開くたびには読まない（控えに名前ごと書いてある）。
+  //   作るのは scripts/build-muni.mjs。重なる名前にだけ都道府県が足してある。
+  let muniP = null;
+  function muniTable() {
+    if (!muniP) muniP = fetch("./data/muni.json", { signal: AbortSignal.timeout(Konjaku.TIMEOUT_MS) })
+      .then((r) => r.ok ? r.json() : null).catch(() => { muniP = null; return null; });
+    return muniP;
+  }
+
+  // 座標から場所の名前を聞く。国土地理院の口。
   //   保存する瞬間に 1 回だけ呼ぶ。地図を動かすたびには呼ばない。
   //   取れなくても保存は止めない。名前が無いだけで、戻る先の座標は残る。
   //   これが要る理由: 同じ区分の場所は説明文がまったく同じになる。
   //     豊洲も浦安も「かつて水面で、その後陸地にされた土地」で、一覧で見分けられない
   //     （利用者役 3 名中 2 名が指摘。2026-08-29）。
+  //   町名だけでも足りない。「猫実」が浦安だと分からない（同 1 名）。市区町村を添える。
+  //   どちらか片方しか取れないこともある。取れたほうだけ返す。
   async function askName(lon, lat) {
+    let town = null, muni = null;
     try {
       const u = `https://mreversegeocoder.gsi.go.jp/reverse-geocoder/LonLatToAddress?lat=${lat}&lon=${lon}`;
       const r = await fetch(u, { signal: AbortSignal.timeout(Konjaku.TIMEOUT_MS) });
@@ -573,8 +586,16 @@
       const j = await r.json();
       const nm = j?.results?.lv01Nm;
       // 「-」は地理院が「町名が無い」ときに返す字。名前として出さない
-      return typeof nm === "string" && nm && nm !== "-" ? nm : null;
+      if (typeof nm === "string" && nm && nm !== "-") town = nm;
+      const cd = j?.results?.muniCd;
+      if (cd) {
+        const t = await muniTable();
+        muni = t?.muni?.[String(cd)] ?? null;
+      }
     } catch { return null; }
+    if (!town && !muni) return null;
+    // 住所の順に並べる。片方しか無ければ、あるほうだけ
+    return [muni, town].filter(Boolean).join(" ");
   }
 
   // いまの地点が保存されているか。ボタンの見た目はここだけで決める。
