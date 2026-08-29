@@ -611,3 +611,67 @@ CASES.push({
     return `保存「${保存前.字}」→「${保存後.字}」・年代 aria-pressed ${年代前.pressed}→${年代後.pressed}・なぜ ${なぜ.前}→${なぜ.後}`;
   },
 });
+
+CASES.push({
+  // ⚠ **`docs/adr/0048` の 3（⚠ URL で手渡す）の、⚠ いちばん小さいぶん。**
+  //   ⚠ **URL には元から座標が入る**（`?ll=`）。⚠ **読む口も書く口も `place-arg.js` の 1 か所。**
+  //   ⚠ **実測（2026-08-29）**: ⚠ **地図を動かしても年代を押しても URL は開いたときのまま。**
+  //     ⚠ **共有のボタンも無く、⚠ アドレス欄を手で写すしかなかった。**
+  //
+  // ⚠ **年代は送らない**（2026-08-29。Owner 判断）。⚠ **送るのは場所だけ。**
+  // ⚠ **押したあとに何が起きたかを、⚠ 必ず字で言う**（`docs/adr/0026`）。
+  name: "いまの場所のリンクを送れて、開くと同じ場所に戻る",
+  path: `/?${TOYOSU}`, origin: NEXT_BASE, viewport: SP,
+  // ⚠ **写す口は、⚠ 許可が要る。**⚠ **実物のブラウザでは利用者の操作で許可される。**
+  setup: (page) => page.context().grantPermissions(["clipboard-read", "clipboard-write"],
+    { origin: NEXT_BASE }),
+  async check(page) {
+    await waitAnswer(page);
+    await 待つ(page, () => !document.getElementById("share").hidden, "送る");
+    const 的 = await page.evaluate(() => {
+      const b = document.getElementById("share").getBoundingClientRect();
+      return { w: Math.round(b.width), h: Math.round(b.height) };
+    });
+    must(的.w >= 44 && 的.h >= 44, `送るの的が 44×44 を割っている: ${的.w}x${的.h}`);
+
+    // ⚠ **いま見ている場所が入ること。**⚠ **開いたときの URL をそのまま返さない**
+    await page.mouse.move(180, 300);
+    await page.mouse.down();
+    await page.mouse.move(130, 250, { steps: 6 });
+    await page.mouse.up();
+    await waitAnswer(page);
+    await page.waitForTimeout(3000);
+    // ⚠ **中身は写した字で見る**（⚠ 端末の共有の口はブラウザでは開かない）
+    await page.evaluate(() => navigator.clipboard.writeText("x"));
+    await page.locator("#share").click();
+    await page.waitForTimeout(600);
+    const 後 = await page.evaluate(async () => ({
+      字: document.getElementById("shareText").textContent.trim(),
+      写した: await navigator.clipboard.readText().catch(() => null),
+    }));
+    must(後.写した, "リンクを写せなかった（⚠ 検査の権限か、⚠ 実装の不具合）");
+    must(/[?&]ll=/.test(後.写した), `リンクに場所が入っていない: ${後.写した}`);
+    // ⚠ **いま見ている場所が入ること。**⚠ **開いたときの URL をそのまま返していないか。**
+    //   ⚠ **実際に踏んだ**（2026-08-29）: ⚠ **`location.search` をそのまま返す形に壊しても
+    //     ⚠ 素通りした。**⚠ **「ll= が在る」だけでは、⚠ 動かした結果が入っているとは言えない。**
+    const 開いたとき = new URLSearchParams(TOYOSU).get("ll");
+    const 送った先 = new URLSearchParams(後.写した.split("?")[1] ?? "").get("ll");
+    must(送った先 && 送った先 !== 開いたとき,
+      `地図を動かしたのに、⚠ 開いたときの場所を送っている（${開いたとき} → ${送った先}）`);
+    // ⚠ **年代は送らない**
+    must(!/[?&]era=/.test(後.写した), `リンクに年代が入っている（⚠ 送るのは場所だけ）: ${後.写した}`);
+    // ⚠ **空の指定を配らない**（⚠ 受け取った人に壊れた URL に見える）
+    must(!/[?&]q=(&|$)/.test(後.写した), `リンクに空の指定が入っている: ${後.写した}`);
+    // ⚠ **押したあとに何が起きたかを字で言う**
+    must(後.字 !== "送る", `押したのに、字が変わらない（⚠ 何が起きたか分からない）: ${後.字}`);
+
+    // ⚠ **開くと、⚠ 同じ場所に戻ること**（⚠ ここまで見ないと「送れた」と言えない）
+    const 送った = 後.写した.replace(/^https?:\/\/[^/]+/, "");
+    await page.goto(NEXT_BASE + 送った, { waitUntil: "domcontentloaded" });
+    await waitAnswer(page);
+    const 戻り = await page.evaluate(() =>
+      new URLSearchParams(location.search).get("ll"));
+    must(戻り === 送った先, `送ったリンクを開いても、同じ場所にならない（${送った先} → ${戻り}）`);
+    return `的 ${的.w}x${的.h}・「${後.字}」・${開いたとき} → ${送った先}`;
+  },
+});
