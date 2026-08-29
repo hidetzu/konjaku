@@ -195,3 +195,154 @@ export const CASES = [
     },
   },
 ];
+
+// ---- ⚠ ここから下は 2026-08-29 に足したぶん（`docs/adr/0066` の「決めていないこと」）----
+//
+// ⚠ **上の 4 件は「実際に踏んだ」ものを的にしている。**
+// ⚠ **こちらは「まだ踏んでいないが、⚠ 踏むと痛い」ところ。**
+//   ⚠ **観点は `ui-ux-review` §3 から借りる。**⚠ **新しい下限を発明しない。**
+
+CASES.push(
+  {
+    // ⚠ **暗い色みは、⚠ 明るい色みを直したときに黙って壊れる**（⚠ β で実際に起きている）。
+    //   ⚠ **色は `theme.css` の 1 か所**という決めがあるが、⚠ v0.1.0 は自前で持っている。
+    //   ⚠ **見るのは「値が書いてあるか」ではなく、⚠ 「実際に読めるか」。**
+    name: "暗い色みでも、答えと出典が読める", path: `/?${TOYOSU}`, origin: NEXT_BASE,
+    viewport: SP, colorScheme: "dark",
+    async check(page) {
+      await waitAnswer(page);
+      const r = await page.evaluate(() => {
+        const 色 = (s) => (s.match(/[\d.]+/g) ?? []).slice(0, 3).map(Number);
+        const 輝度 = ([r, g, b]) => {
+          const f = (c) => { c /= 255; return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; };
+          return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
+        };
+        const 比 = (a, b) => {
+          const [x, y] = [輝度(a), 輝度(b)].sort((p, q) => q - p);
+          return Number(((x + 0.05) / (y + 0.05)).toFixed(2));
+        };
+        // ⚠ **地を辿る。**⚠ 透明な親を持つ要素は、⚠ その上の地で測らないと嘘になる
+        const 地の色 = (el) => {
+          for (let e = el; e; e = e.parentElement) {
+            const c = getComputedStyle(e).backgroundColor;
+            const v = 色(c);
+            if (v.length === 3 && !/rgba\([^)]*,\s*0\)/.test(c)) return v;
+          }
+          return [0, 0, 0];
+        };
+        const 測る = (el) => 比(色(getComputedStyle(el).color), 地の色(el));
+        const 答え = document.getElementById("gloss");
+        const 出典 = document.querySelector(".attrib a");
+        const 板 = getComputedStyle(document.getElementById("card")).backgroundColor;
+        return { 答え: 測る(答え), 出典: 測る(出典), 板の地: 板,
+                 暗い: 輝度(色(板)) < 0.2 };
+      });
+      // ⚠ **色みが本当に暗いほうになっているかを、⚠ 先に確かめる。**
+      //   ⚠ **これが無いと、⚠ 明るいまま測って「通った」ことになる。**
+      must(r.暗い, `暗い色みになっていない（板の地が ${r.板の地}）`);
+      // ⚠ **4.5 は本文の下限**（WCAG AA）。⚠ **こちらで決めた値ではない。**
+      must(r.答え >= 4.5, `暗い色みで、答えの文が読みにくい（${r.答え}）`);
+      must(r.出典 >= 4.5, `暗い色みで、出典が読みにくい（${r.出典}）`);
+      return `板 ${r.板の地}・答え ${r.答え}・出典 ${r.出典}`;
+    },
+  },
+
+  {
+    // ⚠ **320×640 はいちばん狭い**（`ui-ux-review` §0）。
+    //   ⚠ **年代は折り返す。**⚠ **折り返しても 44×44 を割らず、⚠ 横にあふれないこと。**
+    //   ⚠ **375px では折り返さないので、⚠ この形は 320px でしか通らない。**
+    name: "320px でも、年代は折り返して収まる", path: `/?${TOYOSU}`, origin: NEXT_BASE,
+    viewport: { width: 320, height: 640 },
+    async check(page) {
+      await waitAnswer(page); await waitEras(page);
+      const r = await page.evaluate(() => {
+        const box = document.getElementById("eras");
+        const 的 = [...box.querySelectorAll(".era")].map((e) => {
+          const b = e.getBoundingClientRect();
+          return { w: Math.round(b.width), h: Math.round(b.height), top: Math.round(b.top) };
+        });
+        return { 的, 段: new Set(的.map((t) => t.top)).size,
+                 横に隠れている: Math.round(Math.max(0, box.scrollWidth - box.clientWidth)),
+                 横あふれ: document.documentElement.scrollWidth > document.documentElement.clientWidth };
+      });
+      must(r.的.length > 0, "年代が 1 つも出ていない");
+      must(r.段 >= 2, `320px なのに折り返していない（${r.段} 段）。⚠ 幅の指定が効いていない可能性がある`);
+      must(r.横に隠れている === 0, `年代が ${r.横に隠れている}px 画面の外にある`);
+      const 小さい = r.的.filter((t) => t.w < 44 || t.h < 44);
+      must(!小さい.length, `折り返したら 44×44 を割った: ${小さい.map((t) => `${t.w}x${t.h}`).join(" / ")}`);
+      must(!r.横あふれ, "画面が横にあふれている");
+      return `${r.的.length} 年代・${r.段} 段・全部 ${Math.min(...r.的.map((t) => t.w))}x44 以上・隠れ 0px`;
+    },
+  },
+
+  {
+    // ⚠ **掟 §1 そのもの**: ⚠ **取れなかった ≠ 無い ／ データにない ≠ 現実にない。**
+    //   ⚠ **松江は明治期の低湿地の資料が作られていない地域。**
+    //   ⚠ **「この場所は水はけがよい」と言ってはいけない。**⚠ **「資料が作られていない」と言う。**
+    // ⚠ **字を見る検査でも書けるが、⚠ 実際にその場所で出るかは実描画でしか言えない。**
+    name: "資料が無い地域で、「無い」と「作られていない」を言い分ける",
+    path: "/?ll=35.4700,133.0500", origin: NEXT_BASE, viewport: SP,   // ⚠ 松江
+    async check(page) {
+      await waitAnswer(page);
+      await page.waitForTimeout(3000);
+      await page.locator(".why__sum").click();
+      await page.waitForTimeout(400);
+      const r = await page.evaluate(() => {
+        const 見える = (id) => !document.getElementById(id).closest(".why__row").hidden;
+        return {
+          答え: document.getElementById("gloss").textContent.trim(),
+          明治期: 見える("meiji") ? document.getElementById("meiji").textContent.trim() : null,
+          周辺: 見える("area") ? document.getElementById("area").textContent.trim() : null,
+          まとめ: document.getElementById("sub").textContent.trim(),
+        };
+      });
+      must(r.答え.startsWith("ここは、"), `足元の答えが出ていない: ${r.答え}`);
+      must(r.明治期 !== null, "明治期の行ごと消えている（⚠ 資料が作られていないことを言えていない）");
+      must(/作られていません/.test(r.明治期),
+        `資料が作られていない地域なのに、そう言っていない: ${r.明治期}`);
+      // ⚠ **「無い」と言っていないこと。**⚠ **言い換えの取りこぼしを見る。**
+      must(!/ありません$|無いです|存在しません/.test(r.明治期),
+        `資料の話を「無い」と言っている: ${r.明治期}`);
+      // ⚠ **周辺の記録が無い地域では、⚠ 行ごと出ない**（⚠ 空の箱を出すと「無い」の主張に読まれる）
+      must(r.周辺 === null, `資料が無いのに、周辺の記録の行が出ている: ${r.周辺}`);
+      // ⚠ **まとめの 1 行に、⚠ 明治期を書かない**（⚠ 取れていないものを、まとめに混ぜない）
+      must(!/明治期/.test(r.まとめ), `まとめに、取れていない明治期が出ている: ${r.まとめ}`);
+      return `「${r.明治期}」・周辺の行は出ない・まとめは「${r.まとめ}」`;
+    },
+  },
+
+  {
+    // ⚠ **補助データが 1 つ取れないだけで、⚠ 画面全体を止めない**（`.claude/rules/javascript.md`）。
+    //   ⚠ **町名は保存の瞬間に地理院へ聞く。**⚠ **届かないことがある。**
+    //   ⚠ **そのとき保存が失敗したら、⚠ 散歩中に残せない。**
+    // ⚠ **塞いで確かめる。**⚠ **「起きにくいから」で通さない**（`change-review` §4）。
+    name: "町名が取れなくても、保存は止まらない", path: `/?${TOYOSU}`, origin: NEXT_BASE, viewport: SP,
+    setup: (page) => page.route("**://mreversegeocoder.gsi.go.jp/**", (r) => r.abort()),
+    async check(page) {
+      await waitAnswer(page);
+      await 待つ(page, () => !document.getElementById("save").hidden, "保存");
+      await page.locator("#save").click();
+      await 待つ(page,
+        () => document.getElementById("save").getAttribute("aria-pressed") === "true", "保存ずみ");
+      await page.waitForTimeout(1500);
+      const r = await page.evaluate(() => {
+        const 控え = JSON.parse(localStorage.getItem("konjaku-next-saved-v1") ?? "[]");
+        return { 件数: 控え.length, 名: 控え[0]?.name ?? null,
+                 座標: Number.isFinite(控え[0]?.lon) && Number.isFinite(控え[0]?.lat),
+                 説明: 控え[0]?.gloss ?? null };
+      });
+      must(r.件数 === 1, `町名が取れないと保存できなくなっている（控え ${r.件数} 件）`);
+      must(r.座標, "控えに座標が無い（⚠ 戻れない）");
+      must(r.名 === null, `町名が取れていないのに、名前が入っている: ${r.名}`);
+      must(r.説明, "説明文まで落ちている（⚠ 町名とは別の出典なのに）");
+      await page.locator("#savedOpen").click();
+      await page.waitForTimeout(400);
+      const 行 = await page.evaluate(() =>
+        document.querySelector("#savedList li").textContent.trim());
+      // ⚠ **「取れませんでした」と書かない。**⚠ **こちらの都合を、相手の都合のように言わない**（掟 §4-1）
+      must(/地図から選んだ場所/.test(行), `名前が無いときの言い方が違う: ${行}`);
+      must(!/取得|失敗|エラー|できません/.test(行), `一覧に、こちらの都合を書いている: ${行}`);
+      return `控え 1 件・名前は null・座標は在る・一覧は「地図から選んだ場所」`;
+    },
+  },
+);
