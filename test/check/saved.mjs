@@ -21,7 +21,14 @@ const src = readFileSync(join(NEXT, "saved.js"), "utf8");
 
 // ⚠ **実際に動かす。**⚠ **classic script なので、⚠ 別の器を作って評価する。**
 //   ⚠ **`new Function` だと、⚠ 中の `globalThis` が検査自身の器を指す**（⚠ 実際に踏んだ）。
-const 器 = createContext({});
+// ⚠ **器に、⚠ ブラウザにも Node にも在るものだけを渡す。**
+//   ⚠ **`saved.js` が使ってよいのは、⚠ ここに書いたものだけ**という宣言でもある。
+//   ⚠ **DOM も `localStorage` も渡さない。**⚠ 渡すと、⚠ 依っていても気づけない。
+const 器 = createContext({
+  TextEncoder, TextDecoder,
+  btoa: (s) => Buffer.from(s, "binary").toString("base64"),
+  atob: (s) => Buffer.from(s, "base64").toString("binary"),
+});
 runInContext(src, 器);
 const S = 器.KonjakuSaved;
 
@@ -106,4 +113,64 @@ const S = 器.KonjakuSaved;
       ? ok(`市区町村の表は、⚠ 出典と取得日を名乗る（${t.source.name} ／ ${t.source.retrieved_at}）`)
       : bad("市区町村の表に、⚠ 出典か取得日が無い（⚠ どこから来た表か確かめられない）");
   }
+}
+
+{
+  // ---- ⚠ ⑥ 別の端末へ手渡す ----
+  // ⚠ **サーバに置かない**（`docs/adr/0048` の 3）。⚠ **URL に載せて渡す。**
+  // ⚠ **`saved.js` は DOM も圧縮も持たない。**⚠ **圧縮は渡してもらう**
+  //   （⚠ ブラウザは `CompressionStream`、⚠ ここは `node:zlib`）。
+  //   ⚠ **持たせると、⚠ 検査がブラウザ抜きで回せなくなる。**
+  const { gzipSync, gunzipSync } = await import("node:zlib");
+  const gz = (t) => gzipSync(Buffer.from(t, "utf8"), { level: 9 }).toString("base64url");
+  const ungz = (t) => gunzipSync(Buffer.from(t, "base64url")).toString("utf8");
+  // ⚠ **座標は、⚠ 細かい桁まで入れる。**⚠ **キリのよい値だと、⚠ 桁を落としても気づけない**
+  //   （⚠ 実際に踏んだ: ⚠ 0.01 刻みだと 2 桁に丸めても同じ値になり、⚠ 素通りした）。
+  //   ⚠ **桁は 50m の判定（`SAME_M`）に効く。**⚠ **2 桁だとおよそ 1km で、⚠ 別の場所が同じになる。**
+  const 作る = (n) => Array.from({ length: n }, (_, i) => ({
+    lat: 35.65531 + i * 0.01234, lon: 139.79672 + i * 0.01234,
+    name: "東京都江東区豊洲三丁目", value: "旧水部", at: 1756400000000 + i * 86400000 }));
+
+  const 生 = await S.toText(作る(50), null);
+  const 圧 = await S.toText(作る(50), gz);
+  const 戻し生 = await S.fromText(生, null);
+  const 戻し圧 = await S.fromText(圧, ungz);
+  // ⚠ **件数だけを見ない。**⚠ **中身も戻っているかを見る**
+  //   （⚠ 実際に踏んだ: ⚠ **名前を捨てても件数は 50 のままで、⚠ 素通りした**）。
+  //   ⚠ **座標は 5 桁で丸めて渡している**（⚠ おおよそ 1m）ので、⚠ **こちらも丸めて比べる。**
+  const 元 = 作る(50);
+  const 欠けていない = (戻り) => Array.isArray(戻り) && 戻り.length === 元.length &&
+    元.every((r, i) => {
+      const b = 戻り[i];
+      return b && Number(r.lat.toFixed(5)) === b.lat && Number(r.lon.toFixed(5)) === b.lon &&
+             r.name === b.name && r.value === b.value && r.at === b.at;
+    });
+  欠けていない(戻し生) && 欠けていない(戻し圧) && 圧.length < 生.length
+    ? ok(`保存した場所は、⚠ 名前も年代も欠けずに URL で渡して戻せる（⚠ 50 件で 生 ${生.length} 文字 → 圧縮 ${圧.length} 文字）`)
+    : bad(`保存した場所が、⚠ URL から欠けずに戻らない（生 ${JSON.stringify(戻し生?.[0])} / 圧縮 ${JSON.stringify(戻し圧?.[0])}）`);
+
+  // ⚠ **知らない版を、⚠ 黙って空にしない**（⚠ 「0 件だった」と読ませない）
+  const 知らない = await S.fromText("9abc", ungz);
+  const 壊れ = await S.fromText("1***", ungz);
+  知らない === null && 壊れ === null
+    ? ok("手渡しの字が読めないときは、⚠ 空ではなく「読めない」を返す")
+    : bad(`読めない字を、⚠ 空として返している（知らない版 ${JSON.stringify(知らない)} / 壊れ ${JSON.stringify(壊れ)}）`);
+
+  // ⚠ **混ぜるのは足すだけ。**⚠ **消さない。**⚠ **先に見つけたほうを残す。**
+  const いま = [{ lat: 35, lon: 139, name: null, value: "旧水部", at: 200 }];
+  const 来た = [{ lat: 35.0001, lon: 139.0001, name: "豊洲", value: "旧水部", at: 100 },
+                { lat: 36, lon: 140, name: "別", value: "低地", at: 300 }];
+  const m = S.merge(いま, 来た);
+  const 同じ = m.list.find((r) => Math.abs(r.lat - 35) < 0.001);
+  m.list.length === 2 && m.足した === 1 && m.重なった === 1
+    && 同じ.at === 100 && 同じ.name === "豊洲"
+    ? ok("手渡しを混ぜると、⚠ 足すだけで消さない（⚠ 先に見つけた時刻を残し、⚠ 名前は在るほうを採る）")
+    : bad(`手渡しの混ぜ方が違う（${m.list.length} 件・足した ${m.足した}・重なった ${m.重なった}・at ${同じ?.at}・name ${同じ?.name}）`);
+
+  // ⚠ **座標が無いものは渡さない**（⚠ 戻れない記録を混ぜない）
+  const 座標なし = await S.fromText(await S.toText(
+    [{ lat: NaN, lon: 139, name: "x", value: "y", at: 1 }, ...作る(1)], null), null);
+  座標なし?.length === 1
+    ? ok("手渡しは、⚠ 座標の無い記録を渡さない")
+    : bad(`座標の無い記録を渡している（${座標なし?.length} 件）`);
 }

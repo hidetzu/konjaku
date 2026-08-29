@@ -326,6 +326,47 @@ body{
   min-height:var(--tap); line-height:1.5;
 }
 
+/* 別の端末へ渡す。一覧の中に置く。トップの見出しには出さない。
+   散歩中に押すものではない（帰宅後、続きを見たくなったときの操作）。 */
+.saved__hand{
+  margin-top:var(--gap-row); width:100%; min-height:var(--tap);
+  display:flex; align-items:center; justify-content:center; gap:.375rem;
+  border:1px solid var(--line-strong); border-radius:.5rem; background:transparent;
+  font:inherit; font-size:.8125rem; font-weight:700; color:var(--action); cursor:pointer;
+}
+.saved__hand[hidden]{display:none}
+.saved__hand:focus-visible{outline:2px solid var(--action); outline-offset:2px}
+
+/* 受け取った場所。開いた瞬間に混ぜない。何が来たかを見せて、押してもらう。
+   ⚠ 断っても、それまでの控えは 1 件も変わらない。 */
+.take{
+  position:absolute; left:50%; transform:translateX(-50%);
+  top:calc(var(--tap) + var(--pad-sm) * 2 + env(safe-area-inset-top));
+  width:calc(100% - var(--pad-sm) * 2); max-width:38rem; z-index:40;
+  background:var(--surface); border:1px solid var(--line-strong); border-radius:.875rem;
+  padding:var(--pad-md); box-shadow:0 4px 20px rgb(0 0 0 / .2);
+}
+.take[hidden]{display:none}
+.take h2{margin:0; font-size:1rem}
+.take__body{margin:var(--gap-sub) 0 0; font-size:.8125rem; color:var(--ink-2); line-height:1.6}
+.take__list{margin:var(--gap-row) 0 0; padding:0; list-style:none; max-height:30vh; overflow-y:auto}
+.take__list li{
+  display:flex; justify-content:space-between; gap:var(--gap-row);
+  padding:var(--gap-sub) 0; border-bottom:1px solid var(--line); font-size:.8125rem;
+}
+.take__list li:last-child{border-bottom:0}
+.take__list .n{color:var(--ink); font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.take__list .g{flex:none; color:var(--ink-3); font-size:.75rem}
+.take__act{display:flex; gap:var(--gap-row); margin-top:var(--gap-row)}
+.take__yes,.take__no{
+  flex:1; min-height:var(--tap); border-radius:.5rem; font:inherit; font-size:.8125rem;
+  font-weight:700; cursor:pointer;
+}
+.take__yes{border:1px solid var(--action); background:var(--action); color:var(--action-ink)}
+.take__no{border:1px solid var(--line-strong); background:transparent; color:var(--ink-2)}
+.take__yes:focus-visible,.take__no:focus-visible{outline:2px solid var(--action); outline-offset:2px}
+.take__note{margin:var(--gap-row) 0 0; font-size:.6875rem; color:var(--ink-3); line-height:1.6}
+
 /* ---- 現在地の印 ----
    利用者役 3 名のうち 2 名が「自分がどこにいるか 5 秒で分からなかった」と答えた。
    地図の記号に紛れないよう、白い縁を回して、周りを暗く落とす。 */

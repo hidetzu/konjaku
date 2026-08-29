@@ -1004,8 +1004,13 @@ CASES.push({
   async check(page) {
     await waitAnswer(page);
     await 待つ(page, () => !document.getElementById("save").hidden, "保存");
-    // ⚠ **柱が立っている状態で見る**（⚠ 1 件も保存していないと柱が出ない）
+    // ⚠ **柱が立っている状態で見る**（⚠ 1 件も保存していないと入口が出ない）。
+    //   ⚠ **保存しただけでは柱は開かない。**⚠ **入口を押して開く**（⚠ 利用者と同じ道）。
+    //   ⚠ **以前は広い幅で柱が開きっぱなしだったので、⚠ 押さずに待っていた。**
+    //   ⚠ **その見せ方は取り消した**ので、⚠ ここも押す形に直した（2026-08-29）。
     await page.locator("#save").click();
+    await 待つ(page, () => !document.getElementById("savedOpen").hidden, "保存した場所の入口");
+    await page.locator("#savedOpen").click();
     await 待つ(page,
       () => !document.getElementById("savedSheet").hidden, "保存した場所の柱");
     await page.locator("#q").fill("豊洲");
@@ -1075,5 +1080,75 @@ CASES.push({
     must(/判定していません/.test(r.断り), `絵の中身を判定していないと断っていない: ${r.断り}`);
     must(/同じ広さ/.test(r.断り), `同じ広さで切り取っていると言っていない: ${r.断り}`);
     return `${r.節.join(" → ")}・${r.枠.length} 枚（${r.枠[0]}〜${r.枠[r.枠.length - 1]}）`;
+  },
+});
+
+CASES.push({
+  // ⚠ **端末をまたぐ流れ**（`docs/adr/0048` の 3）。⚠ **サーバに置かない。**
+  //   ⚠ **スマホで保存 → リンクを作る → 別の端末で開く → 足す**、を通しで見る。
+  // ⚠ **別の端末は、⚠ 別の器で作る**（⚠ `localStorage` も別）。
+  //   ⚠ **同じ器で見ると、⚠ 渡さなくても在るので、⚠ 何も確かめていないことになる。**
+  name: "スマホで保存したものを、別の端末で受け取れる",
+  path: `/?${TOYOSU}`, origin: NEXT_BASE, viewport: SP,
+  setup: (page) => page.context().grantPermissions(["clipboard-read", "clipboard-write"],
+    { origin: NEXT_BASE }),
+  async check(page) {
+    await waitAnswer(page);
+    await 待つ(page, () => !document.getElementById("save").hidden, "保存");
+    await page.locator("#save").click();
+    await 待つ(page,
+      () => document.getElementById("save").getAttribute("aria-pressed") === "true", "保存ずみ");
+    await page.waitForTimeout(2000);
+    await page.locator("#savedOpen").click();
+    await page.waitForTimeout(400);
+    const 的 = await page.evaluate(() => {
+      const h = document.getElementById("handOut");
+      const r = h.getBoundingClientRect();
+      return { 見える: h.checkVisibility(), 字: h.textContent.trim(),
+               w: Math.round(r.width), h: Math.round(r.height) };
+    });
+    must(的.見える, "保存があるのに、別の端末へ渡す口が出ない");
+    must(的.h >= 44, `渡す口が 44 を割っている: ${的.w}x${的.h}`);
+
+    await page.evaluate(() => navigator.clipboard.writeText(""));
+    await page.locator("#handOut").click();
+    await page.waitForTimeout(800);
+    const url = await page.evaluate(() => navigator.clipboard.readText());
+    must(url && /[?&]take=/.test(url), `渡すリンクに中身が入っていない: ${url}`);
+    // ⚠ **長すぎる URL は、⚠ 開いた先で切れる**（⚠ 実用上 2000 文字）
+    must(url.length <= 2000, `渡すリンクが長すぎる（${url.length} 文字）`);
+
+    // ⚠ **別の端末で開く**（⚠ 器を分ける。⚠ localStorage も別）
+    const 別 = await page.context().browser().newContext({ viewport: { width: 1440, height: 950 } });
+    const p2 = await 別.newPage();
+    await p2.goto(url.replace(/^https?:\/\/[^/]+/, NEXT_BASE), { waitUntil: "domcontentloaded" });
+    await p2.waitForFunction(() => !document.getElementById("take").hidden, null, { timeout: 20000 });
+    const 受け = await p2.evaluate(() => ({
+      見出し: document.getElementById("takeTitle").textContent.trim(),
+      本文: document.getElementById("takeBody").textContent.trim(),
+      断り: document.getElementById("takeNote").textContent.trim(),
+      行: document.querySelectorAll("#takeList li").length,
+      控え: JSON.parse(localStorage.getItem("konjaku-next-saved-v1") ?? "[]").length,
+    }));
+    // ⚠ **開いた瞬間に混ぜない。**⚠ **見せて、⚠ 押してもらう**
+    must(受け.控え === 0, `開いただけで混ざっている（控え ${受け.控え} 件）`);
+    must(/受け取りました/.test(受け.見出し), `受け取ったと言っていない: ${受け.見出し}`);
+    must(/消えません/.test(受け.本文), `いまの保存が消えないと言っていない: ${受け.本文}`);
+    // ⚠ **どこにも送らない、と言う**（⚠ サーバに置いていないことを、⚠ 受け取る人にも言う）
+    must(/どこにも送りません/.test(受け.断り), `どこにも送らないと言っていない: ${受け.断り}`);
+    must(受け.行 > 0, "何が来たかを見せていない");
+
+    await p2.locator("#takeYes").click();
+    await p2.waitForTimeout(1200);
+    const 後 = await p2.evaluate(() => ({
+      見出し: document.getElementById("takeTitle").textContent.trim(),
+      控え: JSON.parse(localStorage.getItem("konjaku-next-saved-v1") ?? "[]").length,
+      入口: !document.getElementById("savedOpen").hidden,
+    }));
+    must(後.控え > 0, `足したのに、控えが増えていない（${後.控え} 件）`);
+    must(/足しました/.test(後.見出し), `足したと言っていない: ${後.見出し}`);
+    must(後.入口, "足したのに、一覧への入口が出ない");
+    await 別.close();
+    return `${url.length} 文字・${受け.行} 件を見せて・押すと ${後.控え} 件`;
   },
 });
