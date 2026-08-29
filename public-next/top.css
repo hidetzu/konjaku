@@ -133,11 +133,26 @@ body{
 .src__note{
   margin:var(--gap-sub) 0 0; font-size:.6875rem; color:var(--ink-3); line-height:1.5;
 }
+/* 断りが記録より先に来る箱がある（.area）。そのとき記録に上の間が要る。
+   .src__body は margin:0 なので、この並びのときだけ足す。 */
+.src__note + .src__body{margin-top:var(--gap-sub)}
 /* 出典。断り書きより弱くはしない。確かめに行ける先なので、押せると分かる形で置く。 */
 .src__cite{
   margin:var(--gap-sub) 0 0; font-size:.6875rem; color:var(--ink-3); line-height:1.5;
 }
-.src__cite a{color:var(--ink-2)}
+.src__cite a{color:var(--ink-2); position:relative}
+/* 押せるものは 44×44 を割らない。
+   字を 44px にすると出典が主役になるので、当たり判定だけを広げる。
+   上へ 4px（--gap-sub のぶん＝字の無いところ）、残りは下の余白へ伸びる。
+   下にあるのは凡例で、押せるものではない。 */
+.src__cite a::after{
+  content:""; position:absolute; left:0; right:0;
+  top:calc(var(--gap-sub) * -1); height:calc(var(--tap) + 2px);
+}
+/* +2px は端数のぶん。字の高さが 16.5px（.6875rem × 1.5）で割り切れず、
+   height:var(--tap) ちょうどだと実際に触れるのは 43px だった（実測 2026-08-29）。
+   同じ測り方を 44px と分かっている現在地ボタンに当てると 44 と出るので、
+   これは測り方のずれではない。 */
 
 /* ---- 現在地の印 ----
    利用者役 3 名のうち 2 名が「自分がどこにいるか 5 秒で分からなかった」と答えた。
