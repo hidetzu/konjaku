@@ -117,6 +117,28 @@ body{
 .src__body b{color:var(--ink);font-weight:700}
 .src__body .none{color:var(--ink-3)}
 
+/* この地点の話と、この周辺の話を、見た目でも分ける。
+   上の 3 つは、この場所の座標で引いた答え。
+   これは地域の記録で、この場所そのものの記録ではない。
+   同じ顔にすると、周辺の年をこの場所の年だと読まれる。 */
+.area{
+  margin-top:var(--gap-row);
+  padding:var(--pad-sm) var(--pad-sm) var(--pad-sm) var(--pad-md);
+  border-top:0;
+  border-left:3px solid var(--line-strong);
+  background:var(--bg);
+  border-radius:0 .5rem .5rem 0;
+}
+.area .src__from b{color:var(--ink-2)}
+.src__note{
+  margin:var(--gap-sub) 0 0; font-size:.6875rem; color:var(--ink-3); line-height:1.5;
+}
+/* 出典。断り書きより弱くはしない。確かめに行ける先なので、押せると分かる形で置く。 */
+.src__cite{
+  margin:var(--gap-sub) 0 0; font-size:.6875rem; color:var(--ink-3); line-height:1.5;
+}
+.src__cite a{color:var(--ink-2)}
+
 /* ---- 現在地の印 ----
    利用者役 3 名のうち 2 名が「自分がどこにいるか 5 秒で分からなかった」と答えた。
    地図の記号に紛れないよう、白い縁を回して、周りを暗く落とす。 */

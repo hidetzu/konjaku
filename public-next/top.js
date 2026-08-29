@@ -26,6 +26,8 @@
   const moreBtn = $("more"), sheet = $("sheet"), sheetList = $("sheetList"), sheetState = $("sheetState");
   const meijiEl = $("meiji"), meijiBox = $("meijiBox");
   const photoEl = $("photo"), photoBox = $("photoBox");
+  const areaEl = $("area"), areaBox = $("areaBox"), areaNote = $("areaNote");
+  const areaCite = $("areaCite");
 
   // ⚠ **地図はタイルを並べて作る**（⚠ β 版の `/peel` は MapLibre だが、⚠ 運んでいない）。
   //   ⚠ **この縦切りでは、⚠ 動かせる地図が要る。**⚠ 依存を足す前に、⚠ まず素で作る
@@ -309,6 +311,7 @@
     hereName = v.value;
     askMeiji(lon, lat, seq);
     askPhoto(lon, lat, seq);
+    showArea(lon, lat);
     // 主は、分かる言葉のほう。区分名は資料の言葉で、そのままでは読めない人がいる。
     //   言葉は words.js の GROUND_GLOSS から借りる。ここで書かない。
     //   区分名も消さない。何を根拠に言っているかが分からなくなる。
@@ -360,6 +363,50 @@
     // いちばん古い年代だけ言う。全部並べると、写真を見る話になる（スマホで深掘りさせない）。
     photoEl.innerHTML = `<b>${esc(残る[0].label)}</b> の写真が残っています`
       + (残る.length > 1 ? `<span class="none">（ほか ${残る.length - 1} 年代）</span>` : "");
+  }
+
+  // この周辺について、公式資料に書かれている記録。
+  //   上の 3 つと違い、これは地点の答えではない。地域の記録。
+  //   原典に座標も丁目も書かれていないので、この場所がいつ変わったかは分からない。
+  //   だから「この周辺について、こういう記録がある」までしか言わない。
+  //
+  //   混同してはいけないものが 3 つある。
+  //     資料の年代／記録上の変化／実際の工事時期。
+  //   原典が言っていないことを、こちらで補わない。要約もしない。
+  let areaP = null;
+  function areas() {
+    if (!areaP) areaP = fetch("./data/area-record.json")
+      .then((r) => r.ok ? r.json() : null).catch(() => { areaP = null; return null; });
+    return areaP;
+  }
+  async function showArea(lon, lat) {
+    areaBox.hidden = true;
+    const j = await areas();
+    if (!j) return;
+    const a = (j.areas ?? []).find((x) => {
+      const b = x.bbox;
+      return b && lon >= b.w && lon <= b.e && lat >= b.s && lat <= b.n;
+    });
+    if (!a) return;   // その地域の資料が無い。黙る
+    // 出すのは 1 件だけ。原典から代表を選んであり、地点では選び分けない。
+    //   新しい順に 3 件を出したときは、豊洲で「要綱の施行」「13号地」「品川」が並んだ
+    //   （実測 2026-08-29）。古い順でも同じで、どれも別の場所の話になる。
+    //   なぜその 3 件なのかを説明できないので、並べること自体をやめた。
+    //   選ぶのは JSON 側（representative）。ここで選ばない。
+    const r = (a.records ?? []).find((x) => x.year === a.representative);
+    if (!r) return;   // 代表が選ばれていない。こちらで勝手に選ばない
+    areaBox.hidden = false;
+    areaEl.innerHTML =
+      `${esc(a.label)}には、<b>${esc(String(r.year))}年</b>に`
+      + `「${esc(r.text)}」という記録があります。`;
+    // 「※」から書き始める。この箱で先に読まれるべきは、これが地点の記録ではないこと。
+    areaNote.textContent =
+      "※この地点に関する記録ではありません。"
+      + "この場所がいつ陸になったかは、この資料からは分かりません。";
+    // 出典は消さない。どこの資料かが分からないと、確かめようがない。
+    areaCite.innerHTML =
+      `出典：<a href="${esc(a.source.url)}" target="_blank" rel="noopener">`
+      + `${esc(a.source.name)}</a>`;
   }
 
   // ---- 動かす ----
