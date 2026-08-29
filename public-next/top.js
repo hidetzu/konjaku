@@ -487,21 +487,42 @@
   //   混同してはいけないものが 3 つある。
   //     資料の年代／記録上の変化／実際の工事時期。
   //   原典が言っていないことを、こちらで補わない。要約もしない。
+  // 3 つの状態を言い分ける（docs/adr/0056 と同じ形）。
+  //   読めた       → その地域の記録が在るかを見る
+  //   読めなかった → 「在るかどうかが分かっていない」と言う
+  //   ⚠ 混ぜると、資料を読めなかったのか、その地域の資料が無いのかが見分けられない。
+  //     実際に踏んだ（2026-08-29。実描画を書いていて見つけた）: 資料そのものを読めなくしても、
+  //     画面は資料が無い場所とまったく同じだった。掟 §1「取得できなかった ≠ 存在しなかった」。
   let areaP = null;
   function areas() {
     if (!areaP) areaP = fetch("./data/area-record.json")
-      .then((r) => r.ok ? r.json() : null).catch(() => { areaP = null; return null; });
+      .then((r) => r.ok ? r.json().then((data) => ({ ok: true, data }))
+                        : { ok: false, data: null })
+      .catch(() => { areaP = null; return { ok: false, data: null }; });
     return areaP;
   }
   async function showArea(lon, lat) {
     areaRow.hidden = true;
-    const j = await areas();
-    if (!j) return;
-    const a = (j.areas ?? []).find((x) => {
+    const got = await areas();
+    if (!got.ok) {
+      // 読めなかった。空中写真と同じ言い方に揃える。
+      //   ここで黙ると、その地域の資料が無い場所と見分けられなくなる。
+      areaRow.hidden = false;
+      areaNote.textContent = "";
+      areaEl.innerHTML =
+        `<span class="none">いま読み込めませんでした。`
+        + `この周辺の記録が在るかどうかは分かっていません</span>`;
+      areaCite.innerHTML = "";
+      return;
+    }
+    const a = (got.data.areas ?? []).find((x) => {
       const b = x.bbox;
       return b && lon >= b.w && lon <= b.e && lat >= b.s && lat <= b.n;
     });
-    if (!a) return;   // その地域の資料が無い。黙る
+    // その地域の資料が無い。黙る。
+    //   空の箱を出すと「変わっていない」と読まれる（利用者役 3 名中 2 名。2026-08-29）。
+    //   畳んだあと同じ 3 名に聞き直したら 0/3 になった（docs/adr/0062）。
+    if (!a) return;
     // 出すのは 1 件だけ。地点では選び分けない。
     //   新しい順に 3 件を出したときは、豊洲で「要綱の施行」「13号地」「品川」が並んだ
     //   （実測 2026-08-29）。古い順でも同じで、どれも別の場所の話になる。
