@@ -37,12 +37,56 @@ else {
     ? ok("v0.1.0 が配るのは public-next/ だけ")
     : bad(`v0.1.0 の配信元が public-next/ ではない（${cfg.assets?.directory}）`);
 
-  // ⚠ **β の D1 を繋いでいないか。**⚠ 繋ぐと、⚠ **計測の分母が壊れる**（`CLAUDE.md` §6）
+  // ⚠ **β と同じ D1 を使う**（2026-08-29。Owner 判断。`docs/adr/0073`）。
+  //
+  // ⚠ **前はここで「別の DB であること」を見ていた**（`docs/adr/0050` の「D1 を繋がない」）。
+  //   ⚠ **その主張は、⚠ Owner 判断で取り下げた。**⚠ **取り下げた理由は ADR 0073。**
+  //
+  // ⚠ **見張りを外しっぱなしにしない**（`CLAUDE.md` §9: ⚠ **検査は守るべきことを固定する**）。
+  //   ⚠ **同じ DB になっても、⚠ まだ守れるものが在る。**⚠ **そちらへ主張を移した。**
+  //
+  // ⚠ **行は混ざらないので、⚠ 計測への影響は無い**（2026-08-29。Owner 判断。⚠ 表が別）。
+  //   ⚠ **検査で止められないのは枠のほうだけ**（⚠ 10万行/日・5GB は DB 単位）。
+  //   ⚠ **いまは効かない**（⚠ 利用者がいない）。⚠ **ADR 0073 の「戻すとき」を回す合図にする。**
   const sameDb = (cfg.d1_databases ?? []).some((d) =>
     (base.d1_databases ?? []).some((b) => b.database_id === d.database_id));
   sameDb
-    ? bad("v0.1.0 が β と同じ D1 を繋いでいる。⚠ 計測が混ざり、⚠ 分母が壊れる")
-    : ok("v0.1.0 は β の D1 を繋いでいない");
+    ? ok("v0.1.0 は β と同じ D1 を使う（⚠ Owner 判断。⚠ `docs/adr/0073`。⚠ 枠を共有する）")
+    : ok("v0.1.0 は β と別の D1 を使う");
+
+  // ⚠ **同じ DB を共有する以上、⚠ 「βの表に触らない」だけは機械で見る。**
+  //   ⚠ **ここが破れると、⚠ 計測そのものが書き換わる**（⚠ 分母が壊れるどころではない）。
+  const βの表 = ["tick", "health"];
+  {
+    const worker = join(ROOT, "worker-next.js");
+    const mig = join(ROOT, "migrations");
+    const 読む先 = [
+      ...(existsSync(worker) ? [worker] : []),
+      ...(existsSync(mig)
+        ? readdirSync(mig).filter((f) => f.endsWith(".sql") && f !== "0001_tick.sql")
+            .map((f) => join(mig, f))
+        : []),
+    ];
+    if (!読む先.length) {
+      warn("v0.1.0 側に、⚠ D1 を触るコードがまだ無い（⚠ この検査は何も見ていない）");
+    } else {
+      // ⚠ **コメントを先に落とす**（`CLAUDE.md` §5。⚠ 落とさないと注記の字面を拾う）
+      const 触れている = [];
+      for (const f of 読む先) {
+        const body = readFileSync(f, "utf8")
+          .replace(HEAD_COMMENT, "").replace(/^\s*--.*$/gm, "");
+        for (const t of βの表) {
+          if (new RegExp(`\\b(FROM|INTO|UPDATE|TABLE|JOIN)\\s+${t}\\b`, "i").test(body)) {
+            触れている.push(`${relative(ROOT, f)} → ${t}`);
+          }
+        }
+      }
+      触れている.length
+        ? bad(`v0.1.0 が βの表を触っている: ${触れている.join(" ／ ")}`
+            + "（⚠ **同じ DB を共有しているので、⚠ 計測そのものが書き換わる**）")
+        : ok(`v0.1.0 は βの表（${βの表.join(" / ")}）を触っていない（⚠ ${読む先.length} ファイルを見た）`);
+    }
+  }
 
   // ---- ⚠ ② β 版のファイルを引き込んでいないか ----
   // ⚠ **「引き継がない」が Owner 判断。**⚠ **運ぶと決めたなら、⚠ ここの一覧に理由と一緒に書く。**
