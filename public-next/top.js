@@ -29,6 +29,9 @@
   const photoEl = $("photo"), photoRow = $("photoRow");
   const areaEl = $("area"), areaRow = $("areaRow"), areaNote = $("areaNote"), areaCite = $("areaCite");
   const erasEl = $("eras"), eraNote = $("eraNote"), eraBack = $("eraBack");
+  const saveBtn = $("save"), saveMark = $("saveMark"), saveText = $("saveText");
+  const savedOpen = $("savedOpen"), savedCount = $("savedCount");
+  const savedSheet = $("savedSheet"), savedList = $("savedList"), savedNote = $("savedNote");
 
   // ⚠ **地図はタイルを並べて作る**（⚠ β 版の `/peel` は MapLibre だが、⚠ 運んでいない）。
   //   ⚠ **この縦切りでは、⚠ 動かせる地図が要る。**⚠ 依存を足す前に、⚠ まず素で作る
@@ -339,6 +342,7 @@
     const v = await KonjakuLand.terrain(lon, lat).catch(() => null);
     if (seq !== askSeq) return;   // ⚠ **古い結果で上書きしない**
     hereName = null;
+    drawSave();            // 判定が出るまで保存させない
     setEra(null);          // 場所が変わったら、前の場所の写真を残さない
     subEl.textContent = ""; subEl.hidden = true;
     erasEl.hidden = true; erasEl.innerHTML = "";
@@ -357,6 +361,7 @@
       return;
     }
     hereName = v.value;
+    drawSave();
     askMeiji(lon, lat, seq);
     askPhoto(lon, lat, seq);
     showArea(lon, lat);
@@ -519,6 +524,132 @@
       `出典：<a href="${esc(a.source.url)}" target="_blank" rel="noopener">`
       + `${esc(a.source.name)}</a>`;
   }
+
+  // ---- 保存 ----
+  //
+  // 散歩を中断せずに興味を残し、家に帰ってから続きを見る（docs/adr/0064）。
+  //   ここが持つのは置き方だけ。控えの形と距離の判定は saved.js の 1 か所にある。
+  //
+  // 置き場は端末の中だけ。どこにも送らない。別の端末では見られない。
+  const store = (() => {
+    try { const s = localStorage; s.getItem(KonjakuSaved.KEY); return s; }
+    catch { return null; }   // プライベートモードなどで触れないことがある
+  })();
+
+  let saved = [];        // 控え。正本はここ 1 つ
+  let storeOk = true;    // 置き場が読めたか。読めないことと、1 件も無いことは違う
+
+  function loadSaved() {
+    if (!store) { storeOk = false; saved = []; return; }
+    const r = KonjakuSaved.load(store);
+    storeOk = r.ok;
+    saved = r.list;
+  }
+  loadSaved();
+
+  // 何日前か。言葉はここで決める（saved.js は数しか持たない）。
+  function whenText(at) {
+    const 日 = 86400000;
+    const 今日 = new Date(); 今日.setHours(0, 0, 0, 0);
+    const 差 = Math.floor((今日.getTime() - new Date(at).setHours(0, 0, 0, 0)) / 日);
+    if (差 <= 0) return "きょう";
+    if (差 === 1) return "きのう";
+    if (差 < 7) return `${差} 日前`;
+    if (差 < 30) return `${Math.floor(差 / 7)} 週間前`;
+    return `${Math.floor(差 / 30)} か月前`;
+  }
+
+  // 座標から町名を聞く。国土地理院の口。
+  //   保存する瞬間に 1 回だけ呼ぶ。地図を動かすたびには呼ばない。
+  //   取れなくても保存は止めない。名前が無いだけで、戻る先の座標は残る。
+  //   これが要る理由: 同じ区分の場所は説明文がまったく同じになる。
+  //     豊洲も浦安も「かつて水面で、その後陸地にされた土地」で、一覧で見分けられない
+  //     （利用者役 3 名中 2 名が指摘。2026-08-29）。
+  async function askName(lon, lat) {
+    try {
+      const u = `https://mreversegeocoder.gsi.go.jp/reverse-geocoder/LonLatToAddress?lat=${lat}&lon=${lon}`;
+      const r = await fetch(u, { signal: AbortSignal.timeout(Konjaku.TIMEOUT_MS) });
+      if (!r.ok) return null;
+      const j = await r.json();
+      const nm = j?.results?.lv01Nm;
+      // 「-」は地理院が「町名が無い」ときに返す字。名前として出さない
+      return typeof nm === "string" && nm && nm !== "-" ? nm : null;
+    } catch { return null; }
+  }
+
+  // いまの地点が保存されているか。ボタンの見た目はここだけで決める。
+  function drawSave() {
+    // 判定が出ていない場所は保存させない（戻っても何も言えない）
+    const 出ている = !!hereName;
+    saveBtn.hidden = !出ている;
+    if (!出ている) return;
+    const hit = KonjakuSaved.findAt(saved, px2lon(cx), px2lat(cy));
+    saveBtn.setAttribute("aria-pressed", String(!!hit));
+    saveMark.textContent = hit ? "★" : "☆";
+    // 「保存した」ではなく「保存ずみ」。過去形だと、もう一度押せることが伝わらない
+    //   （利用者役 1 名が「もう一度押すと消えるのか迷う」と言った）。
+    saveText.textContent = hit ? "保存ずみ" : "保存";
+    drawSavedOpen();
+  }
+
+  function drawSavedOpen() {
+    savedOpen.hidden = saved.length === 0;
+    savedCount.textContent = `${saved.length} 件 ›`;
+  }
+
+  saveBtn.addEventListener("click", async () => {
+    const lon = px2lon(cx), lat = px2lat(cy);
+    const hit = KonjakuSaved.findAt(saved, lon, lat);
+    if (hit) {
+      saved = KonjakuSaved.remove(saved, lon, lat);
+    } else {
+      // 先に足して、先に描く。名前は届いてから埋める（届かなくても保存は残る）。
+      const rec = { lon, lat, name: null, value: hereName,
+        gloss: KonjakuWords.groundGloss(hereName), at: Date.now() };
+      saved = KonjakuSaved.add(saved, rec);
+      const nm = await askName(lon, lat);
+      // 待っているあいだに外されていることがある。いま在るものだけ書き換える
+      if (nm && saved.includes(rec)) { rec.name = nm; KonjakuSaved.save(store, saved); drawSavedList(); }
+    }
+    if (store && !KonjakuSaved.save(store, saved)) storeOk = false;
+    drawSave();
+    drawSavedList();
+  });
+
+  // 一覧。押すとその地点へ戻る。
+  function drawSavedList() {
+    savedList.innerHTML = saved.map((r, i) =>
+      `<li><button type="button" data-i="${i}">`
+      + `<span class="saved__row"><span>${esc(r.name ?? "地図から選んだ場所")}</span>`
+      + `<span class="saved__when">${esc(whenText(r.at))}</span></span>`
+      + `<span class="saved__gloss">${esc(r.gloss ?? "")}</span>`
+      + `</button></li>`).join("");
+    for (const b of savedList.querySelectorAll("button"))
+      b.addEventListener("click", () => {
+        const r = saved[Number(b.dataset.i)];
+        if (!r) return;
+        savedSheet.hidden = true;
+        setEra(null);
+        cx = lon2px(r.lon); cy = lat2px(r.lat);
+        draw();
+        ask();
+      });
+    // 置き場が読めないことと、1 件も無いことは違う。読めないときだけ断る。
+    savedNote.hidden = storeOk;
+    if (!storeOk) savedNote.textContent =
+      "この端末では、保存した場所を覚えておけません（ブラウザの設定によります）";
+  }
+
+  savedOpen.addEventListener("click", () => {
+    drawSavedList();
+    savedSheet.hidden = false;
+    $("savedClose").focus();
+  });
+  $("savedClose").addEventListener("click", () => { savedSheet.hidden = true; savedOpen.focus(); });
+  addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !savedSheet.hidden) { savedSheet.hidden = true; savedOpen.focus(); }
+  });
+  drawSavedOpen();
 
   // ---- 動かす ----
   let idle = null;
