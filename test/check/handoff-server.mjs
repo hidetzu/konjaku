@@ -13,18 +13,20 @@
 
 import { join } from "node:path";
 import { readFileSync, existsSync } from "node:fs";
-import { ROOT, ok, bad, warn, head, HEAD_COMMENT } from "./lib.mjs";
+import { ROOT, ok, bad, warn, head, HEAD_COMMENT, BLOCK_COMMENT } from "./lib.mjs";
 // ⚠ **偽の D1 は、⚠ 実描画からも使う。**⚠ **だから 1 か所に置いた**（2026-08-29）。
 import { fakeDb } from "../handoff-fake-d1.mjs";
 
 head("合言葉の口（サーバ）");
 
 const WORKER = join(ROOT, "worker-next.js");
-if (!existsSync(WORKER)) {
-  bad("worker-next.js が無い（⚠ `docs/sync-api.md` §6 が、⚠ サーバ側の置き場と決めている）");
+const CORE = join(ROOT, "handoff.js");
+if (!existsSync(WORKER) || !existsSync(CORE)) {
+  bad("worker-next.js か handoff.js が無い（⚠ `docs/sync-api.md` §6 が、⚠ サーバ側の置き場と決めている）");
 } else {
 
-const W = await import("../../worker-next.js");
+// ⚠ **中身は `handoff.js`。**⚠ **`worker-next.js` は入口だけ**（2026-08-30）。
+const W = await import("../../handoff.js");
 
 const req = (url, init = {}) => new Request(`https://example.invalid${url}`, {
   headers: { "cf-connecting-ip": "203.0.113.7", ...(init.headers ?? {}) },
@@ -35,6 +37,27 @@ const post = (payload, headers) => req("/api/handoff", {
 });
 
 const NOW = 1_756_400_000_000;
+
+// ---- ⚠ ⓪ 入口のかたち ----
+// ⚠ **workerd は、⚠ 入口の名前つき `export` を「入口か class」として検査する**（2026-08-30 に踏んだ）。
+//   ⚠ **`export const ALPHABET = "…"` を置いていたら、⚠ `wrangler dev --local` が起動しなかった。**
+//   ⚠ **本番は受け付けていたし、⚠ `deploy --dry-run` も通った。**⚠ **落ちるのは手元だけ。**
+//   ⚠ **だから、⚠ 検査で見張る**（⚠ 戻すと、⚠ また手元で本物を動かせなくなる）。
+{
+  const src = readFileSync(WORKER, "utf8");
+  // ⚠ **コメントを先に落とす**（`CLAUDE.md` §5。⚠ 説明の字面を自分で拾わないため）
+  const 実体 = src.replace(BLOCK_COMMENT, " ").replace(HEAD_COMMENT, " ");
+  const 名前つき = [...実体.matchAll(/^export\s+(?!default\b)(\S+)\s*([A-Za-z0-9_$]*)/gm)]
+    .map((m) => `${m[1]} ${m[2]}`.trim());
+  名前つき.length === 0
+    ? ok("Worker の入口は `export default` だけ（⚠ 名前つき export を置くと workerd が起動しない）")
+    : bad(`Worker の入口に名前つき export がある: ${名前つき.join(" / ")}`
+        + "。⚠ **`wrangler dev --local` が起動しなくなる**（⚠ 本番と `--dry-run` は通るので気づけない）");
+
+  /^\s*import\s+\{\s*route\s*\}\s+from\s+"\.\/handoff\.js"/m.test(実体)
+    ? ok("Worker の入口は、⚠ 中身を handoff.js から借りている")
+    : bad("Worker の入口が handoff.js を読んでいない（⚠ 中身が入口へ戻っている可能性）");
+}
 
 // ---- ⚠ ① 合言葉の字 ----
 // ⚠ **`docs/adr/0072` の数字が、⚠ 字の数を決めている**（⚠ 1,099,511,627,776 ＝ 32⁸）。

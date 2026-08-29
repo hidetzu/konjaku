@@ -262,7 +262,8 @@ CREATE INDEX handoff_expires ON handoff(expires_at);
 
 ```text
 サーバ側（B）                        端末側（A）
-  worker-next.js                       public-next/top.js        ⚠ 合言葉を出す・預ける
+  handoff.js                           public-next/top.js        ⚠ 合言葉を出す・預ける
+  worker-next.js（⚠ 入口だけ）
   wrangler.next.jsonc                  public-next/index.html
   migrations/*.sql                     public-next/top.css
   test/check/handoff-server.mjs        public-next/take.html     ⚠ 受け取り口（新しい）
@@ -273,6 +274,27 @@ CREATE INDEX handoff_expires ON handoff(expires_at);
 - MUST: ⚠ **`public/`（β 版）には、⚠ どちらも触らない。**
 - MUST: ⚠ **`wrangler.next.jsonc` に `main` と D1 を足すのは B。**⚠ **A は触らない。**
 - MUST: ⚠ **`saved.js` は触らない。**⚠ **`toText` / `fromText` / `merge` は既に在る。**
+- MUST: ⚠ **`worker-next.js` から、⚠ `export default` 以外を出さない**（2026-08-30 に踏んだ）。
+  ⚠ **workerd が、⚠ 入口の名前つき `export` を「入口か class」として検査して落ちる。**
+  ⚠ **本番と `deploy --dry-run` は通るので、⚠ 気づけるのは `wrangler dev --local` だけ。**
+  ⚠ **中身は `handoff.js` に置く。**⚠ **検査が見張っている。**
+
+### ⚠ 手元で本物を動かす
+
+```bash
+npx wrangler d1 migrations apply konjaku --local -c wrangler.next.jsonc
+npx wrangler dev -c wrangler.next.jsonc --local
+```
+
+⚠ **手元の `scripts/serve.mjs` は、⚠ 本番と振る舞いが違う**（2026-08-30 に実測）。
+
+```text
+              serve.mjs      wrangler dev --local     本番
+/take         200            200                      200
+/take.html    200            ⚠ 307 → /take            ⚠ 307 → /take
+```
+
+⚠ **`wrangler dev --local` は本番と同じ。**⚠ **道の違いを見るときは、⚠ こちらで測る。**
 
 ---
 
