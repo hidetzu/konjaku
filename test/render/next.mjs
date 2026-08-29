@@ -1152,3 +1152,152 @@ CASES.push({
     return `${url.length} 文字・${受け.行} 件を見せて・押すと ${後.控え} 件`;
   },
 });
+
+CASES.push({
+  // ⚠ **地図が主役**（`.claude/rules/domain.md`）。⚠ **その主役を、⚠ 見えていない箱に取らせない。**
+  //   ⚠ **実際に踏んだ（2026-08-29・375x667）**: 板（`#bottom`）は画面いっぱいに広がるが、
+  //   ⚠ **出典の段は右端の箱しか見えていない。**⚠ **残りは透けているのに押しどまりになっていた。**
+  //   ⚠ **「ここ」の印がちょうどその段に入り、⚠ 印から引いても 1px も動かなかった。**
+  // ⚠ **同じ操作が 1024x768 と 1440x950 では動いていた。**⚠ **狭い幅だけの話。**
+  //   ⚠ **だから、⚠ 比べる相手（PC）も一緒に見る。**⚠ **片方だけだと「元から動かない」と区別できない。**
+  name: "地点の印のところから、地図を動かせる",
+  path: `/?${TOYOSU}`, origin: NEXT_BASE, viewport: SP,
+  async check(page) {
+    await waitAnswer(page);
+    // ⚠ **板が伸びきってから測る**（`CLAUDE.md` §9「器ではなく、落ち着いたことを待つ」）。
+    //   ⚠ **答えの字だけで測ると、⚠ 年代のボタンが出る前なので板が短く、
+    //   ⚠ 印が板の外に居る。**⚠ **そのままだと、⚠ 壊しても素通りする**（⚠ 実際にそうなった）。
+    await 待つ(page, () => document.querySelectorAll("#eras .era").length > 0, "年代のボタン");
+    await 待つ(page, () => {
+      const a = document.querySelector(".attrib a");
+      return !!a && a.checkVisibility();
+    }, "出典");
+    await page.waitForTimeout(600);
+    // ⚠ **印が板の段に入っていることを、⚠ 先に確かめる。**
+    //   ⚠ **入っていなければ、⚠ この検査は何も見ていない**（⚠ 幅や板の高さが変われば外れる）。
+    const 段に入っている = await page.evaluate(() => {
+      const q = document.querySelector(".me").getBoundingClientRect();
+      const b = document.getElementById("bottom").getBoundingClientRect();
+      const y = q.y + q.height / 2;
+      return { 入っている: y > b.top && y < b.bottom,
+               印y: Math.round(y), 板y: Math.round(b.top), 板下: Math.round(b.bottom) };
+    });
+    must(段に入っている.入っている,
+      `地点の印が板の範囲に入っていない（印 y=${段に入っている.印y} ／ 板 ${段に入っている.板y}〜${段に入っている.板下}）`
+      + "。⚠ このままでは、⚠ この検査は何も見ていない");
+    // ⚠ **地図が動いたかは、⚠ タイルの絵の位置で見る**（⚠ URL は引いただけでは変わらない）
+    const 絵 = () => page.evaluate(() => {
+      const im = document.querySelector("#map .layer img");
+      if (!im) return null;
+      const q = im.getBoundingClientRect();
+      return `${Math.round(q.x)},${Math.round(q.y)}`;
+    });
+    const 引く = async (x, y) => {
+      const 前 = await 絵();
+      await page.mouse.move(x, y);
+      await page.mouse.down();
+      await page.mouse.move(x - 100, y - 100, { steps: 12 });
+      await page.mouse.up();
+      await page.waitForTimeout(300);
+      const 後 = await 絵();
+      return { 前, 後, 動いた: !!前 && 前 !== 後 };
+    };
+    const 印 = await page.evaluate(() => {
+      const q = document.querySelector(".me").getBoundingClientRect();
+      const t = document.elementFromPoint(Math.round(q.x + q.width / 2), Math.round(q.y + q.height / 2));
+      return { x: Math.round(q.x + q.width / 2), y: Math.round(q.y + q.height / 2),
+               覆う: t ? (t.id || t.className || t.tagName) : "無し" };
+    });
+    must(印.覆う !== "bottom",
+      `地点の印が、板の透けている段に入っている（触ると ${印.覆う} が返る）`);
+    const r = await 引く(印.x, 印.y);
+    must(r.動いた, `地点の印から地図を引いても動かない（${r.前} のまま）`);
+
+    // ⚠ **札の上では動かないこと**（⚠ 打ち消しすぎると、⚠ 今度は札を読めなくなる）
+    const 札 = await page.evaluate(() => {
+      const q = document.getElementById("gloss").getBoundingClientRect();
+      return { x: Math.round(q.x + q.width / 2), y: Math.round(q.y + q.height / 2) };
+    });
+    const s = await 引く(札.x, 札.y);
+    must(!s.動いた, `答えの字を引いたら、⚠ 背面の地図が動いた（${s.前} → ${s.後}）`);
+    // ⚠ **出典は押せたままであること**
+    const 出典 = await page.evaluate(() => {
+      const a = document.querySelector(".attrib a");
+      const q = a.getBoundingClientRect();
+      const t = document.elementFromPoint(Math.round(q.x + q.width / 2), Math.round(q.y + q.height / 2));
+      return { 押せる: !!(t && a.contains(t)), 触ると: t ? (t.id || t.className || t.tagName) : "無し" };
+    });
+    must(出典.押せる, `出典が押せなくなっている（触ると ${出典.触ると} が返る）`);
+    return `印(${印.x},${印.y}) ${r.前} → ${r.後} ／ 札は動かさない ／ 出典は押せる`;
+  },
+});
+
+// ⚠ **タブレットの幅**（2026-08-29。⚠ Owner 判断で「このままでよい」）。
+//   ⚠ **実測して、⚠ 壊れているところは無かった**（⚠ 横あふれ 0・⚠ 押せるものは 44 以上・
+//   ⚠ **700px 以上はすでに PC と同じ扱い**）。
+//   ⚠ **だから直さない。**⚠ **かわりに、⚠ 壊れたときに気づけるようにする。**
+// ⚠ **横向きは縦が短い**（768〜820px）。⚠ **そこが最初に窮屈になる**ので、⚠ 縦も測る。
+const TABLET = [
+  { name: "iPad mini 縦", viewport: { width: 768, height: 1024 } },
+  { name: "iPad mini 横", viewport: { width: 1024, height: 768 } },
+  { name: "iPad Pro 横", viewport: { width: 1366, height: 1024 } },
+];
+for (const t of TABLET) {
+  CASES.push({
+    name: `タブレット（${t.name}）でも、散歩中の画面が壊れない`,
+    path: `/?${TOYOSU}`, origin: NEXT_BASE, viewport: t.viewport,
+    // ⚠ **文字を大きくした状態で測る**（⚠ 端末の文字サイズ設定に相当）。
+    //   ⚠ **既定の文字だと、⚠ 板は上限に届かない。**⚠ **届かないと、⚠ 上限の主張は何も見ていない**
+    //   （⚠ 実際に、⚠ 上限を 3 倍にしても素通りした）。
+    //   ⚠ **横向きは縦が 768px しかない。**⚠ **そこで初めて、⚠ 板が検索窓へ迫る。**
+    setup: (page) => page.addInitScript(() => addEventListener("DOMContentLoaded", () => {
+      const st = document.createElement("style");
+      st.textContent = "html{font-size:20px}";
+      document.head.append(st);
+    })),
+    async check(page) {
+      await waitAnswer(page);
+      await 待つ(page, () => document.querySelectorAll("#eras .era").length > 0, "年代のボタン");
+      // ⚠ **いちばん高くなる状態で測る**（⚠ 畳んだままでは、⚠ 伸びたときを見られない）
+      await page.locator(".why__sum").click();
+      await page.waitForTimeout(500);
+      const r = await page.evaluate(() => {
+        const doc = document.documentElement;
+        const 見える = (id) => {
+          const e = document.getElementById(id);
+          return e && e.checkVisibility() ? e.getBoundingClientRect() : null;
+        };
+        const bar = 見える("bar"), bottom = 見える("bottom"), gloss = 見える("gloss");
+        // ⚠ **押せるものは 44 を割らない**（⚠ 幅が変わっても同じ）
+        const 小さい = [...document.querySelectorAll("button, a[href], input")]
+          .filter((e) => e.checkVisibility())
+          .map((e) => ({ e, q: e.getBoundingClientRect() }))
+          .filter(({ q }) => q.height < 44 || q.width < 44)
+          .map(({ e, q }) => `${e.id || e.className || e.tagName}=${Math.round(q.width)}x${Math.round(q.height)}`);
+        return {
+          横あふれ: doc.scrollWidth - doc.clientWidth,
+          柱幅: bottom ? Math.round(bottom.width) : null,
+          検索幅: bar ? Math.round(bar.width) : null,
+          答えが見える: !!gloss && gloss.top >= 0 && gloss.bottom <= innerHeight,
+          答え字数: (document.getElementById("gloss")?.textContent ?? "").trim().length,
+          小さい,
+        };
+      });
+      // ⚠ **横へあふれない**（⚠ 本文が横に流れると、⚠ 読む順が崩れる）
+      must(r.横あふれ === 0, `横へ ${r.横あふれ}px あふれている`);
+      // ⚠ **柱と検索窓は同じ幅**（⚠ 片方だけ伸びると、⚠ 目の動きが揃わない）
+      must(r.柱幅 === r.検索幅, `柱 ${r.柱幅}px と検索窓 ${r.検索幅}px の幅が違う`);
+      // ⚠ **板が検索窓を押し出さないことは、⚠ ここでは見ない。**
+      //   ⚠ **タブレットでは、⚠ 板が上限に届かない**（⚠ 実測: 文字 20px ＋「なぜそう言える？」を
+      //   ⚠ 開いても、⚠ 1024x768 で板の上端 444px ／ 検索窓の下端 72px）。
+      //   ⚠ **柱が 760px 広いので、⚠ 中身が縦に伸びない。**
+      //   ⚠ **届かない主張を置くと、⚠ 「見ている」ように読めて、⚠ 何も見ていない**
+      //   （⚠ 実際に、⚠ 上限を 3 倍にしても素通りした）。
+      //   ⚠ **上限が効くのは狭い幅。**⚠ **それは 320px の検査が見ている。**
+      must(r.答えが見える && r.答え字数 > 10,
+        `答えの 1 文が画面に収まっていない（${r.答え字数} 字）`);
+      must(r.小さい.length === 0, `44 を割る操作要素がある: ${r.小さい.join(" / ")}`);
+      return `あふれ 0 ／ 柱 ${r.柱幅}px ／ 答え ${r.答え字数} 字 ／ 44 未満 0 個`;
+    },
+  });
+}
