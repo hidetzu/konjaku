@@ -90,84 +90,71 @@ body{
 /* 主は、分かる言葉のほう。
    利用者役 3 名のうち 2 名が「分かる言葉を小さいほうに置いているのが逆」
    「かみ砕いたほうが読みにくいのは逆」と言った。
-   区分名は資料の言葉で、そのままでは読めない人がいる。 */
-.big{margin:0 0 var(--gap-sub); font-size:1.0625rem; font-weight:700; line-height:1.45}
+   区分名は資料の言葉で、そのままでは読めない人がいる。
 
-/* 区分名は、出典の言葉として添える。主ではない。
-   消しはしない。国土地理院の区分名を名乗れないと、何を根拠に言っているか分からなくなる。 */
-.term{
-  margin:0; font-size:.75rem; color:var(--ink-3); line-height:1.5;
-}
-.term::before{content:"国土地理院の区分：";}
+   実測（375x667・豊洲・2026-08-29）: 答えの 1 文が 93px、根拠が 187px だった。
+   根拠のほうが 2 倍あり、前提（長い文章はその場では読まれない）と逆になっていた。
+   根拠を「なぜそう言える？」1 つへ送り、板 388px → 211px・地図 279px → 456px。 */
+.ans{margin:0; font-size:1.375rem; font-weight:700; line-height:1.35; letter-spacing:-.01em; color:var(--ink)}
 
-/* 資料ごとに箱を分ける。
-   利用者役 3 名が「上は言い切っているのに、下は資料が無いと言う。矛盾に見える」と言った。
-   上は今の地形の分類、下は明治期の地図。別の資料の話。
-   画面でも別の話だと分かる形にしないと、片方の「無い」がもう片方に効いて見える。 */
-.src + .src{
-  margin-top:var(--gap-row); padding-top:var(--gap-row);
-  border-top:1px solid var(--line);
-}
-.src[hidden]{display:none}
-.src__from{
-  margin:0 0 var(--gap-sub); font-size:.6875rem; color:var(--ink-3);
-  letter-spacing:.02em;
-}
-.src__body{margin:0; font-size:.875rem; color:var(--ink-2); line-height:1.55}
-.src__body b{color:var(--ink);font-weight:700}
-.src__body .none{color:var(--ink-3)}
+/* 明治期と写真の有無を 1 行で言う。詳しくは「なぜそう言える？」の中。
+   無いものは書かない。取れなかったものも書かない（それは中で言う）。 */
+.sub{margin:var(--gap-sub) 0 0; font-size:.8125rem; line-height:1.5; color:var(--ink-2)}
+.sub b{color:var(--ink); font-weight:700}
+.sub[hidden]{display:none}
 
-/* この地点の話と、この周辺の話を、見た目でも分ける。
-   上の 3 つは、この場所の座標で引いた答え。
-   これは地域の記録で、この場所そのものの記録ではない。
-   同じ顔にすると、周辺の年をこの場所の年だと読まれる。 */
-.area{
-  margin-top:var(--gap-row);
-  padding:var(--pad-sm) var(--pad-sm) var(--pad-sm) var(--pad-md);
-  border-top:0;
-  border-left:3px solid var(--line-strong);
-  background:var(--bg);
-  border-radius:0 .5rem .5rem 0;
+/* 空中写真の年代。
+   利用者役 3 名とも「見たい」と答え、3 名とも「どこで見るのか分からない」と続けた。
+   1 名は実際に押した（何も起きなかった）。四角に並べると「押せる」と読まれた。
+   古い順。左端が最初に選ばれる年代ではなく、既定は「いま」（写真を出さない状態）。 */
+.eras{
+  display:flex; gap:var(--gap-row); margin-top:var(--gap-row);
+  overflow-x:auto; padding-bottom:2px; scrollbar-width:none;
 }
-.area .src__from b{color:var(--ink-2)}
+.eras::-webkit-scrollbar{display:none}
+.eras[hidden]{display:none}
+.era{
+  flex:0 0 auto; min-height:var(--tap); padding:0 .75rem;
+  display:flex; align-items:center;
+  border:1px solid var(--line-strong); border-radius:.5rem; background:transparent;
+  color:var(--ink-2); font:inherit; font-size:.8125rem; white-space:nowrap; cursor:pointer;
+}
+.era[aria-pressed="true"]{border-color:var(--action); color:var(--action); font-weight:700}
+.era:focus-visible{outline:2px solid var(--action); outline-offset:2px}
 
-/* 周辺の記録は、その場では読まれない。
-   3 名中 2 名が「その場では読まない」と答えた（利用者役・実在の利用者ではない・2026-08-29）。
-   1 名は「これは読み物。歩きながらは無理」。
-   要約だけ出し、読みたい人が開く。畳んだ状態で 139px → 78px、地図が 62px 戻る。
-   要約の 1 行目が断りを兼ねる。落とすと、年をこの地点のものとして読む人が戻る。 */
-.area__fold{margin:0}
-.area__sum{
-  margin:0; display:flex; flex-direction:column; justify-content:center;
-  min-height:var(--tap);                /* 押せるものは 44×44 を割らない */
-  font-size:.8125rem; line-height:1.5; cursor:pointer;
-  list-style:none;                      /* 既定の三角は出さない。▾ を自分で置く */
+/* 写真を出しているあいだ、地図の意味が変わる。黙って変えない。
+   地形分類の色は消えるので、凡例も一緒に隠す（top.js）。 */
+.era-note{margin:var(--gap-sub) 0 0; font-size:.6875rem; color:var(--ink-3); line-height:1.5}
+.era-note[hidden]{display:none}
+
+/* 根拠は 1 つにまとめる。
+   利用者役 1 名が「前は 3 つに分かれていて、どれが根拠か分からなかった」と言った。
+   後ろへ送っても、限界の表示は消さない（掟 §1）。 */
+.why{margin-top:var(--gap-row)}
+.why__sum{
+  min-height:var(--tap); display:flex; align-items:center; list-style:none;
+  color:var(--action); font-size:.8125rem; font-weight:700; cursor:pointer;
 }
-.area__sum::-webkit-details-marker{display:none}
-.area__lead{color:var(--ink); font-weight:700}
-.area__lead::after{content:" ▾"; color:var(--ink-3); font-weight:400}
-.area__fold[open] .area__lead::after{content:" ▴"}
-/* 要約は 1 行に収める。長い記録でも、畳んだ高さを変えない */
-.area__peek{color:var(--ink-3); overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
-/* 開いたら消す。下に同じ年と同じ記録が全文で出るので、2 行が同じことを言う */
-.area__fold[open] .area__peek{display:none}
-.area__body{margin-top:var(--gap-row)}
-.src__note{
-  margin:var(--gap-sub) 0 0; font-size:.6875rem; color:var(--ink-3); line-height:1.5;
-}
-/* 断りが記録より先に来る箱がある（.area）。そのとき記録に上の間が要る。
-   .src__body は margin:0 なので、この並びのときだけ足す。 */
-.src__note + .src__body{margin-top:var(--gap-sub)}
-/* 出典。断り書きより弱くはしない。確かめに行ける先なので、押せると分かる形で置く。 */
-.src__cite{
-  margin:var(--gap-sub) 0 0; font-size:.6875rem; color:var(--ink-3); line-height:1.5;
-}
-.src__cite a{color:var(--ink-2); position:relative}
+.why__sum::-webkit-details-marker{display:none}
+.why__sum::after{content:" ▾"; color:var(--ink-3); font-weight:400}
+.why[open] .why__sum::after{content:" ▴"}
+.why__rows{margin:var(--gap-row) 0 0; display:flex; flex-direction:column; gap:var(--gap-row)}
+.why__row{display:flex; gap:var(--gap-row); font-size:.8125rem; line-height:1.5}
+.why__row[hidden]{display:none}
+.why__k{flex:0 0 5.5rem; color:var(--ink-3)}
+.why__v{flex:1; min-width:0; margin:0; color:var(--ink-2)}
+.why__v b{color:var(--ink); font-weight:700}
+.why__v .none{color:var(--ink-3)}
+/* 断り → 記録 → 出典 の 3 段。断りが先に来る（実測で誤認 1/3 → 0/3）。 */
+.why__note,.why__body,.why__cite{display:block}
+.why__note{color:var(--ink-3)}
+.why__cite{margin-top:var(--gap-sub); font-size:.6875rem; color:var(--ink-3)}
+.why__cite a{color:var(--ink-2); position:relative}
 /* 押せるものは 44×44 を割らない。
    字を 44px にすると出典が主役になるので、当たり判定だけを広げる。
    上へ 4px（--gap-sub のぶん＝字の無いところ）、残りは下の余白へ伸びる。
    下にあるのは凡例で、押せるものではない。 */
-.src__cite a::after{
+.why__cite a::after{
   content:""; position:absolute; left:0; right:0;
   top:calc(var(--gap-sub) * -1); height:calc(var(--tap) + 2px);
 }
@@ -207,7 +194,7 @@ body{
   border-top:1px solid var(--line);
   list-style:none;
 }
-#legend:empty{display:none}
+#legend:empty,#legend[hidden]{display:none}
 #legend li{display:flex;align-items:center;gap:.25rem;font-size:.6875rem;color:var(--ink-3)}
 #legend li.here{color:var(--action);font-weight:700}
 #legend i{
