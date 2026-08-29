@@ -868,3 +868,88 @@ CASES.push(
     },
   },
 );
+
+CASES.push(
+  {
+    // ⚠ **散歩中は 1 件だけ。**⚠ **帰宅後は全部。**⚠ **読み物として年表で読める。**
+    //   ⚠ **並びも違ってよい**（⚠ 散歩中は「1 件を選ぶ」話、⚠ ここは「並べて読む」話）。
+    // ⚠ **この地点の記録ではないことは、⚠ どちらでも先に言う**（⚠ 1 名が年を地点のものとして読んだ）。
+    name: "深掘り画面は、この一帯の記録を年表で全部出す",
+    path: `/deep.html?${TOYOSU}`, origin: NEXT_BASE, viewport: PC,
+    async check(page) {
+      await 待つ(page, () => document.querySelectorAll("#years li").length > 0, "年表");
+      await page.waitForTimeout(1000);
+      const r = await page.evaluate(() => ({
+        見出し: document.getElementById("nearLead").textContent.trim(),
+        件数: document.querySelectorAll("#years li").length,
+        年: [...document.querySelectorAll("#years .y")].map((e) => Number(e.textContent.replace(/\D/g, ""))),
+        印: document.querySelectorAll("#years li.shown").length,
+        断り: document.getElementById("nearNote").textContent.trim(),
+        出典: document.getElementById("nearFrom").textContent.trim(),
+      }));
+      must(r.件数 >= 5, `年表が全部出ていない（${r.件数} 件）`);
+      // ⚠ **古い順**（⚠ 年表として読むので、⚠ 時の流れの向き）
+      must(r.年.every((v, i) => i === 0 || r.年[i - 1] <= v),
+        `年表が古い順に並んでいない: ${r.年.join(" ")}`);
+      // ⚠ **散歩中に出している 1 件が、⚠ どれか分かる**
+      must(r.印 === 1, `散歩中に出した 1 件の印が ${r.印} 個（1 個のはず）`);
+      // ⚠ **この地点の記録ではないと、⚠ 先に言う**
+      must(/この地点に関する記録ではありません/.test(r.断り), `断りが無い: ${r.断り}`);
+      must(!/^\d/.test(r.断り), "断りより先に年が来ている");
+      must(/出典/.test(r.出典) && /読んだもの/.test(r.出典), `出典と読んだ日が無い: ${r.出典}`);
+      return `${r.件数} 件・${r.年[0]}〜${r.年[r.年.length - 1]}・印 1 個`;
+    },
+  },
+
+  {
+    // ⚠ **点ではなく面で数える。**⚠ **点は「ここは何だったか」、⚠ 面は「まわりはどうだったか」。**
+    //   ⚠ **混ぜない**（`docs/adr/0030`）。
+    // ⚠ **割合には、⚠ 必ず分母を添える**（`CLAUDE.md` §6）。
+    //   ⚠ **数えられなかった画素（透明）を隠さない。**⚠ **「無かった」と読ませない。**
+    name: "深掘り画面は、一帯の明治期を分母つきで出す",
+    path: `/deep.html?${TOYOSU}`, origin: NEXT_BASE, viewport: PC,
+    async check(page) {
+      await 待つ(page, () => document.querySelectorAll("#shares li").length > 0, "一帯の割合");
+      await page.waitForTimeout(800);
+      const r = await page.evaluate(() => ({
+        見出し: document.getElementById("aroundLead").textContent.trim(),
+        割合: [...document.querySelectorAll("#shares li")].map((e) => e.textContent.trim().replace(/\s+/g, "")),
+        分母: document.getElementById("aroundNote").textContent.trim(),
+      }));
+      must(r.割合.length > 0, "一帯の割合が出ていない");
+      // ⚠ **分母（範囲の広さと、⚠ 数えた画素）が必ず在る**
+      must(/km/.test(r.分母), `分母に範囲の広さが無い: ${r.分母}`);
+      must(/画素を数えた/.test(r.分母), `分母に数えた画素が無い: ${r.分母}`);
+      // ⚠ **0% に丸まるものを出さない**（⚠ 「在るのに 0」に見える）
+      must(!r.割合.some((t) => t.startsWith("0%")), `0% の行が出ている: ${r.割合.join(" / ")}`);
+      // ⚠ **出していないものが在るなら、⚠ 何件かを言う**
+      must(!/満たない区分が\s*0/.test(r.分母), `0 件を「出していない」と言っている: ${r.分母}`);
+      return `${r.割合.join(" / ")}・分母 ${r.分母.length} 字`;
+    },
+  },
+
+  {
+    // ⚠ **資料が作られていない地域で、⚠ 「無い」と言わない**（掟 §1）。
+    //   ⚠ **軽井沢は明治期の低湿地の資料が作られていない**（⚠ 実測: タイル 9 枚とも absent）。
+    name: "深掘り画面は、一帯の資料が無い地域で「無い」と言わない",
+    path: "/deep.html?ll=36.3428,138.6350", origin: NEXT_BASE, viewport: PC,   // ⚠ 軽井沢
+    async check(page) {
+      await 待つ(page,
+        () => (document.getElementById("gloss").textContent ?? "").trim().length > 2, "答え");
+      await page.waitForTimeout(4000);
+      const r = await page.evaluate(() => ({
+        節: document.getElementById("nearSec").hidden,
+        一帯: document.getElementById("around").hidden
+          ? "出ない" : document.getElementById("aroundLead").textContent.trim(),
+        割合: document.querySelectorAll("#shares li").length,
+        年表: document.querySelectorAll("#years li").length,
+      }));
+      must(!r.節, "資料が作られていない地域で、まわりの節ごと黙っている");
+      must(/作られていません/.test(r.一帯), `作られていないことを言っていない: ${r.一帯}`);
+      must(!/ありません$|無いです|存在しません/.test(r.一帯), `「無い」と言っている: ${r.一帯}`);
+      must(r.割合 === 0, `資料が無いのに割合が出ている（${r.割合} 行）`);
+      must(r.年表 === 0, `この地域の記録が無いのに年表が出ている（${r.年表} 件）`);
+      return `「${r.一帯}」・割合 0 行・年表 0 件`;
+    },
+  },
+);

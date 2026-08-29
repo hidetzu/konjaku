@@ -62,7 +62,20 @@ body{
    散歩中は 1 件だけ出している。帰宅後は全部出す。読み物なので年表として読める。
    ⚠ この地点の記録ではない。そこは散歩中と同じく、いちばん先に言う。 */
 .near__lead{margin:0; font-size:1rem; color:var(--ink)}
-.years{margin:var(--gap-block) 0 0; padding:0; list-style:none}
+/* この一帯の明治期。点ではなく面で数える。
+   点は「ここは何だったか」、面は「まわりはどうだったか」。混ぜない。
+   割合には、必ず分母（範囲の広さと、数えた画素）を添える。 */
+.around{margin:var(--gap-block) 0 0}
+.around__lead{margin:0; font-size:1rem; color:var(--ink)}
+.shares{margin:var(--gap-row) 0 0; padding:0; list-style:none}
+.shares li{display:flex; align-items:center; gap:var(--gap-row); padding:.1875rem 0; font-size:.9375rem}
+.shares .bar{flex:none; width:8rem; height:.5rem; border-radius:999px; background:var(--surface-2); overflow:hidden}
+.shares .bar i{display:block; height:100%; background:var(--evidence)}
+.shares .pc{flex:none; width:3rem; text-align:right; font-variant-numeric:tabular-nums; color:var(--ink)}
+.shares .nm{flex:1; min-width:0; color:var(--ink-2)}
+.around__note{margin:var(--gap-row) 0 0; font-size:.75rem; color:var(--ink-3); line-height:1.7}
+
+.years{margin:2rem 0 0; padding:0; list-style:none}
 .years li{
   display:flex; gap:var(--gap-block); padding:var(--gap-row) 0;
   border-bottom:1px solid var(--line); font-size:.9375rem; line-height:1.7;

@@ -15,6 +15,8 @@
   const whySec = $("whySec"), whyEl = $("why"), citeEl = $("cite");
   const nearSec = $("nearSec"), nearLead = $("nearLead"), yearsEl = $("years");
   const nearNote = $("nearNote"), nearFrom = $("nearFrom");
+  const aroundEl = $("around"), aroundLead = $("aroundLead");
+  const sharesEl = $("shares"), aroundNote = $("aroundNote");
 
   // 場所は URL から。読む口は place-arg.js の 1 か所（同じ問いに答える実装を 2 つ持たない）。
   const arg = KonjakuPlaceArg.readPlace(new URLSearchParams(location.search));
@@ -64,7 +66,56 @@
     glossEl.textContent = `ここは、${KonjakuWords.groundGloss(t.value)}`;
     termEl.textContent = `国土地理院の区分：${t.value}`;
     drawWhy(t);
+    drawAround(lon, lat);
     drawNear(lon, lat);
+  }
+
+  // この一帯の明治期。点ではなく面で数える。
+  //   点は「ここは何だったか」、面は「まわりはどうだったか」。混ぜない（ADR 0030）。
+  //   散歩中の画面は点しか出していない。帰宅後は「一帯」まで広げる。
+  //
+  //   ⚠ 割合には、必ず分母を添える（CLAUDE.md §6）。
+  //     数えられなかった画素（透明）がある。実測（2026-08-29）: 春日部で 313,326 数えて
+  //     276,498 が透明だった。分母を書かないと、透明を「無い」と読ませてしまう。
+  const AROUND = { dLon: 0.006, dLat: 0.004 };   // 約 1.2km × 0.8km
+
+  async function drawAround(lon, lat) {
+    aroundEl.hidden = true;
+    const a = await KonjakuLand.meijiArea({
+      w: lon - AROUND.dLon, s: lat - AROUND.dLat,
+      e: lon + AROUND.dLon, n: lat + AROUND.dLat,
+    }).catch(() => null);
+    if (!a) return;                                  // 取れなかった。黙る（年表のほうは出る）
+    // 1 枚も読めていない／この地域では作られていない
+    if (!a.classifiedPixels) {
+      aroundEl.hidden = false;
+      nearSec.hidden = false;
+      aroundLead.innerHTML = `<span class="why__none">この地域では、この資料が作られていません</span>`;
+      sharesEl.innerHTML = ""; aroundNote.textContent = "";
+      return;
+    }
+    const 並び = Object.entries(a.classCounts)
+      .filter(([, n]) => n > 0)
+      .sort((x, y) => y[1] - x[1]);
+    // 0% に丸まるものは出さない。出すと「在るのに 0」に見える
+    const 出す = 並び.filter(([, n]) => n / a.classifiedPixels >= 0.005);
+    aroundEl.hidden = false;
+    nearSec.hidden = false;
+    aroundLead.textContent = "この一帯は、明治期にこうでした";
+    sharesEl.innerHTML = 出す.map(([名, n]) => {
+      const pc = Math.round(n / a.classifiedPixels * 100);
+      return `<li><span class="bar"><i style="width:${pc}%"></i></span>`
+        + `<span class="pc">${pc}%</span><span class="nm">${esc(名)}</span></li>`;
+    }).join("");
+    // 分母を必ず書く。数えられなかったぶんも隠さない
+    const 残り = 並び.length - 出す.length;
+    aroundNote.textContent =
+      `約 1.2km × 0.8km の範囲で、${a.classifiedPixels.toLocaleString()} 画素を数えたうちの割合です。`
+      + (a.transparentPixels
+        ? `この範囲には、資料に色が付いていない画素が ${a.transparentPixels.toLocaleString()} ありました。`
+          + `それは「何も無かった」という意味ではありません。`
+        : "")
+      + (残り ? `1% に満たない区分が ${残り} つあり、ここには出していません。` : "");
   }
 
   // まわり ── この一帯について、公式資料から言えること。
@@ -95,6 +146,7 @@
     if (!a) return;   // その地域の資料が無い。黙る（空の節を出すと「無い」の主張に読まれる）
 
     nearSec.hidden = false;
+    yearsEl.hidden = false;
     nearLead.textContent = `${a.label}には、こういう記録があります`;
     // 古い順。年表として読むので、時の流れの向きに並べる。
     //   散歩中は新しい順に 1 件だけ出しているが、あちらは「1 件を選ぶ」話で、
