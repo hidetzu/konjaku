@@ -377,3 +377,140 @@ CASES.push(
     },
   },
 );
+
+CASES.push({
+  // ⚠ **文字を大きくして壊れない**（`ui-ux-review` §3）。⚠ **v0.1.0 では 1 度も見ていなかった。**
+  //   ⚠ **実際に踏んだ**（2026-08-29。⚠ この検査を書いていて見つけた）:
+  //     ⚠ **「なぜそう言える？」を開いて文字を 20px にすると、⚠ 板が 888px になり、
+  //       ⚠ 320px 幅で検索窓と年代が 5 組重なった。**⚠ **答えの 1 文も画面の外へ出ていた。**
+  //     ⚠ **出典のリンクが、⚠ 折り返すと 41px になっていた**（⚠ 擬似要素では届かない）。
+  //
+  // ⚠ **見えているかは `checkVisibility()` で見る**（`CLAUDE.md` §9）。
+  //   ⚠ **閉じた `<details>` の中では、⚠ `getBoundingClientRect()` が直前の寸法を返し続ける。**
+  //   ⚠ **これも同じ日に踏んだ**（⚠ 無い不具合を「在る」と報告しかけた）。
+  name: "文字を大きくしても、重ならず・はみ出さず・44×44 を割らない",
+  path: `/?${TOYOSU}`, origin: NEXT_BASE, viewport: { width: 320, height: 640 },
+  setup: (page) => page.addInitScript(() => addEventListener("DOMContentLoaded", () => {
+    const s = document.createElement("style");
+    s.textContent = "html{font-size:20px}";   // ⚠ 端末の文字サイズ設定に相当
+    document.head.append(s);
+  })),
+  async check(page) {
+    await waitAnswer(page); await waitEras(page);
+    // ⚠ **いちばん高くなる状態で測る。**⚠ 畳んだままだと、⚠ 伸びたときの重なりを見られない
+    await page.locator(".why__sum").click();
+    await page.waitForTimeout(500);
+    const r = await page.evaluate(() => {
+      const 押せる = [...document.querySelectorAll("button, a, summary, input")]
+        .filter((e) => e.checkVisibility());
+      const 小さい = 押せる.map((e) => {
+        const b = e.getBoundingClientRect();
+        return { 字: (e.textContent || e.id || e.tagName).trim().slice(0, 10),
+                 w: Math.round(b.width), h: Math.round(b.height) };
+      }).filter((t) => t.w > 0 && (t.w < 44 || t.h < 44));
+      const 箱 = 押せる.map((e) => ({ e, r: e.getBoundingClientRect() })).filter((x) => x.r.width > 0);
+      const 重なり = [];
+      for (let i = 0; i < 箱.length; i++) for (let j = i + 1; j < 箱.length; j++) {
+        const a = 箱[i].r, c = 箱[j].r;
+        if (箱[i].e.contains(箱[j].e) || 箱[j].e.contains(箱[i].e)) continue;
+        if (!(a.right <= c.left || a.left >= c.right || a.bottom <= c.top || a.top >= c.bottom))
+          重なり.push(`${(箱[i].e.textContent || 箱[i].e.id).trim().slice(0, 8)} × ${(箱[j].e.textContent || 箱[j].e.id).trim().slice(0, 8)}`);
+      }
+      const card = document.getElementById("card").getBoundingClientRect();
+      const bar = document.getElementById("bar").getBoundingClientRect();
+      return { 板: Math.round(card.height), 押せるもの: 押せる.length,
+               画面外へ出た分: Math.round(Math.max(0, card.bottom - innerHeight)),
+               バーに掛かった分: Math.round(Math.max(0, bar.bottom - card.top)),
+               横あふれ: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+               小さい, 重なり };
+    });
+    must(!r.重なり.length, `文字を大きくしたら、押せるもの同士が重なった: ${r.重なり.join(" / ")}`);
+    must(!r.小さい.length, `文字を大きくしたら、44×44 を割った: ${r.小さい.map((t) => `${t.字} ${t.w}x${t.h}`).join(" / ")}`);
+    must(r.画面外へ出た分 === 0, `板が画面の下へ ${r.画面外へ出た分}px はみ出している`);
+    must(r.バーに掛かった分 === 0, `板が検索窓に ${r.バーに掛かった分}px 掛かっている（⚠ 場所を探せなくなる）`);
+    must(!r.横あふれ, "画面が横にあふれている");
+    return `板 ${r.板}px・押せるもの ${r.押せるもの} 個・重なり 0・44 割れ 0・はみ出し 0`;
+  },
+});
+
+CASES.push(
+  {
+    // ⚠ **押せるものにフォーカスが行く／目で分かる**（`ui-ux-review` §3）。
+    //   ⚠ **v0.1.0 では 1 度も見ていなかった**（2026-08-29 に測ったら、⚠ 壊れてはいなかった）。
+    // ⚠ **壊れていなくても残す。**⚠ **次に壊れたら止まる形にする**（`CLAUDE.md` §2）。
+    //
+    // ⚠ **一周は要素そのもので見る。**⚠ **名前で見ると、⚠ 同じ字のものがあるだけで止まる**
+    //   （2026-08-29 に踏んだ。⚠ 13 個あるのに「1 個」と出た）。
+    name: "Tab で押せるもの全部に行けて、フォーカスが目で分かる",
+    path: `/?${TOYOSU}`, origin: NEXT_BASE, viewport: SP,
+    async check(page) {
+      await waitAnswer(page); await waitEras(page);
+      // ⚠ **いちばん押せるものが多い状態で見る**（⚠ 畳んだままだと、⚠ 中の 1 つを見られない）
+      await page.locator(".why__sum").click();
+      await page.waitForTimeout(400);
+      const 見える = await page.evaluate(() =>
+        [...document.querySelectorAll("button, a, summary, input, [tabindex]")]
+          .filter((e) => e.checkVisibility())
+          .map((e) => (e.textContent || e.id || e.getAttribute("aria-label") || e.tagName).trim().slice(0, 14)));
+      await page.evaluate(() => {
+        document.body.setAttribute("tabindex", "-1"); document.body.focus();
+      });
+      const 経路 = [], 印なし = [];
+      for (let i = 0; i < 40; i++) {
+        await page.keyboard.press("Tab");
+        const cur = await page.evaluate(() => {
+          const e = document.activeElement;
+          if (!e || e === document.body || e === document.documentElement) return null;
+          if (e.dataset.tabSeen) return { 一周: true };
+          e.dataset.tabSeen = "1";
+          const cs = getComputedStyle(e);
+          return { 名: (e.textContent || e.id || e.getAttribute("aria-label") || e.tagName).trim().slice(0, 14),
+                   印: !(cs.outlineStyle === "none" && cs.boxShadow === "none") };
+        });
+        if (!cur) continue;          // ⚠ ブラウザの枠へ抜けただけ。⚠ まだ回る
+        if (cur.一周) break;
+        経路.push(cur.名);
+        if (!cur.印) 印なし.push(cur.名);
+      }
+      const 行けない = 見える.filter((n) => !経路.includes(n));
+      must(!行けない.length, `Tab で行けない押せるものがある: ${行けない.join(" / ")}`);
+      must(!印なし.length, `フォーカスの印が無い: ${印なし.join(" / ")}`);
+      return `押せるもの ${見える.length} 個・Tab で ${経路.length} 個・印なし 0`;
+    },
+  },
+
+  {
+    // ⚠ **明治期が取れなかったときも黙らない**（2026-08-29。Owner 判断）。
+    //   ⚠ **周辺の記録・空中写真と挙動を揃える。**
+    //   ⚠ **実際に踏んだ**: ⚠ **タイルを塞ぐと、⚠ 行もまとめの 1 行も静かに消え、
+    //     ⚠ 利用者には何も起きなかったように見えた。**
+    name: "明治期を読めないときも、黙らない",
+    path: `/?${TOYOSU}`, origin: NEXT_BASE, viewport: SP,
+    setup: (page) => page.route("**://cyberjapandata.gsi.go.jp/xyz/swale/**", (r) => r.abort()),
+    async check(page) {
+      await waitAnswer(page);
+      await page.waitForTimeout(4000);
+      await page.locator(".why__sum").click();
+      await page.waitForTimeout(400);
+      const r = await page.evaluate(() => {
+        const row = document.getElementById("meiji").closest(".why__row");
+        return { 出る: !row.hidden,
+                 明治期: document.getElementById("meiji").textContent.trim(),
+                 足元: document.getElementById("gloss").textContent.trim(),
+                 まとめ: document.getElementById("sub").textContent.trim() };
+      });
+      must(r.出る, "明治期を読めないのに、行ごと黙っている（⚠ 周辺と空中写真は言う。⚠ 揃っていない）");
+      must(/確認できませんでした/.test(r.明治期), `読めなかったことを言っていない: ${r.明治期}`);
+      // ⚠ **「無い」と言わない**（掟 §1）
+      must(!/ありません$|無いです|存在しません/.test(r.明治期), `読めなかったのに「無い」と言っている: ${r.明治期}`);
+      // ⚠ **まとめの 1 行には出さない**（⚠ 取れていないものを、⚠ 言えることの行に混ぜない）
+      must(!/明治期/.test(r.まとめ), `まとめに、取れていない明治期が出ている: ${r.まとめ}`);
+      // ⚠ **「足元と同じ字を使わない」は、⚠ ここでは確かめられない。**
+      //   ⚠ **豊洲は足元に区分が在るので、⚠ 比べる相手が答えの文になる**（⚠ 必ず違う）。
+      //   ⚠ **足元が「言えないとき」の字になるのは、⚠ 区分が無い場所だけ。**
+      //   ⚠ **わざと同じ字に戻しても素通りした**（2026-08-29。⚠ 実際に踏んだ）。
+      //   ⚠ **字の重複は `test/check/next.mjs` が見る。**⚠ **ここは挙動だけを見る。**
+      return `「${r.明治期}」・まとめは「${r.まとめ}」`;
+    },
+  },
+);
