@@ -28,7 +28,7 @@
   const meijiEl = $("meiji"), meijiRow = $("meijiRow");
   const photoEl = $("photo"), photoRow = $("photoRow");
   const areaEl = $("area"), areaRow = $("areaRow"), areaNote = $("areaNote"), areaCite = $("areaCite");
-  const erasEl = $("eras"), eraNote = $("eraNote");
+  const erasEl = $("eras"), eraNote = $("eraNote"), eraBack = $("eraBack");
 
   // ⚠ **地図はタイルを並べて作る**（⚠ β 版の `/peel` は MapLibre だが、⚠ 運んでいない）。
   //   ⚠ **この縦切りでは、⚠ 動かせる地図が要る。**⚠ 依存を足す前に、⚠ まず素で作る
@@ -435,19 +435,20 @@
     }
     概略.photo = `空中写真 <b>${残る.length} 年代</b>`;
     drawSub();
-    // 既定は「いま」。押されるまで写真は出さない。
+    // 既定は地図。押されるまで写真は出さない。
     //   古い順。verify.js が時系列に並べ替えて返している。
+    //   年は 2 行に割る（「1936」「–42」）。1 行だと 7 つが画面に収まらない。
     erasEl.hidden = false;
-    erasEl.innerHTML =
-      `<button type="button" class="era" data-era="" aria-pressed="true">いま</button>`
-      + 残る.map((e) =>
-          `<button type="button" class="era" data-era="${esc(e.id)}" aria-pressed="false">${esc(e.label)}</button>`
-        ).join("");
-    for (const b of erasEl.querySelectorAll(".era")) {
-      b.addEventListener("click", () => {
-        setEra(b.dataset.era ? 残る.find((e) => e.id === b.dataset.era) : null);
-      });
-    }
+    erasEl.innerHTML = 残る.map((e) => {
+      const m = String(e.label).match(/^(\d{4})(.*)$/);
+      const 上 = m ? m[1] : e.label, 下 = m ? m[2] : "";
+      return `<button type="button" class="era" data-era="${esc(e.id)}" aria-pressed="false">`
+        + `<span class="era__y">${esc(上)}</span>`
+        + (下 ? `<span class="era__t">${esc(下)}</span>` : "")
+        + `</button>`;
+    }).join("");
+    for (const b of erasEl.querySelectorAll(".era"))
+      b.addEventListener("click", () => setEra(残る.find((e) => e.id === b.dataset.era)));
   }
 
   // 年代を切り替える。写真を出すと、地図の意味が変わる。
@@ -456,8 +457,9 @@
   function setEra(e) {
     era = e ?? null;
     for (const b of erasEl.querySelectorAll(".era"))
-      b.setAttribute("aria-pressed", String((b.dataset.era || "") === (era?.id ?? "")));
+      b.setAttribute("aria-pressed", String(b.dataset.era === era?.id));
     eraNote.hidden = !era;
+    eraBack.hidden = !era;
     if (era) eraNote.textContent =
       `${era.label}${era.sub ? `（${era.sub}）` : ""}の空中写真を出しています。`
       + `地形分類の色は、いまの土地の話なので消しています`;
@@ -466,6 +468,7 @@
     if (!era) drawLegend();
     draw();
   }
+  eraBack.addEventListener("click", () => setEra(null));
 
   // この周辺について、公式資料に書かれている記録。
   //   上の 3 つと違い、これは地点の答えではない。地域の記録。
