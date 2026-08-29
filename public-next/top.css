@@ -113,11 +113,15 @@ body{
    幅を等分すると、年代が 7 つ（verify.js の ERAS）でちょうど 44px になる。
    増えたときのために折り返しは許す。横には二度と流さない。 */
 .eras{
-  display:flex; flex-wrap:wrap; gap:var(--gap-sub); margin-top:var(--gap-row);
+  /* grid にする。折り返しても列幅が揃う。
+     flex-wrap だと、2 段目に 2 つしか無いとき、その 2 つが伸びて不格好だった
+     （実測 2026-08-29・320px 幅で 140px ずつになった）。 */
+  display:grid; grid-template-columns:repeat(auto-fit, minmax(var(--tap), 1fr));
+  gap:var(--gap-sub); margin-top:var(--gap-row);
 }
 .eras[hidden]{display:none}
 .era{
-  flex:1 1 auto; min-width:var(--tap); min-height:var(--tap); padding:0 .125rem;
+  min-width:var(--tap); min-height:var(--tap); padding:0 .125rem;
   display:flex; flex-direction:column; align-items:center; justify-content:center;
   border:1px solid var(--line-strong); border-radius:.5rem; background:transparent;
   color:var(--ink-2); font:inherit; line-height:1.15; white-space:nowrap; cursor:pointer;
