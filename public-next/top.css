@@ -87,15 +87,18 @@ body{
   width:.5rem;height:.5rem;border-radius:50%;
   border:2px solid var(--action); background:var(--surface); flex:none;
 }
-.big{margin:0 0 var(--gap-sub); font-size:1.0625rem; font-weight:700; line-height:1.4}
+/* 主は、分かる言葉のほう。
+   利用者役 3 名のうち 2 名が「分かる言葉を小さいほうに置いているのが逆」
+   「かみ砕いたほうが読みにくいのは逆」と言った。
+   区分名は資料の言葉で、そのままでは読めない人がいる。 */
+.big{margin:0 0 var(--gap-sub); font-size:1.0625rem; font-weight:700; line-height:1.45}
 
-/* 判定の字と、区分の説明を分ける。説明は「この区分とは何か」であって、
-   この場所を調べた結果ではない。同じ見た目にすると、区別がつかない。 */
-.gloss{
-  margin:0; padding-left:.5rem;
-  border-left:2px solid var(--line);
-  font-size:.8125rem; color:var(--ink-3); line-height:1.55;
+/* 区分名は、出典の言葉として添える。主ではない。
+   消しはしない。国土地理院の区分名を名乗れないと、何を根拠に言っているか分からなくなる。 */
+.term{
+  margin:0; font-size:.75rem; color:var(--ink-3); line-height:1.5;
 }
+.term::before{content:"国土地理院の区分：";}
 
 /* ---- 現在地の印 ----
    利用者役 3 名のうち 2 名が「自分がどこにいるか 5 秒で分からなかった」と答えた。
@@ -136,4 +139,45 @@ body{
   border:1px solid rgb(0 0 0 / .16); flex:none;
 }
 #legend li.here i{border:2px solid var(--action)}
-#legend li.rest{color:var(--ink-3)}
+
+/* 「ほか n 種」は押せる。押せるものは、押せる見た目にする。
+   利用者役 3 名とも「押せるように見えない」と言った。
+   出す以上は押せる先が要る、と決めてある。逆に、押せるのに押せなく見えるのも同じ問題。 */
+#more{
+  display:block; width:100%; min-height:var(--tap);
+  margin:var(--gap-row) 0 0; padding:0 var(--pad-md);
+  font:inherit; font-size:.8125rem; font-weight:700;
+  color:var(--action); background:none;
+  border:2px solid var(--action); border-radius:.625rem;
+  cursor:pointer;
+}
+#more[hidden]{display:none}
+#more:focus-visible{outline:2px solid var(--action);outline-offset:2px}
+
+/* 全区分を出す板。地図を覆いすぎない。 */
+#sheet{
+  position:absolute; left:var(--pad-sm); right:var(--pad-sm);
+  bottom:calc(var(--pad-sm) + env(safe-area-inset-bottom));
+  max-height:62%; overflow:auto; padding:var(--pad-md);
+  background:var(--surface); border:1px solid var(--line-strong); border-radius:.875rem;
+  box-shadow:0 -4px 22px rgb(0 0 0 / .18);
+}
+#sheet[hidden]{display:none}
+#sheet header{display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--gap-row)}
+#sheet h2{margin:0;font-size:.9375rem}
+#sheet .close{
+  min-width:var(--tap); min-height:var(--tap); font-size:1rem;
+  background:none; border:0; color:var(--ink-2); cursor:pointer;
+}
+#sheet ul{margin:0;padding:0;list-style:none}
+#sheet li{display:flex;align-items:center;gap:.5rem;padding:.4375rem 0;
+  border-bottom:1px solid var(--line);font-size:.8125rem}
+#sheet li:last-child{border-bottom:0}
+#sheet li.here{color:var(--action);font-weight:700}
+#sheet i{width:.875rem;height:.875rem;border-radius:.1875rem;border:1px solid rgb(0 0 0 / .16);flex:none}
+#sheet li.here i{border:2px solid var(--action)}
+/* 未整備は、土地の区分ではない。データの状態。区分一覧に混ぜない。 */
+#sheet .state{
+  margin:var(--gap-row) 0 0; padding-top:var(--gap-row);
+  border-top:1px dashed var(--line); font-size:.75rem; color:var(--ink-3); line-height:1.5;
+}

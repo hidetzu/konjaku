@@ -22,9 +22,19 @@
 
   <section id="card" aria-live="polite">
     <p class="kick"><i class="dot" aria-hidden="true"></i><span id="kickText">地図を動かすと、その場所を調べます</span></p>
-    <p class="big" id="name">　</p>
-    <p class="gloss" id="gloss">　</p>
+    <p class="big" id="gloss">　</p>
+    <p class="term" id="name">　</p>
     <ul id="legend" aria-label="この画面に映っている土地"></ul>
+    <button id="more" type="button" hidden></button>
+  </section>
+
+  <section id="sheet" hidden aria-label="この画面に映っている土地">
+    <header>
+      <h2>この画面に映っている土地</h2>
+      <button class="close" type="button" id="sheetClose" aria-label="閉じる">✕</button>
+    </header>
+    <ul id="sheetList"></ul>
+    <p class="state" id="sheetState" hidden></p>
   </section>
 </div>
 

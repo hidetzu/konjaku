@@ -23,6 +23,7 @@
   const { esc } = window.KonjakuEsc ?? { esc: (s) => s };
   const map = $("map"), q = $("q"), hits = $("hits");
   const kickText = $("kickText"), nameEl = $("name"), glossEl = $("gloss"), legendEl = $("legend");
+  const moreBtn = $("more"), sheet = $("sheet"), sheetList = $("sheetList"), sheetState = $("sheetState");
 
   // ⚠ **地図はタイルを並べて作る**（⚠ β 版の `/peel` は MapLibre だが、⚠ 運んでいない）。
   //   ⚠ **この縦切りでは、⚠ 動かせる地図が要る。**⚠ 依存を足す前に、⚠ まず素で作る
@@ -122,6 +123,8 @@
   // 画面に映る区分と、その面積。凡例が使う。
   //   面積は「どれが広いか」を決めるためだけに使い、画面には出さない。
   let seen = new Map();
+  // 塗れていない画素が在るか。「まだ分類されていない」を言うのに使う。
+  let unpainted = false;
 
   let drawSeq = 0;
   async function drawFace(left, top, w, h) {
@@ -170,6 +173,11 @@
     }
     if (seq !== drawSeq) return;
     seen = tally;
+    // 塗れていない画素を数える。取れなかったのではなく、分類が無い。
+    const px = g.getImageData(0, 0, face.width, face.height).data;
+    let 空 = 0;
+    for (let i = 3; i < px.length; i += 4) if (px[i] < 8) 空++;
+    unpainted = 空 / (px.length / 4) > 0.02;
     drawLegend();
   }
 
@@ -247,8 +255,31 @@
     legendEl.innerHTML = 出す.map((nm) => {
       const here = nm === hereName;
       return `<li class="${here ? "here" : ""}"><i style="background:${paint(nm)}"></i>${esc(nm)}${here ? "（ここ）" : ""}</li>`;
-    }).join("") + (残り > 0 ? `<li class="rest">ほか ${残り} 種</li>` : "");
+    }).join("");
+    // 「ほか n 種」は押せる。押せるものは、押せる見た目にする。
+    //   前は凡例の中に字を並べていたが、3 名とも「押せるように見えない」と言った。
+    moreBtn.hidden = 残り <= 0;
+    if (残り > 0) moreBtn.textContent = `ほか ${残り} 種を見る`;
   }
+
+  // 押すと、この画面に映る土地を全部出す。
+  //   未整備は、区分一覧に入れない。土地の区分ではなく、データの状態だから。
+  function openSheet() {
+    const 順 = [...seen].sort((a, b) => b[1] - a[1]).map(([k]) => k);
+    sheetList.innerHTML = 順.map((nm) => {
+      const here = nm === hereName;
+      return `<li class="${here ? "here" : ""}"><i style="background:${paint(nm)}"></i>${esc(nm)}${here ? "（ここ）" : ""}</li>`;
+    }).join("");
+    // 塗れていない画素があれば、それは「まだ分類されていない」。
+    //   割合は言わない。言わなければ嘘にならない。
+    sheetState.hidden = !unpainted;
+    if (unpainted) sheetState.textContent = "白いところは、まだ分類されていません（土地の区分ではなく、データの状態です）";
+    sheet.hidden = false;
+    $("sheetClose").focus();
+  }
+  moreBtn.addEventListener("click", openSheet);
+  $("sheetClose").addEventListener("click", () => { sheet.hidden = true; moreBtn.focus(); });
+  addEventListener("keydown", (e) => { if (e.key === "Escape" && !sheet.hidden) { sheet.hidden = true; moreBtn.focus(); } });
 
   // ---- 足元を調べる ----
   let askSeq = 0;
@@ -260,24 +291,25 @@
     if (seq !== askSeq) return;   // ⚠ **古い結果で上書きしない**
     hereName = null;
     if (!v || v.state === Konjaku.STATE.UNREACHABLE) {
-      nameEl.textContent = "いま、この場所を調べられません";
-      glossEl.textContent = "通信が届いていません。少し待って、もう一度動かしてください";
+      glossEl.textContent = "いま、この場所を調べられません";
+      nameEl.textContent = "";
+      kickText.textContent = "通信が届いていません。少し待って、もう一度動かしてください";
       drawLegend();
       return;
     }
     if (!v.ok || !v.value) {
       // ⚠ **「取れなかった」と「無い」を分ける**（`docs/adr/0056`）
-      nameEl.textContent = "この場所はまだ分類されていません";
-      glossEl.textContent = "国土地理院の地形分類が、この場所には作られていません";
+      glossEl.textContent = "この場所は、まだ分類されていません";
+      nameEl.textContent = "";
       drawLegend();
       return;
     }
     hereName = v.value;
-    nameEl.textContent = `ここは ${v.value}`;
-    // 説明文は words.js の GROUND_GLOSS から借りる。ここで書かない。
-    //   これは「この区分とは何か」であって、この場所を調べた結果ではない。
-    //   見た目でも分ける（左の縦線）。同じ顔にすると、決まり文句に見える。
-    glossEl.textContent = KonjakuWords.groundGloss(v.value);
+    // 主は、分かる言葉のほう。区分名は資料の言葉で、そのままでは読めない人がいる。
+    //   言葉は words.js の GROUND_GLOSS から借りる。ここで書かない。
+    //   区分名も消さない。何を根拠に言っているかが分からなくなる。
+    glossEl.textContent = `ここは、${KonjakuWords.groundGloss(v.value)}`;
+    nameEl.textContent = v.value;
     drawLegend();
   }
 
