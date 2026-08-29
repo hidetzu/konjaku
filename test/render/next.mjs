@@ -1800,3 +1800,60 @@ CASES.push({
     return `「${r.言った}」／ 控え ${r.控え} 件`;
   },
 });
+
+// ⚠ **`hidden` にしたら、⚠ 本当に消えるか**（2026-08-30。⚠ 実際に踏んだ）。
+//
+// ⚠ **このファイル群は、⚠ 規則ごとに `[hidden]{display:none}` を書く作り。**
+//   ⚠ **書き忘れると、⚠ `hidden` が効かない。**⚠ **属性は付くので、⚠ 属性で見ていると素通りする。**
+//   ⚠ **受け取り口で踏んだ**: ⚠ 「足しました」と出したあとも「この端末に足す」が押せた。
+//
+// ⚠ **一覧を書き写さない。**⚠ **画面に在る `id` を全部見る**
+//   （⚠ 書き写す形にすると、⚠ **足し忘れたものが黙って通る**）。
+// ⚠ **親が隠れていると判定できない**ので、⚠ **先に親を開く。**
+//   ⚠ **閉じた `<details>` の中も描かれない**ので、⚠ **開いてから測る**（`CLAUDE.md` §9）。
+const 消えるか = (page) => page.evaluate(() => {
+  const 消えない = [], 判定できない = [];
+  const 閉じていた = [...document.querySelectorAll("details:not([open])")];
+  for (const d of 閉じていた) d.open = true;
+  for (const el of document.querySelectorAll("[id]")) {
+    const 戻す = [];
+    for (let a = el; a && a !== document.documentElement; a = a.parentElement) {
+      if (a.hidden) { 戻す.push(a); a.hidden = false; }
+    }
+    const 元 = el.hidden;
+    el.hidden = false;
+    if (!el.checkVisibility()) 判定できない.push(el.id);
+    else {
+      el.hidden = true;
+      if (el.checkVisibility()) 消えない.push(`${el.id}（${el.className || el.tagName}）`);
+    }
+    el.hidden = 元;
+    for (const a of 戻す) a.hidden = true;
+  }
+  for (const d of 閉じていた) d.open = false;
+  return { 消えない, 判定できない, 見た: document.querySelectorAll("[id]").length };
+});
+
+for (const [名, path, viewport] of [
+  ["散歩中の画面", `/?${TOYOSU}`, SP],
+  ["受け取り口", "/take", PC],
+  ["深掘り画面", `/deep?${TOYOSU}`, PC],
+]) {
+  CASES.push({
+    name: `${名}は、hidden にしたものが本当に消える`,
+    path, origin: NEXT_BASE, viewport,
+    async check(page) {
+      await page.waitForTimeout(3000);
+      const r = await 消えるか(page);
+      must(r.見た > 10, `見た要素が少なすぎる（${r.見た} 件）。⚠ 画面が出ていない可能性`);
+      must(!r.消えない.length,
+        `hidden にしても消えないものがある: ${r.消えない.join(" / ")}`
+        + "。⚠ **その規則に `[hidden]{display:none}` を足す**");
+      // ⚠ **判定できなかったものを黙って通さない。**⚠ **数が増えたら、⚠ 見えていない範囲が広がっている**
+      must(!r.判定できない.length,
+        `hidden かどうかを判定できなかった: ${r.判定できない.join(" ")}`
+        + "。⚠ **親が隠れているか、⚠ 描かれていない**");
+      return `${r.見た} 件を見て、⚠ 全部消えた`;
+    },
+  });
+}

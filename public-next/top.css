@@ -540,3 +540,11 @@ body{
   /* 地図は画面いっぱい。柱の下にも地図が続く */
   #map{left:0; right:0}
 }
+
+/* display を持つ規則には、[hidden] の打ち消しが要る。
+   このファイルは規則ごとに書く作りなので、書き忘れると hidden が効かない。
+   hidden 属性は付くので、属性で見ている検査は素通りする。
+   実際に踏んだ（2026-08-30・受け取り口）。実描画が全部の要素で見ている。 */
+#bar[hidden],#find[hidden],#bottom[hidden]{display:none}
+.why__note[hidden],.why__body[hidden],.why__cite[hidden],.why__more[hidden]{display:none}
+.code__link[hidden],.code__close[hidden]{display:none}

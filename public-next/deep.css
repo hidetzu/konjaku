@@ -54,6 +54,9 @@ body{
    1 枚ずつ切り替えるのではなく、並べる。切り替えると、前の絵を覚えていないと比べられない。 */
 .time__lead{margin:0 0 var(--gap-block); font-size:1rem; color:var(--ink)}
 .frames{display:grid; gap:var(--gap-block); grid-template-columns:repeat(auto-fit,minmax(9rem,1fr))}
+/* display を持つ規則には、[hidden] の打ち消しが要る（top.css と同じ話）。
+   書き忘れると hidden が効かず、属性で見ている検査は素通りする。 */
+.back[hidden],.frames[hidden]{display:none}
 .frame{margin:0}
 /* 絵の窓。真ん中がその地点。まわりは同じ縮尺で切り取っている */
 .frame__win{
