@@ -255,6 +255,21 @@ body{
   gap:var(--gap-sub); margin-top:var(--gap-row);
 }
 .eras[hidden]{display:none}
+/* チップの見出し。押す前に「これは何か」を言う。
+   印は飾りで、字が読めれば意味は通る。 */
+.eras__label{
+  margin:0 0 var(--gap-sub); font-size:.75rem; color:var(--ink-3);
+  display:flex; align-items:center; gap:.375rem;
+}
+.eras__label[hidden]{display:none}
+.eras__mark{
+  width:.875rem; height:.75rem; border:1px solid currentColor; border-radius:.125rem;
+  position:relative; flex:none;
+}
+.eras__mark::after{
+  content:""; position:absolute; inset:.1875rem .1875rem auto; height:.0625rem;
+  background:currentColor;
+}
 .era{
   min-width:var(--tap); min-height:var(--tap); padding:0 .125rem;
   display:flex; flex-direction:column; align-items:center; justify-content:center;

@@ -1857,3 +1857,62 @@ for (const [名, path, viewport] of [
     },
   });
 }
+
+// ⚠ **年代のチップに見出しを付けた**（2026-08-30。⚠ Owner が絵で決めた）。
+//   ⚠ **押す前に「いつ変わったか」と読まれていた**（⚠ 利用者役 5 名中 3 名。⚠ 実在の利用者ではない）。
+//   ⚠ **`docs/adr/0006` は「いつ変わったか」を言わないと決めている。**
+//   ⚠ **言わないと決めているのに、⚠ チップが言っているように見えていた。**
+// ⚠ **`#sub` の形は土地で違う**ので、⚠ **2 か所で見る**:
+//     豊洲     明治期は …／空中写真 N 年代     ⚠ `／` あり
+//     軽井沢   空中写真 1 年代                 ⚠ 明治期の資料が無い。⚠ 外すと空になる
+for (const [名, ll, 数, subが残る] of [
+  ["豊洲", TOYOSU, 7, true],
+  ["軽井沢", "ll=36.3418,138.6353", 1, false],
+]) {
+  CASES.push({
+    name: `${名}で、年代のチップに見出しが付く`,
+    path: `/?${ll}`, origin: NEXT_BASE, viewport: SP,
+    async check(page) {
+      await waitAnswer(page);
+      await 待つ(page, () => document.querySelectorAll("#eras .era").length > 0, "年代のチップ");
+      await 待つ(page, () => {
+        const e = document.querySelector(".eras__label");
+        return e && e.checkVisibility() && e.textContent.trim().length > 0;
+      }, "チップの見出し");
+      const r = await page.evaluate(() => {
+        const 見 = document.querySelector(".eras__label");
+        const eras = document.getElementById("eras");
+        const sub = document.getElementById("sub");
+        // ⚠ **「空中写真」を含む行を数える。**⚠ **中に同じ語を持つ親は数えない**
+        //   （⚠ 数えると、⚠ 板ごと 1 件に数えられて、⚠ 何も見ていないことになる）。
+        const 行 = [...document.querySelectorAll("#card *")]
+          .filter((e) => e.checkVisibility() && /空中写真/.test(e.textContent)
+                         && ![...e.children].some((c) => /空中写真/.test(c.textContent)));
+        return {
+          見出し: 見.textContent.trim(),
+          見出しy: Math.round(見.getBoundingClientRect().y),
+          erasY: Math.round(eras.getBoundingClientRect().y),
+          subが見える: sub.checkVisibility(),
+          sub字: sub.textContent.trim(),
+          空中写真の行: 行.length,
+          行の字: 行.map((e) => e.textContent.trim().slice(0, 20)),
+          チップ: document.querySelectorAll("#eras .era").length,
+        };
+      });
+      // ⚠ **① 見出しはチップより上**（⚠ 下に置くと、⚠ 押したあとの説明に読める）
+      must(r.見出しy < r.erasY,
+        `見出しがチップより下にある（見出し ${r.見出しy} ／ チップ ${r.erasY}）`);
+      // ⚠ **② 「空中写真」を言う行は 1 本だけ**（⚠ `#sub` から外し忘れると 2 本になる）
+      must(r.空中写真の行 === 1,
+        `「空中写真」を言う行が ${r.空中写真の行} 本ある: ${r.行の字.join(" ／ ")}`);
+      // ⚠ **③ 見出しの数と、⚠ チップの数が同じ**（⚠ 数を 2 か所で持たない）
+      must(r.チップ === 数 && new RegExp(`（${r.チップ}）`).test(r.見出し),
+        `見出しの数とチップの数が合わない（見出し「${r.見出し}」／ チップ ${r.チップ}）`);
+      // ⚠ **④ 外した結果 `#sub` が空になったら、⚠ 行ごと隠す**（⚠ 空の行は隙間になる）
+      must(r.subが見える === subが残る,
+        `まとめの行の出方が違う（見える=${r.subが見える} ／ 期待 ${subが残る}）: ${JSON.stringify(r.sub字)}`);
+      return `見出し「${r.見出し}」y=${r.見出しy} < チップ y=${r.erasY} ／ `
+        + `まとめ「${r.sub字 || "（無し）"}」／ 「空中写真」の行 ${r.空中写真の行} 本`;
+    },
+  });
+}

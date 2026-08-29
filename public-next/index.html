@@ -41,7 +41,12 @@
     <p class="ans" id="gloss">　</p>
     <p class="sub" id="sub"></p>
 
-    <!-- 空中写真の年代。押すと、その年代の写真が地図になる。 -->
+    <!-- 空中写真の年代。押すと、その年代の写真が地図になる。
+         チップの直上に「これは何か」を置く。置かないと、押す前に
+         「いつ変わったか」と読まれる（利用者役 5 名中 3 名）。 -->
+    <p class="eras__label" id="erasLabel" hidden>
+      <i class="eras__mark" aria-hidden="true"></i><span id="erasLabelText"></span>
+    </p>
     <div class="eras" id="eras" role="group" aria-label="空中写真の年代" hidden></div>
     <p class="era-note" id="eraNote" hidden></p>
     <button class="era-back" id="eraBack" type="button" hidden>地図に戻す</button>
