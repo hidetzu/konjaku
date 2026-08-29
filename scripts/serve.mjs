@@ -7,7 +7,11 @@ import { extname, normalize, join } from "node:path";
 // 配信対象は public/ のみ（wrangler.jsonc の assets.directory と揃える）
 // ⚠ **`scripts/` へ移した**（2026-08-22）。⚠ **配るのは repo の `public/`**なので、
 //   ⚠ **1 つ上へ辿る**（⚠ 忘れると `scripts/public` を配って、⚠ 全部 404 になる）。
-const ROOT = join(import.meta.dirname, "..", "public");
+// ⚠ **配る先は差し替えられる**（2026-08-29）。⚠ **既定は `public/` のまま。**
+//   ⚠ **v0.1.0（`public-next/`）は別の Worker として配っている**ので、
+//     ⚠ **実描画でも別のサーバとして立てる**（⚠ 本番と同じく、⚠ 根が `/`）。
+//   ⚠ **同じサーバの下の階に置かない。**⚠ 本番と URL の形が変わる。
+const ROOT = join(import.meta.dirname, "..", process.env.SERVE_ROOT ?? "public");
 const PORT = Number(process.env.PORT ?? 8081);
 
 const TYPES = {

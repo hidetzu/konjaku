@@ -64,10 +64,14 @@ const TO_SUITE = [
   //     （⚠ 落ちない。⚠ **多く回る向きなので CI は緑のまま**。⚠ この repo で 2 回踏んでいる）。
   [/^test\/render\/top-[\w-]+\.mjs$/,  "top"],
   [/^test\/render\/peel-[\w-]+\.mjs$/, "peel"],
+  // ⚠ **v0.1.0 は別の Worker**（`docs/adr/0050`）。⚠ **β の画面は 1 つも読まない。**
+  //   ⚠ **`public-next/` を触ったら `next` だけ回す**（2026-08-29）。
+  [/^public-next\//,                  "next"],
+  [/^test\/render\/next\.mjs$/,       "next"],
 ];
 
 // ⚠ **全部回すときの一覧。**⚠ **ここ 1 か所で持つ**（2026-08-22。hidetzu/konjaku#190）。
-const ALL = ["top core", "top search", "peel core"];
+const ALL = ["top core", "top search", "peel core", "next core"];
 
 // ⚠ **重い群は、⚠ 何本かに分けて同時に回す**（2026-08-22。hidetzu/konjaku#190）。
 //   ⚠ **実測（2026-08-22・PR hidetzu/konjaku#209 の CI）**: peel/core 5:12 ／ top/core 3:45 ／ top/search 1:23。
@@ -148,9 +152,13 @@ for (const f of files) {
   if (hit) need.add(hit[1]);
   else full = true;                       // ⚠ 知らないもの → 全部
 }
-if (full) { need.add("top"); need.add("peel"); }
+// ⚠ **知らないものが 1 つでもあれば、⚠ 全部に倒す**（⚠ 絞り込みで検査漏れを作らない）。
+//   ⚠ **`next` も含める**（2026-08-29）。⚠ **ここに足し忘れると、
+//     ⚠ 知らないファイルを触ったときに v0.1.0 だけ回らない。**⚠ **落ちないので気づけない。**
+if (full) { need.add("top"); need.add("peel"); need.add("next"); }
 
 const out = [];
 if (need.has("top")) { out.push("top core", "top search"); }
 if (need.has("peel")) out.push("peel core");   // ⚠ peel に search のケースは 0 件
+if (need.has("next")) out.push("next core");   // ⚠ v0.1.0 は外へ出るケースが 0 件
 emit(out);
