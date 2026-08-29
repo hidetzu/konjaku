@@ -798,12 +798,22 @@
     return location.origin + location.pathname + "?take=" + t;
   }
 
+  // 渡せる長さの上限。実測で決めている（2026-08-29・Chromium・tmp/measure-urllen.mjs）。
+  //   50 件 1168 文字 / 100 件 2033 / 500 件 9172 / 700 件 12829 まで開けた。
+  //   1000 件 18172 文字で 431（配信側のヘッダ上限。16KB）。
+  //   ⚠ 以前は 2000 文字で止めていた。実測の 6 分の 1 で、100 件の手前で止まっていた。
+  //     止めていたのは受け取る側ではなく、こちらの自主規制だった。
+  //   ⚠ 12000 にするのは、配信の 16KB より手前で止めるため。
+  //     受け取る側（LINE やメール）が折り返すかどうかは測っていない。だから余白を残す。
+  const 渡せる長さ = 12000;
+
   let handTimer = null;
   handOut.addEventListener("click", async () => {
     const url = await handUrl();
-    // ⚠ 長すぎる URL は、開いた先で切れることがある。渡す前に言う
-    if (url.length > 2000) {
-      handOutText.textContent = "件数が多すぎて渡せません";
+    if (url.length > 渡せる長さ) {
+      // 何件なら渡せるかは言えない（1 件あたりの長さは名前の長さで変わる）。
+      //   だから「減らす」とだけ言う。数を出すと、その数で必ず渡せるように読める。
+      handOutText.textContent = "件数が多くて渡せません";
       clearTimeout(handTimer);
       handTimer = setTimeout(() => { handOutText.textContent = "PC やタブレットでも見る"; }, 3000);
       return;
@@ -814,8 +824,17 @@
       handTimer = setTimeout(() => { handOutText.textContent = "PC やタブレットでも見る"; }, 2600);
     };
     if (navigator.share) {
-      try { await navigator.share({ url }); return; }
-      catch (e) { if (e?.name === "AbortError") return; }
+      // 題と説明を付ける。共有シートの先（LINE のトーク・メール・メモ）に残ったとき、
+      //   URL だけだと後から探せない。何のリンクかが字で分かるようにする。
+      //   ⚠ 場所の名前は入れない。共有シートの先に地名が残る（docs/adr/0008 の主旨）。
+      try {
+        await navigator.share({
+          title: "今昔 — 保存した場所",
+          text: `保存した場所 ${saved.length} 件。PC やタブレットで開くと、この端末の保存を足せます。`,
+          url,
+        });
+        return;
+      } catch (e) { if (e?.name === "AbortError") return; }
     }
     try { await navigator.clipboard.writeText(url); 言う("リンクを写しました"); }
     catch { 言う("この端末では写せません"); }

@@ -1301,3 +1301,83 @@ for (const t of TABLET) {
     },
   });
 }
+
+CASES.push({
+  // ⚠ **渡せる長さは、⚠ 実測で決めている**（2026-08-29・`tmp/measure-urllen.mjs`）。
+  //   ⚠ **50 件 1168 文字 / 100 件 2033 / 500 件 9172 / 700 件 12829 まで開けた。**
+  //   ⚠ **1000 件 18172 文字で 431**（⚠ 配信側のヘッダ上限）。
+  //   ⚠ **以前は 2000 文字で止めていた。**⚠ **実測の 6 分の 1 で、⚠ 100 件の手前で止まっていた。**
+  // ⚠ **だから、⚠ 100 件が渡せることを検査で押さえる**（⚠ 戻したら落ちる）。
+  name: "保存が 100 件でも渡せて、多すぎるときは渡さないと言う",
+  path: `/?${TOYOSU}`, origin: NEXT_BASE, viewport: SP,
+  setup: (page) => page.addInitScript(() => {
+    // ⚠ **控えを先に置いてから画面を開く**（⚠ 100 件を手で保存させない）。
+    //   ⚠ **形は `saved.js` が読むものと同じ。**⚠ 食い違うと、⚠ 画面が 0 件から始まって気づける。
+    const list = Array.from({ length: 100 }, (_, i) => ({
+      lat: 35.65531 + i * 0.01234, lon: 139.79672 + i * 0.01234,
+      name: `東京都江東区豊洲${"一二三四五六七八九十"[i % 10]}丁目`,
+      value: ["旧水部", "埋立地", "低地", "台地"][i % 4],
+      gloss: "かつて水面で、その後陸地にされた土地",
+      at: 1756400000000 + i * 86400000,
+    }));
+    // ⚠ **`addInitScript` は読み込み直しでも走る。**⚠ **無条件に書くと、⚠ 控えを戻してしまう**
+    //   （⚠ 実際に踏んだ: ⚠ 多すぎる控えに入れ替えて読み込み直したら、⚠ 100 件へ戻っていた）。
+    if (!localStorage.getItem("konjaku-next-saved-v1"))
+      localStorage.setItem("konjaku-next-saved-v1", JSON.stringify(list));
+    // ⚠ **共有シートを差し替えて、⚠ 何を渡したかを控える。**
+    //   ⚠ **ここが無いと、⚠ 題と説明を落としても気づけない**（⚠ 書き写しに来ない）。
+    // ⚠ **控えは読み込み直しで消える**ので、⚠ **数は `sessionStorage` に持ち越す**
+    globalThis.__shared = [];
+    navigator.share = (d) => {
+      globalThis.__shared.push(d);
+      sessionStorage.setItem("__shared", String(Number(sessionStorage.getItem("__shared") ?? 0) + 1));
+      return Promise.resolve();
+    };
+  }),
+  async check(page) {
+    await waitAnswer(page);
+    await 待つ(page, () => !document.getElementById("savedOpen").hidden, "保存した場所の入口");
+    await page.locator("#savedOpen").click();
+    await page.waitForTimeout(400);
+    await page.locator("#handOut").click();
+    await 待つ(page, () => globalThis.__shared.length > 0, "共有シートへ渡すもの");
+    const 渡した = await page.evaluate(() => globalThis.__shared[0]);
+    must(渡した.url && /[?&]take=/.test(渡した.url), `リンクに中身が入っていない: ${渡した.url}`);
+    // ⚠ **以前の上限（2000）なら、⚠ ここで「渡せません」になっていた**
+    must(渡した.url.length > 2000,
+      `100 件のリンクが 2000 文字以下（${渡した.url.length} 文字）。⚠ この検査は何も見ていない`);
+    must(渡した.url.length <= 12000, `渡す上限を超えている（${渡した.url.length} 文字）`);
+    // ⚠ **題と説明が要る。**⚠ **URL だけだと、⚠ 送った先で何のリンクか分からない**
+    must(渡した.title && /今昔/.test(渡した.title), `共有に題が無い: ${JSON.stringify(渡した.title)}`);
+    must(渡した.text && /100 件/.test(渡した.text),
+      `共有の説明に件数が無い: ${JSON.stringify(渡した.text)}`);
+    // ⚠ **地名を入れない**（⚠ 共有シートの先に地名が残る。⚠ `docs/adr/0008` の主旨）
+    must(!/豊洲/.test(渡した.title + 渡した.text),
+      `共有の題か説明に地名が入っている: ${渡した.title} ／ ${渡した.text}`);
+
+    // ⚠ **多すぎるときは、⚠ 渡さないと言う**（⚠ 黙って切らない）
+    await page.evaluate(() => {
+      const big = Array.from({ length: 1500 }, (_, i) => ({
+        lat: 35 + i * 0.001, lon: 139 + i * 0.001,
+        name: "非常に長い名前を持つ架空の町名でリンクを膨らませるための行",
+        value: "旧水部", gloss: "かつて水面", at: 1756400000000 + i,
+      }));
+      localStorage.setItem("konjaku-next-saved-v1", JSON.stringify(big));
+    });
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await waitAnswer(page);
+    await 待つ(page, () => !document.getElementById("savedOpen").hidden, "保存した場所の入口");
+    await page.locator("#savedOpen").click();
+    await page.waitForTimeout(400);
+    const 前の数 = await page.evaluate(() => Number(sessionStorage.getItem("__shared") ?? 0));
+    await page.locator("#handOut").click();
+    await page.waitForTimeout(1200);
+    const 後 = await page.evaluate(() => ({
+      字: document.getElementById("handOutText").textContent.trim(),
+      渡した数: Number(sessionStorage.getItem("__shared") ?? 0),
+    }));
+    must(後.渡した数 === 前の数, "長すぎるのに渡してしまった");
+    must(/渡せません/.test(後.字), `長すぎるときに言っていない: ${後.字}`);
+    return `100 件 = ${渡した.url.length} 文字を渡した ／ 1500 件は「${後.字}」`;
+  },
+});
