@@ -24,6 +24,7 @@
   const map = $("map"), q = $("q"), hits = $("hits");
   const kickText = $("kickText"), nameEl = $("name"), glossEl = $("gloss"), legendEl = $("legend");
   const moreBtn = $("more"), sheet = $("sheet"), sheetList = $("sheetList"), sheetState = $("sheetState");
+  const meijiEl = $("meiji");
 
   // ⚠ **地図はタイルを並べて作る**（⚠ β 版の `/peel` は MapLibre だが、⚠ 運んでいない）。
   //   ⚠ **この縦切りでは、⚠ 動かせる地図が要る。**⚠ 依存を足す前に、⚠ まず素で作る
@@ -305,12 +306,37 @@
       return;
     }
     hereName = v.value;
+    askMeiji(lon, lat, seq);
     // 主は、分かる言葉のほう。区分名は資料の言葉で、そのままでは読めない人がいる。
     //   言葉は words.js の GROUND_GLOSS から借りる。ここで書かない。
     //   区分名も消さない。何を根拠に言っているかが分からなくなる。
     glossEl.textContent = `ここは、${KonjakuWords.groundGloss(v.value)}`;
     nameEl.textContent = v.value;
     drawLegend();
+  }
+
+  // 明治期の低湿地。地形分類とは別の出典で、別の答えを返す。
+  //   同じ「旧水部」でも、明治期に何だったかは場所で変わる。そこが場所ごとの違いになる。
+  //   3 つの状態を言い分ける。「取れなかった」と「無い」を混ぜない。
+  //     区分あり     → その区分を言う
+  //     区分なし     → まだ分類されていない
+  //     整備範囲外   → この地域ではこの資料が作られていない
+  async function askMeiji(lon, lat, seq) {
+    meijiEl.hidden = true;
+    const m = await KonjakuLand.meijiPoint(lon, lat).catch(() => null);
+    if (seq !== askSeq) return;
+    if (!m) return;                                     // 取れなかった。黙る
+    if (m.state === Konjaku.STATE.UNREACHABLE) return;  // 同上
+    meijiEl.hidden = false;
+    if (m.state === Konjaku.STATE.ABSENT) {
+      meijiEl.innerHTML = `明治期は<span class="none">、この地域ではこの資料が作られていません</span>`;
+      return;
+    }
+    if (!m.value) {
+      meijiEl.innerHTML = `明治期は<span class="none">、この場所はまだ分類されていません</span>`;
+      return;
+    }
+    meijiEl.innerHTML = `明治期は <b>${esc(m.value)}</b> でした`;
   }
 
   // ---- 動かす ----

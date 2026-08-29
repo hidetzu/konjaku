@@ -100,6 +100,18 @@ body{
 }
 .term::before{content:"国土地理院の区分：";}
 
+/* 明治期の低湿地。地形分類とは別の出典なので、行を分ける。
+   出典ごとに「無い」の意味が違うので、言葉も分ける。
+   同じ区分でも場所ごとに変わるのは、いまのところこれだけ。 */
+.meiji{
+  margin:var(--gap-row) 0 0; padding-top:var(--gap-row);
+  border-top:1px solid var(--line);
+  font-size:.8125rem; color:var(--ink-2); line-height:1.55;
+}
+.meiji[hidden]{display:none}
+.meiji b{color:var(--ink);font-weight:700}
+.meiji .none{color:var(--ink-3)}
+
 /* ---- 現在地の印 ----
    利用者役 3 名のうち 2 名が「自分がどこにいるか 5 秒で分からなかった」と答えた。
    地図の記号に紛れないよう、白い縁を回して、周りを暗く落とす。 */
