@@ -19,8 +19,10 @@
   "use strict";
 
   const $ = (id) => document.getElementById(id);
+  // 外から来た字を画面に出す前に通す。地名も区分名も、こちらが中身を保証できない。
+  const { esc } = window.KonjakuEsc ?? { esc: (s) => s };
   const map = $("map"), q = $("q"), hits = $("hits");
-  const kickText = $("kickText"), nameEl = $("name"), glossEl = $("gloss");
+  const kickText = $("kickText"), nameEl = $("name"), glossEl = $("gloss"), legendEl = $("legend");
 
   // ⚠ **地図はタイルを並べて作る**（⚠ β 版の `/peel` は MapLibre だが、⚠ 運んでいない）。
   //   ⚠ **この縦切りでは、⚠ 動かせる地図が要る。**⚠ 依存を足す前に、⚠ まず素で作る
@@ -63,6 +65,11 @@
   me.className = "me";
   me.style.cssText = "position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);pointer-events:none";
   map.appendChild(me);
+  // 色と位置だけで「ここ」を示さない。字でも言う。
+  const meLabel = document.createElement("div");
+  meLabel.className = "me-label";
+  meLabel.textContent = "ここ";
+  map.appendChild(meLabel);
 
   // ⚠ **地形分類はベクタタイル（geojson）で、⚠ 画像タイルが無い。**
   //   ⚠ **色で塗るには、⚠ 自分で描く**（⚠ この縦切りでは canvas に描く）。
@@ -112,6 +119,10 @@
     return geoCache.get(url);
   }
 
+  // 画面に映る区分と、その面積。凡例が使う。
+  //   面積は「どれが広いか」を決めるためだけに使い、画面には出さない。
+  let seen = new Map();
+
   let drawSeq = 0;
   async function drawFace(left, top, w, h) {
     const seq = ++drawSeq;   // ⚠ **古い結果でいまの画面を上書きしない**（`change-review` §4）
@@ -124,6 +135,7 @@
     const y0 = Math.floor(top / TILE), y1 = Math.floor((top + h) / TILE);
     const tbl = await table();
     if (!tbl || seq !== drawSeq) return;
+    const tally = new Map();
     // ⚠ **自然だけを塗る。**⚠ **人工レイヤは塗らない**（2026-08-29。⚠ 実機で踏んだ）。
     //   ⚠ **2 枚は重なっている。**⚠ 後に描いたほうが前を覆う。
     //   ⚠ **人工を後に描いたら、⚠ 豊洲の画面が全部「盛土地･埋立地」の色になった。**
@@ -139,6 +151,7 @@
           const nm = tbl.codes[String(f.properties?.code ?? "")];
           if (!nm || !f.geometry) continue;
           g.fillStyle = paint(nm);
+          tally.set(nm, (tally.get(nm) ?? 0) + area(f.geometry));
           const polys = f.geometry.type === "Polygon" ? [f.geometry.coordinates]
             : f.geometry.type === "MultiPolygon" ? f.geometry.coordinates : [];
           for (const p of polys) {
@@ -155,6 +168,27 @@
         }
       }
     }
+    if (seq !== drawSeq) return;
+    seen = tally;
+    drawLegend();
+  }
+
+  // 多角形のおおよその面積。どれが広いかを決めるためだけに使う。
+  //   経緯度のまま計算するので実面積ではない。順位が出れば足りる。
+  function area(geom) {
+    const polys = geom.type === "Polygon" ? [geom.coordinates]
+      : geom.type === "MultiPolygon" ? geom.coordinates : [];
+    let a = 0;
+    for (const p of polys) {
+      const ring = p[0] ?? [];
+      let s2 = 0;
+      for (let i = 0, n = ring.length; i < n; i++) {
+        const [x1, y1] = ring[i], [x2, y2] = ring[(i + 1) % n];
+        s2 += x1 * y2 - x2 * y1;
+      }
+      a += Math.abs(s2) / 2;
+    }
+    return a;
   }
 
   // ⚠ **区分の色**。⚠ `landform.json` の区分名から作る。
@@ -164,25 +198,56 @@
   //     （2026-08-29。⚠ **測って初めて分かった**。⚠ 淡色地図の地の色と近すぎた）。
   //   ⚠ **「足元は色で伝える」が伝わらないと、⚠ 縦切りの意味が無い。**
   //
-  // ⚠ **2 つの筋で分ける**（⚠ 区分ごとに 36 色を作らない。⚠ 読めない）:
-  //   ⚠ 水に由来  … 青   ⚠ それ以外  … 緑
+  // 3 つの筋で分ける（区分ごとに 36 色を作らない。読めない）:
+  //   いまも水  … 濃い青   昔は水  … 薄い青   それ以外  … 緑
   //
-  // ⚠ **人工地形（盛土地･埋立地など）は、⚠ この縦切りでは塗らない。**
-  //   ⚠ **別のレイヤで、⚠ 自然の上に重なっている**（⚠ 塗ると自然が見えなくなる）。
-  //   ⚠ **どう見せるかは決めていない。**
+  // 「昔は水」と「いまも水」を同じ青にしていたら、凡例で四角が 2 つ並んで
+  //   同じ色になった（色差 0）。利用者役も「海と同じ青系で区別がつかない」と言っていた。
+  //   今昔が言いたいのは「昔は水だった」なので、そこが「いまも水」に埋もれてはいけない。
+  //
+  // 人工地形（盛土地･埋立地など）は、この縦切りでは塗らない。
+  //   別のレイヤで、自然の上に重なっている（塗ると自然が見えなくなる）。
+  //   どう見せるかは決めていない。
   let tableP = null;
   function table() {
     if (!tableP) tableP = fetch("./data/landform.json")
       .then((r) => r.ok ? r.json() : null)
       .then((j) => {
         if (!j) return null;
+        // いまも水域である区分。verify.js の isWatery は「水に由来する」を答えるので、
+        //   そのうち「いまも水」をここで分ける。6 語を書き写さないため isWatery は残す。
+        const いまも水 = new Set(["水部", "湖", "河川敷･浜"]);
         for (const nm of new Set(Object.values(j.codes))) {
-          HUE[nm] = Konjaku.isWatery(nm) ? "#3f92cc" : "#7aab6a";
+          HUE[nm] = !Konjaku.isWatery(nm) ? "#7aab6a"
+            : いまも水.has(nm) ? "#1f5f8f"
+            : "#7fc4e8";
         }
         return j;
       })
       .catch(() => { tableP = null; return null; });
     return tableP;
+  }
+
+  // ---- 凡例 ----
+  // 面積順位の表示ではない。現在地の地図理解を助けるもの。
+  //   現在地の区分を必ず含め、残りを面積順として、最大 3 種。残りは「ほか n 種」。
+  //   割合は言わない。言わなければ嘘にならない。
+  //   整備されていないところは、ここに入れない。土地の区分ではなく、データの状態だから。
+  let hereName = null;
+  function drawLegend() {
+    if (!seen.size) { legendEl.innerHTML = ""; return; }
+    const 順 = [...seen].sort((a, b) => b[1] - a[1]).map(([k]) => k);
+    const 出す = [];
+    if (hereName && 順.includes(hereName)) 出す.push(hereName);
+    for (const nm of 順) {
+      if (出す.length >= 3) break;
+      if (nm !== hereName) 出す.push(nm);
+    }
+    const 残り = 順.length - 出す.length;
+    legendEl.innerHTML = 出す.map((nm) => {
+      const here = nm === hereName;
+      return `<li class="${here ? "here" : ""}"><i style="background:${paint(nm)}"></i>${esc(nm)}${here ? "（ここ）" : ""}</li>`;
+    }).join("") + (残り > 0 ? `<li class="rest">ほか ${残り} 種</li>` : "");
   }
 
   // ---- 足元を調べる ----
@@ -193,20 +258,27 @@
     kickText.textContent = "いまいる場所";
     const v = await KonjakuLand.terrain(lon, lat).catch(() => null);
     if (seq !== askSeq) return;   // ⚠ **古い結果で上書きしない**
+    hereName = null;
     if (!v || v.state === Konjaku.STATE.UNREACHABLE) {
       nameEl.textContent = "いま、この場所を調べられません";
       glossEl.textContent = "通信が届いていません。少し待って、もう一度動かしてください";
+      drawLegend();
       return;
     }
     if (!v.ok || !v.value) {
       // ⚠ **「取れなかった」と「無い」を分ける**（`docs/adr/0056`）
       nameEl.textContent = "この場所はまだ分類されていません";
       glossEl.textContent = "国土地理院の地形分類が、この場所には作られていません";
+      drawLegend();
       return;
     }
+    hereName = v.value;
     nameEl.textContent = `ここは ${v.value}`;
-    // ⚠ **説明文は `words.js` の GROUND_GLOSS**（`docs/adr/0054`）。⚠ **こちらで書かない。**
+    // 説明文は words.js の GROUND_GLOSS から借りる。ここで書かない。
+    //   これは「この区分とは何か」であって、この場所を調べた結果ではない。
+    //   見た目でも分ける（左の縦線）。同じ顔にすると、決まり文句に見える。
     glossEl.textContent = KonjakuWords.groundGloss(v.value);
+    drawLegend();
   }
 
   // ---- 動かす ----
@@ -247,7 +319,6 @@
 
   // ---- 住所検索 ----
   const finder = KonjakuGsiAddressSearch.createGsiAddressSearch();
-  const { esc } = window.KonjakuEsc ?? { esc: (s) => s };
   $("find").addEventListener("submit", async (e) => {
     e.preventDefault();
     const s = q.value.trim();

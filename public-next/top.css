@@ -88,14 +88,52 @@ body{
   border:2px solid var(--action); background:var(--surface); flex:none;
 }
 .big{margin:0 0 var(--gap-sub); font-size:1.0625rem; font-weight:700; line-height:1.4}
-.gloss{margin:0; font-size:.8125rem; color:var(--ink-3); line-height:1.55}
 
-/* ---- 現在地の印 ---- */
-.me{
-  width:.875rem;height:.875rem;border-radius:50%;
-  background:var(--surface); border:3px solid var(--action);
-  box-shadow:0 0 0 .4375rem color-mix(in srgb, var(--action) 16%, transparent);
+/* 判定の字と、区分の説明を分ける。説明は「この区分とは何か」であって、
+   この場所を調べた結果ではない。同じ見た目にすると、区別がつかない。 */
+.gloss{
+  margin:0; padding-left:.5rem;
+  border-left:2px solid var(--line);
+  font-size:.8125rem; color:var(--ink-3); line-height:1.55;
 }
 
-.beta{margin:var(--gap-row) 0 0;font-size:.6875rem;color:var(--ink-3)}
-.beta a{color:var(--action)}
+/* ---- 現在地の印 ----
+   利用者役 3 名のうち 2 名が「自分がどこにいるか 5 秒で分からなかった」と答えた。
+   地図の記号に紛れないよう、白い縁を回して、周りを暗く落とす。 */
+.me{
+  width:1.125rem;height:1.125rem;border-radius:50%;
+  background:var(--action);
+  border:3px solid #fff;
+  box-shadow:
+    0 0 0 1px rgb(0 0 0 / .35),
+    0 0 0 .625rem color-mix(in srgb, var(--action) 22%, transparent),
+    0 2px 6px rgb(0 0 0 / .4);
+}
+/* 現在地がどれか、字でも言う。色と位置だけで区別しない。 */
+.me-label{
+  position:absolute; left:50%; top:50%;
+  transform:translate(-50%, calc(-50% - 1.5rem));
+  padding:.125rem .375rem; border-radius:.25rem;
+  background:var(--action); color:var(--action-ink);
+  font-size:.625rem; font-weight:700; white-space:nowrap;
+  box-shadow:0 1px 4px rgb(0 0 0 / .35); pointer-events:none;
+}
+
+/* 凡例。この画面に映っている土地に名前を付ける。
+   現在地の区分を必ず含め、残りを面積順に、最大 3 種。
+   割合は言わない。整備されていないところは、ここに入れない。 */
+#legend{
+  display:flex; flex-wrap:wrap; gap:.375rem .625rem; align-items:center;
+  margin:var(--gap-row) 0 0; padding:var(--gap-row) 0 0;
+  border-top:1px solid var(--line);
+  list-style:none;
+}
+#legend:empty{display:none}
+#legend li{display:flex;align-items:center;gap:.25rem;font-size:.6875rem;color:var(--ink-3)}
+#legend li.here{color:var(--action);font-weight:700}
+#legend i{
+  width:.6875rem;height:.6875rem;border-radius:.1875rem;
+  border:1px solid rgb(0 0 0 / .16); flex:none;
+}
+#legend li.here i{border:2px solid var(--action)}
+#legend li.rest{color:var(--ink-3)}
