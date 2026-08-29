@@ -33,7 +33,10 @@
   const shareBtn = $("share"), shareText = $("shareText"), deepLink = $("deepLink");
   const savedOpen = $("savedOpen"), savedCount = $("savedCount");
   const savedSheet = $("savedSheet"), savedList = $("savedList"), savedNote = $("savedNote");
+  const crossDev = $("crossDev"), crossDevText = $("crossDevText");
   const handOut = $("handOut"), handOutText = $("handOutText");
+  const codeEl = $("code"), codeUrl = $("codeUrl"), codeWord = $("codeWord");
+  const codeNote = $("codeNote"), codeAlt = $("codeAlt"), codeBody = $("codeBody");
   const takeEl = $("take"), takeTitle = $("takeTitle"), takeBody = $("takeBody");
   const takeList = $("takeList"), takeNote = $("takeNote");
 
@@ -726,7 +729,7 @@
   function drawSavedOpen() {
     savedOpen.hidden = saved.length === 0;
     savedCount.textContent = `${saved.length} 件 ›`;
-    handOut.hidden = saved.length === 0;
+    crossDev.hidden = saved.length === 0;
   }
 
   saveBtn.addEventListener("click", async () => {
@@ -807,6 +810,72 @@
   //     受け取る側（LINE やメール）が折り返すかどうかは測っていない。だから余白を残す。
   const 渡せる長さ = 12000;
 
+  // ---- 合言葉（引換券）----
+  //
+  // スマホが出して、PC で打つ（docs/adr/0072）。本人確認ではない。荷物の引換券。
+  //   預けるのは saved.js が詰めた 1 本の字。サーバは中を読まない（docs/sync-api.md）。
+  //
+  // 残り時間の文は、サーバが返す ttl_sec から作る。ここに分数を直書きしない。
+  //   直書きすると、設定を変えたとき画面だけ前の数字のまま残る。
+  const 分で言う = (sec) => {
+    const m = Math.round(sec / 60);
+    return m >= 1 ? `${m} 分` : `${Math.max(1, Math.round(sec))} 秒`;
+  };
+
+  function 板を出す({ url, word, note, リンクを開く }) {
+    codeUrl.textContent = url ?? "";
+    codeWord.textContent = word ?? "";
+    codeBody.hidden = !word;          // 合言葉が無いときは、住所も出さない
+    codeNote.textContent = note ?? "";
+    codeAlt.open = !!リンクを開く;
+    codeEl.hidden = false;
+  }
+
+  crossDev.addEventListener("click", async () => {
+    if (!saved.length) return;
+    crossDevText.textContent = "用意しています";
+    let 結果 = null;
+    try {
+      const payload = await KonjakuSaved.toText(saved,
+        globalThis.CompressionStream ? 圧縮 : null);
+      const res = await fetch("/api/handoff", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ payload }),
+      });
+      if (res.ok) 結果 = await res.json();
+      else 結果 = { だめ: res.status };
+    } catch { 結果 = { だめ: "通信" }; }
+    crossDevText.textContent = "PC やタブレットでも見る";
+
+    if (結果?.code) {
+      // 受け取り口の住所。打ち写すものなので、scheme は出さない
+      板を出す({
+        url: `${location.host}/take`,
+        word: 結果.code,
+        note: `${分で言う(結果.ttl_sec ?? 300)}で使えなくなります。`
+          + "そのあとは、もう一度押すと新しく出ます。",
+        リンクを開く: false,
+      });
+      return;
+    }
+    // 合言葉を出せなかった。できることから言う（CLAUDE.md §4-1）。
+    //   代わりの道（リンク）は畳んである。ここでは開いて見せる。
+    //   ⚠ 「取得できませんでした」と書かない。利用者の回線の話に読める。
+    板を出す({
+      url: null, word: null,
+      note: 結果?.だめ === "通信"
+        ? "いまは合言葉を出せませんでした。下のリンクなら、通信が戻らなくても渡せます。"
+        : "いまは合言葉を出せませんでした。下のリンクで渡せます。"
+          + "この端末に保存した場所は、そのままです。",
+      リンクを開く: true,
+    });
+  });
+
+  $("codeClose").addEventListener("click", () => {
+    codeEl.hidden = true;
+    crossDev.focus();
+  });
+
   let handTimer = null;
   handOut.addEventListener("click", async () => {
     const url = await handUrl();
@@ -815,13 +884,13 @@
       //   だから「減らす」とだけ言う。数を出すと、その数で必ず渡せるように読める。
       handOutText.textContent = "件数が多くて渡せません";
       clearTimeout(handTimer);
-      handTimer = setTimeout(() => { handOutText.textContent = "PC やタブレットでも見る"; }, 3000);
+      handTimer = setTimeout(() => { handOutText.textContent = "リンクを作って送る"; }, 3000);
       return;
     }
     const 言う = (t) => {
       handOutText.textContent = t;
       clearTimeout(handTimer);
-      handTimer = setTimeout(() => { handOutText.textContent = "PC やタブレットでも見る"; }, 2600);
+      handTimer = setTimeout(() => { handOutText.textContent = "リンクを作って送る"; }, 2600);
     };
     if (navigator.share) {
       // 題と説明を付ける。共有シートの先（LINE のトーク・メール・メモ）に残ったとき、

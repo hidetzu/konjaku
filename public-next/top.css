@@ -344,6 +344,49 @@ body{
   font:inherit; font-size:.8125rem; font-weight:700; color:var(--action); cursor:pointer;
 }
 .saved__hand[hidden]{display:none}
+
+/* 合言葉の板。答えの板と同じ作りに寄せる（.take と同じ位置・同じ枠）。 */
+.code{
+  position:absolute; left:var(--pad-sm); right:var(--pad-sm);
+  bottom:calc(var(--pad-sm) + env(safe-area-inset-bottom));
+  z-index:41; padding:var(--pad-md);
+  background:var(--surface); border:1px solid var(--line-strong); border-radius:.875rem;
+  box-shadow:0 -2px 16px rgb(0 0 0 / .12);
+  max-height:calc(100% - var(--tap) - var(--pad-sm) * 3
+                  - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  overflow-y:auto; overscroll-behavior:contain;
+}
+.code[hidden]{display:none}
+.code h2{margin:0 0 var(--gap-sub); font-size:1rem}
+.code__label{margin:0 0 .125rem; font-size:.6875rem; color:var(--ink-3)}
+/* 住所と合言葉は等幅。打ち写すものなので、字の形が紛れないほうがよい。 */
+.code__url{
+  margin:0 0 var(--gap-row); font-size:1.0625rem; font-weight:700; color:var(--ink);
+  font-family:ui-monospace, SFMono-Regular, Menlo, monospace;
+  overflow-wrap:anywhere;
+}
+.code__word{
+  margin:0 0 var(--gap-row); font-family:ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size:2rem; font-weight:700; letter-spacing:.12em; color:var(--action);
+  overflow-wrap:anywhere;
+}
+.code__note{margin:0; font-size:.6875rem; color:var(--ink-3); line-height:1.5}
+.code__alt{margin-top:var(--gap-row); border-top:1px solid var(--line); padding-top:var(--gap-row)}
+.code__alt summary{
+  min-height:var(--tap); display:flex; align-items:center; gap:.375rem;
+  font-size:.8125rem; font-weight:700; color:var(--action); cursor:pointer;
+}
+.code__alt summary:focus-visible{outline:2px solid var(--action); outline-offset:2px}
+.code__alt p{margin:var(--gap-sub) 0 0; font-size:.75rem; color:var(--ink-3); line-height:1.6}
+.code__link,.code__close{
+  margin-top:var(--gap-sub); width:100%; min-height:var(--tap);
+  display:flex; align-items:center; justify-content:center; gap:.375rem;
+  border:1px solid var(--line-strong); border-radius:.5rem; background:transparent;
+  font:inherit; font-size:.8125rem; font-weight:700; cursor:pointer;
+}
+.code__link{color:var(--action)}
+.code__close{margin-top:var(--gap-row); color:var(--ink-2)}
+.code__link:focus-visible,.code__close:focus-visible{outline:2px solid var(--action); outline-offset:2px}
 .saved__hand:focus-visible{outline:2px solid var(--action); outline-offset:2px}
 
 /* 受け取った場所。開いた瞬間に混ぜない。何が来たかを見せて、押してもらう。

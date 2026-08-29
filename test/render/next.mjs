@@ -681,6 +681,17 @@ CASES.push({
 //     ⚠ 答えの 1 文が 1238px 幅の 1 行 ／ ⚠ 年代が 1 つ 173px ／ ⚠ 右側の空きが 8px。
 const PC = { width: 1440, height: 950 };
 
+// ⚠ **リンク（手渡し）の道は、⚠ 合言葉の板の中に畳んである**（`docs/adr/0072`）。
+//   ⚠ **入口を押す → 板が出る → 畳みを開く**、まで運ぶ。
+//   ⚠ **合言葉が取れなくても板は出る**（⚠ そのときは畳みが開いた状態で出る）。
+async function リンクの道を開く(page) {
+  await page.locator("#crossDev").click();
+  await 待つ(page, () => !document.getElementById("code").hidden, "合言葉の板");
+  const 開いている = await page.evaluate(() => document.getElementById("codeAlt").open);
+  if (!開いている) await page.locator("#codeAlt summary").click();
+  await 待つ(page, () => document.getElementById("codeAlt").open, "畳みが開くこと");
+}
+
 CASES.push({
   // ⚠ **広い幅でも、⚠ スマホと同じ形。**⚠ **横に並べ替えない。**
   //   ⚠ **一度 3 列にして、⚠ 実測で「操作しづらい」が出た**（2026-08-29）:
@@ -1101,6 +1112,9 @@ CASES.push({
     await page.waitForTimeout(2000);
     await page.locator("#savedOpen").click();
     await page.waitForTimeout(400);
+    // ⚠ **リンクの道は、⚠ 合言葉の板の中に畳んである**（2026-08-29。`docs/adr/0072`）。
+    //   ⚠ **入口を押して板を開き、⚠ 畳みを開いてから触る。**
+    await リンクの道を開く(page);
     const 的 = await page.evaluate(() => {
       const h = document.getElementById("handOut");
       const r = h.getBoundingClientRect();
@@ -1339,6 +1353,7 @@ CASES.push({
     await 待つ(page, () => !document.getElementById("savedOpen").hidden, "保存した場所の入口");
     await page.locator("#savedOpen").click();
     await page.waitForTimeout(400);
+    await リンクの道を開く(page);
     await page.locator("#handOut").click();
     await 待つ(page, () => globalThis.__shared.length > 0, "共有シートへ渡すもの");
     const 渡した = await page.evaluate(() => globalThis.__shared[0]);
@@ -1369,6 +1384,7 @@ CASES.push({
     await 待つ(page, () => !document.getElementById("savedOpen").hidden, "保存した場所の入口");
     await page.locator("#savedOpen").click();
     await page.waitForTimeout(400);
+    await リンクの道を開く(page);
     const 前の数 = await page.evaluate(() => Number(sessionStorage.getItem("__shared") ?? 0));
     await page.locator("#handOut").click();
     await page.waitForTimeout(1200);
@@ -1418,5 +1434,101 @@ CASES.push({
       `保存の板が画面（${r.画面}px）いっぱいに広がっている（${r.板}px）`);
     must(r.行 !== null && r.行 <= r.板, `一覧の行が板からはみ出している（行 ${r.行}px ／ 板 ${r.板}px）`);
     return `保存の板 ${r.板}px = 検索窓 ${r.検索}px = 答えの板 ${r.答え}px ／ 行 ${r.行}px`;
+  },
+});
+
+CASES.push({
+  // ⚠ **合言葉の板**（`docs/adr/0072`）。⚠ **サーバはまだ無い**ので、⚠ **契約どおり返す偽物を置く。**
+  //   ⚠ **偽物は `docs/sync-api.md` の形に合わせる。**⚠ **ずれたら、⚠ 本物で動かない。**
+  // ⚠ **残り時間の字は、⚠ 返ってきた `ttl_sec` から作られること**を見る。
+  //   ⚠ **直書きだと、⚠ 設定を変えたとき画面だけ前の数字のまま残る。**
+  //   ⚠ **だから 300 ではなく 600 を返して、⚠ 「10 分」に変わることを確かめる。**
+  name: "合言葉を出すと、住所と合言葉と残り時間が出る",
+  path: `/?${TOYOSU}`, origin: NEXT_BASE, viewport: SP,
+  setup: (page) => page.route("**/api/handoff", (route) => {
+    if (route.request().method() !== "POST") return route.continue();
+    const body = JSON.parse(route.request().postData() ?? "{}");
+    if (!body.payload) return route.fulfill({ status: 400, body: '{"error":"bad_shape"}' });
+    return route.fulfill({ status: 200, contentType: "application/json",
+      body: JSON.stringify({ code: "K7QM3XVR", ttl_sec: 600,
+                             expires_at: 1756400000000 }) });
+  }),
+  async check(page) {
+    await waitAnswer(page);
+    await 待つ(page, () => !document.getElementById("save").hidden, "保存");
+    await page.locator("#save").click();
+    await 待つ(page,
+      () => document.getElementById("save").getAttribute("aria-pressed") === "true", "保存ずみ");
+    await page.waitForTimeout(2000);
+    await page.locator("#savedOpen").click();
+    await page.waitForTimeout(400);
+    await page.locator("#crossDev").click();
+    await 待つ(page, () => !document.getElementById("code").hidden, "合言葉の板");
+    await 待つ(page,
+      () => document.getElementById("codeWord").textContent.trim().length > 0, "合言葉");
+    const r = await page.evaluate(() => {
+      const t = (id) => document.getElementById(id).textContent.trim();
+      const 語 = document.getElementById("codeWord");
+      const q = 語.getBoundingClientRect();
+      return { 住所: t("codeUrl"), 合言葉: t("codeWord"), 断り: t("codeNote"),
+               畳み: document.getElementById("codeAlt").open,
+               字の大きさ: Math.round(parseFloat(getComputedStyle(語).fontSize)),
+               答えの字: Math.round(parseFloat(getComputedStyle(
+                 document.getElementById("gloss")).fontSize)),
+               板の中: q.bottom <= innerHeight && q.top >= 0 };
+    });
+    must(r.合言葉 === "K7QM3XVR", `合言葉が違う: ${r.合言葉}`);
+    must(/\/take$/.test(r.住所), `受け取り口の住所が出ていない: ${r.住所}`);
+    // ⚠ **ttl_sec から作っていること**（⚠ 600 秒 → 10 分。⚠ 直書きなら 5 分のまま）
+    must(/10 分/.test(r.断り), `残り時間が ttl_sec から作られていない: ${r.断り}`);
+    must(!/消えます/.test(r.断り), `「消えます」と言っている: ${r.断り}`);
+    // ⚠ **合言葉が主役。**⚠ **答えの字より大きい**（⚠ 打ち写すもの）
+    must(r.字の大きさ > r.答えの字,
+      `合言葉が主役になっていない（合言葉 ${r.字の大きさ}px ／ 答え ${r.答えの字}px）`);
+    must(!r.畳み, "リンクの道が最初から開いている（合言葉が出たときは畳んでおく）");
+    must(r.板の中, "合言葉が画面に収まっていない");
+    return `${r.合言葉}（${r.字の大きさ}px）／ ${r.住所} ／ ${r.断り.slice(0, 22)}…`;
+  },
+});
+
+CASES.push({
+  // ⚠ **預けられなかったとき**（`CLAUDE.md` §4-1）。⚠ **できないことから書き始めない。**
+  //   ⚠ **代わりにできること（リンク）を、⚠ 開いて見せる。**
+  // ⚠ **こちらの都合を、⚠ 相手や回線の都合のように言わない**（⚠ 「取得できませんでした」と書かない）。
+  name: "合言葉を出せなかったとき、リンクの道を開いて見せる",
+  path: `/?${TOYOSU}`, origin: NEXT_BASE, viewport: SP,
+  setup: (page) => page.route("**/api/handoff", (route) =>
+    route.fulfill({ status: 503, contentType: "application/json",
+                    body: '{"error":"store_unavailable"}' })),
+  async check(page) {
+    await waitAnswer(page);
+    await 待つ(page, () => !document.getElementById("save").hidden, "保存");
+    await page.locator("#save").click();
+    await 待つ(page,
+      () => document.getElementById("save").getAttribute("aria-pressed") === "true", "保存ずみ");
+    await page.waitForTimeout(2000);
+    await page.locator("#savedOpen").click();
+    await page.waitForTimeout(400);
+    await page.locator("#crossDev").click();
+    await 待つ(page, () => !document.getElementById("code").hidden, "合言葉の板");
+    const r = await page.evaluate(() => {
+      const alt = document.getElementById("codeAlt");
+      const link = document.getElementById("handOut");
+      return { 断り: document.getElementById("codeNote").textContent.trim(),
+               合言葉: document.getElementById("codeWord").textContent.trim(),
+               本体が出ている: !document.getElementById("codeBody").hidden,
+               畳み: alt.open, リンクが見える: link.checkVisibility(),
+               入口: document.getElementById("crossDevText").textContent.trim() };
+    });
+    must(r.畳み && r.リンクが見える, "代わりの道（リンク）が開いていない");
+    must(!r.本体が出ている && !r.合言葉,
+      `合言葉が出せていないのに、器だけ出している（${JSON.stringify(r.合言葉)}）`);
+    // ⚠ **「取得できませんでした」と書かない**（⚠ 利用者の回線の話に読める）
+    must(!/取得できません|通信できません|届いていません/.test(r.断り),
+      `こちらの都合を、相手や回線の都合のように言っている: ${r.断り}`);
+    must(/リンク/.test(r.断り), `代わりにできることを言っていない: ${r.断り}`);
+    must(/そのまま/.test(r.断り), `保存が無事だと言っていない: ${r.断り}`);
+    must(r.入口 === "PC やタブレットでも見る", `入口の字が戻っていない: ${r.入口}`);
+    return `「${r.断り.slice(0, 30)}…」／ リンクの道が開いている`;
   },
 });
