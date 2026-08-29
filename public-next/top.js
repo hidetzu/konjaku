@@ -30,6 +30,7 @@
   const areaEl = $("area"), areaRow = $("areaRow"), areaNote = $("areaNote"), areaCite = $("areaCite");
   const erasEl = $("eras"), eraNote = $("eraNote"), eraBack = $("eraBack");
   const saveBtn = $("save"), saveMark = $("saveMark"), saveText = $("saveText");
+  const shareBtn = $("share"), shareText = $("shareText");
   const savedOpen = $("savedOpen"), savedCount = $("savedCount");
   const savedSheet = $("savedSheet"), savedList = $("savedList"), savedNote = $("savedNote");
 
@@ -347,6 +348,7 @@
     if (seq !== askSeq) return;   // ⚠ **古い結果で上書きしない**
     hereName = null;
     drawSave();            // 判定が出るまで保存させない
+    drawShare();           // 同上。開いた人が何も読めない URL を配らせない
     setEra(null);          // 場所が変わったら、前の場所の写真を残さない
     subEl.textContent = ""; subEl.hidden = true;
     erasEl.hidden = true; erasEl.innerHTML = "";
@@ -368,6 +370,7 @@
     }
     hereName = v.value;
     drawSave();
+    drawShare();
     askMeiji(lon, lat, seq);
     askPhoto(lon, lat, seq);
     showArea(lon, lat);
@@ -571,6 +574,60 @@
       `出典：<a href="${esc(a.source.url)}" target="_blank" rel="noopener">`
       + `${esc(a.source.name)}</a>`;
   }
+
+  // ---- この場所を送る ----
+  //
+  // URL には元から座標が入る（?ll=）。読む口も書く口も place-arg.js の 1 か所にある。
+  //   ここは呼ぶだけ。同じ問いに答える実装を 2 つ持たない（CLAUDE.md §3）。
+  //
+  // 年代は送らない（2026-08-29。Owner 判断）。送るのは場所だけ。
+  //   place-arg.js の placeQuery は era も足せるが、渡さない。
+  //
+  // 送り方は 2 段。端末が持っている口をまず使い、無ければ写す。
+  //   どちらも使えないことがある（古いブラウザ・安全でない接続）。そのときは黙らない。
+  function shareUrl() {
+    const q = KonjakuPlaceArg.placeQuery({ lat: px2lat(cy), lon: px2lon(cx) });
+    if (!q) return null;
+    // placeQuery は必ず q=（地名）を足す。v0.1.0 は地図の真ん中の地名を持っていないので
+    //   空になる。空の q を配ると、受け取った人には壊れた URL に見える。
+    //   落とすだけにする。組み立て直さない（同じ問いに答える実装を 2 つ持たない）。
+    return location.origin + location.pathname + q.replace(/^\?q=&/, "?");
+  }
+
+  function drawShare() {
+    // 判定が出ていない場所は送らせない（開いた人が何も読めない）
+    shareBtn.hidden = !hereName;
+  }
+
+  // 押したあとに何が起きたかを、必ず字で言う（docs/adr/0026）。
+  //   共有シートを閉じただけなら、失敗ではない。「やめた」と「壊れた」を混ぜない。
+  let shareTimer = null;
+  function sayShare(text) {
+    shareText.textContent = text;
+    clearTimeout(shareTimer);
+    shareTimer = setTimeout(() => { shareText.textContent = "送る"; }, 2600);
+  }
+
+  shareBtn.addEventListener("click", async () => {
+    const url = shareUrl();
+    if (!url) return;                       // 座標が読めない。黙る（押せる形にもしていない）
+    // 端末の共有の口。無いブラウザがある
+    if (navigator.share) {
+      try { await navigator.share({ url }); return; }
+      catch (e) {
+        // 利用者がやめただけなら、何も言わない（失敗ではない）
+        if (e?.name === "AbortError") return;
+        // それ以外は下へ落ちて、写すほうを試す
+      }
+    }
+    try {
+      await navigator.clipboard.writeText(url);
+      sayShare("写しました");
+    } catch {
+      // どちらも使えない。こちらの都合を、相手の都合のように言わない（掟 §4-1）
+      sayShare("写せません");
+    }
+  });
 
   // ---- 保存 ----
   //

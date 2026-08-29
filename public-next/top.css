@@ -120,12 +120,37 @@ body{
   box-shadow:0 -2px 16px rgb(0 0 0 / .12);
 }
 .kick{
-  display:flex; align-items:center; justify-content:space-between; gap:.375rem;
+  display:flex; align-items:center; justify-content:space-between; gap:var(--gap-sub);
   margin:0 0 var(--gap-sub); font-size:.75rem; color:var(--ink-3);
   min-height:var(--tap);           /* 保存の的が入る */
 }
-/* 点と字は 1 つにまとめる。まとめないと space-between が 3 つに割れる */
+/* 点と字は 1 つにまとめる。まとめないと space-between が 3 つに割れる。
+   狭い幅では、押せるものを先に通す。「いまいる場所」は説明で、押せない。
+   実際に踏んだ（2026-08-29）: 320px で「いまいる場所」が 1 文字ずつ縦に潰れ、
+   見出しの行が 3 段になった（板 295px → 357px）。 */
 .kick__l{display:flex; align-items:center; gap:.375rem; min-width:0}
+.kick__l > span{overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+
+/* この場所を送る。
+   URL には元から座標が入る（?ll=）。読む口は在ったが、
+   書く口を呼んでいなかったので、アドレス欄を手で写すしかなかった（実測 2026-08-29:
+   地図を動かしても年代を押しても URL は開いたときのまま）。
+
+   保存の隣に置く。どちらも「この地点に対してやること」で、「いまいる場所」の隣なら
+   何を送るのかが結びついて読める（利用者役 3 名中 2 名が、保存のときに同じ理由を挙げた）。
+
+   年代は送らない（2026-08-29 に決めた）。送るのは場所だけ。 */
+.share{
+  /* 押したあとに字が変わる（「リンクを写しました」）。的の幅が動くと、
+     狭い幅で見出しの行が崩れる。縮められるようにして、字のほうを詰める。 */
+  flex:0 1 auto; min-width:0; min-height:var(--tap); padding:0 .75rem;
+  display:flex; align-items:center; gap:.375rem;
+  border:1px solid var(--line-strong); border-radius:.5rem; background:transparent;
+  font:inherit; font-size:.8125rem; font-weight:700; color:var(--action); cursor:pointer;
+}
+.share[hidden]{display:none}
+.share > span:last-child{overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.share:focus-visible{outline:2px solid var(--action); outline-offset:2px}
 
 /* 保存。
    β 版では 34×30px・画面幅の 8% にしか無く、「この場所の評価とメモ」と名乗っていて
