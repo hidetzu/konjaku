@@ -117,6 +117,65 @@ body{
 .src__body b{color:var(--ink);font-weight:700}
 .src__body .none{color:var(--ink-3)}
 
+/* この地点の話と、この周辺の話を、見た目でも分ける。
+   上の 3 つは、この場所の座標で引いた答え。
+   これは地域の記録で、この場所そのものの記録ではない。
+   同じ顔にすると、周辺の年をこの場所の年だと読まれる。 */
+.area{
+  margin-top:var(--gap-row);
+  padding:var(--pad-sm) var(--pad-sm) var(--pad-sm) var(--pad-md);
+  border-top:0;
+  border-left:3px solid var(--line-strong);
+  background:var(--bg);
+  border-radius:0 .5rem .5rem 0;
+}
+.area .src__from b{color:var(--ink-2)}
+
+/* 周辺の記録は、その場では読まれない。
+   3 名中 2 名が「その場では読まない」と答えた（利用者役・実在の利用者ではない・2026-08-29）。
+   1 名は「これは読み物。歩きながらは無理」。
+   要約だけ出し、読みたい人が開く。畳んだ状態で 139px → 78px、地図が 62px 戻る。
+   要約の 1 行目が断りを兼ねる。落とすと、年をこの地点のものとして読む人が戻る。 */
+.area__fold{margin:0}
+.area__sum{
+  margin:0; display:flex; flex-direction:column; justify-content:center;
+  min-height:var(--tap);                /* 押せるものは 44×44 を割らない */
+  font-size:.8125rem; line-height:1.5; cursor:pointer;
+  list-style:none;                      /* 既定の三角は出さない。▾ を自分で置く */
+}
+.area__sum::-webkit-details-marker{display:none}
+.area__lead{color:var(--ink); font-weight:700}
+.area__lead::after{content:" ▾"; color:var(--ink-3); font-weight:400}
+.area__fold[open] .area__lead::after{content:" ▴"}
+/* 要約は 1 行に収める。長い記録でも、畳んだ高さを変えない */
+.area__peek{color:var(--ink-3); overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+/* 開いたら消す。下に同じ年と同じ記録が全文で出るので、2 行が同じことを言う */
+.area__fold[open] .area__peek{display:none}
+.area__body{margin-top:var(--gap-row)}
+.src__note{
+  margin:var(--gap-sub) 0 0; font-size:.6875rem; color:var(--ink-3); line-height:1.5;
+}
+/* 断りが記録より先に来る箱がある（.area）。そのとき記録に上の間が要る。
+   .src__body は margin:0 なので、この並びのときだけ足す。 */
+.src__note + .src__body{margin-top:var(--gap-sub)}
+/* 出典。断り書きより弱くはしない。確かめに行ける先なので、押せると分かる形で置く。 */
+.src__cite{
+  margin:var(--gap-sub) 0 0; font-size:.6875rem; color:var(--ink-3); line-height:1.5;
+}
+.src__cite a{color:var(--ink-2); position:relative}
+/* 押せるものは 44×44 を割らない。
+   字を 44px にすると出典が主役になるので、当たり判定だけを広げる。
+   上へ 4px（--gap-sub のぶん＝字の無いところ）、残りは下の余白へ伸びる。
+   下にあるのは凡例で、押せるものではない。 */
+.src__cite a::after{
+  content:""; position:absolute; left:0; right:0;
+  top:calc(var(--gap-sub) * -1); height:calc(var(--tap) + 2px);
+}
+/* +2px は端数のぶん。字の高さが 16.5px（.6875rem × 1.5）で割り切れず、
+   height:var(--tap) ちょうどだと実際に触れるのは 43px だった（実測 2026-08-29）。
+   同じ測り方を 44px と分かっている現在地ボタンに当てると 44 と出るので、
+   これは測り方のずれではない。 */
+
 /* ---- 現在地の印 ----
    利用者役 3 名のうち 2 名が「自分がどこにいるか 5 秒で分からなかった」と答えた。
    地図の記号に紛れないよう、白い縁を回して、周りを暗く落とす。 */
