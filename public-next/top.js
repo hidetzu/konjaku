@@ -24,10 +24,11 @@
   const map = $("map"), q = $("q"), hits = $("hits");
   const kickText = $("kickText"), nameEl = $("name"), glossEl = $("gloss"), legendEl = $("legend");
   const moreBtn = $("more"), sheet = $("sheet"), sheetList = $("sheetList"), sheetState = $("sheetState");
-  const meijiEl = $("meiji"), meijiBox = $("meijiBox");
-  const photoEl = $("photo"), photoBox = $("photoBox");
-  const areaEl = $("area"), areaBox = $("areaBox"), areaNote = $("areaNote");
-  const areaCite = $("areaCite"), areaPeek = $("areaPeek"), areaFold = $("areaFold");
+  const subEl = $("sub"), whyEl = $("why");
+  const meijiEl = $("meiji"), meijiRow = $("meijiRow");
+  const photoEl = $("photo"), photoRow = $("photoRow");
+  const areaEl = $("area"), areaRow = $("areaRow"), areaNote = $("areaNote"), areaCite = $("areaCite");
+  const erasEl = $("eras"), eraNote = $("eraNote"), eraBack = $("eraBack");
 
   // ⚠ **地図はタイルを並べて作る**（⚠ β 版の `/peel` は MapLibre だが、⚠ 運んでいない）。
   //   ⚠ **この縦切りでは、⚠ 動かせる地図が要る。**⚠ 依存を足す前に、⚠ まず素で作る
@@ -66,6 +67,16 @@
     map.appendChild(el);
     layers.push({ src, el, tiles: new Map() });
   }
+  // ⚠ **空中写真の層。**⚠ 押された年代のタイルを、⚠ 淡色地図の上に敷く。
+  //   ⚠ **配信元は verify.js が返した tile の URL から derive する。**
+  //     ⚠ ここに配信元をもう 1 つ書かない（`CLAUDE.md` §3「同じ問いに答える実装を 2 つ持たない」）。
+  const photoLayer = { el: document.createElement("div"), tiles: new Map() };
+  photoLayer.el.className = "layer";
+  photoLayer.el.style.cssText = "position:absolute;inset:0;overflow:hidden";
+  photoLayer.el.hidden = true;
+  map.insertBefore(photoLayer.el, layers[1].el);
+  let era = null;   // ⚠ **いま出している年代。**⚠ null は「写真を出していない」
+
   const me = document.createElement("div");
   me.className = "me";
   me.style.cssText = "position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);pointer-events:none";
@@ -106,7 +117,41 @@
       }
       for (const [k, img] of layer.tiles) if (!want.has(k)) { img.remove(); layer.tiles.delete(k); }
     }
+    drawPhoto(left, top, x0, x1, y0, y1);
+    // ⚠ **写真を出しているあいだ、⚠ 地形分類は塗らない。**
+    //   ⚠ **重ねると、⚠ いまの区分が、⚠ その年代の写真の上の判定に読める。**
+    //   ⚠ **描くのをやめるだけでは足りない。**⚠ **canvas は前に塗った絵を持ったまま。**
+    //     ⚠ 実際に踏んだ（2026-08-29）: ⚠ 1936–42 の写真の全面に、⚠ 旧水部の青が乗っていた。
+    if (era) { face.getContext("2d").clearRect(0, 0, face.width, face.height); return; }
     drawFace(left, top, w, h);
+  }
+
+  // ⚠ **押された年代の写真タイルを敷く。**⚠ **年代が変わったら、⚠ 前の年代の絵を残さない。**
+  function drawPhoto(left, top, x0, x1, y0, y1) {
+    photoLayer.el.hidden = !era;
+    if (!era) {
+      for (const [, img] of photoLayer.tiles) img.remove();
+      photoLayer.tiles.clear();
+      return;
+    }
+    // `${配信元}/${年代の id}/${z}/${x}/${y}.${拡張子}` の、末尾 3 段を落とすと配信元になる
+    const base = era.tile.replace(/\/\d+\/\d+\/\d+\.\w+$/, "");
+    const want = new Set();
+    for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) {
+      const k = `${era.id}/${x}/${y}`; want.add(k);
+      let img = photoLayer.tiles.get(k);
+      if (!img) {
+        img = new Image();
+        img.decoding = "async"; img.loading = "eager"; img.alt = "";
+        img.src = `${base}/${Z}/${x}/${y}.${era.ext}`;
+        img.style.cssText = "position:absolute;width:256px;height:256px";
+        photoLayer.el.appendChild(img);
+        photoLayer.tiles.set(k, img);
+      }
+      img.style.left = `${x * TILE - left}px`;
+      img.style.top = `${y * TILE - top}px`;
+    }
+    for (const [k, img] of photoLayer.tiles) if (!want.has(k)) { img.remove(); photoLayer.tiles.delete(k); }
   }
 
   // ⚠ **地形分類を canvas に塗る**。⚠ **viewport に映る分だけ**（`docs/adr/0055`）。
@@ -294,6 +339,9 @@
     const v = await KonjakuLand.terrain(lon, lat).catch(() => null);
     if (seq !== askSeq) return;   // ⚠ **古い結果で上書きしない**
     hereName = null;
+    setEra(null);          // 場所が変わったら、前の場所の写真を残さない
+    subEl.textContent = ""; subEl.hidden = true;
+    erasEl.hidden = true; erasEl.innerHTML = "";
     if (!v || v.state === Konjaku.STATE.UNREACHABLE) {
       glossEl.textContent = "いま、この場所を調べられません";
       nameEl.textContent = "";
@@ -316,8 +364,20 @@
     //   言葉は words.js の GROUND_GLOSS から借りる。ここで書かない。
     //   区分名も消さない。何を根拠に言っているかが分からなくなる。
     glossEl.textContent = `ここは、${KonjakuWords.groundGloss(v.value)}`;
-    nameEl.textContent = v.value;
+    // 区分名は、出典の言葉として添える。主ではない。
+    //   消しはしない。国土地理院の区分名を名乗れないと、何を根拠に言っているか分からなくなる。
+    nameEl.innerHTML = `<b>${esc(v.value)}</b>（国土地理院）`;
     drawLegend();
+  }
+
+  // まとめの 1 行。「明治期は X／空中写真 N 年代」。
+  //   取れたものだけ並べる。取れなかったことは、ここでは言わない（「なぜそう言える？」の中で言う）。
+  //   前提は「長い文章はその場では読まれない」。ここは 1 行を超えさせない。
+  const 概略 = { meiji: null, photo: null };
+  function drawSub() {
+    const 並び = [概略.meiji, 概略.photo].filter(Boolean);
+    subEl.hidden = !並び.length;
+    subEl.innerHTML = 並び.join("／");
   }
 
   // 明治期の低湿地。地形分類とは別の出典で、別の答えを返す。
@@ -327,12 +387,13 @@
   //     区分なし     → まだ分類されていない
   //     整備範囲外   → この地域ではこの資料が作られていない
   async function askMeiji(lon, lat, seq) {
-    meijiBox.hidden = true;
+    meijiRow.hidden = true;
+    概略.meiji = null;
     const m = await KonjakuLand.meijiPoint(lon, lat).catch(() => null);
     if (seq !== askSeq) return;
     if (!m) return;                                     // 取れなかった。黙る
     if (m.state === Konjaku.STATE.UNREACHABLE) return;  // 同上
-    meijiBox.hidden = false;
+    meijiRow.hidden = false;
     if (m.state === Konjaku.STATE.ABSENT) {
       meijiEl.innerHTML = `<span class="none">この地域では、この資料が作られていません</span>`;
       return;
@@ -342,6 +403,9 @@
       return;
     }
     meijiEl.innerHTML = `<b>${esc(m.value)}</b> でした`;
+    // まとめの 1 行に出すのは、区分が取れたときだけ。
+    概略.meiji = `明治期は <b>${esc(m.value)}</b>`;
+    drawSub();
   }
 
   // 空中写真。どの年代が残っているかを言う。
@@ -349,21 +413,62 @@
   //   それには答えられない。写真の中身は見ないと決めた（見ると推定を実測のように見せる）。
   //   言えるのは「◯◯年の写真が残っている」まで。明治期の行と合わせて、挟みこむ。
   async function askPhoto(lon, lat, seq) {
-    photoBox.hidden = true;
+    photoRow.hidden = true;
+    erasEl.hidden = true; erasEl.innerHTML = "";
+    概略.photo = null;
     const f = await KonjakuLand.photos(lon, lat).catch(() => null);
     if (seq !== askSeq) return;
     if (!f) return;                                     // 取れなかった。黙る
-    if (f.state === Konjaku.STATE.UNREACHABLE) return;  // 同上
-    const 残る = (f.eras ?? []).filter((e) => e.state === Konjaku.STATE.OK && !e.blank);
-    photoBox.hidden = false;
+    if (f.state === Konjaku.STATE.UNREACHABLE) {
+      photoRow.hidden = false;
+      photoEl.innerHTML = `<span class="none">いま読み込めませんでした。残っているかどうかは分かっていません</span>`;
+      return;
+    }
+    // 残っていて、白紙でなく、この縮尺で出せるものだけを押せるようにする。
+    //   縮尺の外は「無い」ではないので、出さないだけで、無いとは言わない。
+    const 残る = (f.eras ?? []).filter((e) =>
+      e.state === Konjaku.STATE.OK && !e.blank && Z >= e.min && Z <= e.max);
     if (!残る.length) {
+      photoRow.hidden = false;
       photoEl.innerHTML = `<span class="none">この場所の空中写真は、残っていません</span>`;
       return;
     }
-    // いちばん古い年代だけ言う。全部並べると、写真を見る話になる（スマホで深掘りさせない）。
-    photoEl.innerHTML = `<b>${esc(残る[0].label)}</b> の写真が残っています`
-      + (残る.length > 1 ? `<span class="none">（ほか ${残る.length - 1} 年代）</span>` : "");
+    概略.photo = `空中写真 <b>${残る.length} 年代</b>`;
+    drawSub();
+    // 既定は地図。押されるまで写真は出さない。
+    //   古い順。verify.js が時系列に並べ替えて返している。
+    //   年は 2 行に割る（「1936」「–42」）。1 行だと 7 つが画面に収まらない。
+    erasEl.hidden = false;
+    erasEl.innerHTML = 残る.map((e) => {
+      const m = String(e.label).match(/^(\d{4})(.*)$/);
+      const 上 = m ? m[1] : e.label, 下 = m ? m[2] : "";
+      return `<button type="button" class="era" data-era="${esc(e.id)}" aria-pressed="false">`
+        + `<span class="era__y">${esc(上)}</span>`
+        + (下 ? `<span class="era__t">${esc(下)}</span>` : "")
+        + `</button>`;
+    }).join("");
+    for (const b of erasEl.querySelectorAll(".era"))
+      b.addEventListener("click", () => setEra(残る.find((e) => e.id === b.dataset.era)));
   }
+
+  // 年代を切り替える。写真を出すと、地図の意味が変わる。
+  //   地形分類の色は消えるので、凡例も一緒に隠す（残すと、色の無い凡例になる）。
+  //   何年代の写真を見ているかは、必ず字で言う。黙って絵だけ変えない。
+  function setEra(e) {
+    era = e ?? null;
+    for (const b of erasEl.querySelectorAll(".era"))
+      b.setAttribute("aria-pressed", String(b.dataset.era === era?.id));
+    eraNote.hidden = !era;
+    eraBack.hidden = !era;
+    if (era) eraNote.textContent =
+      `${era.label}${era.sub ? `（${era.sub}）` : ""}の空中写真を出しています。`
+      + `地形分類の色は、いまの土地の話なので消しています`;
+    legendEl.hidden = !!era;
+    moreBtn.hidden = !!era || !moreBtn.textContent;
+    if (!era) drawLegend();
+    draw();
+  }
+  eraBack.addEventListener("click", () => setEra(null));
 
   // この周辺について、公式資料に書かれている記録。
   //   上の 3 つと違い、これは地点の答えではない。地域の記録。
@@ -380,7 +485,7 @@
     return areaP;
   }
   async function showArea(lon, lat) {
-    areaBox.hidden = true;
+    areaRow.hidden = true;
     const j = await areas();
     if (!j) return;
     const a = (j.areas ?? []).find((x) => {
@@ -395,15 +500,8 @@
     //   選ぶのは JSON 側（representative）。ここで選ばない。
     const r = (a.records ?? []).find((x) => x.year === a.representative);
     if (!r) return;   // 代表が選ばれていない。こちらで勝手に選ばない
-    areaBox.hidden = false;
-    // 場所を変えたら畳み直す。開いたままだと、前の場所で開いた状態が次に残る。
-    areaFold.open = false;
-    // 畳んだときに見える 1 行。年と記録だけで、断りは上の行（index.html）が持つ。
-    areaPeek.textContent = `${r.year}年 ${r.text}`;
-    areaEl.innerHTML =
-      `${esc(a.label)}には、<b>${esc(String(r.year))}年</b>に`
-      + `「${esc(r.text)}」という記録があります。`;
-    // 断りを、記録より先に置いている（並びは index.html）。
+    areaRow.hidden = false;
+    // 断りが先、記録が後（並びは index.html）。
     //   5 秒だけ見せて聞いた（利用者役 3 名・実在の利用者ではない・2026-08-29）。
     //     記録が先 → 3 名中 1 名が、年をこの地点のものとして読んだ
     //     断りが先 → 0 名
@@ -413,6 +511,9 @@
     areaNote.textContent =
       "※この地点に関する記録ではありません。"
       + "この場所がいつ陸になったかは、この資料からは分かりません。";
+    areaEl.innerHTML =
+      `${esc(a.label)}には、<b>${esc(String(r.year))}年</b>に`
+      + `「${esc(r.text)}」という記録があります。`;
     // 出典は消さない。どこの資料かが分からないと、確かめようがない。
     areaCite.innerHTML =
       `出典：<a href="${esc(a.source.url)}" target="_blank" rel="noopener">`

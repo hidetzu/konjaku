@@ -22,33 +22,37 @@
 
   <section id="card" aria-live="polite">
     <p class="kick"><i class="dot" aria-hidden="true"></i><span id="kickText">地図を動かすと、その場所を調べます</span></p>
-    <div class="src">
-      <p class="src__from">いまの地形から</p>
-      <p class="big" id="gloss">　</p>
-      <p class="term" id="name">　</p>
-    </div>
-    <div class="src" id="meijiBox" hidden>
-      <p class="src__from">明治期の地図から</p>
-      <p class="src__body" id="meiji"></p>
-    </div>
-    <div class="src" id="photoBox" hidden>
-      <p class="src__from">空中写真から</p>
-      <p class="src__body" id="photo"></p>
-    </div>
-    <div class="src area" id="areaBox" hidden>
-      <p class="src__from">この<b>周辺</b>について、公式資料から</p>
-      <details class="area__fold" id="areaFold">
-        <summary class="area__sum">
-          <span class="area__lead">この地点ではなく、周辺の記録</span>
-          <span class="area__peek" id="areaPeek"></span>
-        </summary>
-        <div class="area__body">
-          <p class="src__note" id="areaNote"></p>
-          <p class="src__body" id="area"></p>
-          <p class="src__cite" id="areaCite"></p>
+    <p class="ans" id="gloss">　</p>
+    <p class="sub" id="sub"></p>
+
+    <!-- 空中写真の年代。押すと、その年代の写真が地図になる。 -->
+    <div class="eras" id="eras" role="group" aria-label="空中写真の年代" hidden></div>
+    <p class="era-note" id="eraNote" hidden></p>
+    <button class="era-back" id="eraBack" type="button" hidden>地図に戻す</button>
+
+    <!-- 根拠は 1 か所にまとめる。その場では読まれない側。 -->
+    <details class="why" id="why">
+      <summary class="why__sum">なぜそう言える？</summary>
+      <dl class="why__rows">
+        <div class="why__row">
+          <dt class="why__k">いまの地形</dt><dd class="why__v" id="name"></dd>
         </div>
-      </details>
-    </div>
+        <div class="why__row" id="meijiRow" hidden>
+          <dt class="why__k">明治期の地図</dt><dd class="why__v" id="meiji"></dd>
+        </div>
+        <div class="why__row" id="photoRow" hidden>
+          <dt class="why__k">空中写真</dt><dd class="why__v" id="photo"></dd>
+        </div>
+        <div class="why__row" id="areaRow" hidden>
+          <dt class="why__k">この周辺</dt>
+          <dd class="why__v">
+            <span class="why__note" id="areaNote"></span>
+            <span class="why__body" id="area"></span>
+            <span class="why__cite" id="areaCite"></span>
+          </dd>
+        </div>
+      </dl>
+    </details>
     <ul id="legend" aria-label="この画面に映っている土地"></ul>
     <button id="more" type="button" hidden></button>
   </section>
