@@ -13,6 +13,8 @@
   const { esc } = window.KonjakuEsc ?? { esc: (s) => s };
   const backEl = $("back"), placeEl = $("place"), glossEl = $("gloss"), termEl = $("term");
   const whySec = $("whySec"), whyEl = $("why"), citeEl = $("cite");
+  const nearSec = $("nearSec"), nearLead = $("nearLead"), yearsEl = $("years");
+  const nearNote = $("nearNote"), nearFrom = $("nearFrom");
 
   // 場所は URL から。読む口は place-arg.js の 1 か所（同じ問いに答える実装を 2 つ持たない）。
   const arg = KonjakuPlaceArg.readPlace(new URLSearchParams(location.search));
@@ -62,6 +64,53 @@
     glossEl.textContent = `ここは、${KonjakuWords.groundGloss(t.value)}`;
     termEl.textContent = `国土地理院の区分：${t.value}`;
     drawWhy(t);
+    drawNear(lon, lat);
+  }
+
+  // まわり ── この一帯について、公式資料から言えること。
+  //   散歩中は 1 件だけ出している（3 件並べると、どれもこの場所の話ではないので
+  //   なぜその 3 件なのかを説明できなかった。docs/adr/0062）。
+  //   帰宅後は全部出す。読み物として、年表で読める。
+  //   ⚠ この地点の記録ではないことは、散歩中と同じくいちばん先に言う。
+  //     利用者役 3 名中 1 名が、1 件でも年をこの地点のものとして読んだ。
+  async function drawNear(lon, lat) {
+    nearSec.hidden = true;
+    let j = null;
+    try {
+      const r = await fetch("./data/area-record.json");
+      j = r.ok ? await r.json() : null;
+    } catch { j = null; }
+    if (!j) {
+      // 読めなかった。黙ると、その地域の資料が無い場所と見分けられない（掟 §1）
+      nearSec.hidden = false;
+      nearLead.textContent =
+        "いま読み込めませんでした。この周辺の記録が在るかどうかは分かっていません";
+      yearsEl.innerHTML = ""; nearNote.textContent = ""; nearFrom.textContent = "";
+      return;
+    }
+    const a = (j.areas ?? []).find((x) => {
+      const b = x.bbox;
+      return b && lon >= b.w && lon <= b.e && lat >= b.s && lat <= b.n;
+    });
+    if (!a) return;   // その地域の資料が無い。黙る（空の節を出すと「無い」の主張に読まれる）
+
+    nearSec.hidden = false;
+    nearLead.textContent = `${a.label}には、こういう記録があります`;
+    // 古い順。年表として読むので、時の流れの向きに並べる。
+    //   散歩中は新しい順に 1 件だけ出しているが、あちらは「1 件を選ぶ」話で、
+    //   ここは「並べて読む」話。目的が違うので並びも違ってよい。
+    const 並び = [...(a.records ?? [])].sort((x, y) => x.year - y.year);
+    yearsEl.innerHTML = 並び.map((r) =>
+      `<li class="${r.year === a.shown ? "shown" : ""}">`
+      + `<span class="y">${esc(String(r.year))}年</span>`
+      + `<span class="t">${esc(r.text)}</span></li>`).join("");
+    nearNote.textContent =
+      "※この地点に関する記録ではありません。"
+      + "この場所がいつ陸になったかは、この資料からは分かりません。"
+      + (a.place_note ? a.place_note : "");
+    nearFrom.innerHTML =
+      `出典：<a href="${esc(a.source.url)}" target="_blank" rel="noopener">`
+      + `${esc(a.source.name)}</a>（${esc(a.source.retrieved_at)} に読んだもの）`;
   }
 
   // 成因と、起こりうること。

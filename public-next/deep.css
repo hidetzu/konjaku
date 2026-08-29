@@ -58,6 +58,30 @@ body{
 /* 災害の話。⚠ は災害リスク専用の印なので、在庫や対応状況には使わない。 */
 .why--risk{border-left:3px solid var(--evidence); padding-left:var(--pad-md)}
 
+/* まわり ── この一帯について、公式資料から言えること。
+   散歩中は 1 件だけ出している。帰宅後は全部出す。読み物なので年表として読める。
+   ⚠ この地点の記録ではない。そこは散歩中と同じく、いちばん先に言う。 */
+.near__lead{margin:0; font-size:1rem; color:var(--ink)}
+.years{margin:var(--gap-block) 0 0; padding:0; list-style:none}
+.years li{
+  display:flex; gap:var(--gap-block); padding:var(--gap-row) 0;
+  border-bottom:1px solid var(--line); font-size:.9375rem; line-height:1.7;
+}
+.years li:last-child{border-bottom:0}
+/* 年は揃える。並べて読むので、桁がずれると年表に見えない */
+.years .y{
+  flex:none; width:5.5rem; font-variant-numeric:tabular-nums;
+  color:var(--ink); font-weight:700;
+}
+.years .t{flex:1; min-width:0}
+/* 散歩中に出している 1 件。どれを最初に見たかが分かるようにする */
+.years li.shown .t::after{
+  content:"　散歩中に出した 1 件"; font-size:.75rem; color:var(--ink-3); font-weight:400;
+}
+.near__note{margin:var(--gap-block) 0 0; font-size:.8125rem; color:var(--ink-3); line-height:1.7}
+.near__from{margin:var(--gap-sub) 0 0; font-size:.75rem; color:var(--ink-3)}
+.near__from a{color:var(--ink-2)}
+
 .cite{
   margin-top:3rem; padding-top:var(--gap-block); border-top:1px solid var(--line);
   font-size:.75rem; color:var(--ink-3); line-height:1.7;
