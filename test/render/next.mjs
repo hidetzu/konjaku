@@ -514,3 +514,100 @@ CASES.push(
     },
   },
 );
+
+CASES.push({
+  // ⚠ **動きを止めている人の設定を無視しない**（`ui-ux-review` §3）。
+  //   ⚠ **v0.1.0 は、⚠ いま動くものを 1 つも持っていない**（⚠ 実測 2026-08-29: 見えている 83 要素で 0）。
+  // ⚠ **壊れていなくても残す。**⚠ **次に動きを足した人が、⚠ この設定を忘れたら止まる。**
+  //
+  // ⚠ **見るのは `reduce` のときだけ。**⚠ **動きそのものを禁じない**
+  //   （⚠ 止めていない人には動いてよい。⚠ そこまで縛ると、⚠ 間違った主張を固定する）。
+  name: "動きを止めている人には、動かさない",
+  path: `/?${TOYOSU}`, origin: NEXT_BASE, viewport: SP,
+  setup: (page) => page.emulateMedia({ reducedMotion: "reduce" }),
+  async check(page) {
+    await waitAnswer(page); await waitEras(page);
+    // ⚠ **いちばん要素が多い状態で見る**
+    await page.locator(".why__sum").click();
+    await page.waitForTimeout(400);
+    const r = await page.evaluate(() => {
+      const 秒 = (s) => (s || "0s").split(",").map((x) => parseFloat(x) || 0);
+      const 動く = [];
+      let 見た = 0;
+      for (const e of document.querySelectorAll("*")) {
+        if (!e.checkVisibility()) continue;
+        見た++;
+        const cs = getComputedStyle(e);
+        const t = Math.max(...秒(cs.transitionDuration), ...秒(cs.transitionDelay));
+        const a = Math.max(...秒(cs.animationDuration));
+        if (t > 0 || a > 0 || cs.scrollBehavior === "smooth")
+          動く.push(`${e.tagName}${e.id ? "#" + e.id : ""} t=${t} a=${a} scroll=${cs.scrollBehavior}`);
+      }
+      return { 見た, 動く };
+    });
+    must(!r.動く.length,
+      `動きを止めている人の設定なのに、動くものがある: ${r.動く.slice(0, 4).join(" / ")}`);
+    return `見えている ${r.見た} 要素・動くもの 0`;
+  },
+});
+
+CASES.push({
+  // ⚠ **状態を色と位置だけで言わない**（`ui-ux-review` §3）。
+  //   ⚠ **色が見分けにくい人に、⚠ どれを選んでいるかが伝わらない。**
+  // ⚠ **見るのは「字か `aria-*` も変わるか」。**⚠ **色を変えるなと言っているのではない。**
+  //
+  // ⚠ **実測（2026-08-29）**:
+  //     保存    ⚠ 字が変わる（☆保存 → ★保存ずみ）＋ aria-pressed
+  //     年代    ⚠ **字は変わらない。**⚠ aria-pressed だけ（⚠ 目には出ない）
+  //     なぜ    ⚠ 印が変わる（▾ → ▴）
+  name: "状態を、色と位置だけで言わない",
+  path: `/?${TOYOSU}`, origin: NEXT_BASE, viewport: SP,
+  async check(page) {
+    await waitAnswer(page); await waitEras(page);
+    // ⚠ **色以外に何が変わるかも見る。**⚠ **色を落としても残るのは、⚠ 字の太さのほう。**
+    //   ⚠ **実際に絵で確かめた**（2026-08-29。⚠ 色を全部落とした絵・1 型の絵）。
+    const 撮る = (sel) => page.evaluate((s) => {
+      const e = document.querySelector(s);
+      const 中 = e.querySelector(".era__y") ?? e;
+      return { 字: e.textContent.trim(), pressed: e.getAttribute("aria-pressed"),
+               太さ: getComputedStyle(中).fontWeight };
+    }, sel);
+
+    const 保存前 = await 撮る("#save");
+    await page.locator("#save").click();
+    await 待つ(page,
+      () => document.getElementById("save").getAttribute("aria-pressed") === "true", "保存ずみ");
+    const 保存後 = await 撮る("#save");
+    must(保存前.字 !== 保存後.字 || 保存前.pressed !== 保存後.pressed,
+      `保存の状態が、色と位置だけで表されている（字も aria-* も変わらない）`);
+    must(保存前.字 !== 保存後.字,
+      `保存の状態が、字では分からない（${保存前.字} → ${保存後.字}）`);
+
+    const 年代前 = await 撮る(".era");
+    await page.locator(".era").first().click();
+    await page.waitForTimeout(1500);
+    const 年代後 = await 撮る(".era");
+    // ⚠ **年代は、⚠ いま aria-pressed だけで表している。**⚠ **字は変わらない。**
+    //   ⚠ **`ui-ux-review` §3 は「字か aria-* も」なので、⚠ これは満たしている。**
+    //   ⚠ **満たしているところで止める。**⚠ **ここで「字も変えろ」と足すと、
+    //     ⚠ 決めていない主張を検査が固定する**（`CLAUDE.md` §9）。
+    must(年代前.pressed !== 年代後.pressed,
+      `年代の状態が、色と位置だけで表されている（aria-pressed が変わらない）`);
+    // ⚠ **目でも、⚠ 色を落として残るものが要る。**⚠ **字の太さがそれ**（⚠ 400 → 700）。
+    //   ⚠ **枠の太さは変わらない**（⚠ 1px のまま。⚠ 変わるのは枠の色）。
+    must(年代前.太さ !== 年代後.太さ,
+      `年代の状態が、色でしか変わらない（字の太さが ${年代前.太さ} のまま）`);
+
+    const なぜ = await page.evaluate(() => {
+      const d = document.getElementById("why"), s = d.querySelector("summary");
+      const 前 = getComputedStyle(s, "::after").content;
+      d.open = !d.open;
+      const 後 = getComputedStyle(s, "::after").content;
+      d.open = !d.open;
+      return { 前, 後 };
+    });
+    must(なぜ.前 !== なぜ.後,
+      `開いているかが、色と位置だけで表されている（印が変わらない: ${なぜ.前}）`);
+    return `保存「${保存前.字}」→「${保存後.字}」・年代 aria-pressed ${年代前.pressed}→${年代後.pressed}・なぜ ${なぜ.前}→${なぜ.後}`;
+  },
+});
