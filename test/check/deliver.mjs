@@ -536,6 +536,92 @@ head("8. CI の固定");
 }
 
 
+// ── v0.1.0 を出す段が、⚠ β 版を出さないか ────────────────────────
+// ⚠ **2026-08-29 に足した**（Owner 判断。`docs/adr/0070`）。
+// ⚠ **ここが守っているのは 2 つ。**
+//   ⚠ ① **利用者がいる β 版（`konjaku`）を、⚠ この段が出してしまわないこと。**
+//      ⚠ `-c wrangler.next.jsonc` を外すと、⚠ 既定の `wrangler.jsonc` が読まれて β 版が出る。
+//      ⚠ **落ちない。**⚠ **成功して、⚠ 利用者のいる側が入れ替わる**（`docs/adr/0047` の観測が壊れる）。
+//   ⚠ ② **検査が緑になる前に出さないこと。**⚠ 門番 3 つの後ろに居ること。
+// ⚠ **`develop` が push のトリガに居ることも、⚠ ここで見る。**
+//   ⚠ **居ないと、⚠ この段は一度も走らない**（⚠ 落ちるのではなく、⚠ 黙って何も起きない）。
+// ⚠ **コメントを先に落とす**（`CLAUDE.md` §5）。⚠ **落とさないと、⚠ 上に書いた注記の字面を拾う。**
+{
+  const raw = await readFile(join(ROOT, ".github/workflows/check.yml"), "utf8");
+  // ⚠ **行頭が `#` の行だけ落とす**（⚠ `run:` の中の bash のコメントも、⚠ 一緒に落ちてよい）
+  const cleaned = raw.split("\n").filter((l) => !/^\s*#/.test(l)).join("\n");
+  // ⚠ **最後のジョブを切り出せるように、⚠ 番人を足す**（⚠ 次のジョブの頭を目印にしているため）
+  const scan = cleaned + "\n  __end__:\n";
+  const jobs = [...scan.matchAll(/^  ([\w-]+):\n([\s\S]*?)(?=^  [\w-]+:\n)/gm)]
+    .map(([, id, body]) => ({ id, body, name: /^    name:\s*(.+?)\s*$/m.exec(body)?.[1] ?? null }));
+
+  // ⚠ **トリガ**（⚠ ここが `develop` を含まないと、⚠ 出す段が一度も呼ばれない）
+  const push = /^on:\n(?:.*\n)*?  push:\n((?:\s{4}.*\n)+)/m.exec(cleaned)?.[1] ?? "";
+  /\bdevelop\b/.test(push)
+    ? ok("push のトリガに develop が居る（⚠ いまの主線。ここでしか全部は回らない）")
+    : bad("push のトリガに develop が居ない"
+        + "（⚠ **落ちるのではなく、⚠ 取り込んだあとの検査も、⚠ 出す段も、⚠ 黙って何も走らない**）");
+
+  const dep = jobs.find((j) => j.id === "deploy-next");
+  if (!dep) {
+    bad("v0.1.0 を出すジョブ（jobs.deploy-next）が居ない（⚠ この検査が何も見ていない）");
+  } else {
+    // ⚠ ① **出す先。**⚠ `-c wrangler.next.jsonc` を渡している wrangler の呼び出しだけであること
+    const calls = [...dep.body.matchAll(/^\s*run:\s*(.*wrangler.*)$/gm)].map((m) => m[1]);
+    if (!calls.length) {
+      bad("出すジョブに wrangler の呼び出しが無い（⚠ この検査が何も見ていない）");
+    } else {
+      const loose = calls.filter((c) => !/-c\s+wrangler\.next\.jsonc\b/.test(c));
+      loose.length
+        ? bad(`出すジョブが、β 版を出しうる: ${loose.join(" ／ ")}`
+            + "（⚠ **`-c wrangler.next.jsonc` が無いと、⚠ 既定の `wrangler.jsonc`＝β 版が出る。**"
+            + "⚠ **落ちない。**⚠ **成功して、⚠ 利用者のいる側が入れ替わる**）")
+        : ok(`出すのは konjaku-next だけ（wrangler の呼び出し ${calls.length} 箇所とも -c wrangler.next.jsonc）`);
+      // ⚠ **版は env の 1 か所**（⚠ Playwright と同じ。⚠ `npx wrangler` だと、その日の最新が降る）
+      const pinned = calls.every((c) => /wrangler@\$\{\{\s*env\.WRANGLER_VERSION\s*\}\}/.test(c));
+      const ver = /WRANGLER_VERSION:\s*"?(\d+\.\d+\.\d+)"?/.exec(cleaned)?.[1];
+      (pinned && ver)
+        ? ok(`wrangler の版は env の1か所で固定されている（${ver}）`)
+        : bad(`wrangler の版が1か所で固定されていない（env=${ver ?? "無し"}）`
+            + "（⚠ **配信の道具が、⚠ こちらの差分なしに入れ替わる**）");
+    }
+
+    // ⚠ ② **門番の後ろ。**⚠ **id を字で書かず、⚠ 必須チェックの名前から引く**
+    //   （⚠ ジョブ名を変えたときに、⚠ ここだけ古くならないようにする）
+    const gateIds = REQUIRED_CHECKS.map((n) => jobs.find((j) => j.name === n)?.id).filter(Boolean);
+    const needs = /^    needs:\s*\[([^\]]*)\]/m.exec(dep.body)?.[1].split(",").map((s) => s.trim()) ?? [];
+    const notWaited = gateIds.filter((id) => !needs.includes(id));
+    if (gateIds.length !== REQUIRED_CHECKS.length) {
+      bad("必須チェックの名前から、ジョブの id を引けなかった（⚠ この検査が何も見ていない）");
+    } else if (notWaited.length) {
+      bad(`出す段が、検査を待っていない: ${notWaited.join(" / ")} を needs に持たない`
+        + "（⚠ **赤のまま出る**）");
+    } else {
+      ok(`出す段は、必須チェック ${gateIds.length} 件が全部緑のときだけ走る（needs: ${needs.join(", ")}）`);
+    }
+
+    // ⚠ **`develop` への push に閉じているか**（⚠ PR で走ると、⚠ fork へ秘密を晒す口になる）
+    const cond = /^    if:\s*(.+?)\s*$/m.exec(dep.body)?.[1] ?? "";
+    (/refs\/heads\/develop/.test(cond) && /event_name\s*==\s*'push'/.test(cond))
+      ? ok("出す段は develop への push でだけ走る")
+      : bad(`出す段の実行条件が develop への push に閉じていない: ${JSON.stringify(cond)}`
+          + "（⚠ **PR で走ると、⚠ fork からの PR に秘密を渡す口になる**）");
+
+    // ⚠ **出しっぱなしにしない。**⚠ 「デプロイが成功した」は「出ている」ではない（`CLAUDE.md` §1）
+    /sha256sum/.test(dep.body)
+      ? ok("出したあと、配った実体を取り直して手元と突き合わせている（sha256）")
+      : bad("出したあと、⚠ 配った実体を確かめていない"
+          + "（⚠ **「デプロイが成功した」は、⚠ 「出ている」ではない**）");
+
+    // ⚠ **必須チェックにしない。**⚠ PR では走らないので、⚠ 必須にすると報告が来ず永久に待ちになる
+    REQUIRED_CHECKS.includes(dep.name)
+      ? bad(`出す段が必須チェックの一覧に入っている（${dep.name}）`
+          + "（⚠ **PR では走らないので、⚠ 報告が来ないまま永久に待ちになる**）")
+      : ok("出す段は必須チェックにしていない（⚠ PR では走らないため）");
+  }
+}
+
+
 // ── 分けて回しても、⚠ 1 件も落ちないか ──────────────────────────
 // ⚠ **2026-08-22 に足した**（hidetzu/konjaku#190）。
 // ⚠ **`--shard=1/2` で分けたとき、⚠ 足して元に戻ることを見る。**
