@@ -14,6 +14,8 @@
 import { join } from "node:path";
 import { readFileSync, existsSync } from "node:fs";
 import { ROOT, ok, bad, warn, head, HEAD_COMMENT } from "./lib.mjs";
+// ⚠ **偽の D1 は、⚠ 実描画からも使う。**⚠ **だから 1 か所に置いた**（2026-08-29）。
+import { fakeDb } from "../handoff-fake-d1.mjs";
 
 head("合言葉の口（サーバ）");
 
@@ -23,53 +25,6 @@ if (!existsSync(WORKER)) {
 } else {
 
 const W = await import("../../worker-next.js");
-
-// ---- ⚠ 偽の D1 ----
-//
-// ⚠ **表として持つ。**⚠ **SQL を字で判定する**（⚠ 本物の D1 の代わりではない）。
-// ⚠ **ここが本物とずれたら、⚠ この検査は嘘をつく。**⚠ **だから作りを最小にする。**
-const fakeDb = () => {
-  const handoff = new Map();
-  const attempt = new Map();
-  const fail = { on: null };
-  const run = (sql, args) => {
-    if (fail.on && sql.includes(fail.on)) throw new Error("D1 が落ちている（偽）");
-    if (/^INSERT INTO handoff \(/.test(sql)) {
-      const [code_hash, payload, created_at, expires_at] = args;
-      if (handoff.has(code_hash)) throw new Error("UNIQUE constraint failed");
-      handoff.set(code_hash, { payload, created_at, expires_at });
-      return {};
-    }
-    if (/^SELECT payload, expires_at FROM handoff/.test(sql)) return handoff.get(args[0]) ?? null;
-    if (/^DELETE FROM handoff WHERE code_hash = /.test(sql)) { handoff.delete(args[0]); return {}; }
-    if (/^DELETE FROM handoff WHERE code_hash IN/.test(sql)) {
-      for (const [k, v] of handoff) if (v.expires_at < args[0]) handoff.delete(k);
-      return {};
-    }
-    if (/^INSERT INTO handoff_attempt/.test(sql)) {
-      const [bucket, expires_at] = args;
-      const cur = attempt.get(bucket);
-      attempt.set(bucket, { tries: (cur?.tries ?? 0) + 1, expires_at });
-      return {};
-    }
-    if (/^SELECT tries FROM handoff_attempt/.test(sql)) return attempt.get(args[0]) ?? null;
-    if (/^DELETE FROM handoff_attempt WHERE bucket IN/.test(sql)) {
-      for (const [k, v] of attempt) if (v.expires_at < args[0]) attempt.delete(k);
-      return {};
-    }
-    throw new Error(`偽の D1 が知らない SQL: ${sql}`);
-  };
-  return {
-    fail,
-    rows: handoff,
-    prepare: (sql) => ({
-      bind: (...args) => ({
-        run: async () => run(sql, args),
-        first: async () => run(sql, args),
-      }),
-    }),
-  };
-};
 
 const req = (url, init = {}) => new Request(`https://example.invalid${url}`, {
   headers: { "cf-connecting-ip": "203.0.113.7", ...(init.headers ?? {}) },
