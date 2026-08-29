@@ -3,7 +3,12 @@ name: check
 on:
   pull_request:
   push:
-    branches: [main]
+    # ⚠ **`develop` が、⚠ いまの主線**（`docs/adr/0050`）。
+    #   ⚠ **足すまで、⚠ `develop` へ取り込んだあとの検査が走っていなかった**
+    #     （⚠ 実測 2026-08-29: `main` より **30 コミット先**だった）。
+    #   ⚠ **PR で `render-scope.mjs` が絞ったぶんは、⚠ この push で取り戻す**（下の render-plan）。
+    #   ⚠ **外部リンク（全部）も、⚠ PR では走らない。**⚠ ここしか見る機会が無い。
+    branches: [main, develop]
   # 外部サイトのURLは自分たちの都合と関係なく消えるので、定期的にも見る
   schedule:
     - cron: "0 0 * * 1"
@@ -18,6 +23,13 @@ permissions:
 #   入れる版とキャッシュのキーの両方がこれを見る（出どころを2つ持たない）。
 env:
   PLAYWRIGHT_VERSION: "1.62.1"
+  # ⚠ **wrangler の版も、⚠ ここだけで決める**（2026-08-29。`docs/adr/0070`）。
+  #   ⚠ **`npx wrangler` と書くと、⚠ その日の最新が降ってくる。**
+  #   ⚠ **配信の道具が、⚠ こちらの差分なしに入れ替わる**（⚠ Playwright と同じ踏み方）。
+  WRANGLER_VERSION: "4.127.1"
+  # ⚠ **v0.1.0 を出す先**（`docs/adr/0050`。⚠ 名前を付けたのは Cloudflare の画面）。
+  #   ⚠ **β 版（`konjaku.hidetzu.work`）ではない。**
+  NEXT_ORIGIN: "https://dev.konjaku.hidetzu.work"
 
 # 古い実行を止める。⚠ **PR のときだけ**キャンセルする。
 #   main への push は、そこでしか走らない検査（外部リンク・全部）を持っているので、
@@ -406,3 +418,87 @@ jobs:
             exit 1
           fi
           echo "実描画は全部通った"
+
+
+  # ⚠ **v0.1.0（`konjaku-next`）を出す**（2026-08-29。Owner 判断。`docs/adr/0070`）。
+  #
+  # ⚠ **β 版（`konjaku` / `public/`）には触らない。**⚠ 出すのは `wrangler.next.jsonc` だけ。
+  #   ⚠ **`-c` を外すと、⚠ 既定の `wrangler.jsonc` が読まれて β 版が出る。**
+  #   ⚠ **β 版には実際の利用者がいて、⚠ その観測の上に判断が乗っている**（`docs/adr/0047`）。
+  #   ⚠ **β 版は Workers Builds が出している。**⚠ **ここは、⚠ そこへ一切関与しない。**
+  #
+  # ⚠ **なぜ Workers Builds に足さないか**（⚠ ADR 0050 の「今は足さない」を、⚠ こう覆した）:
+  #   ⚠ **Cloudflare 側は、⚠ GitHub の検査の緑を待てない。**⚠ **赤のまま出る。**
+  #   ⚠ **ここなら `needs:` で、⚠ 門番の後ろに置ける**（⚠ 下の 3 つが全部緑のときだけ走る）。
+  #
+  # ⚠ **`develop` への push でだけ走る。**⚠ **PR では走らない。**
+  #   ⚠ **fork の PR に秘密を渡さない**（⚠ このリポジトリは public）。
+  #   ⚠ `pull_request` には、⚠ そもそも secrets が渡らないが、⚠ 条件でも閉じておく。
+  deploy-next:
+    name: v0.1.0 を出す（konjaku-next）
+    # ⚠ **門番 3 つの後ろ。**⚠ **`render` は `always()` の門番なので、⚠ 必ず結果を返す**
+    #   （⚠ 返さない者を `needs` に置くと、⚠ ここが永久に待ちになる）。
+    needs: [checks, search, render]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+    runs-on: ubuntu-latest
+    # ⚠ **既定は 360 分。**⚠ 実測（2026-08-29・手元）: 照合は 17 ファイルで数秒。
+    #   ⚠ **デプロイ本体が支配的。**⚠ 取り直しを 3 回入れても収まる長さにする。
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          # ⚠ 認証情報を .git/config に残さない（⚠ 上のジョブと同じ）
+          persist-credentials: false
+
+      # ⚠ **版は上の env の 1 か所だけ**（⚠ `npx wrangler` だと、その日の最新が降る）。
+      # ⚠ **`npm ci` を挟まない。**⚠ このリポジトリは依存ゼロで、⚠ wrangler は使い捨てで入れる
+      #   （⚠ `npm ci` が通ること自体は、⚠ 上の「静的検査」のジョブが見ている）。
+      - name: 出す（konjaku-next だけ）
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx --yes wrangler@${{ env.WRANGLER_VERSION }} deploy -c wrangler.next.jsonc
+
+      # ⚠ **「デプロイが成功した」は、⚠ 「出ている」ではない**（`CLAUDE.md` §1）。
+      #   ⚠ **配った実体を取り直して、⚠ 手元と同じ中身かを見る**（sha256）。
+      #
+      # ⚠ **`/version.json` は使えない。**⚠ あれは β 版の仕組みで、⚠ `public-next/` は持たない
+      #   （`docs/adr/0050`「引き継がない」）。⚠ **だから中身そのものを突き合わせる。**
+      #
+      # ⚠ **`?cb=<commit>` を外さない。**⚠ 付けないと、⚠ 端の古い写しを「いまの本番」と読みうる。
+      # ⚠ **`-L` を外さない。**⚠ `/index.html` は `/` へ送られ、⚠ 本文が空で返る
+      #   （⚠ 実測 2026-08-29: ⚠ **空文字の sha256 を「本番の中身」として読んでいた**）。
+      # ⚠ **取れなかったときも、ここは「違う」に倒れる**（⚠ `curl` が落ちると空になる）。
+      #   ⚠ **それでよい。**⚠ **取れなかったことを「出ている」と言わないため**（`CLAUDE.md` §1）。
+      - name: 出たものが、手元と同じか（sha256・全ファイル）
+        env:
+          ORIGIN: ${{ env.NEXT_ORIGIN }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -u
+          files=$(cd public-next && find . -type f | sed 's|^\./||' | sort)
+          n=$(echo "$files" | wc -l | tr -d ' ')
+          if [ -z "$files" ]; then
+            echo "⚠ public-next/ にファイルが 1 つも無い（⚠ この照合は何も見ていない）"
+            exit 1
+          fi
+          echo "照合する: $n ファイル（$ORIGIN）"
+          for try in 1 2 3; do
+            ng=""
+            for f in $files; do
+              want=$(sha256sum "public-next/$f" | cut -d' ' -f1)
+              got=$(curl -fsSL --max-time 30 "$ORIGIN/$f?cb=$SHA" | sha256sum | cut -d' ' -f1)
+              if [ "$want" != "$got" ]; then ng="$ng $f"; fi
+            done
+            if [ -z "$ng" ]; then
+              echo "$n ファイルとも一致した（$ORIGIN は、この commit の public-next/ と同じ）"
+              exit 0
+            fi
+            echo "⚠ $try 回目で違ったもの:$ng"
+            # ⚠ `[ ] && …` を最後に置かない（⚠ 上のジョブと同じ踏み方）
+            if [ "$try" -lt 3 ]; then echo "15 秒待って取り直す"; sleep 15; fi
+          done
+          echo "⚠ 3 回とも違った。⚠ **出したはずのものが、⚠ 届いていない**"
+          echo "⚠ 伝播の遅れではないかもしれない。⚠ Cloudflare 側で中身を書き換える設定"
+          echo "⚠ （HTML の最小化・スクリプトの差し込み）が入っていないかを見る"
+          exit 1
