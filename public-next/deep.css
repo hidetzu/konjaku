@@ -1,0 +1,65 @@
+/* 帰宅後の深掘り画面。
+   散歩中の画面（top.css）とは別の作り。共通の色だけ同じ形で持つ。
+   ここは「読み物」なので、読む行の幅を先に決める。 */
+:root{
+  --bg:#0c1016; --surface:#131a21; --surface-2:#1b242d;
+  --ink:#e8eef3; --ink-2:#b5c2cc; --ink-3:#8a97a2; --ink-dim:#6f7c86;
+  --line:#26313b; --line-strong:#3c4b57;
+  --action:#7fc4e8; --action-ink:#0c1016;
+  --evidence:#7fc4e8;
+  --gap-sub:.25rem; --gap-row:.5rem; --gap-block:1rem;
+  --pad-sm:.5rem; --pad-md:.75rem;
+  --tap:44px;
+  --read:38rem;              /* 読む行の幅。ここを超えて伸ばさない */
+}
+@media (prefers-color-scheme:light){
+  :root{
+    --bg:#f4f7f8; --surface:#fff; --surface-2:#eef3f5;
+    --ink:#0f1720; --ink-2:#41505c; --ink-3:#71818e; --ink-dim:#8a97a2;
+    --line:#dde5ea; --line-strong:#c3d0d8;
+    --action:#175c90; --action-ink:#fff;
+    --evidence:#175c90;
+  }
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0; background:var(--bg); color:var(--ink-2);
+  font:16px/1.9 system-ui,-apple-system,"Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif;
+}
+#doc{max-width:var(--read); margin:0 auto; padding:var(--pad-md) var(--pad-md) 6rem}
+@media (min-width:700px){ #doc{padding:2rem 1.5rem 8rem} }
+
+.back{
+  display:inline-flex; align-items:center; min-height:var(--tap);
+  color:var(--action); font-size:.875rem; font-weight:700; text-decoration:none;
+}
+.back:focus-visible{outline:2px solid var(--action); outline-offset:2px}
+
+#head{border-bottom:1px solid var(--line); padding-bottom:var(--gap-block)}
+.place{margin:0; font-size:.8125rem; color:var(--ink-3)}
+/* 答えは主。区分名は出典の言葉として添える（散歩中の画面と同じ決め方）。 */
+.ans{margin:var(--gap-sub) 0 0; font-size:1.75rem; line-height:1.4; color:var(--ink); font-weight:700}
+.term{margin:var(--gap-sub) 0 0; font-size:.8125rem; color:var(--ink-3)}
+.term[hidden]{display:none}
+
+.sec{margin-top:2rem}
+.sec > h2{
+  margin:0 0 var(--gap-row); font-size:.75rem; font-weight:700; letter-spacing:.1em;
+  color:var(--ink-3);
+}
+
+/* 成因と、起こりうること。国土地理院の記述をそのまま出す。要約しない。 */
+.why__item + .why__item{margin-top:var(--gap-block)}
+.why__k{margin:0; font-size:.8125rem; font-weight:700; color:var(--ink)}
+.why__v{margin:var(--gap-sub) 0 0; font-size:1rem; line-height:1.9}
+.why__from{margin:var(--gap-sub) 0 0; font-size:.75rem; color:var(--ink-3)}
+.why__none{color:var(--ink-3)}
+/* 災害の話。⚠ は災害リスク専用の印なので、在庫や対応状況には使わない。 */
+.why--risk{border-left:3px solid var(--evidence); padding-left:var(--pad-md)}
+
+.cite{
+  margin-top:3rem; padding-top:var(--gap-block); border-top:1px solid var(--line);
+  font-size:.75rem; color:var(--ink-3); line-height:1.7;
+}
+.cite a{color:var(--ink-2)}

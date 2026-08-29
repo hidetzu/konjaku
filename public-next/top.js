@@ -30,7 +30,7 @@
   const areaEl = $("area"), areaRow = $("areaRow"), areaNote = $("areaNote"), areaCite = $("areaCite");
   const erasEl = $("eras"), eraNote = $("eraNote"), eraBack = $("eraBack");
   const saveBtn = $("save"), saveMark = $("saveMark"), saveText = $("saveText");
-  const shareBtn = $("share"), shareText = $("shareText");
+  const shareBtn = $("share"), shareText = $("shareText"), deepLink = $("deepLink");
   const savedOpen = $("savedOpen"), savedCount = $("savedCount");
   const savedSheet = $("savedSheet"), savedList = $("savedList"), savedNote = $("savedNote");
 
@@ -598,6 +598,9 @@
   function drawShare() {
     // 判定が出ていない場所は送らせない（開いた人が何も読めない）
     shareBtn.hidden = !hereName;
+    // 深掘りの行き先にも、いまの場所を入れる。URL の組み立ては place-arg.js の 1 か所
+    const q = KonjakuPlaceArg.placeQuery({ lat: px2lat(cy), lon: px2lon(cx) });
+    deepLink.href = "./deep.html" + (q ? q.replace(/^\?q=&/, "?") : "");
   }
 
   // 押したあとに何が起きたかを、必ず字で言う（docs/adr/0026）。

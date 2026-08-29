@@ -765,3 +765,106 @@ CASES.push(
     },
   },
 );
+
+// ⚠ **帰宅後の深掘り画面**（`/deep.html`）。⚠ **散歩中の画面とは別の作り。**
+//   ⚠ **問いも時間も違う**（⚠ 散歩中「ここは昔なんだった？」5 秒 ／ ⚠ 帰宅後「なぜこうなった？」10 分）。
+CASES.push(
+  {
+    // ⚠ **`landform.json` は 36 区分すべてに成因と災害リスクを持っていた。**
+    //   ⚠ **国土地理院の記述そのもの。**⚠ **いままで 1 文字も画面に出していなかった。**
+    // ⚠ **要約しない・言い換えない。**⚠ **そのまま出す**（`CLAUDE.md` §5）。
+    name: "深掘り画面は、成り立ちと起こりうることを、そのまま出す",
+    path: `/deep.html?${TOYOSU}`, origin: NEXT_BASE, viewport: PC,
+    async check(page) {
+      await 待つ(page,
+        () => (document.getElementById("gloss").textContent ?? "").trim().length > 2, "答え");
+      await page.waitForTimeout(1500);
+      const r = await page.evaluate(() => ({
+        場所: document.getElementById("place").textContent.trim(),
+        答え: document.getElementById("gloss").textContent.trim(),
+        区分: document.getElementById("term").textContent.trim(),
+        節: [...document.querySelectorAll(".why__k")].map((e) => e.textContent.trim()),
+        文: [...document.querySelectorAll(".why__v")].map((e) => e.textContent.trim()),
+        出どころ: [...document.querySelectorAll(".why__from")].map((e) => e.textContent.trim()),
+        出典: document.getElementById("cite").textContent.trim(),
+        読む幅: Math.round(document.getElementById("doc").getBoundingClientRect().width),
+        戻る先: document.getElementById("back").getAttribute("href"),
+        横あふれ: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+      }));
+      must(r.答え.startsWith("ここは、"), `答えが出ていない: ${r.答え}`);
+      must(/旧水部/.test(r.区分), `区分名を名乗っていない: ${r.区分}`);
+      must(r.節.length >= 2, `成り立ちと起こりうることが出ていない: ${r.節.join(" / ")}`);
+      // ⚠ **原典の字がそのまま出ていること**（⚠ 要約していないこと）
+      must(r.文.some((t) => t.includes("かつて海や湖")),
+        `成り立ちが原典の字で出ていない: ${r.文[0]?.slice(0, 30)}`);
+      must(r.文.some((t) => t.includes("液状化")),
+        `起こりうることが原典の字で出ていない: ${r.文[1]?.slice(0, 30)}`);
+      // ⚠ **誰の記述かを、⚠ 節ごとに名乗る**
+      must(r.出どころ.length === r.節.length && r.出どころ.every((t) => /国土地理院/.test(t)),
+        `出どころを名乗っていない節がある: ${r.出どころ.join(" / ")}`);
+      must(/国土地理院/.test(r.出典), `出典が無い: ${r.出典}`);
+      // ⚠ **読む行の幅**（⚠ 読み物なので、⚠ 横いっぱいに伸ばさない）
+      must(r.読む幅 < 700, `読む行が広すぎる（${r.読む幅}px）`);
+      must(!r.横あふれ, "画面が横にあふれている");
+      // ⚠ **戻る先に、⚠ いまの場所が入っていること**（⚠ 戻ったら別の場所、では困る）
+      must(/[?&]ll=/.test(r.戻る先 ?? ""), `戻る先に場所が入っていない: ${r.戻る先}`);
+      return `${r.節.length} 節・${r.文.map((t) => t.length).join("/")} 字・読む幅 ${r.読む幅}px`;
+    },
+  },
+
+  {
+    // ⚠ **場所が無いときと、⚠ 読み取れないときを分ける**（`place-arg.js` の 3 状態）。
+    //   ⚠ **どちらも「その場所が存在しない」ではない。**
+    name: "深掘り画面は、場所が無いときと読み取れないときを分ける",
+    path: "/deep.html", origin: NEXT_BASE, viewport: PC,
+    async check(page) {
+      await page.waitForTimeout(1200);
+      const 無し = await page.evaluate(() => ({
+        答え: document.getElementById("gloss").textContent.trim(),
+        節: document.getElementById("whySec").hidden,
+      }));
+      must(/選ばれていません/.test(無し.答え), `場所が無いときの言い方が違う: ${無し.答え}`);
+      must(無し.節, "場所が無いのに、成り立ちの節が出ている");
+
+      await page.goto(`${NEXT_BASE}/deep.html?ll=abc`, { waitUntil: "domcontentloaded" });
+      await page.waitForTimeout(1200);
+      const 読めない = await page.evaluate(() =>
+        document.getElementById("gloss").textContent.trim());
+      must(/読み取れませんでした/.test(読めない), `読み取れないときの言い方が違う: ${読めない}`);
+      must(読めない !== 無し.答え, "場所が無いときと、読み取れないときが同じ字になっている");
+      return `「${無し.答え}」／「${読めない}」`;
+    },
+  },
+
+  {
+    // ⚠ **押しても何も起きない導線を置かない**（`docs/adr/0026`）。
+    //   ⚠ **深掘り画面へ行く道が無ければ、⚠ 作った意味が無い。**
+    name: "散歩中の画面から、深掘り画面へ行ける",
+    path: `/?${TOYOSU}`, origin: NEXT_BASE, viewport: SP,
+    async check(page) {
+      await waitAnswer(page);
+      await page.locator(".why__sum").click();
+      await page.waitForTimeout(400);
+      const r = await page.evaluate(() => {
+        const a = document.getElementById("deepLink");
+        const b = a.getBoundingClientRect();
+        return { 先: a.getAttribute("href"), 字: a.textContent.trim(),
+                 w: Math.round(b.width), h: Math.round(b.height), 見える: a.checkVisibility() };
+      });
+      must(r.見える, "深掘りへの入口が見えない");
+      must(r.h >= 44, `深掘りへの入口が 44 を割っている: ${r.w}x${r.h}`);
+      must(/[?&]ll=/.test(r.先 ?? ""), `入口に場所が入っていない: ${r.先}`);
+      // ⚠ **押して、⚠ 本当に読めること**（⚠ 行き先が 404 では意味が無い）
+      await page.locator("#deepLink").click();
+      await 待つ(page,
+        () => (document.getElementById("gloss")?.textContent ?? "").trim().length > 2, "深掘りの答え");
+      const 先 = await page.evaluate(() => ({
+        答え: document.getElementById("gloss").textContent.trim(),
+        節: document.querySelectorAll(".why__k").length,
+      }));
+      must(先.答え.startsWith("ここは、"), `深掘り画面で答えが出ない: ${先.答え}`);
+      must(先.節 >= 2, `深掘り画面で成り立ちが出ない（${先.節} 節）`);
+      return `「${r.字}」${r.w}x${r.h} → ${先.節} 節`;
+    },
+  },
+);

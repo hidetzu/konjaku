@@ -1,0 +1,37 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex">
+<meta name="color-scheme" content="light dark">
+<title>この場所を深掘りする — 今昔 v0.1.0</title>
+<link rel="stylesheet" href="./deep.css">
+
+<!-- 帰宅後に、保存した 1 地点を読む画面。
+     散歩中の画面（/）とは、問いも時間も違う。
+       散歩中  ここは昔なんだった？  5 秒   地図が主役
+       帰宅後  なぜこうなった？      10 分  読み物
+     上から順に「いつ → まわり → なぜ」で読み下す。タブを並べない。 -->
+<article id="doc">
+  <header id="head">
+    <a class="back" id="back" href="./">← 地図へもどる</a>
+    <p class="place" id="place">　</p>
+    <h1 class="ans" id="gloss">　</h1>
+    <p class="term" id="term"></p>
+  </header>
+
+  <section class="sec" id="whySec">
+    <h2>なぜこうなった</h2>
+    <div class="why" id="why"></div>
+  </section>
+
+  <p class="cite" id="cite"></p>
+</article>
+
+<script src="./esc.js"></script>
+<script src="./place-arg.js"></script>
+<script src="./saved.js"></script>
+<script src="./words.js"></script>
+<script src="./swale.js"></script>
+<script src="./verify.js"></script>
+<script src="./land.js"></script>
+<script src="./deep.js"></script>

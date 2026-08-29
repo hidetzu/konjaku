@@ -306,6 +306,15 @@ body{
      inline は行ごとに分かれるので、外から高さを足しても届かない。
    ⚠ inline-block にすると、箱そのものが 1 つになり、高さの指定が効く。
      中の字はそのまま折り返す（max-width:100% で幅に収める）。 */
+/* 帰宅後に読む画面への入口。根拠を読み終わったところに置く。
+   散歩中は押されない前提（3 名中 2 名が「その場では読まない」）。
+   押せる形にはしておく。押しても何も起きない導線を置かないため。 */
+.why__more{
+  display:flex; align-items:center; min-height:var(--tap);
+  margin-top:var(--gap-row); font-size:.8125rem; font-weight:700;
+  color:var(--action); text-decoration:none;
+}
+.why__more:focus-visible{outline:2px solid var(--action); outline-offset:2px}
 .why__cite a{
   color:var(--ink-2);
   display:inline-block; max-width:100%;
