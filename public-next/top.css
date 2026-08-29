@@ -130,6 +130,28 @@ body{
   border-radius:0 .5rem .5rem 0;
 }
 .area .src__from b{color:var(--ink-2)}
+
+/* 周辺の記録は、その場では読まれない。
+   3 名中 2 名が「その場では読まない」と答えた（利用者役・実在の利用者ではない・2026-08-29）。
+   1 名は「これは読み物。歩きながらは無理」。
+   要約だけ出し、読みたい人が開く。畳んだ状態で 139px → 78px、地図が 62px 戻る。
+   要約の 1 行目が断りを兼ねる。落とすと、年をこの地点のものとして読む人が戻る。 */
+.area__fold{margin:0}
+.area__sum{
+  margin:0; display:flex; flex-direction:column; justify-content:center;
+  min-height:var(--tap);                /* 押せるものは 44×44 を割らない */
+  font-size:.8125rem; line-height:1.5; cursor:pointer;
+  list-style:none;                      /* 既定の三角は出さない。▾ を自分で置く */
+}
+.area__sum::-webkit-details-marker{display:none}
+.area__lead{color:var(--ink); font-weight:700}
+.area__lead::after{content:" ▾"; color:var(--ink-3); font-weight:400}
+.area__fold[open] .area__lead::after{content:" ▴"}
+/* 要約は 1 行に収める。長い記録でも、畳んだ高さを変えない */
+.area__peek{color:var(--ink-3); overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+/* 開いたら消す。下に同じ年と同じ記録が全文で出るので、2 行が同じことを言う */
+.area__fold[open] .area__peek{display:none}
+.area__body{margin-top:var(--gap-row)}
 .src__note{
   margin:var(--gap-sub) 0 0; font-size:.6875rem; color:var(--ink-3); line-height:1.5;
 }

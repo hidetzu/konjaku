@@ -27,7 +27,7 @@
   const meijiEl = $("meiji"), meijiBox = $("meijiBox");
   const photoEl = $("photo"), photoBox = $("photoBox");
   const areaEl = $("area"), areaBox = $("areaBox"), areaNote = $("areaNote");
-  const areaCite = $("areaCite");
+  const areaCite = $("areaCite"), areaPeek = $("areaPeek"), areaFold = $("areaFold");
 
   // ⚠ **地図はタイルを並べて作る**（⚠ β 版の `/peel` は MapLibre だが、⚠ 運んでいない）。
   //   ⚠ **この縦切りでは、⚠ 動かせる地図が要る。**⚠ 依存を足す前に、⚠ まず素で作る
@@ -396,6 +396,10 @@
     const r = (a.records ?? []).find((x) => x.year === a.representative);
     if (!r) return;   // 代表が選ばれていない。こちらで勝手に選ばない
     areaBox.hidden = false;
+    // 場所を変えたら畳み直す。開いたままだと、前の場所で開いた状態が次に残る。
+    areaFold.open = false;
+    // 畳んだときに見える 1 行。年と記録だけで、断りは上の行（index.html）が持つ。
+    areaPeek.textContent = `${r.year}年 ${r.text}`;
     areaEl.innerHTML =
       `${esc(a.label)}には、<b>${esc(String(r.year))}年</b>に`
       + `「${esc(r.text)}」という記録があります。`;
