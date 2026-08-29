@@ -359,7 +359,9 @@
     }
     if (!v.ok || !v.value) {
       // ⚠ **「取れなかった」と「無い」を分ける**（`docs/adr/0056`）
-      glossEl.textContent = "この場所は、まだ分類されていません";
+      // 明治期と同じ字を使わない（2026-08-29。Owner 判断）。別の出典の別の話なので、
+      //   同じ字だと「なぜそう言える？」を開いたとき同じ文が 2 行並ぶ。
+      glossEl.textContent = "この場所の地形は、まだ分類できていません";
       nameEl.textContent = "";
       drawLegend();
       return;
@@ -400,15 +402,31 @@
     概略.meiji = null;
     const m = await KonjakuLand.meijiPoint(lon, lat).catch(() => null);
     if (seq !== askSeq) return;
-    if (!m) return;                                     // 取れなかった。黙る
-    if (m.state === Konjaku.STATE.UNREACHABLE) return;  // 同上
+    // 取れなかったときは黙らない（2026-08-29。Owner 判断）。
+    //   黙ると、行ごと消え、その地域の資料が無い場所と見分けられない。
+    //   周辺の記録も空中写真も、同じ状況で「読めなかった」と言う。挙動を揃える。
+    //   実際に踏んだ（2026-08-29）: 明治期のタイルを塞ぐと、行もまとめの 1 行も
+    //   静かに消え、利用者には何も起きなかったように見えた。
+    if (!m || m.state === Konjaku.STATE.UNREACHABLE) {
+      meijiRow.hidden = false;
+      meijiEl.innerHTML =
+        `<span class="none">明治期の情報は、この場所では確認できませんでした</span>`;
+      return;
+    }
     meijiRow.hidden = false;
     if (m.state === Konjaku.STATE.ABSENT) {
       meijiEl.innerHTML = `<span class="none">この地域では、この資料が作られていません</span>`;
       return;
     }
     if (!m.value) {
-      meijiEl.innerHTML = `<span class="none">この場所は、まだ分類されていません</span>`;
+      // 資料は読めたが、この場所に区分が無い。「読めなかった」とは別の話。
+      //   足元とも別の字にする（2026-08-29。Owner 判断）。出典が違えば理由も違う。
+      //   3 つを言い分ける（docs/adr/0056）:
+      //     この地域では、この資料が作られていません     資料そのものが無い
+      //     この場所には、明治期の区分がありません        資料はあるが、この点に区分が無い
+      //     明治期の情報は、この場所では確認できませんでした   読めなかった
+      meijiEl.innerHTML =
+        `<span class="none">この場所には、明治期の区分がありません</span>`;
       return;
     }
     meijiEl.innerHTML = `<b>${esc(m.value)}</b> でした`;

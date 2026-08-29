@@ -79,25 +79,42 @@ body{
   position:absolute; left:var(--pad-sm); right:var(--pad-sm);
   bottom:calc(var(--pad-sm) + env(safe-area-inset-bottom));
   display:flex; flex-direction:column; gap:var(--gap-sub);
+  /* 上のバーの下まで。板が伸びても、検索窓と現在地を押し出さない。
+     実際に踏んだ（2026-08-29）: 文字を 20px にして「なぜそう言える？」を開くと、
+     板が 888px になり、320px 幅で検索窓と年代が重なった（実測 5 組）。
+     答えの 1 文も画面の外へ出ていた。
+     上限を決めずに下端へ貼ると、中身が増えたぶんだけ上へ伸びる。
+     44px は検索窓の高さ（--tap）、pad-sm ×3 はバーの上下と板との間。 */
+  max-height:calc(100% - var(--tap) - var(--pad-sm) * 3
+                  - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  min-height:0;
 }
 /* ⚠ **出典明示は地理院タイルの利用の条件。**⚠ 隠さない・覆わない。
    地図の上に乗るので、地の色を敷かないと読めない。 */
-.attrib{
-  align-self:flex-end; margin:0;
+/* ⚠ **出典明示は地理院タイルの利用の条件。**⚠ 隠さない・覆わない。
+   地図の上に乗るので、地の色を敷かないと読めない。
+
+   ⚠ 押せるものは 44×44 を割らない。
+     β 版で、利用者役 1 名が国土地理院のリンクを押そうとして 2 回外した（2026-08-23）。
+   ⚠ 箱ぜんたいをリンクにする。押せるものが 44 の箱そのものになるので、
+     「字だけ小さくて押しにくい」が起きない。
+   ⚠ 擬似要素で当たり判定だけを広げる手は使わない（2026-08-29 に踏んだ）。
+     inline は行ごとに分かれるので、折り返すと外から高さを足しても届かない。
+     負の margin ではみ出させる手も踏んだ。文字を大きくすると検索窓と重なった。 */
+.attrib{align-self:flex-end; margin:0; max-width:100%}
+.attrib a{
+  display:flex; align-items:center; min-height:var(--tap);
   padding:0 var(--gap-row);
   background:var(--surface); border:1px solid var(--line); border-radius:.5rem;
-  font-size:.6875rem; color:var(--ink-3); line-height:1.5;
+  font-size:.6875rem; color:var(--ink-2); line-height:1.5; text-decoration:none;
 }
-.attrib a{color:var(--ink-2); position:relative}
-/* ⚠ 押せるものは 44×44 を割らない。
-   β 版で、利用者役 1 名が国土地理院のリンクを押そうとして 2 回外した（2026-08-23）。
-   字を大きくすると出典が主役になるので、当たり判定だけを広げる。 */
-.attrib a::after{
-  content:""; position:absolute; left:-.5rem; right:-.5rem;
-  top:50%; transform:translateY(-50%); height:calc(var(--tap) + 2px);
-}
+.attrib a:hover,.attrib a:focus-visible{color:var(--action)}
+.attrib a:focus-visible{outline:2px solid var(--action); outline-offset:2px}
+
 #card{
   position:static;
+  /* 板が上限に当たったら、板の中で送る。地図と出典は動かさない。 */
+  min-height:0; overflow-y:auto; overscroll-behavior:contain;
   padding:var(--pad-md);
   background:var(--surface); border:1px solid var(--line-strong); border-radius:.875rem;
   box-shadow:0 -2px 16px rgb(0 0 0 / .12);
@@ -255,19 +272,20 @@ body{
 .why__note,.why__body,.why__cite{display:block}
 .why__note{color:var(--ink-3)}
 .why__cite{margin-top:var(--gap-sub); font-size:.6875rem; color:var(--ink-3)}
-.why__cite a{color:var(--ink-2); position:relative}
 /* 押せるものは 44×44 を割らない。
-   字を 44px にすると出典が主役になるので、当たり判定だけを広げる。
-   上へ 4px（--gap-sub のぶん＝字の無いところ）、残りは下の余白へ伸びる。
-   下にあるのは凡例で、押せるものではない。 */
-.why__cite a::after{
-  content:""; position:absolute; left:0; right:0;
-  top:calc(var(--gap-sub) * -1); height:calc(var(--tap) + 2px);
+   字を 44px にすると出典が主役になるので、箱の高さだけを 44 にする。
+
+   ⚠ 擬似要素で当たり判定を広げる手は、ここでは効かない（2026-08-29 に踏んだ）。
+     文字を大きくすると出典が 2 行に折り返す。折り返した行の外側は、
+     擬似要素を 50px にしても触れなかった（実測: 触れるのは 41px のまま）。
+     inline は行ごとに分かれるので、外から高さを足しても届かない。
+   ⚠ inline-block にすると、箱そのものが 1 つになり、高さの指定が効く。
+     中の字はそのまま折り返す（max-width:100% で幅に収める）。 */
+.why__cite a{
+  color:var(--ink-2);
+  display:inline-block; max-width:100%;
+  min-height:var(--tap); line-height:1.5;
 }
-/* +2px は端数のぶん。字の高さが 16.5px（.6875rem × 1.5）で割り切れず、
-   height:var(--tap) ちょうどだと実際に触れるのは 43px だった（実測 2026-08-29）。
-   同じ測り方を 44px と分かっている現在地ボタンに当てると 44 と出るので、
-   これは測り方のずれではない。 */
 
 /* ---- 現在地の印 ----
    利用者役 3 名のうち 2 名が「自分がどこにいるか 5 秒で分からなかった」と答えた。
