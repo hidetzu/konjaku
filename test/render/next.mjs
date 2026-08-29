@@ -1381,3 +1381,42 @@ CASES.push({
     return `100 件 = ${渡した.url.length} 文字を渡した ／ 1500 件は「${後.字}」`;
   },
 });
+
+CASES.push({
+  // ⚠ **広い幅では、⚠ 柱 1 本にまとめる**（`docs/adr/0068` を取り消したあとの形）。
+  //   ⚠ **実際に踏んだ（2026-08-29・1440x950）**: ⚠ `@media (min-width:700px)` に
+  //   ⚠ **`#savedSheet` を入れ忘れ、⚠ 保存の板だけ 1424px のまま残っていた**
+  //   （⚠ 検索窓と答えの板は 608px）。⚠ **行の幅が 1398px になり、
+  //   ⚠ 町名は左端・日付は右端で、⚠ 目が 1400px 動いていた。**
+  // ⚠ **幅の値そのものを主張しない**（⚠ 38rem は変わりうる）。
+  //   ⚠ **「他の柱とそろっているか」を見る。**⚠ そろえることが決めたこと。
+  name: "広い幅では、保存した板も他の柱と同じ幅になる",
+  path: `/?${TOYOSU}`, origin: NEXT_BASE, viewport: PC,
+  async check(page) {
+    await waitAnswer(page);
+    await 待つ(page, () => !document.getElementById("save").hidden, "保存");
+    await page.locator("#save").click();
+    await 待つ(page,
+      () => document.getElementById("save").getAttribute("aria-pressed") === "true", "保存ずみ");
+    await page.waitForTimeout(2000);
+    await page.locator("#savedOpen").click();
+    await 待つ(page, () => !document.getElementById("savedSheet").hidden, "保存した場所の板");
+    const r = await page.evaluate(() => {
+      const w = (id) => {
+        const e = document.getElementById(id);
+        return e && e.checkVisibility() ? Math.round(e.getBoundingClientRect().width) : null;
+      };
+      const 行 = document.querySelector("#savedList li button");
+      return { 板: w("savedSheet"), 検索: w("bar"), 答え: w("bottom"),
+               行: 行 ? Math.round(行.getBoundingClientRect().width) : null,
+               画面: innerWidth };
+    });
+    must(r.板 === r.検索 && r.板 === r.答え,
+      `柱の幅がそろっていない（保存の板 ${r.板}px ／ 検索窓 ${r.検索}px ／ 答えの板 ${r.答え}px）`);
+    // ⚠ **画面いっぱいに広がっていないこと**（⚠ 上の主張は「3 つとも広い」でも通る）
+    must(r.板 < r.画面 * 0.7,
+      `保存の板が画面（${r.画面}px）いっぱいに広がっている（${r.板}px）`);
+    must(r.行 !== null && r.行 <= r.板, `一覧の行が板からはみ出している（行 ${r.行}px ／ 板 ${r.板}px）`);
+    return `保存の板 ${r.板}px = 検索窓 ${r.検索}px = 答えの板 ${r.答え}px ／ 行 ${r.行}px`;
+  },
+});
