@@ -681,87 +681,474 @@ CASES.push({
 //     ⚠ 答えの 1 文が 1238px 幅の 1 行 ／ ⚠ 年代が 1 つ 173px ／ ⚠ 右側の空きが 8px。
 const PC = { width: 1440, height: 950 };
 
+CASES.push({
+  // ⚠ **広い幅でも、⚠ スマホと同じ形。**⚠ **横に並べ替えない。**
+  //   ⚠ **一度 3 列にして、⚠ 実測で「操作しづらい」が出た**（2026-08-29）:
+  //     ⚠ 押せるものの散らばり  ⚠ スマホ 302×594px → ⚠ **3 列 1250×637px**
+  //     ⚠ いちばん離れた 2 つ    ⚠ 615px → ⚠ **1374px**
+  //   ⚠ **利用者役 3 名とも、⚠ この形を選んだ**（⚠ この一連のテストで初めて 3/3 が一致した）。
+  // ⚠ **見るのは「散らばりが、⚠ スマホと同じ程度に収まっているか」。**
+  name: "広い幅でも、押すものがスマホと同じところにまとまっている",
+  path: `/?${TOYOSU}`, origin: NEXT_BASE, viewport: PC,
+  async check(page) {
+    await waitAnswer(page); await waitEras(page);
+    await 待つ(page, () => !document.getElementById("save").hidden, "保存");
+    await page.locator("#save").click();
+    await page.waitForTimeout(2000);
+    const r = await page.evaluate(() => {
+      const 押せる = [...document.querySelectorAll("button, a, summary, input")]
+        .filter((e) => e.checkVisibility());
+      const xs = 押せる.map((e) => { const b = e.getBoundingClientRect(); return b.x + b.width / 2; });
+      const bar = document.getElementById("bar").getBoundingClientRect();
+      const card = document.getElementById("card").getBoundingClientRect();
+      return {
+        押せるもの: 押せる.length,
+        横の散らばり: Math.round(Math.max(...xs) - Math.min(...xs)),
+        板の幅: Math.round(card.width),
+        検索の幅: Math.round(bar.width),
+        板の中心: Math.round(card.x + card.width / 2),
+        画面の中心: Math.round(innerWidth / 2),
+        答えの幅: Math.round(document.getElementById("gloss").getBoundingClientRect().width),
+        横あふれ: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+      };
+    });
+    // ⚠ **柱 1 本の中に収まっていること。**⚠ **数を決め打ちにしない**（⚠ 柱の幅は変わりうる）。
+    //   ⚠ **3 列のときは 1250px で、⚠ 柱をまたいで散っていた。**
+    must(r.横の散らばり <= r.板の幅,
+      `押すものが柱からはみ出している（散らばり ${r.横の散らばり}px / 柱 ${r.板の幅}px）`);
+    // ⚠ **読む行の幅を、⚠ 読める幅に保つ**（⚠ 横いっぱいにすると 1398px になる）
+    //   ⚠ **柱の幅は `/deep` と同じ 38rem。**⚠ そこを超えない
+    must(r.答えの幅 <= r.板の幅, `答えの 1 文が柱より広い（${r.答えの幅}px / 柱 ${r.板の幅}px）`);
+    must(r.答えの幅 < 700, `答えの 1 文が広すぎる（${r.答えの幅}px）`);
+    // ⚠ **中央に立てる**（⚠ 左右どちらかへ寄せない）
+    must(Math.abs(r.板の中心 - r.画面の中心) < 20,
+      `板が中央に無い（板 ${r.板の中心} / 画面 ${r.画面の中心}）`);
+    // ⚠ **検索と板の幅がそろっている**（⚠ 1 本の柱に見える）
+    must(Math.abs(r.板の幅 - r.検索の幅) < 20,
+      `検索と板の幅が違う（板 ${r.板の幅} / 検索 ${r.検索の幅}）`);
+    must(!r.横あふれ, "画面が横にあふれている");
+    return `散らばり ${r.横の散らばり}px・柱 ${r.板の幅}px・答え ${r.答えの幅}px`;
+  },
+});
+
+// ⚠ **帰宅後の深掘り画面**（`/deep.html`）。⚠ **散歩中の画面とは別の作り。**
+//   ⚠ **問いも時間も違う**（⚠ 散歩中「ここは昔なんだった？」5 秒 ／ ⚠ 帰宅後「なぜこうなった？」10 分）。
 CASES.push(
   {
-    // ⚠ **1200px から切り替える。**⚠ **その手前では、⚠ 狭い幅のまま。**
-    //   ⚠ **中途半端に 2 列にしない**（⚠ 地図が「主役」に見えなくなる）。
-    name: "広い幅では、保存した場所を左に立て、板を右に置く",
-    path: `/?${TOYOSU}`, origin: NEXT_BASE, viewport: PC,
+    // ⚠ **`landform.json` は 36 区分すべてに成因と災害リスクを持っていた。**
+    //   ⚠ **国土地理院の記述そのもの。**⚠ **いままで 1 文字も画面に出していなかった。**
+    // ⚠ **要約しない・言い換えない。**⚠ **そのまま出す**（`CLAUDE.md` §5）。
+    name: "深掘り画面は、成り立ちと起こりうることを、そのまま出す",
+    path: `/deep.html?${TOYOSU}`, origin: NEXT_BASE, viewport: PC,
     async check(page) {
-      await waitAnswer(page);
-      await 待つ(page, () => !document.getElementById("save").hidden, "保存");
-      // ⚠ **1 件も保存していないうちは、⚠ 左を空けない**
-      const 前 = await page.evaluate(() => ({
-        一覧: !document.getElementById("savedSheet").hidden,
-        地図の左: Math.round(document.getElementById("map").getBoundingClientRect().x),
-      }));
-      must(!前.一覧, "1 件も保存していないのに、保存した場所が出ている");
-      must(前.地図の左 === 0, `保存が 0 件なのに、地図の左が空いている（${前.地図の左}px）`);
-
-      await page.locator("#save").click();
       await 待つ(page,
-        () => document.getElementById("save").getAttribute("aria-pressed") === "true", "保存ずみ");
-      await page.waitForTimeout(2000);
-      const r = await page.evaluate(() => {
-        const R = (s) => { const e = document.querySelector(s);
-          const b = e.getBoundingClientRect();
-          return { w: Math.round(b.width), h: Math.round(b.height), x: Math.round(b.x), 出る: !e.hidden }; };
-        const 一覧 = R("#savedSheet"), 板 = R("#card"), 地図 = R("#map");
-        return {
-          一覧, 板, 地図,
-          入口: !document.getElementById("savedOpen").hidden,
-          閉じる: getComputedStyle(document.getElementById("savedClose")).display,
-          答えの幅: Math.round(document.getElementById("gloss").getBoundingClientRect().width),
-          なぜ開いている: document.getElementById("why").open,
-          出典の下端: Math.round(document.querySelector(".attrib").getBoundingClientRect().bottom),
-          板の下端: Math.round(document.getElementById("card").getBoundingClientRect().bottom),
-          横あふれ: document.documentElement.scrollWidth > document.documentElement.clientWidth,
-        };
-      });
-      must(r.一覧.出る, "保存したのに、保存した場所が左に出ない");
-      must(r.一覧.x < r.地図.x, `保存した場所が左に無い（一覧 @${r.一覧.x} / 地図 @${r.地図.x}）`);
-      must(r.板.x > r.地図.x, `板が右に無い（板 @${r.板.x} / 地図 @${r.地図.x}）`);
-      must(!r.入口, "広い幅なのに、一覧への入口が出ている（⚠ 一覧はもう出ている）");
-      must(r.閉じる === "none", "広い幅なのに、閉じるボタンが出ている（⚠ 閉じると戻す道が無い）");
-      // ⚠ **読む行の幅を、⚠ 読める幅に戻したか**（⚠ 前は 1238px の 1 行だった）
-      must(r.答えの幅 < 600, `答えの 1 文が広すぎる（${r.答えの幅}px）`);
-      // ⚠ **帰宅後は「時間をかけて読む」側。**⚠ **開く操作を要求しない**
-      must(r.なぜ開いている, "広い幅なのに、根拠が畳まれている（⚠ 帰宅後は開く操作を要求しない）");
-      // ⚠ **出典は板の下。**⚠ **地図の上に浮かせない**（⚠ 板が右にあるので重なる）
-      must(r.出典の下端 > r.板の下端, `出典が板の下に無い（出典 ${r.出典の下端} / 板 ${r.板の下端}）`);
+        () => (document.getElementById("gloss").textContent ?? "").trim().length > 2, "答え");
+      await page.waitForTimeout(1500);
+      const r = await page.evaluate(() => ({
+        場所: document.getElementById("place").textContent.trim(),
+        答え: document.getElementById("gloss").textContent.trim(),
+        区分: document.getElementById("term").textContent.trim(),
+        節: [...document.querySelectorAll(".why__k")].map((e) => e.textContent.trim()),
+        文: [...document.querySelectorAll(".why__v")].map((e) => e.textContent.trim()),
+        出どころ: [...document.querySelectorAll(".why__from")].map((e) => e.textContent.trim()),
+        出典: document.getElementById("cite").textContent.trim(),
+        読む幅: Math.round(document.getElementById("doc").getBoundingClientRect().width),
+        戻る先: document.getElementById("back").getAttribute("href"),
+        横あふれ: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+      }));
+      must(r.答え.startsWith("ここは、"), `答えが出ていない: ${r.答え}`);
+      must(/旧水部/.test(r.区分), `区分名を名乗っていない: ${r.区分}`);
+      must(r.節.length >= 2, `成り立ちと起こりうることが出ていない: ${r.節.join(" / ")}`);
+      // ⚠ **原典の字がそのまま出ていること**（⚠ 要約していないこと）
+      must(r.文.some((t) => t.includes("かつて海や湖")),
+        `成り立ちが原典の字で出ていない: ${r.文[0]?.slice(0, 30)}`);
+      must(r.文.some((t) => t.includes("液状化")),
+        `起こりうることが原典の字で出ていない: ${r.文[1]?.slice(0, 30)}`);
+      // ⚠ **誰の記述かを、⚠ 節ごとに名乗る**
+      must(r.出どころ.length === r.節.length && r.出どころ.every((t) => /国土地理院/.test(t)),
+        `出どころを名乗っていない節がある: ${r.出どころ.join(" / ")}`);
+      must(/国土地理院/.test(r.出典), `出典が無い: ${r.出典}`);
+      // ⚠ **読む行の幅**（⚠ 読み物なので、⚠ 横いっぱいに伸ばさない）
+      must(r.読む幅 < 700, `読む行が広すぎる（${r.読む幅}px）`);
       must(!r.横あふれ, "画面が横にあふれている");
-      // ⚠ **地図が主役。**⚠ **左右に立てたものより広いこと**
-      must(r.地図.w > r.一覧.w + r.板.w,
-        `地図が、左右に立てたものより狭い（地図 ${r.地図.w} / 一覧 ${r.一覧.w} + 板 ${r.板.w}）`);
-      return `一覧 ${r.一覧.w}px @${r.一覧.x}・地図 ${r.地図.w}px @${r.地図.x}・板 ${r.板.w}px @${r.板.x}・答え ${r.答えの幅}px`;
+      // ⚠ **戻る先に、⚠ いまの場所が入っていること**（⚠ 戻ったら別の場所、では困る）
+      must(/[?&]ll=/.test(r.戻る先 ?? ""), `戻る先に場所が入っていない: ${r.戻る先}`);
+      return `${r.節.length} 節・${r.文.map((t) => t.length).join("/")} 字・読む幅 ${r.読む幅}px`;
     },
   },
 
   {
-    // ⚠ **切り替えの手前では、⚠ 狭い幅のまま**（⚠ 中途半端に 2 列にしない）。
-    //   ⚠ **1199px は 1200px の 1 つ手前。**⚠ **境目そのものを見る。**
-    name: "1400px の手前では、狭い幅のまま",
-    path: `/?${TOYOSU}`, origin: NEXT_BASE, viewport: { width: 1399, height: 950 },
+    // ⚠ **場所が無いときと、⚠ 読み取れないときを分ける**（`place-arg.js` の 3 状態）。
+    //   ⚠ **どちらも「その場所が存在しない」ではない。**
+    name: "深掘り画面は、場所が無いときと読み取れないときを分ける",
+    path: "/deep.html", origin: NEXT_BASE, viewport: PC,
+    async check(page) {
+      await page.waitForTimeout(1200);
+      const 無し = await page.evaluate(() => ({
+        答え: document.getElementById("gloss").textContent.trim(),
+        節: document.getElementById("whySec").hidden,
+      }));
+      must(/選ばれていません/.test(無し.答え), `場所が無いときの言い方が違う: ${無し.答え}`);
+      must(無し.節, "場所が無いのに、成り立ちの節が出ている");
+
+      await page.goto(`${NEXT_BASE}/deep.html?ll=abc`, { waitUntil: "domcontentloaded" });
+      await page.waitForTimeout(1200);
+      const 読めない = await page.evaluate(() =>
+        document.getElementById("gloss").textContent.trim());
+      must(/読み取れませんでした/.test(読めない), `読み取れないときの言い方が違う: ${読めない}`);
+      must(読めない !== 無し.答え, "場所が無いときと、読み取れないときが同じ字になっている");
+      return `「${無し.答え}」／「${読めない}」`;
+    },
+  },
+
+  {
+    // ⚠ **押しても何も起きない導線を置かない**（`docs/adr/0026`）。
+    //   ⚠ **深掘り画面へ行く道が無ければ、⚠ 作った意味が無い。**
+    name: "散歩中の画面から、深掘り画面へ行ける",
+    path: `/?${TOYOSU}`, origin: NEXT_BASE, viewport: SP,
     async check(page) {
       await waitAnswer(page);
-      await 待つ(page, () => !document.getElementById("save").hidden, "保存");
-      await page.locator("#save").click();
+      await page.locator(".why__sum").click();
+      await page.waitForTimeout(400);
+      const r = await page.evaluate(() => {
+        const a = document.getElementById("deepLink");
+        const b = a.getBoundingClientRect();
+        return { 先: a.getAttribute("href"), 字: a.textContent.trim(),
+                 w: Math.round(b.width), h: Math.round(b.height), 見える: a.checkVisibility() };
+      });
+      must(r.見える, "深掘りへの入口が見えない");
+      must(r.h >= 44, `深掘りへの入口が 44 を割っている: ${r.w}x${r.h}`);
+      must(/[?&]ll=/.test(r.先 ?? ""), `入口に場所が入っていない: ${r.先}`);
+      // ⚠ **押して、⚠ 本当に読めること**（⚠ 行き先が 404 では意味が無い）
+      await page.locator("#deepLink").click();
       await 待つ(page,
-        () => document.getElementById("save").getAttribute("aria-pressed") === "true", "保存ずみ");
-      await page.waitForTimeout(1500);
-      const r = await page.evaluate(() => ({
-        一覧: !document.getElementById("savedSheet").hidden,
-        入口: !document.getElementById("savedOpen").hidden,
-        なぜ開いている: document.getElementById("why").open,
-        地図の左: Math.round(document.getElementById("map").getBoundingClientRect().x),
-        板の左: Math.round(document.getElementById("card").getBoundingClientRect().x),
+        () => (document.getElementById("gloss")?.textContent ?? "").trim().length > 2, "深掘りの答え");
+      const 先 = await page.evaluate(() => ({
+        答え: document.getElementById("gloss").textContent.trim(),
+        節: document.querySelectorAll(".why__k").length,
       }));
-      must(!r.一覧, "1399px なのに、保存した場所が立っている（⚠ 切り替えが早すぎる）");
-      must(r.入口, "1399px なのに、一覧への入口が出ていない");
-      must(!r.なぜ開いている, "1399px なのに、根拠が開いている");
-      must(r.地図の左 === 0, `1399px なのに、地図の左が空いている（${r.地図の左}px）`);
-      must(r.板の左 < 100, `1399px なのに、板が右に寄っている（@${r.板の左}）`);
-      return `一覧は出ない・入口が出る・根拠は畳んだまま・板 @${r.板の左}`;
+      must(先.答え.startsWith("ここは、"), `深掘り画面で答えが出ない: ${先.答え}`);
+      must(先.節 >= 2, `深掘り画面で成り立ちが出ない（${先.節} 節）`);
+      return `「${r.字}」${r.w}x${r.h} → ${先.節} 節`;
     },
   },
 );
+
+CASES.push(
+  {
+    // ⚠ **散歩中は 1 件だけ。**⚠ **帰宅後は全部。**⚠ **読み物として年表で読める。**
+    //   ⚠ **並びも違ってよい**（⚠ 散歩中は「1 件を選ぶ」話、⚠ ここは「並べて読む」話）。
+    // ⚠ **この地点の記録ではないことは、⚠ どちらでも先に言う**（⚠ 1 名が年を地点のものとして読んだ）。
+    name: "深掘り画面は、この一帯の記録を年表で全部出す",
+    path: `/deep.html?${TOYOSU}`, origin: NEXT_BASE, viewport: PC,
+    async check(page) {
+      await 待つ(page, () => document.querySelectorAll("#years li").length > 0, "年表");
+      await page.waitForTimeout(1000);
+      const r = await page.evaluate(() => ({
+        見出し: document.getElementById("nearLead").textContent.trim(),
+        件数: document.querySelectorAll("#years li").length,
+        年: [...document.querySelectorAll("#years .y")].map((e) => Number(e.textContent.replace(/\D/g, ""))),
+        印: document.querySelectorAll("#years li.shown").length,
+        断り: document.getElementById("nearNote").textContent.trim(),
+        出典: document.getElementById("nearFrom").textContent.trim(),
+      }));
+      must(r.件数 >= 5, `年表が全部出ていない（${r.件数} 件）`);
+      // ⚠ **古い順**（⚠ 年表として読むので、⚠ 時の流れの向き）
+      must(r.年.every((v, i) => i === 0 || r.年[i - 1] <= v),
+        `年表が古い順に並んでいない: ${r.年.join(" ")}`);
+      // ⚠ **散歩中に出している 1 件が、⚠ どれか分かる**
+      must(r.印 === 1, `散歩中に出した 1 件の印が ${r.印} 個（1 個のはず）`);
+      // ⚠ **この地点の記録ではないと、⚠ 先に言う**
+      must(/この地点に関する記録ではありません/.test(r.断り), `断りが無い: ${r.断り}`);
+      must(!/^\d/.test(r.断り), "断りより先に年が来ている");
+      must(/出典/.test(r.出典) && /読んだもの/.test(r.出典), `出典と読んだ日が無い: ${r.出典}`);
+      return `${r.件数} 件・${r.年[0]}〜${r.年[r.年.length - 1]}・印 1 個`;
+    },
+  },
+
+  {
+    // ⚠ **点ではなく面で数える。**⚠ **点は「ここは何だったか」、⚠ 面は「まわりはどうだったか」。**
+    //   ⚠ **混ぜない**（`docs/adr/0030`）。
+    // ⚠ **割合には、⚠ 必ず分母を添える**（`CLAUDE.md` §6）。
+    //   ⚠ **数えられなかった画素（透明）を隠さない。**⚠ **「無かった」と読ませない。**
+    name: "深掘り画面は、一帯の明治期を分母つきで出す",
+    path: `/deep.html?${TOYOSU}`, origin: NEXT_BASE, viewport: PC,
+    async check(page) {
+      await 待つ(page, () => document.querySelectorAll("#shares li").length > 0, "一帯の割合");
+      await page.waitForTimeout(800);
+      const r = await page.evaluate(() => ({
+        見出し: document.getElementById("aroundLead").textContent.trim(),
+        割合: [...document.querySelectorAll("#shares li")].map((e) => e.textContent.trim().replace(/\s+/g, "")),
+        分母: document.getElementById("aroundNote").textContent.trim(),
+      }));
+      must(r.割合.length > 0, "一帯の割合が出ていない");
+      // ⚠ **分母（範囲の広さと、⚠ 数えた画素）が必ず在る**
+      must(/km/.test(r.分母), `分母に範囲の広さが無い: ${r.分母}`);
+      must(/画素を数えた/.test(r.分母), `分母に数えた画素が無い: ${r.分母}`);
+      // ⚠ **0% に丸まるものを出さない**（⚠ 「在るのに 0」に見える）
+      must(!r.割合.some((t) => t.startsWith("0%")), `0% の行が出ている: ${r.割合.join(" / ")}`);
+      // ⚠ **出していないものが在るなら、⚠ 何件かを言う**
+      must(!/満たない区分が\s*0/.test(r.分母), `0 件を「出していない」と言っている: ${r.分母}`);
+      return `${r.割合.join(" / ")}・分母 ${r.分母.length} 字`;
+    },
+  },
+
+  {
+    // ⚠ **資料が作られていない地域で、⚠ 「無い」と言わない**（掟 §1）。
+    //   ⚠ **軽井沢は明治期の低湿地の資料が作られていない**（⚠ 実測: タイル 9 枚とも absent）。
+    name: "深掘り画面は、一帯の資料が無い地域で「無い」と言わない",
+    path: "/deep.html?ll=36.3428,138.6350", origin: NEXT_BASE, viewport: PC,   // ⚠ 軽井沢
+    async check(page) {
+      await 待つ(page,
+        () => (document.getElementById("gloss").textContent ?? "").trim().length > 2, "答え");
+      await page.waitForTimeout(4000);
+      const r = await page.evaluate(() => ({
+        節: document.getElementById("nearSec").hidden,
+        一帯: document.getElementById("around").hidden
+          ? "出ない" : document.getElementById("aroundLead").textContent.trim(),
+        割合: document.querySelectorAll("#shares li").length,
+        年表: document.querySelectorAll("#years li").length,
+      }));
+      must(!r.節, "資料が作られていない地域で、まわりの節ごと黙っている");
+      must(/作られていません/.test(r.一帯), `作られていないことを言っていない: ${r.一帯}`);
+      must(!/ありません$|無いです|存在しません/.test(r.一帯), `「無い」と言っている: ${r.一帯}`);
+      must(r.割合 === 0, `資料が無いのに割合が出ている（${r.割合} 行）`);
+      must(r.年表 === 0, `この地域の記録が無いのに年表が出ている（${r.年表} 件）`);
+      return `「${r.一帯}」・割合 0 行・年表 0 件`;
+    },
+  },
+);
+
+CASES.push(
+  {
+    // ⚠ **標高は、⚠ 散歩中は出さないと決めてある**（`docs/adr/0059`）。
+    //   ⚠ **帰宅後は前提が違う**（2026-08-29。Owner 判断）。⚠ **「なぜ液状化のリスクがあるのか」に直接効く。**
+    // ⚠ **1 点の値であることを、⚠ 必ず言う**（⚠ まわりの高さではない）。
+    name: "深掘り画面は、標高を 1 点の値として出す",
+    path: `/deep.html?${TOYOSU}`, origin: NEXT_BASE, viewport: PC,
+    async check(page) {
+      await 待つ(page, () => !!document.querySelector(".elev"), "標高");
+      await page.waitForTimeout(500);
+      const r = await page.evaluate(() => {
+        const e = document.querySelector(".elev");
+        const risk = [...document.querySelectorAll(".why--risk")].pop();
+        return { 字: e.textContent.trim().replace(/\s+/g, " "),
+                 値: e.querySelector(".v")?.textContent.trim() ?? null,
+                 riskの下: risk ? e.getBoundingClientRect().top > risk.getBoundingClientRect().top : null };
+      });
+      must(r.値, `標高の値が出ていない: ${r.字}`);
+      must(/m$/.test(r.値), `単位が無い: ${r.値}`);
+      // ⚠ **1 点の値だと、⚠ 必ず言う**（⚠ 面の話と混ぜない）
+      must(/1 点の値/.test(r.字), `1 点の値だと言っていない: ${r.字}`);
+      must(/まわりの高さではありません/.test(r.字), `まわりの高さでないと言っていない: ${r.字}`);
+      // ⚠ **どこから読んだかを名乗る**
+      must(/メッシュ|国土地理院/.test(r.字), `どこから読んだかを名乗っていない: ${r.字}`);
+      // ⚠ **起こりうることの下に置く**（⚠ risk の文と噛み合わせる）
+      must(r.riskの下 !== false, "標高が、起こりうることより上に出ている");
+      return `${r.値}・「${r.字.slice(0, 30)}…」`;
+    },
+  },
+
+  {
+    // ⚠ **本当に読んだのかを、⚠ 読んだ人が確かめられるようにする**（⚠ β 版は出していた）。
+    //   ⚠ **読み物としては重いので、⚠ いちばん下に置く。**
+    // ⚠ **取れなかったものは、⚠ 取れなかったと書く。**⚠ **空欄にしない**（掟 §1）。
+    name: "深掘り画面は、読んだタイルと画素を出す",
+    path: `/deep.html?${TOYOSU}`, origin: NEXT_BASE, viewport: PC,
+    async check(page) {
+      await 待つ(page, () => document.querySelectorAll("#read div").length > 0, "読んだもの");
+      await page.waitForTimeout(1500);
+      const r = await page.evaluate(() => ({
+        行: [...document.querySelectorAll("#read div")].map((e) => ({
+          名: e.querySelector("dt").textContent.trim(),
+          先: e.querySelector("a")?.getAttribute("href") ?? null,
+          字: e.querySelector("dd").textContent.trim().replace(/\s+/g, " "),
+        })),
+        いちばん下: (() => {
+          const s = [...document.querySelectorAll(".sec")];
+          return s[s.length - 1]?.id === "readSec";
+        })(),
+      }));
+      must(r.行.length >= 4, `読んだものが足りない（${r.行.length} 件）`);
+      // ⚠ **タイルの URL が、⚠ 本当に地理院を指していること**
+      const リンク = r.行.filter((x) => x.先);
+      must(リンク.length >= 3, `タイルの行き先が足りない（${リンク.length} 件）`);
+      must(リンク.every((x) => /gsi\.go\.jp/.test(x.先)),
+        `地理院でない行き先がある: ${リンク.map((x) => x.先).join(" / ")}`);
+      // ⚠ **画素の位置まで出す**（⚠ 「どこを読んだか」が分かる）
+      must(r.行.some((x) => /画素/.test(x.字)), `読んだ画素が出ていない: ${r.行.map((x) => x.名).join("/")}`);
+      // ⚠ **空中写真は、⚠ 確かめた数と残っていた数を分ける**
+      const 写真 = r.行.find((x) => x.名 === "空中写真");
+      must(写真 && /確かめ/.test(写真.字), `空中写真の分母が無い: ${写真?.字}`);
+      // ⚠ **読み物としては重いので、⚠ いちばん下**
+      must(r.いちばん下, "読んだものが、いちばん下に無い");
+      return `${r.行.length} 件（${r.行.map((x) => x.名).join("・")}）`;
+    },
+  },
+);
+
+CASES.push({
+  // ⚠ **検索の候補は、⚠ どの柱よりも前に出る。**
+  //   ⚠ **実際に踏んだ**（2026-08-29。⚠ Owner が実機で見つけた）:
+  //   ⚠ **広い幅で保存した場所の柱（z-index 20）を立てたとき、⚠ 候補が柱の裏に入った。**
+  //   ⚠ **1 つ目を触ると柱の見出しが返ってきて、⚠ 押せなかった。**
+  // ⚠ **検索は「どこを見るか」を決める操作。**⚠ **覆われると先へ進めない。**
+  //
+  // ⚠ **重なりを見るだけでは足りない。**⚠ **重なってよい**（⚠ 前に出ていれば押せる）。
+  //   ⚠ **実際に触って、⚠ 候補が返ってくるかを見る。**
+  name: "検索の候補が、保存した場所の柱に覆われない",
+  path: `/?${TOYOSU}`, origin: NEXT_BASE, viewport: PC,
+  // ⚠ **外へ出る**（⚠ 地理院の住所検索）。⚠ **`--group=search` の側に置く**
+  //   ⚠ **印は `dep`。**⚠ 付いていないと core 側で回り、⚠ 落ちたとき外部のせいにできない
+  dep: "search",
+  async check(page) {
+    await waitAnswer(page);
+    await 待つ(page, () => !document.getElementById("save").hidden, "保存");
+    // ⚠ **柱が立っている状態で見る**（⚠ 1 件も保存していないと入口が出ない）。
+    //   ⚠ **保存しただけでは柱は開かない。**⚠ **入口を押して開く**（⚠ 利用者と同じ道）。
+    //   ⚠ **以前は広い幅で柱が開きっぱなしだったので、⚠ 押さずに待っていた。**
+    //   ⚠ **その見せ方は取り消した**ので、⚠ ここも押す形に直した（2026-08-29）。
+    await page.locator("#save").click();
+    await 待つ(page, () => !document.getElementById("savedOpen").hidden, "保存した場所の入口");
+    await page.locator("#savedOpen").click();
+    await 待つ(page,
+      () => !document.getElementById("savedSheet").hidden, "保存した場所の柱");
+    await page.locator("#q").fill("豊洲");
+    await page.locator("#q").press("Enter");
+    await 待つ(page, () => document.querySelectorAll("#hits li").length > 0, "検索の候補");
+    const r = await page.evaluate(() => {
+      const hits = document.getElementById("hits");
+      const first = hits.querySelector("button");
+      const b = first.getBoundingClientRect();
+      const 上 = document.elementFromPoint(b.x + b.width / 2, b.y + b.height / 2);
+      const saved = document.getElementById("savedSheet").getBoundingClientRect();
+      const hr = hits.getBoundingClientRect();
+      return {
+        件数: hits.querySelectorAll("li").length,
+        押せる: !!(上 && first.contains(上)),
+        触ると返るもの: 上 ? (上.id || 上.className || 上.tagName) : "無し",
+        柱と重なる: !(hr.right <= saved.left || hr.left >= saved.right
+                     || hr.bottom <= saved.top || hr.top >= saved.bottom),
+      };
+    });
+    must(r.件数 > 0, "検索の候補が出ていない");
+    must(r.押せる,
+      `検索の候補が押せない（触ると ${r.触ると返るもの} が返る）。⚠ 柱の裏に入っている`);
+    // ⚠ **押して、⚠ 本当に場所が変わること**（⚠ 押せるだけでは足りない）
+    const 前 = await page.evaluate(() => document.getElementById("gloss").textContent.trim());
+    await page.locator("#hits button").first().click();
+    await page.waitForTimeout(4000);
+    const 後 = await page.evaluate(() => ({
+      候補: document.getElementById("hits").hidden,
+      答え: document.getElementById("gloss").textContent.trim(),
+    }));
+    must(後.候補, "候補を押したのに、候補が出たまま");
+    must(後.答え.startsWith("ここは、"), `候補を押したのに、答えが出ない: ${後.答え}`);
+    return `${r.件数} 件・柱と重なる ${r.柱と重なる}・押せる・「${前.slice(0, 12)}…」→「${後.答え.slice(0, 12)}…」`;
+  },
+});
+
+CASES.push({
+  // ⚠ **深掘り画面の主役は「どう変わったか」**（2026-08-29。Owner 判断）。
+  //   ⚠ **時間の流れが、⚠ いちばん先に理解できること。**
+  //   ⚠ **明治期 → 空中写真の年代 → いま を、⚠ 並べる**（⚠ 切り替えない）。
+  //     ⚠ **切り替えると、⚠ 前の絵を覚えていないと比べられない。**
+  // ⚠ **絵の中身は読まない。**⚠ **「この年代に何が写っているか」はこちらでは言わない**（掟 §1）。
+  name: "深掘り画面は、どう変わったかを先に見せる",
+  path: `/deep.html?${TOYOSU}`, origin: NEXT_BASE, viewport: PC,
+  async check(page) {
+    await 待つ(page, () => document.querySelectorAll(".frame").length > 0, "並べた絵");
+    await page.waitForTimeout(2000);
+    const r = await page.evaluate(() => ({
+      節: [...document.querySelectorAll(".sec")].filter((e) => !e.hidden)
+        .map((e) => e.querySelector("h2").textContent.trim()),
+      枠: [...document.querySelectorAll(".frame__y")].map((e) => e.textContent.trim()),
+      絵: document.querySelectorAll(".frame__win img").length,
+      断り: document.getElementById("timeNote").textContent.trim(),
+      印: !!document.querySelector(".frame__win"),
+    }));
+    // ⚠ **順**: ⚠ どう変わったか → なぜこうなった → まわり → 資料
+    must(r.節[0] === "どう変わったか", `主役が先頭に無い: ${r.節.join(" → ")}`);
+    must(r.節.indexOf("なぜこうなった") === 1, `2 番目が「なぜこうなった」でない: ${r.節.join(" → ")}`);
+    must(r.節[r.節.length - 1].includes("資料"), `最後が資料でない: ${r.節.join(" → ")}`);
+    // ⚠ **明治期から今まで、⚠ 時の流れの向きに並ぶ**
+    must(r.枠[0] === "明治期", `いちばん左が明治期でない: ${r.枠[0]}`);
+    must(r.枠[r.枠.length - 1] === "現在", `いちばん右が現在でない: ${r.枠[r.枠.length - 1]}`);
+    must(r.枠.length >= 5, `並べた絵が少ない（${r.枠.length} 枚）`);
+    must(r.絵 >= r.枠.length, `絵が読み込まれていない（枠 ${r.枠.length} / 絵 ${r.絵}）`);
+    // ⚠ **こちらでは判定していない、と断る**
+    must(/判定していません/.test(r.断り), `絵の中身を判定していないと断っていない: ${r.断り}`);
+    must(/同じ広さ/.test(r.断り), `同じ広さで切り取っていると言っていない: ${r.断り}`);
+    return `${r.節.join(" → ")}・${r.枠.length} 枚（${r.枠[0]}〜${r.枠[r.枠.length - 1]}）`;
+  },
+});
+
+CASES.push({
+  // ⚠ **端末をまたぐ流れ**（`docs/adr/0048` の 3）。⚠ **サーバに置かない。**
+  //   ⚠ **スマホで保存 → リンクを作る → 別の端末で開く → 足す**、を通しで見る。
+  // ⚠ **別の端末は、⚠ 別の器で作る**（⚠ `localStorage` も別）。
+  //   ⚠ **同じ器で見ると、⚠ 渡さなくても在るので、⚠ 何も確かめていないことになる。**
+  name: "スマホで保存したものを、別の端末で受け取れる",
+  path: `/?${TOYOSU}`, origin: NEXT_BASE, viewport: SP,
+  setup: (page) => page.context().grantPermissions(["clipboard-read", "clipboard-write"],
+    { origin: NEXT_BASE }),
+  async check(page) {
+    await waitAnswer(page);
+    await 待つ(page, () => !document.getElementById("save").hidden, "保存");
+    await page.locator("#save").click();
+    await 待つ(page,
+      () => document.getElementById("save").getAttribute("aria-pressed") === "true", "保存ずみ");
+    await page.waitForTimeout(2000);
+    await page.locator("#savedOpen").click();
+    await page.waitForTimeout(400);
+    const 的 = await page.evaluate(() => {
+      const h = document.getElementById("handOut");
+      const r = h.getBoundingClientRect();
+      return { 見える: h.checkVisibility(), 字: h.textContent.trim(),
+               w: Math.round(r.width), h: Math.round(r.height) };
+    });
+    must(的.見える, "保存があるのに、別の端末へ渡す口が出ない");
+    must(的.h >= 44, `渡す口が 44 を割っている: ${的.w}x${的.h}`);
+
+    await page.evaluate(() => navigator.clipboard.writeText(""));
+    await page.locator("#handOut").click();
+    await page.waitForTimeout(800);
+    const url = await page.evaluate(() => navigator.clipboard.readText());
+    must(url && /[?&]take=/.test(url), `渡すリンクに中身が入っていない: ${url}`);
+    // ⚠ **長すぎる URL は、⚠ 開いた先で切れる**（⚠ 実用上 2000 文字）
+    must(url.length <= 2000, `渡すリンクが長すぎる（${url.length} 文字）`);
+
+    // ⚠ **別の端末で開く**（⚠ 器を分ける。⚠ localStorage も別）
+    const 別 = await page.context().browser().newContext({ viewport: { width: 1440, height: 950 } });
+    const p2 = await 別.newPage();
+    await p2.goto(url.replace(/^https?:\/\/[^/]+/, NEXT_BASE), { waitUntil: "domcontentloaded" });
+    await p2.waitForFunction(() => !document.getElementById("take").hidden, null, { timeout: 20000 });
+    const 受け = await p2.evaluate(() => ({
+      見出し: document.getElementById("takeTitle").textContent.trim(),
+      本文: document.getElementById("takeBody").textContent.trim(),
+      断り: document.getElementById("takeNote").textContent.trim(),
+      行: document.querySelectorAll("#takeList li").length,
+      控え: JSON.parse(localStorage.getItem("konjaku-next-saved-v1") ?? "[]").length,
+    }));
+    // ⚠ **開いた瞬間に混ぜない。**⚠ **見せて、⚠ 押してもらう**
+    must(受け.控え === 0, `開いただけで混ざっている（控え ${受け.控え} 件）`);
+    must(/受け取りました/.test(受け.見出し), `受け取ったと言っていない: ${受け.見出し}`);
+    must(/消えません/.test(受け.本文), `いまの保存が消えないと言っていない: ${受け.本文}`);
+    // ⚠ **どこにも送らない、と言う**（⚠ サーバに置いていないことを、⚠ 受け取る人にも言う）
+    must(/どこにも送りません/.test(受け.断り), `どこにも送らないと言っていない: ${受け.断り}`);
+    must(受け.行 > 0, "何が来たかを見せていない");
+
+    await p2.locator("#takeYes").click();
+    await p2.waitForTimeout(1200);
+    const 後 = await p2.evaluate(() => ({
+      見出し: document.getElementById("takeTitle").textContent.trim(),
+      控え: JSON.parse(localStorage.getItem("konjaku-next-saved-v1") ?? "[]").length,
+      入口: !document.getElementById("savedOpen").hidden,
+    }));
+    must(後.控え > 0, `足したのに、控えが増えていない（${後.控え} 件）`);
+    must(/足しました/.test(後.見出し), `足したと言っていない: ${後.見出し}`);
+    must(後.入口, "足したのに、一覧への入口が出ない");
+    await 別.close();
+    return `${url.length} 文字・${受け.行} 件を見せて・押すと ${後.控え} 件`;
+  },
+});

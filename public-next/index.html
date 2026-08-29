@@ -67,6 +67,8 @@
           </dd>
         </div>
       </dl>
+      <!-- 帰宅後に読む画面へ。散歩中は押されない前提だが、押せる形にはしておく。 -->
+      <a class="why__more" id="deepLink" href="./deep.html">この場所をもっと深く読む →</a>
     </details>
     <ul id="legend" aria-label="この画面に映っている土地"></ul>
     <button id="more" type="button" hidden></button>
@@ -85,6 +87,21 @@
     </header>
     <ul id="savedList"></ul>
     <p class="saved__note" id="savedNote" hidden></p>
+    <!-- 別の端末で続きを見るための手渡し。サーバに置かない。URL に載せて渡す。 -->
+    <button class="saved__hand" id="handOut" type="button" hidden>
+      <span aria-hidden="true">⇱</span><span id="handOutText">PC やタブレットでも見る</span>
+    </button>
+  </section>
+
+  <section class="take" id="take" hidden aria-label="受け取った場所">
+    <h2 id="takeTitle">　</h2>
+    <p class="take__body" id="takeBody"></p>
+    <ul class="take__list" id="takeList"></ul>
+    <div class="take__act">
+      <button class="take__yes" id="takeYes" type="button">この端末に足す</button>
+      <button class="take__no" id="takeNo" type="button">いまはしない</button>
+    </div>
+    <p class="take__note" id="takeNote"></p>
   </section>
 
   <section id="sheet" hidden aria-label="この画面に映っている土地">

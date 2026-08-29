@@ -30,9 +30,12 @@
   const areaEl = $("area"), areaRow = $("areaRow"), areaNote = $("areaNote"), areaCite = $("areaCite");
   const erasEl = $("eras"), eraNote = $("eraNote"), eraBack = $("eraBack");
   const saveBtn = $("save"), saveMark = $("saveMark"), saveText = $("saveText");
-  const shareBtn = $("share"), shareText = $("shareText");
+  const shareBtn = $("share"), shareText = $("shareText"), deepLink = $("deepLink");
   const savedOpen = $("savedOpen"), savedCount = $("savedCount");
   const savedSheet = $("savedSheet"), savedList = $("savedList"), savedNote = $("savedNote");
+  const handOut = $("handOut"), handOutText = $("handOutText");
+  const takeEl = $("take"), takeTitle = $("takeTitle"), takeBody = $("takeBody");
+  const takeList = $("takeList"), takeNote = $("takeNote");
 
   // ⚠ **地図はタイルを並べて作る**（⚠ β 版の `/peel` は MapLibre だが、⚠ 運んでいない）。
   //   ⚠ **この縦切りでは、⚠ 動かせる地図が要る。**⚠ 依存を足す前に、⚠ まず素で作る
@@ -371,7 +374,6 @@
     hereName = v.value;
     drawSave();
     drawShare();
-    openWhy();
     askMeiji(lon, lat, seq);
     askPhoto(lon, lat, seq);
     showArea(lon, lat);
@@ -598,6 +600,9 @@
   function drawShare() {
     // 判定が出ていない場所は送らせない（開いた人が何も読めない）
     shareBtn.hidden = !hereName;
+    // 深掘りの行き先にも、いまの場所を入れる。URL の組み立ては place-arg.js の 1 か所
+    const q = KonjakuPlaceArg.placeQuery({ lat: px2lat(cy), lon: px2lon(cx) });
+    deepLink.href = "./deep.html" + (q ? q.replace(/^\?q=&/, "?") : "");
   }
 
   // 押したあとに何が起きたかを、必ず字で言う（docs/adr/0026）。
@@ -718,38 +723,11 @@
     drawSavedOpen();
   }
 
-  // 広い幅では、保存した場所を左に立てたままにする（帰宅後はここから入る）。
-  //   押して開く器ではなくなるので、入口のボタンは出さない。
-  //   1400px は CSS 側と同じ数。2 か所に書くことになるので、
-  //   ここを動かすときは top.css の @media も一緒に見る（検査が突き合わせる）。
-  //   ⚠ 実測（2026-08-29）: 1200px で切り替えると、地図 560px に対して
-  //     左右に立てたものの合計が 672px になり、地図のほうが狭くなった。
-  //     地図が主役（domain.md）なので、1400px まで上げた（地図 744px > 656px）。
-  const wide = matchMedia("(min-width:1400px)");
-
-  // 広い幅では、根拠を最初から開いておく（帰宅後は「時間をかけて読む」側）。
-  //   縦が余っている（実測 2026-08-29・1280x950: 板 301px に対して 926px 使える）。
-  //   狭い幅では畳んだまま。散歩中は 3 名中 2 名が「その場では読まない」と答えている。
-  const openWhy = () => { if (wide.matches) whyEl.open = true; };
-
   function drawSavedOpen() {
-    const 在る = saved.length > 0;
-    // 1 件も無いときは、左を空けない（CSS が地図を広げる）
-    document.getElementById("app").classList.toggle("has-saved", 在る && wide.matches);
-    // 広い幅では一覧が出たままなので、入口は要らない
-    savedOpen.hidden = !在る || wide.matches;
+    savedOpen.hidden = saved.length === 0;
     savedCount.textContent = `${saved.length} 件 ›`;
-    if (wide.matches) {
-      savedSheet.hidden = !在る;
-      if (在る) drawSavedList();
-    }
+    handOut.hidden = saved.length === 0;
   }
-  // 幅が変わったら、出し方も変える（画面を回す・窓を広げる）
-  wide.addEventListener("change", () => {
-    if (!wide.matches) savedSheet.hidden = true;   // 狭い幅では、押すまで出さない
-    openWhy();
-    drawSavedOpen();
-  });
 
   saveBtn.addEventListener("click", async () => {
     const lon = px2lon(cx), lat = px2lat(cy);
@@ -794,6 +772,110 @@
       "この端末では、保存した場所を覚えておけません（ブラウザの設定によります）";
   }
 
+  // ---- 別の端末へ手渡す ----
+  //
+  // サーバに置かない（docs/adr/0048）。URL に載せて渡す。
+  //   要るものが何も無く、言えなくなることが 1 つも無い。そこが 5 段目（同期）との違い。
+  // 詰め方と混ぜ方は saved.js の 1 か所。ここは口を呼ぶだけ。
+  //
+  // 圧縮はブラウザの CompressionStream。無い環境では生で渡す（件数は減るが渡せる）。
+  //   実測（2026-08-29・test/check/saved.mjs）: 名前つき 50 件で 生 5521 文字 → 圧縮 941 文字。
+  //   字への直し方（base64url）は saved.js が持つ。ここで書き直さない。
+  //     渡す側と受け取る側で食い違うと、例外にならず「読めない」だけが返る。
+  const 圧縮 = async (text) => {
+    if (!globalThis.CompressionStream) throw new Error("圧縮できない");
+    const s = new Blob([text]).stream().pipeThrough(new CompressionStream("gzip"));
+    return KonjakuSaved.bytes2b64(new Uint8Array(await new Response(s).arrayBuffer()));
+  };
+  const 解凍 = async (text) => {
+    const s = new Blob([KonjakuSaved.b642bytes(text)]).stream()
+      .pipeThrough(new DecompressionStream("gzip"));
+    return await new Response(s).text();
+  };
+
+  async function handUrl() {
+    const t = await KonjakuSaved.toText(saved, globalThis.CompressionStream ? 圧縮 : null);
+    return location.origin + location.pathname + "?take=" + t;
+  }
+
+  let handTimer = null;
+  handOut.addEventListener("click", async () => {
+    const url = await handUrl();
+    // ⚠ 長すぎる URL は、開いた先で切れることがある。渡す前に言う
+    if (url.length > 2000) {
+      handOutText.textContent = "件数が多すぎて渡せません";
+      clearTimeout(handTimer);
+      handTimer = setTimeout(() => { handOutText.textContent = "PC やタブレットでも見る"; }, 3000);
+      return;
+    }
+    const 言う = (t) => {
+      handOutText.textContent = t;
+      clearTimeout(handTimer);
+      handTimer = setTimeout(() => { handOutText.textContent = "PC やタブレットでも見る"; }, 2600);
+    };
+    if (navigator.share) {
+      try { await navigator.share({ url }); return; }
+      catch (e) { if (e?.name === "AbortError") return; }
+    }
+    try { await navigator.clipboard.writeText(url); 言う("リンクを写しました"); }
+    catch { 言う("この端末では写せません"); }
+  });
+
+  // ---- 受け取る ----
+  //
+  // 開いた瞬間に混ぜない。何が来たかを見せて、押してもらう。
+  //   断っても、それまでの控えは 1 件も変わらない。
+  let 来たもの = null;
+  async function drawTake() {
+    const t = new URLSearchParams(location.search).get("take");
+    if (!t) return;
+    const list = await KonjakuSaved.fromText(t, 解凍).catch(() => null);
+    takeEl.hidden = false;
+    if (!list) {
+      // 読み取れなかった。「無い」とも「壊れている」とも言わない
+      takeTitle.textContent = "受け取れませんでした";
+      takeBody.textContent =
+        "このリンクは読み取れませんでした。この端末に保存した場所は、そのままです。";
+      takeList.innerHTML = "";
+      $("takeYes").hidden = true;
+      $("takeNo").textContent = "閉じる";
+      takeNote.textContent = "";
+      return;
+    }
+    来たもの = list;
+    takeTitle.textContent = `${list.length} 件の場所を受け取りました`;
+    takeBody.textContent = "この端末に足しますか。足しても、いまある保存は消えません。";
+    takeList.innerHTML = list.slice(0, 20).map((r) =>
+      `<li><span class="n">${esc(r.name ?? "地図から選んだ場所")}</span>`
+      + `<span class="g">${esc(r.value ?? "")}</span></li>`).join("")
+      + (list.length > 20 ? `<li><span class="n">ほか ${list.length - 20} 件</span></li>` : "");
+    takeNote.textContent =
+      "受け取った場所は、この端末の中だけに残ります。どこにも送りません。";
+  }
+
+  $("takeYes").addEventListener("click", () => {
+    if (!来たもの) return;
+    const r = KonjakuSaved.merge(saved, 来たもの);
+    saved = r.list;
+    if (store) KonjakuSaved.save(store, saved);
+    takeTitle.textContent = `${r.足した} 件を足しました`;
+    takeBody.textContent = r.重なった
+      ? `${r.重なった} 件は、すでにこの端末にありました。`
+      : "";
+    takeList.innerHTML = ""; $("takeYes").hidden = true;
+    $("takeNo").textContent = "閉じる";
+    takeNote.textContent = "";
+    drawSave(); drawSavedOpen(); drawSavedList();
+  });
+  $("takeNo").addEventListener("click", () => {
+    takeEl.hidden = true;
+    // ⚠ URL から take を落とす。読み込み直しで、また同じ問いが出ないように
+    const u = new URL(location.href);
+    u.searchParams.delete("take");
+    history.replaceState(null, "", u.pathname + u.search);
+  });
+  drawTake();
+
   savedOpen.addEventListener("click", () => {
     drawSavedList();
     savedSheet.hidden = false;
@@ -801,10 +883,7 @@
   });
   $("savedClose").addEventListener("click", () => { savedSheet.hidden = true; savedOpen.focus(); });
   addEventListener("keydown", (e) => {
-    // 広い幅では閉じない（押して開いた器ではないので、閉じると戻す道が無い）
-    if (e.key === "Escape" && !savedSheet.hidden && !wide.matches) {
-      savedSheet.hidden = true; savedOpen.focus();
-    }
+    if (e.key === "Escape" && !savedSheet.hidden) { savedSheet.hidden = true; savedOpen.focus(); }
   });
   drawSavedOpen();
 

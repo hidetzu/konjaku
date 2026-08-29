@@ -212,22 +212,22 @@ else {
       : ok(`v0.1.0 の「言えないとき」の字は、⚠ どれも 1 か所だけ（⚠ ${字.length} 通り）`);
   }
 
-  // ---- ⚠ ⑧ 広い幅の切り替え点が、⚠ CSS と JavaScript で同じか ----
-  // ⚠ **同じ問いに答える実装を 2 つ持たない**（`CLAUDE.md` §3）。
-  //   ⚠ **やむを得ず持つときは、⚠ 機械で突き合わせる。**⚠ **これがそれ。**
+  // ---- ⚠ ⑧ 広い幅で、⚠ JavaScript が幅を見ていないか ----
+  // ⚠ **一度、⚠ CSS と JavaScript の両方に切り替え点を書いた**（2026-08-29。⚠ 3 列にしたとき）。
+  //   ⚠ **一覧を出したままにするか・根拠を開くかが、⚠ JavaScript の持つ状態だったため。**
+  //   ⚠ **機械で突き合わせる検査も置いた**（`CLAUDE.md` §3）。
   //
-  // ⚠ **CSS だけでは決められない。**⚠ 一覧を出したままにするか・根拠を開くかは、
-  //   ⚠ **JavaScript が持つ状態**（`hidden` / `open`）なので、⚠ 幅を JavaScript も知る要る。
-  // ⚠ **ずれると、⚠ 見た目は 2 列なのに一覧が出ない**（⚠ その逆も）。⚠ **落ちない不具合になる。**
+  // ⚠ **3 列をやめた。**⚠ **スマホと同じ形を、⚠ そのまま中央に立てるだけにした。**
+  //   ⚠ **JavaScript が幅を知る必要が無くなった。**⚠ **突き合わせるものが無くなった。**
+  //   ⚠ **だから「同じか」ではなく「持たないか」を見る。**
+  //   ⚠ **持たせると、⚠ また 2 か所に同じ数が生まれる。**
   {
-    const css = readFileSync(join(NEXT, "top.css"), "utf8");
     const js = readFileSync(join(NEXT, "top.js"), "utf8");
-    const cssPx = [...css.matchAll(/@media\s*\(min-width:\s*(\d+)px\)/g)].map((m) => m[1]);
-    const jsPx = [...js.matchAll(/matchMedia\(\s*"\(min-width:\s*(\d+)px\)"\s*\)/g)].map((m) => m[1]);
-    const 同じ = cssPx.length === 1 && jsPx.length === 1 && cssPx[0] === jsPx[0];
-    同じ
-      ? ok(`広い幅の切り替え点は、⚠ CSS と JavaScript で同じ（${cssPx[0]}px）`)
-      : bad(`広い幅の切り替え点が、⚠ CSS と JavaScript で食い違う（⚠ CSS: ${cssPx.join("・") || "無し"} ／ ⚠ JS: ${jsPx.join("・") || "無し"}）`);
+    const 幅 = [...js.matchAll(/matchMedia\(\s*"\(m(?:in|ax)-width:\s*(\d+)px\)"\s*\)/g)]
+      .map((m) => m[1]);
+    幅.length
+      ? bad(`v0.1.0 の JavaScript が幅を見ている（${幅.join("・")}px）。⚠ 見せ方は CSS の 1 か所で決める。⚠ 2 か所に同じ数を持たない`)
+      : ok("v0.1.0 の JavaScript は、⚠ 幅を見ていない（⚠ 見せ方は CSS の 1 か所）");
   }
 
   // ---- ⚠ ③ 中身が無いとき、⚠ β 版へ戻る道が在るか ----
