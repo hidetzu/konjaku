@@ -8,6 +8,7 @@
 (() => {
   const $ = (id) => document.getElementById(id);
   const form = $("recvForm"), input = $("recvIn"), go = $("recvGo");
+  const lead = $("recvLead"), said = $("recvSaid");
   const again = $("recvAgain"), why = $("recvWhy"), hint = $("recvHint");
   const got = $("recvGot"), gotTitle = $("gotTitle"), gotBody = $("gotBody");
   const gotList = $("gotList"), gotAct = $("gotAct"), gotNote = $("gotNote"), gotMap = $("gotMap");
@@ -34,8 +35,12 @@
 
   let 来たもの = null;
 
+  // 押したあとに何が起きたかを、必ず字で言う。
+  const 言う = (t) => { said.textContent = t ?? ""; said.hidden = !t; };
+
   function 出し直しへ(理由) {
     got.hidden = true;
+    言う(null);
     again.hidden = false;
     why.textContent = 理由;
     hint.textContent = "大文字と小文字は区別しません。";
@@ -46,6 +51,7 @@
 
   function 見せる(list) {
     again.hidden = true;
+    言う(null);
     got.hidden = false;
     来たもの = list;
     gotTitle.textContent = `${list.length} 件の場所を受け取りました`;
@@ -108,6 +114,7 @@
     const いま = store ? S.load(store) : { ok: false, list: [] };
     const r = S.merge(いま.list ?? [], 来たもの);
     const 置けた = store ? S.save(store, r.list) : false;
+    来たもの = null;
     gotTitle.textContent = `${r.足した} 件を足しました`;
     gotBody.textContent = r.重なった
       ? `${r.重なった} 件は、すでにこの端末にありました。`
@@ -118,11 +125,19 @@
     gotNote.textContent = 置けた
       ? ""
       : "この端末では、保存した場所を覚えておけません（ブラウザの設定によります）。";
+    // 終わったら、入力の口を畳む。この画面は 1 つのことをする画面で、
+    //   足したあとに「まだ何か入れるのか」と読ませない。
+    //   もう一度受け取りたい人のために、開き直す道は残す。
+    form.hidden = true;
+    lead.hidden = true;
+    hint.textContent = "別の合言葉で受け取るときは、この画面を開き直してください。";
   });
 
   $("gotNo").addEventListener("click", () => {
     got.hidden = true;
     来たもの = null;
+    // 押したのに何も言わないと、効いたのか分からない。
+    言う("足していません。この端末に保存した場所は、そのままです。");
     input.value = "";
     input.focus();
   });
