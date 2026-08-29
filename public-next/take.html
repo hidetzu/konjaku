@@ -1,0 +1,57 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex">
+<meta name="color-scheme" content="light dark">
+<title>保存した場所を受け取る — 今昔 v0.1.0</title>
+<link rel="stylesheet" href="./top.css">
+<link rel="stylesheet" href="./take.css">
+
+<!-- 合言葉を打って、別の端末で保存した場所を受け取る画面。
+     地図には重ねない。他に押すものが無いので、専用のページのほうが迷わない。
+     受け取ったあとの見せ方は、散歩中の画面と同じ形にそろえてある。
+       見せる → 押してもらう → 足す。開いた瞬間には混ぜない。 -->
+<main class="recv" id="recv">
+  <h1 class="recv__h">保存した場所を受け取る</h1>
+  <p class="recv__lead" id="recvLead">スマホの画面に出ている合言葉を入れてください。</p>
+
+  <form class="recv__form" id="recvForm">
+    <input class="recv__in" id="recvIn" type="text" inputmode="latin"
+           autocomplete="off" autocapitalize="characters" spellcheck="false"
+           aria-label="合言葉" placeholder="合言葉">
+    <button class="recv__go" id="recvGo" type="submit">受け取る</button>
+  </form>
+
+  <!-- 受け取れなかったとき。できることから書く。
+       1 行目と手順は、期限切れでも打ち間違いでも同じ。やることが同じだから。
+       違うのは理由の 1 行だけ。 -->
+  <section class="recv__again" id="recvAgain" hidden>
+    <p class="recv__can">スマホで出し直すと、すぐ受け取れます。</p>
+    <ol class="recv__steps">
+      <li><span class="recv__sn">1</span><span>スマホの「保存した場所」から
+        「PC やタブレットでも見る」を押す</span></li>
+      <li><span class="recv__sn">2</span><span>出てきた 8 文字を、ここに入れる</span></li>
+    </ol>
+    <p class="recv__why" id="recvWhy"></p>
+  </section>
+
+  <!-- 受け取れたとき。 -->
+  <section class="recv__card" id="recvGot" hidden>
+    <h2 class="recv__got" id="gotTitle">　</h2>
+    <p class="take__body" id="gotBody"></p>
+    <ul class="take__list" id="gotList"></ul>
+    <div class="take__act" id="gotAct">
+      <button class="take__yes" id="gotYes" type="button">この端末に足す</button>
+      <button class="take__no" id="gotNo" type="button">いまはしない</button>
+    </div>
+    <p class="take__note" id="gotNote"></p>
+    <a class="recv__map" id="gotMap" href="./" hidden>地図をひらく</a>
+  </section>
+
+  <p class="recv__hint" id="recvHint">合言葉は、スマホの「保存した場所」から
+    「PC やタブレットでも見る」を押すと出ます。</p>
+</main>
+
+<script src="./esc.js"></script>
+<script src="./saved.js"></script>
+<script src="./take.js"></script>

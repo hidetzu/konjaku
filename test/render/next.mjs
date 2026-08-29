@@ -1532,3 +1532,152 @@ CASES.push({
     return `「${r.断り.slice(0, 30)}…」／ リンクの道が開いている`;
   },
 });
+
+// ⚠ **受け取り口（`/take.html`）**。⚠ **サーバはまだ無いので、⚠ 契約どおり返す偽物を置く。**
+//   ⚠ **偽物の形は `docs/sync-api.md`。**⚠ **ずれたら、⚠ 本物で動かない。**
+// ⚠ **荷物の字は、⚠ 実物の `saved.js` に作らせる**（⚠ 手で書かない。
+//   ⚠ **手で書くと、⚠ 詰め方を変えたときに検査だけ古いまま通る**）。
+const 受け口の偽物 = (page, 返す) => page.route("**/api/handoff/**", async (route) => {
+  const r = await 返す(decodeURIComponent(new URL(route.request().url()).pathname.split("/").pop()));
+  return route.fulfill({ status: r.status, contentType: "application/json",
+                         body: JSON.stringify(r.body ?? {}) });
+});
+
+CASES.push({
+  name: "受け取り口で合言葉を打つと、足す前に中身を見せる",
+  path: "/take.html", origin: NEXT_BASE, viewport: PC,
+  setup: async (page) => {
+    // ⚠ **荷物は、⚠ 実物の詰め方で作る**（⚠ ブラウザの中で `toText` を呼ぶ）
+    await page.addInitScript(() => { globalThis.__荷物 = null; });
+    await 受け口の偽物(page, async (code) => {
+      if (code !== "K7QM3XVR") return { status: 404, body: { error: "not_found" } };
+      return { status: 200, body: { payload: globalThis.__払い出す(), expires_at: 0 } };
+    });
+  },
+  async check(page) {
+    // ⚠ **`saved.js` は受け取り口にも読まれている。**⚠ **そこで荷物を作る**
+    await page.evaluate(async () => {
+      const 圧縮 = async (t) => {
+        const s = new Blob([t]).stream().pipeThrough(new CompressionStream("gzip"));
+        return KonjakuSaved.bytes2b64(new Uint8Array(await new Response(s).arrayBuffer()));
+      };
+      const list = [
+        { lat: 35.65531, lon: 139.79672, name: "東京都江東区豊洲三丁目", value: "旧水部", at: 3 },
+        { lat: 35.64, lon: 139.79, name: "東京都江東区東雲一丁目", value: "埋立地", at: 2 },
+      ];
+      globalThis.__字 = await KonjakuSaved.toText(list, 圧縮);
+    });
+    const 字 = await page.evaluate(() => globalThis.__字);
+    await page.route("**/api/handoff/**", (route) => {
+      const code = decodeURIComponent(new URL(route.request().url()).pathname.split("/").pop());
+      return route.fulfill({ status: code === "K7QM3XVR" ? 200 : 404,
+        contentType: "application/json",
+        body: JSON.stringify(code === "K7QM3XVR" ? { payload: 字, expires_at: 0 }
+                                                 : { error: "not_found" }) });
+    });
+    // ⚠ **打ち写しの揺れを、⚠ 実際に入れて確かめる**（⚠ 小文字と区切り）
+    await page.locator("#recvIn").fill("k7qm-3xvr");
+    await page.locator("#recvGo").click();
+    await 待つ(page, () => !document.getElementById("recvGot").hidden, "受け取った中身");
+    const 前 = await page.evaluate(() => ({
+      見出し: document.getElementById("gotTitle").textContent.trim(),
+      本文: document.getElementById("gotBody").textContent.trim(),
+      行: document.querySelectorAll("#gotList li").length,
+      断り: document.getElementById("gotNote").textContent.trim(),
+      控え: JSON.parse(localStorage.getItem("konjaku-next-saved-v1") ?? "[]").length,
+    }));
+    must(前.控え === 0, `押す前に混ざっている（控え ${前.控え} 件）`);
+    must(/2 件/.test(前.見出し), `件数を言っていない: ${前.見出し}`);
+    must(前.行 === 2, `中身を見せていない（${前.行} 行）`);
+    must(/消えません/.test(前.本文), `いまの保存が消えないと言っていない: ${前.本文}`);
+    must(/どこにも送りません/.test(前.断り), `どこにも送らないと言っていない: ${前.断り}`);
+
+    await page.locator("#gotYes").click();
+    await page.waitForTimeout(600);
+    const 後 = await page.evaluate(() => ({
+      見出し: document.getElementById("gotTitle").textContent.trim(),
+      控え: JSON.parse(localStorage.getItem("konjaku-next-saved-v1") ?? "[]").length,
+      名前: (JSON.parse(localStorage.getItem("konjaku-next-saved-v1") ?? "[]")[0] ?? {}).name,
+      地図へ: !document.getElementById("gotMap").hidden,
+    }));
+    must(後.控え === 2, `足したのに控えが 2 件でない（${後.控え} 件）`);
+    must(後.名前 === "東京都江東区豊洲三丁目", `名前が欠けている: ${JSON.stringify(後.名前)}`);
+    must(/足しました/.test(後.見出し), `足したと言っていない: ${後.見出し}`);
+    must(後.地図へ, "足したのに、地図へ行く道が出ない");
+    return `小文字と区切りつきで打って ${前.行} 件を見せ、押すと ${後.控え} 件`;
+  },
+});
+
+for (const [status, 名, 要る] of [
+  [410, "期限が切れていたとき", /過ぎ/],
+  [404, "合言葉が無いとき", /打ち間違い/],
+  [429, "続けて試したとき", /待って/],
+  [503, "預かり先が答えないとき", /そのまま/],
+]) {
+  CASES.push({
+    // ⚠ **できないことから書き始めない**（`CLAUDE.md` §4-1）。
+    //   ⚠ **1 行目は「できること」。**⚠ **手順は 410 も 404 も同じ。**⚠ **違うのは理由だけ。**
+    name: `受け取り口は、${名}も次にすることを先に出す`,
+    path: "/take.html", origin: NEXT_BASE, viewport: PC,
+    setup: (page) => 受け口の偽物(page, async () => ({ status, body: { error: "x" } })),
+    async check(page) {
+      await page.locator("#recvIn").fill("K7QM3XVR");
+      await page.locator("#recvGo").click();
+      await 待つ(page, () => !document.getElementById("recvAgain").hidden, "出し直しの案内");
+      const r = await page.evaluate(() => {
+        const 節 = document.getElementById("recvAgain");
+        const can = document.querySelector(".recv__can").getBoundingClientRect();
+        const why = document.getElementById("recvWhy").getBoundingClientRect();
+        return {
+          できること: document.querySelector(".recv__can").textContent.trim(),
+          手順: [...document.querySelectorAll(".recv__steps li")].map((e) => e.textContent.trim()),
+          理由: document.getElementById("recvWhy").textContent.trim(),
+          先に出ている: can.top < why.top,
+          入力欄: document.getElementById("recvIn").value,
+          的: document.activeElement?.id,
+          受け取った器: !document.getElementById("recvGot").hidden,
+        };
+      });
+      must(/すぐ受け取れます/.test(r.できること), `1 行目が「できること」でない: ${r.できること}`);
+      must(r.手順.length === 2, `手順が 2 つでない（${r.手順.length}）`);
+      must(r.先に出ている, "理由が、できることより先に出ている");
+      must(要る.test(r.理由), `理由が ${status} に合っていない: ${r.理由}`);
+      // ⚠ **こちらの都合を、⚠ 相手や回線の都合のように言わない**
+      must(!/取得できません|届いていません|通信できません/.test(r.理由),
+        `相手や回線の都合のように言っている: ${r.理由}`);
+      must(!r.受け取った器, "受け取れていないのに、中身の器を出している");
+      must(r.入力欄 === "", `入力欄が空になっていない: ${r.入力欄}`);
+      must(r.的 === "recvIn", `入力の的が移っていない（いま ${r.的}）`);
+      return `${status} → 「${r.できること}」＋手順 ${r.手順.length} ＋「${r.理由.slice(0, 20)}…」`;
+    },
+  });
+}
+
+CASES.push({
+  // ⚠ **字は届いたが、⚠ 読めなかったとき**（`CLAUDE.md` §1）。
+  //   ⚠ **「0 件を受け取りました」と言わない。**⚠ **読めなかったことと、⚠ 0 件は違う。**
+  // ⚠ **これは他の検査では見えない**（⚠ 実際に、⚠ この道を消しても素通りした）。
+  name: "受け取り口は、読めない字を「0 件」と言わない",
+  path: "/take.html", origin: NEXT_BASE, viewport: PC,
+  setup: (page) => 受け口の偽物(page, async () => ({
+    // ⚠ **知らない版**（⚠ 先頭が `9`）。⚠ `saved.js` は `null` を返す
+    status: 200, body: { payload: "9zzzz", expires_at: 0 },
+  })),
+  async check(page) {
+    await page.locator("#recvIn").fill("K7QM3XVR");
+    await page.locator("#recvGo").click();
+    await 待つ(page, () => !document.getElementById("recvAgain").hidden, "出し直しの案内");
+    const r = await page.evaluate(() => ({
+      理由: document.getElementById("recvWhy").textContent.trim(),
+      器: !document.getElementById("recvGot").hidden,
+      見出し: document.getElementById("gotTitle").textContent.trim(),
+      控え: JSON.parse(localStorage.getItem("konjaku-next-saved-v1") ?? "[]").length,
+    }));
+    must(!r.器, "読めなかったのに、受け取った中身の器を出している");
+    must(!/0 件/.test(r.見出し + r.理由), `「0 件」と言っている: ${r.見出し} ／ ${r.理由}`);
+    must(/読み取れません/.test(r.理由), `読めなかったと言っていない: ${r.理由}`);
+    must(/そのまま/.test(r.理由), `保存が無事だと言っていない: ${r.理由}`);
+    must(r.控え === 0, `読めなかったのに控えが増えている（${r.控え} 件）`);
+    return `「${r.理由.slice(0, 34)}…」`;
+  },
+});
