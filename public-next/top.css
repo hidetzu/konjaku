@@ -393,3 +393,52 @@ body{
   margin:var(--gap-row) 0 0; padding-top:var(--gap-row);
   border-top:1px dashed var(--line); font-size:.75rem; color:var(--ink-3); line-height:1.5;
 }
+
+/* ---- 広い幅（帰宅後）----
+   散歩＝スマホ＝知る／残す、家＝PC＝掘る、と分けてある。
+   実測（2026-08-29・1280x950）: いまはスマホの形が横に伸びているだけだった。
+     答えの 1 文が 1238px 幅の 1 行、年代が 1 つ 173px（スマホでは 44px）、
+     検索窓が 1264px、右側の空きが 8px。板は横いっぱいで縦 318px しかなく、
+     深掘りの余地が縦にしか無かった。
+
+   この画面は「狭い幅が既定」。ここから下だけが広い幅の話。
+
+   1400px から切り替える。
+     保存した場所 16rem（256px）＋ 板 22rem（352px）＋ 間 48px = 656px。
+     地図が主役（domain.md）なので、地図は左右に立てたものの合計より広くする。
+     実測（2026-08-29）: 1200px で切り替えると、地図 560px に対して
+     左右の合計が 672px になり、地図のほうが狭くなった。
+     1400px なら 地図 744px > 656px。
+   1400px を割る幅では、狭い幅のまま。中途半端に 2 列にしない。 */
+@media (min-width:1400px){
+  /* 板は右に立てる。読む行の幅を、読める幅に戻す */
+  #bottom{
+    left:auto; right:var(--pad-md); top:var(--pad-md);
+    bottom:var(--pad-md); width:22rem; max-height:none;
+  }
+  #card{max-height:none; overflow-y:auto}
+  /* 出典は板のすぐ下。地図の上に浮かせない（板が右にあるので、地図の右下と重なる） */
+  #bottom{justify-content:flex-start}
+  .attrib{align-self:flex-end; order:2; margin-top:var(--gap-sub)}
+  /* 板は中身のぶんだけ。縦いっぱいに引き伸ばさない（空の面が出る） */
+  #card{flex:0 1 auto}
+  .ans{font-size:1.5rem}
+
+  /* 検索は板の上。地図の幅に合わせない（探すのは「どこを見るか」で、板の話ではない） */
+  #bar{left:var(--pad-md); right:auto; width:22rem; top:var(--pad-md)}
+  #hits{left:var(--pad-md); right:auto; width:22rem}
+
+  /* 保存した場所は、左に立てたままにする。帰宅後はここから入る。
+     押して開く器ではなくなるので、閉じるボタンは出さない。 */
+  .saved{
+    left:var(--pad-md); right:auto; top:calc(var(--tap) + var(--pad-md) * 2);
+    bottom:var(--pad-md); width:16rem;
+  }
+  .saved ul{max-height:none}
+  .saved .close{display:none}
+
+  /* 地図は真ん中。左右に立てたものと重ねない */
+  #map{left:calc(16rem + var(--pad-md) * 2); right:calc(22rem + var(--pad-md) * 2)}
+  /* 保存が 1 件も無いときは、左を空けない */
+  #app:not(.has-saved) #map{left:0}
+}
