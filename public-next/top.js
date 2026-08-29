@@ -25,6 +25,7 @@
   const kickText = $("kickText"), nameEl = $("name"), glossEl = $("gloss"), legendEl = $("legend");
   const moreBtn = $("more"), sheet = $("sheet"), sheetList = $("sheetList"), sheetState = $("sheetState");
   const meijiEl = $("meiji"), meijiBox = $("meijiBox");
+  const photoEl = $("photo"), photoBox = $("photoBox");
 
   // ⚠ **地図はタイルを並べて作る**（⚠ β 版の `/peel` は MapLibre だが、⚠ 運んでいない）。
   //   ⚠ **この縦切りでは、⚠ 動かせる地図が要る。**⚠ 依存を足す前に、⚠ まず素で作る
@@ -307,6 +308,7 @@
     }
     hereName = v.value;
     askMeiji(lon, lat, seq);
+    askPhoto(lon, lat, seq);
     // 主は、分かる言葉のほう。区分名は資料の言葉で、そのままでは読めない人がいる。
     //   言葉は words.js の GROUND_GLOSS から借りる。ここで書かない。
     //   区分名も消さない。何を根拠に言っているかが分からなくなる。
@@ -337,6 +339,27 @@
       return;
     }
     meijiEl.innerHTML = `<b>${esc(m.value)}</b> でした`;
+  }
+
+  // 空中写真。どの年代が残っているかを言う。
+  //   利用者役 3 名が「いつ陸になったか分からない」と言った。
+  //   それには答えられない。写真の中身は見ないと決めた（見ると推定を実測のように見せる）。
+  //   言えるのは「◯◯年の写真が残っている」まで。明治期の行と合わせて、挟みこむ。
+  async function askPhoto(lon, lat, seq) {
+    photoBox.hidden = true;
+    const f = await KonjakuLand.photos(lon, lat).catch(() => null);
+    if (seq !== askSeq) return;
+    if (!f) return;                                     // 取れなかった。黙る
+    if (f.state === Konjaku.STATE.UNREACHABLE) return;  // 同上
+    const 残る = (f.eras ?? []).filter((e) => e.state === Konjaku.STATE.OK && !e.blank);
+    photoBox.hidden = false;
+    if (!残る.length) {
+      photoEl.innerHTML = `<span class="none">この場所の空中写真は、残っていません</span>`;
+      return;
+    }
+    // いちばん古い年代だけ言う。全部並べると、写真を見る話になる（スマホで深掘りさせない）。
+    photoEl.innerHTML = `<b>${esc(残る[0].label)}</b> の写真が残っています`
+      + (残る.length > 1 ? `<span class="none">（ほか ${残る.length - 1} 年代）</span>` : "");
   }
 
   // ---- 動かす ----
