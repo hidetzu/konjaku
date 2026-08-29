@@ -15,6 +15,11 @@
 // ⚠ **道具は `test/render/lib.mjs` の 1 か所**（⚠ ここで持ち直さない）。
 
 import { NEXT_BASE, must } from "./lib.mjs";
+// ⚠ **合言葉の口は、⚠ 本物を呼ぶ**（⚠ 偽なのは D1 だけ）。
+//   ⚠ **静的に読む。**⚠ **動的に読むと、⚠ `render-scope` が「読んでいない」と見なし、
+//   ⚠ この 2 つを触っても実描画が回らない**（2026-08-30 に踏んだ）。
+import { fakeDb } from "../handoff-fake-d1.mjs";
+import WORKER_NEXT from "../../worker-next.js";
 
 // ⚠ **`?ll=` は緯度,経度の順**（`place-arg.js`）。⚠ **逆に書くと、⚠ 黙って既定の場所になる。**
 const TOYOSU = "ll=35.6553,139.7967";     // ⚠ 旧水部・空中写真 7 年代
@@ -1445,14 +1450,10 @@ CASES.push({
   //   ⚠ **だから 300 ではなく 600 を返して、⚠ 「10 分」に変わることを確かめる。**
   name: "合言葉を出すと、住所と合言葉と残り時間が出る",
   path: `/?${TOYOSU}`, origin: NEXT_BASE, viewport: SP,
-  setup: (page) => page.route("**/api/handoff", (route) => {
-    if (route.request().method() !== "POST") return route.continue();
-    const body = JSON.parse(route.request().postData() ?? "{}");
-    if (!body.payload) return route.fulfill({ status: 400, body: '{"error":"bad_shape"}' });
-    return route.fulfill({ status: 200, contentType: "application/json",
-      body: JSON.stringify({ code: "K7QM3XVR", ttl_sec: 600,
-                             expires_at: 1756400000000 }) });
-  }),
+  // ⚠ **本物の口を呼ぶ。**⚠ **期限は環境変数で 600 秒にする**（⚠ 既定は 300）。
+  //   ⚠ **画面が `ttl_sec` から文を作っているなら「10 分」になる。**
+  //   ⚠ **既定のままだと、⚠ 直書きと区別がつかない。**
+  setup: (page) => 合言葉の口(page, { env: { HANDOFF_TTL_SEC: "600" } }),
   async check(page) {
     await waitAnswer(page);
     await 待つ(page, () => !document.getElementById("save").hidden, "保存");
@@ -1477,7 +1478,8 @@ CASES.push({
                  document.getElementById("gloss")).fontSize)),
                板の中: q.bottom <= innerHeight && q.top >= 0 };
     });
-    must(r.合言葉 === "K7QM3XVR", `合言葉が違う: ${r.合言葉}`);
+    // ⚠ **合言葉は本物が作る**ので、⚠ 字そのものは決め打ちしない。⚠ **形だけ見る**
+    must(/^[0-9A-HJKMNP-TV-Z]{8}$/.test(r.合言葉), `合言葉の形が違う: ${r.合言葉}`);
     must(/\/take$/.test(r.住所), `受け取り口の住所が出ていない: ${r.住所}`);
     // ⚠ **ttl_sec から作っていること**（⚠ 600 秒 → 10 分。⚠ 直書きなら 5 分のまま）
     must(/10 分/.test(r.断り), `残り時間が ttl_sec から作られていない: ${r.断り}`);
@@ -1497,9 +1499,7 @@ CASES.push({
   // ⚠ **こちらの都合を、⚠ 相手や回線の都合のように言わない**（⚠ 「取得できませんでした」と書かない）。
   name: "合言葉を出せなかったとき、リンクの道を開いて見せる",
   path: `/?${TOYOSU}`, origin: NEXT_BASE, viewport: SP,
-  setup: (page) => page.route("**/api/handoff", (route) =>
-    route.fulfill({ status: 503, contentType: "application/json",
-                    body: '{"error":"store_unavailable"}' })),
+  setup: (page) => 合言葉の口(page, { 落とす: 503 }),
   async check(page) {
     await waitAnswer(page);
     await 待つ(page, () => !document.getElementById("save").hidden, "保存");
@@ -1533,30 +1533,47 @@ CASES.push({
   },
 });
 
-// ⚠ **受け取り口（`/take.html`）**。⚠ **サーバはまだ無いので、⚠ 契約どおり返す偽物を置く。**
-//   ⚠ **偽物の形は `docs/sync-api.md`。**⚠ **ずれたら、⚠ 本物で動かない。**
-// ⚠ **荷物の字は、⚠ 実物の `saved.js` に作らせる**（⚠ 手で書かない。
-//   ⚠ **手で書くと、⚠ 詰め方を変えたときに検査だけ古いまま通る**）。
-const 受け口の偽物 = (page, 返す) => page.route("**/api/handoff/**", async (route) => {
-  const r = await 返す(decodeURIComponent(new URL(route.request().url()).pathname.split("/").pop()));
-  return route.fulfill({ status: r.status, contentType: "application/json",
-                         body: JSON.stringify(r.body ?? {}) });
-});
+// ⚠ **合言葉の口は、⚠ 本物の `worker-next.js` を呼ぶ。**⚠ **偽なのは D1 だけ。**
+//
+// ⚠ **前は「契約どおり返す偽物」を手で書いていた**（2026-08-29 にやめた）。
+//   ⚠ **手で書くと、⚠ 本物が返す形を変えたときに、⚠ 画面側の検査だけ古いまま通る**
+//   （`CLAUDE.md` §3「同じ問いに答える実装を 2 つ持たない」）。
+//   ⚠ **突き合わせるのではなく、⚠ 1 つにした。**
+// ⚠ **これで確かめられるのは「画面と口が噛み合っている」まで。**
+//   ⚠ **本物の D1 と話せるかは、⚠ 出したあとにしか分からない**（`CLAUDE.md` §1）。
+const 合言葉の口 = async (page, opts = {}) => {
+  const W = { default: WORKER_NEXT };
+  const db = fakeDb();
+  const env = { DB: db, ...(opts.env ?? {}) };
+  await page.route("**/api/handoff*", async (route) => 送る(route, W, env, opts));
+  await page.route("**/api/handoff/*", async (route) => 送る(route, W, env, opts));
+  return db;
+};
+const 送る = async (route, W, env, opts) => {
+  if (opts.落とす) return route.fulfill({ status: opts.落とす, contentType: "application/json",
+                                          body: JSON.stringify({ error: "x" }) });
+  const r = route.request();
+  const u = new URL(r.url());
+  // ⚠ **接続元は、⚠ 本物と同じ見出しで渡す**（⚠ 試行回数を数えるのに使っている）
+  const req = new Request(`https://example.invalid${u.pathname}${u.search}`, {
+    method: r.method(),
+    headers: { ...r.headers(), "cf-connecting-ip": "203.0.113.7" },
+    body: r.method() === "POST" ? (r.postData() ?? "") : undefined,
+  });
+  const res = await W.default.fetch(req, env);
+  return route.fulfill({ status: res.status,
+    headers: Object.fromEntries(res.headers), body: await res.text() });
+};
 
 CASES.push({
   name: "受け取り口で合言葉を打つと、足す前に中身を見せる",
   path: "/take.html", origin: NEXT_BASE, viewport: PC,
-  setup: async (page) => {
-    // ⚠ **荷物は、⚠ 実物の詰め方で作る**（⚠ ブラウザの中で `toText` を呼ぶ）
-    await page.addInitScript(() => { globalThis.__荷物 = null; });
-    await 受け口の偽物(page, async (code) => {
-      if (code !== "K7QM3XVR") return { status: 404, body: { error: "not_found" } };
-      return { status: 200, body: { payload: globalThis.__払い出す(), expires_at: 0 } };
-    });
-  },
+  setup: (page) => 合言葉の口(page),
   async check(page) {
-    // ⚠ **`saved.js` は受け取り口にも読まれている。**⚠ **そこで荷物を作る**
-    await page.evaluate(async () => {
+    // ⚠ **預けるところから、⚠ 本物の口を通す**（⚠ 実物の `saved.js` で詰めて、⚠ 実物の口へ）。
+    //   ⚠ **合言葉を手で決めない。**⚠ **口が作ったものを、⚠ そのまま打つ。**
+    //   ⚠ **`saved.js` は受け取り口にも読まれている**ので、⚠ ここで詰められる。
+    const code = await page.evaluate(async () => {
       const 圧縮 = async (t) => {
         const s = new Blob([t]).stream().pipeThrough(new CompressionStream("gzip"));
         return KonjakuSaved.bytes2b64(new Uint8Array(await new Response(s).arrayBuffer()));
@@ -1565,18 +1582,15 @@ CASES.push({
         { lat: 35.65531, lon: 139.79672, name: "東京都江東区豊洲三丁目", value: "旧水部", at: 3 },
         { lat: 35.64, lon: 139.79, name: "東京都江東区東雲一丁目", value: "埋立地", at: 2 },
       ];
-      globalThis.__字 = await KonjakuSaved.toText(list, 圧縮);
+      const payload = await KonjakuSaved.toText(list, 圧縮);
+      const res = await fetch("/api/handoff", { method: "POST",
+        headers: { "content-type": "application/json" }, body: JSON.stringify({ payload }) });
+      return (await res.json()).code;
     });
-    const 字 = await page.evaluate(() => globalThis.__字);
-    await page.route("**/api/handoff/**", (route) => {
-      const code = decodeURIComponent(new URL(route.request().url()).pathname.split("/").pop());
-      return route.fulfill({ status: code === "K7QM3XVR" ? 200 : 404,
-        contentType: "application/json",
-        body: JSON.stringify(code === "K7QM3XVR" ? { payload: 字, expires_at: 0 }
-                                                 : { error: "not_found" }) });
-    });
+    must(/^[0-9A-HJKMNP-TV-Z]{8}$/.test(code ?? ""), `合言葉を預けられていない: ${code}`);
     // ⚠ **打ち写しの揺れを、⚠ 実際に入れて確かめる**（⚠ 小文字と区切り）
-    await page.locator("#recvIn").fill("k7qm-3xvr");
+    await page.locator("#recvIn").fill(
+      code.toLowerCase().replace(/^(.{4})(.{4})$/, "$1-$2"));
     await page.locator("#recvGo").click();
     await 待つ(page, () => !document.getElementById("recvGot").hidden, "受け取った中身");
     const 前 = await page.evaluate(() => ({
@@ -1604,9 +1618,36 @@ CASES.push({
     must(後.名前 === "東京都江東区豊洲三丁目", `名前が欠けている: ${JSON.stringify(後.名前)}`);
     must(/足しました/.test(後.見出し), `足したと言っていない: ${後.見出し}`);
     must(後.地図へ, "足したのに、地図へ行く道が出ない");
-    return `小文字と区切りつきで打って ${前.行} 件を見せ、押すと ${後.控え} 件`;
+    return `${code} を小文字と区切りつきで打って ${前.行} 件を見せ、押すと ${後.控え} 件`;
   },
 });
+
+// ⚠ **受け取れない 4 とおり。**⚠ **どれも本物の口に、⚠ 本当にその状態を作らせる**
+//   （⚠ 状態番号を手で返さない。⚠ **返し方を変えたときに、⚠ ここだけ古いまま通るのを避ける**）。
+const 受け取れない = {
+  // ⚠ **期限を 1 秒にして預け、⚠ 過ぎてから取りに行く**
+  410: { env: { HANDOFF_TTL_SEC: "1" }, 仕込む: async (page) => {
+    const code = await page.evaluate(async () => {
+      const res = await fetch("/api/handoff", { method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ payload: "1e30" }) });
+      return (await res.json()).code;
+    });
+    await page.waitForTimeout(1400);
+    return code;
+  } },
+  // ⚠ **預けていない合言葉**（⚠ 形は正しい）
+  404: { 仕込む: async () => "0123456789".slice(0, 8) },
+  // ⚠ **試行の上限を 2 回にして、⚠ 3 回目を打つ**
+  429: { env: { HANDOFF_ATTEMPT_LIMIT: "2" }, 仕込む: async (page) => {
+    await page.evaluate(async () => {
+      for (let i = 0; i < 3; i++) await fetch("/api/handoff/22222222");
+    });
+    return "22222222";
+  } },
+  // ⚠ **口そのものが答えないとき**
+  503: { 落とす: 503, 仕込む: async () => "33333333" },
+};
 
 for (const [status, 名, 要る] of [
   [410, "期限が切れていたとき", /過ぎ/],
@@ -1619,9 +1660,10 @@ for (const [status, 名, 要る] of [
     //   ⚠ **1 行目は「できること」。**⚠ **手順は 410 も 404 も同じ。**⚠ **違うのは理由だけ。**
     name: `受け取り口は、${名}も次にすることを先に出す`,
     path: "/take.html", origin: NEXT_BASE, viewport: PC,
-    setup: (page) => 受け口の偽物(page, async () => ({ status, body: { error: "x" } })),
+    setup: (page) => 合言葉の口(page, 受け取れない[status]),
     async check(page) {
-      await page.locator("#recvIn").fill("K7QM3XVR");
+      const code = await 受け取れない[status].仕込む(page);
+      await page.locator("#recvIn").fill(code);
       await page.locator("#recvGo").click();
       await 待つ(page, () => !document.getElementById("recvAgain").hidden, "出し直しの案内");
       const r = await page.evaluate(() => {
@@ -1659,12 +1701,18 @@ CASES.push({
   // ⚠ **これは他の検査では見えない**（⚠ 実際に、⚠ この道を消しても素通りした）。
   name: "受け取り口は、読めない字を「0 件」と言わない",
   path: "/take.html", origin: NEXT_BASE, viewport: PC,
-  setup: (page) => 受け口の偽物(page, async () => ({
-    // ⚠ **知らない版**（⚠ 先頭が `9`）。⚠ `saved.js` は `null` を返す
-    status: 200, body: { payload: "9zzzz", expires_at: 0 },
-  })),
+  setup: (page) => 合言葉の口(page),
   async check(page) {
-    await page.locator("#recvIn").fill("K7QM3XVR");
+    // ⚠ **知らない版を、⚠ 本物の口に預ける**（⚠ 先頭が `9`）。
+    //   ⚠ **口は中身を読まないので、⚠ そのまま預かって、⚠ そのまま返す。**
+    //   ⚠ **読めないと分かるのは画面側**（`docs/sync-api.md` §1）。
+    const code = await page.evaluate(async () => {
+      const res = await fetch("/api/handoff", { method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ payload: "9zzzz" }) });
+      return (await res.json()).code;
+    });
+    await page.locator("#recvIn").fill(code);
     await page.locator("#recvGo").click();
     await 待つ(page, () => !document.getElementById("recvAgain").hidden, "出し直しの案内");
     const r = await page.evaluate(() => ({
