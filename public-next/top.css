@@ -59,6 +59,11 @@ body{
   margin:0; padding:0; list-style:none; max-height:52vh; overflow:auto;
   background:var(--surface); border:1px solid var(--line-strong); border-radius:.75rem;
   box-shadow:0 4px 18px rgb(0 0 0 / .16);
+  /* 検索の候補は、どの柱よりも前に出す。
+     実際に踏んだ（2026-08-29）: 広い幅で保存した場所の柱（z-index 20）を立てたとき、
+     候補が柱の裏に入り、1 つ目を触ると柱の見出しが返ってきた。押せなかった。
+     ⚠ 検索は「どこを見るか」を決める操作なので、覆われると先へ進めない。 */
+  z-index:30;
 }
 #hits[hidden]{display:none}
 #hits li{border-bottom:1px solid var(--line)}
@@ -403,51 +408,33 @@ body{
   border-top:1px dashed var(--line); font-size:.75rem; color:var(--ink-3); line-height:1.5;
 }
 
-/* ---- 広い幅（帰宅後）----
-   散歩＝スマホ＝知る／残す、家＝PC＝掘る、と分けてある。
-   実測（2026-08-29・1280x950）: いまはスマホの形が横に伸びているだけだった。
-     答えの 1 文が 1238px 幅の 1 行、年代が 1 つ 173px（スマホでは 44px）、
-     検索窓が 1264px、右側の空きが 8px。板は横いっぱいで縦 318px しかなく、
-     深掘りの余地が縦にしか無かった。
+/* ---- 広い幅 ----
+   ⚠ スマホと同じ形を、そのまま中央に立てる。横に並べ替えない。
 
-   この画面は「狭い幅が既定」。ここから下だけが広い幅の話。
+   一度、左に保存した場所・真ん中に地図・右に板、と 3 列にした（2026-08-29）。
+   実測で「操作しづらい」が出た:
+     押せるものの散らばり  スマホ 302×594px → 3 列 1250×637px
+     いちばん離れた 2 つ    615px → 1374px
+   利用者役 3 名とも「目が左右に振られる」「押すものが遠い」「スマホで覚えた場所と違う」。
+   3 名とも、この形（中央に 1 本）を選んだ。
 
-   1400px から切り替える。
-     保存した場所 16rem（256px）＋ 板 22rem（352px）＋ 間 48px = 656px。
-     地図が主役（domain.md）なので、地図は左右に立てたものの合計より広くする。
-     実測（2026-08-29）: 1200px で切り替えると、地図 560px に対して
-     左右の合計が 672px になり、地図のほうが狭くなった。
-     1400px なら 地図 744px > 656px。
-   1400px を割る幅では、狭い幅のまま。中途半端に 2 列にしない。 */
-@media (min-width:1400px){
-  /* 板は右に立てる。読む行の幅を、読める幅に戻す */
-  #bottom{
-    left:auto; right:var(--pad-md); top:var(--pad-md);
-    bottom:var(--pad-md); width:22rem; max-height:none;
+   板を下に横いっぱいへ戻す案も測ったが、答えの 1 文が 1398px の 1 行になる。
+   中央に立てると 342px で、スマホ（333px）とほぼ同じ。
+
+   ⚠ 保存した場所の柱は立てない。トップは「どこを見るか」を決める画面で、
+     一覧は深掘りの入口。分ける。 */
+@media (min-width:700px){
+  /* 柱 1 本にまとめる。並べ替えない。
+     幅は /deep と同じ 38rem（deep.css の --read）。読む行の幅をそろえると、
+     散歩中の画面から深掘り画面へ移っても、目の動きが変わらない。
+     実測（2026-08-29・1440x950）:
+       23rem  答えの 1 文が 2 行・板 347px
+       38rem  答えの 1 文が 1 行・板 318px・地図 632px
+     押すものの散らばりは 310px → 533px に広がるが、柱 1 本の中に収まっている
+     （3 列のときは 1250px で、柱をまたいで散っていた）。 */
+  #bar,#hits,#bottom{
+    left:50%; right:auto; width:38rem; transform:translateX(-50%);
   }
-  #card{max-height:none; overflow-y:auto}
-  /* 出典は板のすぐ下。地図の上に浮かせない（板が右にあるので、地図の右下と重なる） */
-  #bottom{justify-content:flex-start}
-  .attrib{align-self:flex-end; order:2; margin-top:var(--gap-sub)}
-  /* 板は中身のぶんだけ。縦いっぱいに引き伸ばさない（空の面が出る） */
-  #card{flex:0 1 auto}
-  .ans{font-size:1.5rem}
-
-  /* 検索は板の上。地図の幅に合わせない（探すのは「どこを見るか」で、板の話ではない） */
-  #bar{left:var(--pad-md); right:auto; width:22rem; top:var(--pad-md)}
-  #hits{left:var(--pad-md); right:auto; width:22rem}
-
-  /* 保存した場所は、左に立てたままにする。帰宅後はここから入る。
-     押して開く器ではなくなるので、閉じるボタンは出さない。 */
-  .saved{
-    left:var(--pad-md); right:auto; top:calc(var(--tap) + var(--pad-md) * 2);
-    bottom:var(--pad-md); width:16rem;
-  }
-  .saved ul{max-height:none}
-  .saved .close{display:none}
-
-  /* 地図は真ん中。左右に立てたものと重ねない */
-  #map{left:calc(16rem + var(--pad-md) * 2); right:calc(22rem + var(--pad-md) * 2)}
-  /* 保存が 1 件も無いときは、左を空けない */
-  #app:not(.has-saved) #map{left:0}
+  /* 地図は画面いっぱい。柱の下にも地図が続く */
+  #map{left:0; right:0}
 }

@@ -49,6 +49,30 @@ body{
   color:var(--ink-3);
 }
 
+/* どう変わったか。この画面の主役。
+   明治期の地図 → 空中写真の年代 → いま を、時の流れの向きに並べる。
+   1 枚ずつ切り替えるのではなく、並べる。切り替えると、前の絵を覚えていないと比べられない。 */
+.time__lead{margin:0 0 var(--gap-block); font-size:1rem; color:var(--ink)}
+.frames{display:grid; gap:var(--gap-block); grid-template-columns:repeat(auto-fit,minmax(9rem,1fr))}
+.frame{margin:0}
+/* 絵の窓。真ん中がその地点。まわりは同じ縮尺で切り取っている */
+.frame__win{
+  position:relative; width:100%; aspect-ratio:1; overflow:hidden;
+  border-radius:.5rem; border:1px solid var(--line-strong); background:var(--surface-2);
+}
+.frame__win img{position:absolute; width:256px; height:256px; image-rendering:auto}
+/* その地点の印。真ん中に置く */
+.frame__win::after{
+  content:""; position:absolute; left:50%; top:50%; width:.75rem; height:.75rem;
+  transform:translate(-50%,-50%); border-radius:50%;
+  border:2px solid #fff; background:var(--action);
+  box-shadow:0 0 0 1px rgb(0 0 0 / .35);
+}
+.frame__y{margin:var(--gap-sub) 0 0; font-size:.875rem; font-weight:700; color:var(--ink)}
+.frame__t{margin:0; font-size:.75rem; color:var(--ink-3); line-height:1.5}
+.frame--none .frame__win{border-style:dashed}
+.time__note{margin:var(--gap-block) 0 0; font-size:.75rem; color:var(--ink-3); line-height:1.7}
+
 /* 成因と、起こりうること。国土地理院の記述をそのまま出す。要約しない。 */
 .why__item + .why__item{margin-top:var(--gap-block)}
 .why__k{margin:0; font-size:.8125rem; font-weight:700; color:var(--ink)}

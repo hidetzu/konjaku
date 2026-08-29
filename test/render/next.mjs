@@ -681,90 +681,55 @@ CASES.push({
 //     ⚠ 答えの 1 文が 1238px 幅の 1 行 ／ ⚠ 年代が 1 つ 173px ／ ⚠ 右側の空きが 8px。
 const PC = { width: 1440, height: 950 };
 
-CASES.push(
-  {
-    // ⚠ **1200px から切り替える。**⚠ **その手前では、⚠ 狭い幅のまま。**
-    //   ⚠ **中途半端に 2 列にしない**（⚠ 地図が「主役」に見えなくなる）。
-    name: "広い幅では、保存した場所を左に立て、板を右に置く",
-    path: `/?${TOYOSU}`, origin: NEXT_BASE, viewport: PC,
-    async check(page) {
-      await waitAnswer(page);
-      await 待つ(page, () => !document.getElementById("save").hidden, "保存");
-      // ⚠ **1 件も保存していないうちは、⚠ 左を空けない**
-      const 前 = await page.evaluate(() => ({
-        一覧: !document.getElementById("savedSheet").hidden,
-        地図の左: Math.round(document.getElementById("map").getBoundingClientRect().x),
-      }));
-      must(!前.一覧, "1 件も保存していないのに、保存した場所が出ている");
-      must(前.地図の左 === 0, `保存が 0 件なのに、地図の左が空いている（${前.地図の左}px）`);
-
-      await page.locator("#save").click();
-      await 待つ(page,
-        () => document.getElementById("save").getAttribute("aria-pressed") === "true", "保存ずみ");
-      await page.waitForTimeout(2000);
-      const r = await page.evaluate(() => {
-        const R = (s) => { const e = document.querySelector(s);
-          const b = e.getBoundingClientRect();
-          return { w: Math.round(b.width), h: Math.round(b.height), x: Math.round(b.x), 出る: !e.hidden }; };
-        const 一覧 = R("#savedSheet"), 板 = R("#card"), 地図 = R("#map");
-        return {
-          一覧, 板, 地図,
-          入口: !document.getElementById("savedOpen").hidden,
-          閉じる: getComputedStyle(document.getElementById("savedClose")).display,
-          答えの幅: Math.round(document.getElementById("gloss").getBoundingClientRect().width),
-          なぜ開いている: document.getElementById("why").open,
-          出典の下端: Math.round(document.querySelector(".attrib").getBoundingClientRect().bottom),
-          板の下端: Math.round(document.getElementById("card").getBoundingClientRect().bottom),
-          横あふれ: document.documentElement.scrollWidth > document.documentElement.clientWidth,
-        };
-      });
-      must(r.一覧.出る, "保存したのに、保存した場所が左に出ない");
-      must(r.一覧.x < r.地図.x, `保存した場所が左に無い（一覧 @${r.一覧.x} / 地図 @${r.地図.x}）`);
-      must(r.板.x > r.地図.x, `板が右に無い（板 @${r.板.x} / 地図 @${r.地図.x}）`);
-      must(!r.入口, "広い幅なのに、一覧への入口が出ている（⚠ 一覧はもう出ている）");
-      must(r.閉じる === "none", "広い幅なのに、閉じるボタンが出ている（⚠ 閉じると戻す道が無い）");
-      // ⚠ **読む行の幅を、⚠ 読める幅に戻したか**（⚠ 前は 1238px の 1 行だった）
-      must(r.答えの幅 < 600, `答えの 1 文が広すぎる（${r.答えの幅}px）`);
-      // ⚠ **帰宅後は「時間をかけて読む」側。**⚠ **開く操作を要求しない**
-      must(r.なぜ開いている, "広い幅なのに、根拠が畳まれている（⚠ 帰宅後は開く操作を要求しない）");
-      // ⚠ **出典は板の下。**⚠ **地図の上に浮かせない**（⚠ 板が右にあるので重なる）
-      must(r.出典の下端 > r.板の下端, `出典が板の下に無い（出典 ${r.出典の下端} / 板 ${r.板の下端}）`);
-      must(!r.横あふれ, "画面が横にあふれている");
-      // ⚠ **地図が主役。**⚠ **左右に立てたものより広いこと**
-      must(r.地図.w > r.一覧.w + r.板.w,
-        `地図が、左右に立てたものより狭い（地図 ${r.地図.w} / 一覧 ${r.一覧.w} + 板 ${r.板.w}）`);
-      return `一覧 ${r.一覧.w}px @${r.一覧.x}・地図 ${r.地図.w}px @${r.地図.x}・板 ${r.板.w}px @${r.板.x}・答え ${r.答えの幅}px`;
-    },
+CASES.push({
+  // ⚠ **広い幅でも、⚠ スマホと同じ形。**⚠ **横に並べ替えない。**
+  //   ⚠ **一度 3 列にして、⚠ 実測で「操作しづらい」が出た**（2026-08-29）:
+  //     ⚠ 押せるものの散らばり  ⚠ スマホ 302×594px → ⚠ **3 列 1250×637px**
+  //     ⚠ いちばん離れた 2 つ    ⚠ 615px → ⚠ **1374px**
+  //   ⚠ **利用者役 3 名とも、⚠ この形を選んだ**（⚠ この一連のテストで初めて 3/3 が一致した）。
+  // ⚠ **見るのは「散らばりが、⚠ スマホと同じ程度に収まっているか」。**
+  name: "広い幅でも、押すものがスマホと同じところにまとまっている",
+  path: `/?${TOYOSU}`, origin: NEXT_BASE, viewport: PC,
+  async check(page) {
+    await waitAnswer(page); await waitEras(page);
+    await 待つ(page, () => !document.getElementById("save").hidden, "保存");
+    await page.locator("#save").click();
+    await page.waitForTimeout(2000);
+    const r = await page.evaluate(() => {
+      const 押せる = [...document.querySelectorAll("button, a, summary, input")]
+        .filter((e) => e.checkVisibility());
+      const xs = 押せる.map((e) => { const b = e.getBoundingClientRect(); return b.x + b.width / 2; });
+      const bar = document.getElementById("bar").getBoundingClientRect();
+      const card = document.getElementById("card").getBoundingClientRect();
+      return {
+        押せるもの: 押せる.length,
+        横の散らばり: Math.round(Math.max(...xs) - Math.min(...xs)),
+        板の幅: Math.round(card.width),
+        検索の幅: Math.round(bar.width),
+        板の中心: Math.round(card.x + card.width / 2),
+        画面の中心: Math.round(innerWidth / 2),
+        答えの幅: Math.round(document.getElementById("gloss").getBoundingClientRect().width),
+        横あふれ: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+      };
+    });
+    // ⚠ **柱 1 本の中に収まっていること。**⚠ **数を決め打ちにしない**（⚠ 柱の幅は変わりうる）。
+    //   ⚠ **3 列のときは 1250px で、⚠ 柱をまたいで散っていた。**
+    must(r.横の散らばり <= r.板の幅,
+      `押すものが柱からはみ出している（散らばり ${r.横の散らばり}px / 柱 ${r.板の幅}px）`);
+    // ⚠ **読む行の幅を、⚠ 読める幅に保つ**（⚠ 横いっぱいにすると 1398px になる）
+    //   ⚠ **柱の幅は `/deep` と同じ 38rem。**⚠ そこを超えない
+    must(r.答えの幅 <= r.板の幅, `答えの 1 文が柱より広い（${r.答えの幅}px / 柱 ${r.板の幅}px）`);
+    must(r.答えの幅 < 700, `答えの 1 文が広すぎる（${r.答えの幅}px）`);
+    // ⚠ **中央に立てる**（⚠ 左右どちらかへ寄せない）
+    must(Math.abs(r.板の中心 - r.画面の中心) < 20,
+      `板が中央に無い（板 ${r.板の中心} / 画面 ${r.画面の中心}）`);
+    // ⚠ **検索と板の幅がそろっている**（⚠ 1 本の柱に見える）
+    must(Math.abs(r.板の幅 - r.検索の幅) < 20,
+      `検索と板の幅が違う（板 ${r.板の幅} / 検索 ${r.検索の幅}）`);
+    must(!r.横あふれ, "画面が横にあふれている");
+    return `散らばり ${r.横の散らばり}px・柱 ${r.板の幅}px・答え ${r.答えの幅}px`;
   },
-
-  {
-    // ⚠ **切り替えの手前では、⚠ 狭い幅のまま**（⚠ 中途半端に 2 列にしない）。
-    //   ⚠ **1199px は 1200px の 1 つ手前。**⚠ **境目そのものを見る。**
-    name: "1400px の手前では、狭い幅のまま",
-    path: `/?${TOYOSU}`, origin: NEXT_BASE, viewport: { width: 1399, height: 950 },
-    async check(page) {
-      await waitAnswer(page);
-      await 待つ(page, () => !document.getElementById("save").hidden, "保存");
-      await page.locator("#save").click();
-      await 待つ(page,
-        () => document.getElementById("save").getAttribute("aria-pressed") === "true", "保存ずみ");
-      await page.waitForTimeout(1500);
-      const r = await page.evaluate(() => ({
-        一覧: !document.getElementById("savedSheet").hidden,
-        入口: !document.getElementById("savedOpen").hidden,
-        なぜ開いている: document.getElementById("why").open,
-        地図の左: Math.round(document.getElementById("map").getBoundingClientRect().x),
-        板の左: Math.round(document.getElementById("card").getBoundingClientRect().x),
-      }));
-      must(!r.一覧, "1399px なのに、保存した場所が立っている（⚠ 切り替えが早すぎる）");
-      must(r.入口, "1399px なのに、一覧への入口が出ていない");
-      must(!r.なぜ開いている, "1399px なのに、根拠が開いている");
-      must(r.地図の左 === 0, `1399px なのに、地図の左が空いている（${r.地図の左}px）`);
-      must(r.板の左 < 100, `1399px なのに、板が右に寄っている（@${r.板の左}）`);
-      return `一覧は出ない・入口が出る・根拠は畳んだまま・板 @${r.板の左}`;
-    },
-  },
-);
+});
 
 // ⚠ **帰宅後の深掘り画面**（`/deep.html`）。⚠ **散歩中の画面とは別の作り。**
 //   ⚠ **問いも時間も違う**（⚠ 散歩中「ここは昔なんだった？」5 秒 ／ ⚠ 帰宅後「なぜこうなった？」10 分）。
@@ -1014,10 +979,101 @@ CASES.push(
       must(r.行.some((x) => /画素/.test(x.字)), `読んだ画素が出ていない: ${r.行.map((x) => x.名).join("/")}`);
       // ⚠ **空中写真は、⚠ 確かめた数と残っていた数を分ける**
       const 写真 = r.行.find((x) => x.名 === "空中写真");
-      must(写真 && /確かめた/.test(写真.字), `空中写真の分母が無い: ${写真?.字}`);
+      must(写真 && /確かめ/.test(写真.字), `空中写真の分母が無い: ${写真?.字}`);
       // ⚠ **読み物としては重いので、⚠ いちばん下**
       must(r.いちばん下, "読んだものが、いちばん下に無い");
       return `${r.行.length} 件（${r.行.map((x) => x.名).join("・")}）`;
     },
   },
 );
+
+CASES.push({
+  // ⚠ **検索の候補は、⚠ どの柱よりも前に出る。**
+  //   ⚠ **実際に踏んだ**（2026-08-29。⚠ Owner が実機で見つけた）:
+  //   ⚠ **広い幅で保存した場所の柱（z-index 20）を立てたとき、⚠ 候補が柱の裏に入った。**
+  //   ⚠ **1 つ目を触ると柱の見出しが返ってきて、⚠ 押せなかった。**
+  // ⚠ **検索は「どこを見るか」を決める操作。**⚠ **覆われると先へ進めない。**
+  //
+  // ⚠ **重なりを見るだけでは足りない。**⚠ **重なってよい**（⚠ 前に出ていれば押せる）。
+  //   ⚠ **実際に触って、⚠ 候補が返ってくるかを見る。**
+  name: "検索の候補が、保存した場所の柱に覆われない",
+  path: `/?${TOYOSU}`, origin: NEXT_BASE, viewport: PC,
+  // ⚠ **外へ出る**（⚠ 地理院の住所検索）。⚠ **`--group=search` の側に置く**
+  //   ⚠ **印は `dep`。**⚠ 付いていないと core 側で回り、⚠ 落ちたとき外部のせいにできない
+  dep: "search",
+  async check(page) {
+    await waitAnswer(page);
+    await 待つ(page, () => !document.getElementById("save").hidden, "保存");
+    // ⚠ **柱が立っている状態で見る**（⚠ 1 件も保存していないと柱が出ない）
+    await page.locator("#save").click();
+    await 待つ(page,
+      () => !document.getElementById("savedSheet").hidden, "保存した場所の柱");
+    await page.locator("#q").fill("豊洲");
+    await page.locator("#q").press("Enter");
+    await 待つ(page, () => document.querySelectorAll("#hits li").length > 0, "検索の候補");
+    const r = await page.evaluate(() => {
+      const hits = document.getElementById("hits");
+      const first = hits.querySelector("button");
+      const b = first.getBoundingClientRect();
+      const 上 = document.elementFromPoint(b.x + b.width / 2, b.y + b.height / 2);
+      const saved = document.getElementById("savedSheet").getBoundingClientRect();
+      const hr = hits.getBoundingClientRect();
+      return {
+        件数: hits.querySelectorAll("li").length,
+        押せる: !!(上 && first.contains(上)),
+        触ると返るもの: 上 ? (上.id || 上.className || 上.tagName) : "無し",
+        柱と重なる: !(hr.right <= saved.left || hr.left >= saved.right
+                     || hr.bottom <= saved.top || hr.top >= saved.bottom),
+      };
+    });
+    must(r.件数 > 0, "検索の候補が出ていない");
+    must(r.押せる,
+      `検索の候補が押せない（触ると ${r.触ると返るもの} が返る）。⚠ 柱の裏に入っている`);
+    // ⚠ **押して、⚠ 本当に場所が変わること**（⚠ 押せるだけでは足りない）
+    const 前 = await page.evaluate(() => document.getElementById("gloss").textContent.trim());
+    await page.locator("#hits button").first().click();
+    await page.waitForTimeout(4000);
+    const 後 = await page.evaluate(() => ({
+      候補: document.getElementById("hits").hidden,
+      答え: document.getElementById("gloss").textContent.trim(),
+    }));
+    must(後.候補, "候補を押したのに、候補が出たまま");
+    must(後.答え.startsWith("ここは、"), `候補を押したのに、答えが出ない: ${後.答え}`);
+    return `${r.件数} 件・柱と重なる ${r.柱と重なる}・押せる・「${前.slice(0, 12)}…」→「${後.答え.slice(0, 12)}…」`;
+  },
+});
+
+CASES.push({
+  // ⚠ **深掘り画面の主役は「どう変わったか」**（2026-08-29。Owner 判断）。
+  //   ⚠ **時間の流れが、⚠ いちばん先に理解できること。**
+  //   ⚠ **明治期 → 空中写真の年代 → いま を、⚠ 並べる**（⚠ 切り替えない）。
+  //     ⚠ **切り替えると、⚠ 前の絵を覚えていないと比べられない。**
+  // ⚠ **絵の中身は読まない。**⚠ **「この年代に何が写っているか」はこちらでは言わない**（掟 §1）。
+  name: "深掘り画面は、どう変わったかを先に見せる",
+  path: `/deep.html?${TOYOSU}`, origin: NEXT_BASE, viewport: PC,
+  async check(page) {
+    await 待つ(page, () => document.querySelectorAll(".frame").length > 0, "並べた絵");
+    await page.waitForTimeout(2000);
+    const r = await page.evaluate(() => ({
+      節: [...document.querySelectorAll(".sec")].filter((e) => !e.hidden)
+        .map((e) => e.querySelector("h2").textContent.trim()),
+      枠: [...document.querySelectorAll(".frame__y")].map((e) => e.textContent.trim()),
+      絵: document.querySelectorAll(".frame__win img").length,
+      断り: document.getElementById("timeNote").textContent.trim(),
+      印: !!document.querySelector(".frame__win"),
+    }));
+    // ⚠ **順**: ⚠ どう変わったか → なぜこうなった → まわり → 資料
+    must(r.節[0] === "どう変わったか", `主役が先頭に無い: ${r.節.join(" → ")}`);
+    must(r.節.indexOf("なぜこうなった") === 1, `2 番目が「なぜこうなった」でない: ${r.節.join(" → ")}`);
+    must(r.節[r.節.length - 1].includes("資料"), `最後が資料でない: ${r.節.join(" → ")}`);
+    // ⚠ **明治期から今まで、⚠ 時の流れの向きに並ぶ**
+    must(r.枠[0] === "明治期", `いちばん左が明治期でない: ${r.枠[0]}`);
+    must(r.枠[r.枠.length - 1] === "現在", `いちばん右が現在でない: ${r.枠[r.枠.length - 1]}`);
+    must(r.枠.length >= 5, `並べた絵が少ない（${r.枠.length} 枚）`);
+    must(r.絵 >= r.枠.length, `絵が読み込まれていない（枠 ${r.枠.length} / 絵 ${r.絵}）`);
+    // ⚠ **こちらでは判定していない、と断る**
+    must(/判定していません/.test(r.断り), `絵の中身を判定していないと断っていない: ${r.断り}`);
+    must(/同じ広さ/.test(r.断り), `同じ広さで切り取っていると言っていない: ${r.断り}`);
+    return `${r.節.join(" → ")}・${r.枠.length} 枚（${r.枠[0]}〜${r.枠[r.枠.length - 1]}）`;
+  },
+});

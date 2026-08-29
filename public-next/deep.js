@@ -16,6 +16,8 @@
   const nearSec = $("nearSec"), nearLead = $("nearLead"), yearsEl = $("years");
   const nearNote = $("nearNote"), nearFrom = $("nearFrom");
   const readSec = $("readSec"), readEl = $("read");
+  const timeSec = $("timeSec"), timeLead = $("timeLead");
+  const framesEl = $("frames"), timeNote = $("timeNote");
   const aroundEl = $("around"), aroundLead = $("aroundLead");
   const sharesEl = $("shares"), aroundNote = $("aroundNote");
 
@@ -66,6 +68,7 @@
     // 言葉は words.js から借りる。ここで書かない（domain.md）
     glossEl.textContent = `ここは、${KonjakuWords.groundGloss(t.value)}`;
     termEl.textContent = `国土地理院の区分：${t.value}`;
+    drawTime(lon, lat);
     drawWhy(t);
     drawElev(lon, lat, t);
     drawAround(lon, lat);
@@ -98,8 +101,9 @@
     whyEl.appendChild(p);
   }
 
-  // 読んだもの。本当に読んだのかを、読んだ人が確かめられるようにする。
-  //   β 版は出していた。読み物としては重いので、いちばん下に置く。
+  // この画面が読んだ資料。どこから引いたのかを、読んだ人がたどれるようにする。
+  //   「読んだもの」だと、何を読んだ話なのかが伝わらなかった（2026-08-29。Owner 指摘）。
+  //   β 版も同じものを出していた。読み物としては重いので、いちばん下に置く。
   //   ⚠ 取れなかったものは、取れなかったと書く。空欄にしない（掟 §1）。
   async function drawRead(lon, lat, t) {
     const 行 = [];
@@ -108,15 +112,15 @@
     const リンク = (u) => `<a href="${esc(u)}" target="_blank" rel="noopener">${esc(u)}</a>`;
 
     const ev = t.evidence ?? {};
-    if (ev.tile) 足す("地形分類", `${リンク(ev.tile)}<br>区分コード ${esc(String(ev.code ?? "—"))}`
+    if (ev.tile) 足す("いまの地形分類", `${リンク(ev.tile)}<br>区分コード ${esc(String(ev.code ?? "—"))}`
       + (ev.detail ? `・${esc(ev.detail)}` : ""));
-    if (ev.artificialTile) 足す("人工地形",
+    if (ev.artificialTile) 足す("人の手が入った地形",
       `${リンク(ev.artificialTile)}<br>区分コード ${esc(String(ev.artificialCode ?? "—"))}`);
 
     const m = await KonjakuLand.meijiPoint(lon, lat).catch(() => null);
     if (m?.evidence?.tile) {
       const px = m.evidence.pixel;
-      足す("明治期の地形", `${リンク(m.evidence.tile)}`
+      足す("明治期の低湿地", `${リンク(m.evidence.tile)}`
         + (px ? `<br>タイル ${esc(String(px[0]))}/${esc(String(px[1]))} の画素 (${esc(String(px[2]))}, ${esc(String(px[3]))})` : ""));
     }
     const e = await KonjakuLand.elevation(lon, lat).catch(() => null);
@@ -128,7 +132,7 @@
       const 残る = f.eras.filter((x) => x.state === Konjaku.STATE.OK && !x.blank);
       const 読めず = f.eras.filter((x) => x.state === Konjaku.STATE.UNREACHABLE);
       足す("空中写真",
-        `${残る.length} 年代が残っていました（${esc(f.eras.length + "")} 年代を確かめた）`
+        `${残る.length} 年代が残っていました（${esc(f.eras.length + "")} 年代を確かめました）`
         + (読めず.length ? `<br>うち ${esc(読めず.length + "")} 年代は読み込めませんでした` : ""));
     }
     if (!行.length) return;
@@ -167,7 +171,7 @@
     const 出す = 並び.filter(([, n]) => n / a.classifiedPixels >= 0.005);
     aroundEl.hidden = false;
     nearSec.hidden = false;
-    aroundLead.textContent = "この一帯は、明治期にこうでした";
+    aroundLead.textContent = "明治期、この一帯はこうでした";
     sharesEl.innerHTML = 出す.map(([名, n]) => {
       const pc = Math.round(n / a.classifiedPixels * 100);
       return `<li><span class="bar"><i style="width:${pc}%"></i></span>`
@@ -213,7 +217,7 @@
 
     nearSec.hidden = false;
     yearsEl.hidden = false;
-    nearLead.textContent = `${a.label}には、こういう記録があります`;
+    nearLead.textContent = `${a.label}に残っている、公式の記録`;
     // 古い順。年表として読むので、時の流れの向きに並べる。
     //   散歩中は新しい順に 1 件だけ出しているが、あちらは「1 件を選ぶ」話で、
     //   ここは「並べて読む」話。目的が違うので並びも違ってよい。
@@ -229,6 +233,85 @@
     nearFrom.innerHTML =
       `出典：<a href="${esc(a.source.url)}" target="_blank" rel="noopener">`
       + `${esc(a.source.name)}</a>（${esc(a.source.retrieved_at)} に読んだもの）`;
+  }
+
+  // どう変わったか。この画面の主役。
+  //   明治期の地図 → 空中写真の年代 → いま を、時の流れの向きに並べる。
+  //   1 枚ずつ切り替えるのではなく、並べる。切り替えると、前の絵を覚えていないと比べられない。
+  //
+  //   ⚠ 絵の中身は読まない。「この年代に何が写っているか」はこちらでは言わない。
+  //     判定にすると、推定を実測のように見せることになる（掟 §1）。
+  //     言うのは「いつの絵か」までで、読むのは利用者。
+  const WIN = 160;   // 絵の窓（px）。この地点を真ん中に置いて切り取る
+
+  // タイルを 2×2 並べて、その地点が真ん中に来るように寄せる。
+  //   1 枚だと、地点がタイルの端にあるとき窓が欠ける。
+  //   窓は 160px なので、どこに落ちても 2×2 で足りる。
+  function 窓(base, z, x, y, px, py, ext) {
+    const 左 = px - WIN / 2, 上 = py - WIN / 2;
+    const dx = 左 < 0 ? -1 : 0, dy = 上 < 0 ? -1 : 0;
+    const out = [];
+    for (let i = 0; i <= 1; i++) for (let j = 0; j <= 1; j++) {
+      const tx = x + dx + i, ty = y + dy + j;
+      const ox = (dx + i) * 256 - 左, oy = (dy + j) * 256 - 上;
+      out.push(`<img src="${esc(`${base}/${z}/${tx}/${ty}.${ext}`)}" alt="" loading="lazy"`
+        + ` style="left:${ox}px;top:${oy}px">`);
+    }
+    return out.join("");
+  }
+
+  async function drawTime(lon, lat) {
+    timeSec.hidden = true;
+    const 枠 = [];
+
+    // ① 明治期の地図。タイルの URL は verify.js が控えている
+    const m = await KonjakuLand.meijiPoint(lon, lat).catch(() => null);
+    // 画素の位置まで控えているときだけ絵を出す。
+    //   資料が作られていない地域では、タイルは控えていても画素が無い（実際に踏んだ）。
+    if (m?.evidence?.tile && Array.isArray(m.evidence.pixel) && m.evidence.pixel.length === 4) {
+      const px = m.evidence.pixel;   // [x, y, px, py]
+      const base = m.evidence.tile.replace(/\/\d+\/\d+\/\d+\.\w+$/, "");
+      const z = Number(m.evidence.tile.match(/\/(\d+)\/\d+\/\d+\.\w+$/)?.[1] ?? 16);
+      枠.push({ 絵: 窓(base, z, px[0], px[1], px[2], px[3], "png"),
+                年: "明治期", 説: m.value ? `${m.value} でした` : "この場所には区分がありません" });
+    } else if (m?.state === Konjaku.STATE.ABSENT) {
+      枠.push({ 絵: null, 年: "明治期", 説: "この地域では、この資料が作られていません" });
+    }
+
+    // ② 空中写真。残っている年代だけ。古い順は verify.js が並べ替えている
+    const f = await KonjakuLand.photos(lon, lat).catch(() => null);
+    const 残る = (f?.eras ?? []).filter((e) => e.state === Konjaku.STATE.OK && !e.blank);
+    for (const e of 残る) {
+      const base = e.tile.replace(/\/\d+\/\d+\/\d+\.\w+$/, "");
+      const t = Konjaku.tileOf(lon, lat, e.z);
+      枠.push({ 絵: 窓(base, e.z, t.x, t.y, t.px, t.py, e.ext),
+                年: e.label, 説: e.sub || "空中写真" });
+    }
+
+    // ③ いま。最新の空中写真（verify.js の LATEST）
+    const L = Konjaku.LATEST;
+    if (L) {
+      const z = Math.min(Math.max(16, L.min), L.max);
+      const t = Konjaku.tileOf(lon, lat, z);
+      枠.push({ 絵: 窓(`${Konjaku.GSI}/${L.id}`, z, t.x, t.y, t.px, t.py, L.ext),
+                年: L.label, 説: L.sub });
+    }
+
+    if (!枠.length) return;
+    timeSec.hidden = false;
+    const 年代数 = 残る.length;
+    timeLead.textContent = 年代数
+      ? `明治期から今まで、${年代数} 年代の空中写真が残っています`
+      : "この場所の空中写真は、残っていません";
+    framesEl.innerHTML = 枠.map((k) =>
+      `<figure class="frame ${k.絵 ? "" : "frame--none"}">`
+      + `<div class="frame__win">${k.絵 ?? ""}</div>`
+      + `<figcaption><p class="frame__y">${esc(k.年)}</p>`
+      + `<p class="frame__t">${esc(k.説)}</p></figcaption></figure>`).join("");
+    // 絵の読み方は、こちらでは言わない。何が写っているかは利用者が読む
+    timeNote.textContent =
+      "どれも同じ場所を、同じ広さで切り取っています。真ん中の点がこの地点です。"
+      + "写っているものが何かは、こちらでは判定していません。";
   }
 
   // 成因と、起こりうること。

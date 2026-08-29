@@ -13,23 +13,18 @@
      上から順に「いつ → まわり → なぜ」で読み下す。タブを並べない。 -->
 <article id="doc">
   <header id="head">
-    <a class="back" id="back" href="./">← 地図へもどる</a>
+    <a class="back" id="back" href="./">← 地図にもどる</a>
     <p class="place" id="place">　</p>
     <h1 class="ans" id="gloss">　</h1>
     <p class="term" id="term"></p>
   </header>
 
-  <section class="sec" id="nearSec" hidden>
-    <h2>まわり</h2>
-    <p class="near__lead" id="nearLead"></p>
-    <div class="around" id="around" hidden>
-      <p class="around__lead" id="aroundLead"></p>
-      <ul class="shares" id="shares"></ul>
-      <p class="around__note" id="aroundNote"></p>
-    </div>
-    <ol class="years" id="years"></ol>
-    <p class="near__note" id="nearNote"></p>
-    <p class="near__from" id="nearFrom"></p>
+  <!-- 主役は「どう変わったか」。時間の流れを、いちばん先に見せる。 -->
+  <section class="sec" id="timeSec" hidden>
+    <h2>どう変わったか</h2>
+    <p class="time__lead" id="timeLead"></p>
+    <div class="frames" id="frames"></div>
+    <p class="time__note" id="timeNote"></p>
   </section>
 
   <section class="sec" id="whySec">
@@ -37,8 +32,21 @@
     <div class="why" id="why"></div>
   </section>
 
+  <section class="sec" id="nearSec" hidden>
+    <h2>この一帯は、どうだったか</h2>
+    <div class="around" id="around" hidden>
+      <p class="around__lead" id="aroundLead"></p>
+      <ul class="shares" id="shares"></ul>
+      <p class="around__note" id="aroundNote"></p>
+    </div>
+    <p class="near__lead" id="nearLead"></p>
+    <ol class="years" id="years"></ol>
+    <p class="near__note" id="nearNote"></p>
+    <p class="near__from" id="nearFrom"></p>
+  </section>
+
   <section class="sec" id="readSec" hidden>
-    <h2>読んだもの</h2>
+    <h2>この画面が読んだ資料</h2>
     <dl class="read" id="read"></dl>
   </section>
 

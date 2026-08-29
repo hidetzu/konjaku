@@ -371,7 +371,6 @@
     hereName = v.value;
     drawSave();
     drawShare();
-    openWhy();
     askMeiji(lon, lat, seq);
     askPhoto(lon, lat, seq);
     showArea(lon, lat);
@@ -721,38 +720,10 @@
     drawSavedOpen();
   }
 
-  // 広い幅では、保存した場所を左に立てたままにする（帰宅後はここから入る）。
-  //   押して開く器ではなくなるので、入口のボタンは出さない。
-  //   1400px は CSS 側と同じ数。2 か所に書くことになるので、
-  //   ここを動かすときは top.css の @media も一緒に見る（検査が突き合わせる）。
-  //   ⚠ 実測（2026-08-29）: 1200px で切り替えると、地図 560px に対して
-  //     左右に立てたものの合計が 672px になり、地図のほうが狭くなった。
-  //     地図が主役（domain.md）なので、1400px まで上げた（地図 744px > 656px）。
-  const wide = matchMedia("(min-width:1400px)");
-
-  // 広い幅では、根拠を最初から開いておく（帰宅後は「時間をかけて読む」側）。
-  //   縦が余っている（実測 2026-08-29・1280x950: 板 301px に対して 926px 使える）。
-  //   狭い幅では畳んだまま。散歩中は 3 名中 2 名が「その場では読まない」と答えている。
-  const openWhy = () => { if (wide.matches) whyEl.open = true; };
-
   function drawSavedOpen() {
-    const 在る = saved.length > 0;
-    // 1 件も無いときは、左を空けない（CSS が地図を広げる）
-    document.getElementById("app").classList.toggle("has-saved", 在る && wide.matches);
-    // 広い幅では一覧が出たままなので、入口は要らない
-    savedOpen.hidden = !在る || wide.matches;
+    savedOpen.hidden = saved.length === 0;
     savedCount.textContent = `${saved.length} 件 ›`;
-    if (wide.matches) {
-      savedSheet.hidden = !在る;
-      if (在る) drawSavedList();
-    }
   }
-  // 幅が変わったら、出し方も変える（画面を回す・窓を広げる）
-  wide.addEventListener("change", () => {
-    if (!wide.matches) savedSheet.hidden = true;   // 狭い幅では、押すまで出さない
-    openWhy();
-    drawSavedOpen();
-  });
 
   saveBtn.addEventListener("click", async () => {
     const lon = px2lon(cx), lat = px2lat(cy);
@@ -804,10 +775,7 @@
   });
   $("savedClose").addEventListener("click", () => { savedSheet.hidden = true; savedOpen.focus(); });
   addEventListener("keydown", (e) => {
-    // 広い幅では閉じない（押して開いた器ではないので、閉じると戻す道が無い）
-    if (e.key === "Escape" && !savedSheet.hidden && !wide.matches) {
-      savedSheet.hidden = true; savedOpen.focus();
-    }
+    if (e.key === "Escape" && !savedSheet.hidden) { savedSheet.hidden = true; savedOpen.focus(); }
   });
   drawSavedOpen();
 
