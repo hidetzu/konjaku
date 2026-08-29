@@ -72,9 +72,32 @@ body{
 #hits button:hover,#hits button:focus-visible{background:var(--bg);outline:none}
 
 /* ---- 足元のカード ---- */
-#card{
+/* ⚠ **出典と板は、同じ積み上げに入れる。**
+   板の高さは場所ごとに変わる（実測 271〜325px）。出典を固定値で置くと重なる。
+   隣り合うものは同じ積み上げに入れる。 */
+#bottom{
   position:absolute; left:var(--pad-sm); right:var(--pad-sm);
   bottom:calc(var(--pad-sm) + env(safe-area-inset-bottom));
+  display:flex; flex-direction:column; gap:var(--gap-sub);
+}
+/* ⚠ **出典明示は地理院タイルの利用の条件。**⚠ 隠さない・覆わない。
+   地図の上に乗るので、地の色を敷かないと読めない。 */
+.attrib{
+  align-self:flex-end; margin:0;
+  padding:0 var(--gap-row);
+  background:var(--surface); border:1px solid var(--line); border-radius:.5rem;
+  font-size:.6875rem; color:var(--ink-3); line-height:1.5;
+}
+.attrib a{color:var(--ink-2); position:relative}
+/* ⚠ 押せるものは 44×44 を割らない。
+   β 版で、利用者役 1 名が国土地理院のリンクを押そうとして 2 回外した（2026-08-23）。
+   字を大きくすると出典が主役になるので、当たり判定だけを広げる。 */
+.attrib a::after{
+  content:""; position:absolute; left:-.5rem; right:-.5rem;
+  top:50%; transform:translateY(-50%); height:calc(var(--tap) + 2px);
+}
+#card{
+  position:static;
   padding:var(--pad-md);
   background:var(--surface); border:1px solid var(--line-strong); border-radius:.875rem;
   box-shadow:0 -2px 16px rgb(0 0 0 / .12);

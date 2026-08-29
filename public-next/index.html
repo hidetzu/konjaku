@@ -20,6 +20,13 @@
   </div>
   <ul id="hits" role="listbox" aria-label="検索の候補" hidden></ul>
 
+  <!-- ⚠ **出典明示は、地理院タイルの利用の条件。**⚠ **隠さない・覆わない。**
+       ⚠ **板と同じ積み上げに入れる。**⚠ 固定値で位置を決めると、
+       ⚠ **板の高さが場所ごとに変わる（271〜325px）ので重なる。** -->
+  <div id="bottom">
+    <p class="attrib">出典 <a href="https://maps.gsi.go.jp/development/ichiran.html"
+       target="_blank" rel="noopener">国土地理院</a></p>
+
   <section id="card" aria-live="polite">
     <p class="kick"><i class="dot" aria-hidden="true"></i><span id="kickText">地図を動かすと、その場所を調べます</span></p>
     <p class="ans" id="gloss">　</p>
@@ -56,6 +63,8 @@
     <ul id="legend" aria-label="この画面に映っている土地"></ul>
     <button id="more" type="button" hidden></button>
   </section>
+
+  </div>
 
   <section id="sheet" hidden aria-label="この画面に映っている土地">
     <header>
