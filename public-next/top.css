@@ -103,9 +103,67 @@ body{
   box-shadow:0 -2px 16px rgb(0 0 0 / .12);
 }
 .kick{
-  display:flex; align-items:center; gap:.375rem;
+  display:flex; align-items:center; justify-content:space-between; gap:.375rem;
   margin:0 0 var(--gap-sub); font-size:.75rem; color:var(--ink-3);
+  min-height:var(--tap);           /* 保存の的が入る */
 }
+/* 点と字は 1 つにまとめる。まとめないと space-between が 3 つに割れる */
+.kick__l{display:flex; align-items:center; gap:.375rem; min-width:0}
+
+/* 保存。
+   β 版では 34×30px・画面幅の 8% にしか無く、「この場所の評価とメモ」と名乗っていて
+   18 日間 0 件だった。押されなかったのではなく、押せる形になっていなかった。
+   見出しの隣に置くのは、何を保存するのかが「いまいる場所」と結びついて読めるから
+   （利用者役 3 名中 2 名が、そこを選ぶ理由に挙げた）。 */
+.save{
+  flex:none; min-height:var(--tap); padding:0 .75rem;
+  display:flex; align-items:center; gap:.375rem;
+  border:1px solid var(--line-strong); border-radius:.5rem; background:transparent;
+  font:inherit; font-size:.8125rem; font-weight:700; color:var(--action); cursor:pointer;
+}
+.save[hidden]{display:none}
+.save[aria-pressed="true"]{border-color:var(--action); background:var(--action); color:var(--action-ink)}
+.save:focus-visible{outline:2px solid var(--action); outline-offset:2px}
+
+/* 保存した場所への入口。1 件も無いうちは出さない（押しても空になる）。 */
+.saved-open{
+  margin-top:var(--gap-row); width:100%; min-height:var(--tap);
+  display:flex; align-items:center; justify-content:space-between;
+  background:transparent; border:0; border-top:1px solid var(--line);
+  font:inherit; font-size:.8125rem; font-weight:700; color:var(--action); cursor:pointer;
+}
+.saved-open[hidden]{display:none}
+.saved-open__n{color:var(--ink-3); font-weight:400}
+.saved-open:focus-visible{outline:2px solid var(--action); outline-offset:2px}
+
+/* 一覧。板の上に重ねる（既存の「この画面に映っている土地」と同じ作り）。
+   地図は 314px 残る。全画面にすると、いまどこにいるかを失う。 */
+.saved{
+  position:absolute; left:var(--pad-sm); right:var(--pad-sm);
+  bottom:calc(var(--pad-sm) + env(safe-area-inset-bottom));
+  z-index:20; padding:var(--pad-md);
+  background:var(--surface); border:1px solid var(--line-strong); border-radius:.875rem;
+  box-shadow:0 -2px 16px rgb(0 0 0 / .12);
+}
+.saved[hidden]{display:none}
+.saved header{display:flex; align-items:center; justify-content:space-between; margin-bottom:var(--gap-row)}
+.saved h2{margin:0; font-size:.9375rem}
+.saved .close{
+  min-width:var(--tap); min-height:var(--tap);
+  background:transparent; border:0; font:inherit; font-size:1rem; color:var(--ink-3); cursor:pointer;
+}
+.saved ul{margin:0; padding:0; list-style:none; max-height:40vh; overflow-y:auto}
+.saved li{border-bottom:1px solid var(--line)}
+.saved li:last-child{border-bottom:0}
+.saved li button{
+  width:100%; min-height:var(--tap); padding:var(--gap-row) 0;
+  background:transparent; border:0; font:inherit; text-align:left; color:var(--ink); cursor:pointer;
+}
+.saved__row{display:flex; justify-content:space-between; gap:var(--gap-row); font-size:.875rem; font-weight:700}
+.saved__when{flex:none; color:var(--ink-3); font-weight:400; font-size:.75rem}
+.saved__gloss{display:block; margin-top:.125rem; font-size:.75rem; color:var(--ink-3)}
+.saved__note{margin:var(--gap-row) 0 0; font-size:.6875rem; color:var(--ink-3); line-height:1.5}
+.saved__note[hidden]{display:none}
 .dot{
   width:.5rem;height:.5rem;border-radius:50%;
   border:2px solid var(--action); background:var(--surface); flex:none;

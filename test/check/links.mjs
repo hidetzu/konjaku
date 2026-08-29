@@ -201,8 +201,14 @@ head("6. 外部リンク");
     let links = 0;
     for (const f of mds) {
       let s = ""; try { s = rf(f, "utf8"); } catch { continue; }
-      for (const m of s.matchAll(/\]\(([^)\s]+)\)/g)) {
-        const t = m[1];
+      // ⚠ **`<...>` で囲んだリンクも見る**（2026-08-29）。
+      //   ⚠ **Markdown は、⚠ 空白を含む行き先を `<>` で囲む。**
+      //   ⚠ **`[^)\s]+` だけだと、⚠ 空白を含むものが 1 本も当たらず、⚠ 黙って素通りしていた**
+      //     （⚠ 実測 2026-08-29: ⚠ 4 本が見られていなかった。⚠ 中身は 4 本とも実在した）。
+      //   ⚠ **数えられていないものは、⚠ 壊れても落ちない。**
+      for (const m of s.matchAll(/\]\((<[^)>]+>|[^)\s]+)\)/g)) {
+        const raw = m[1];
+        const t = raw.startsWith("<") && raw.endsWith(">") ? raw.slice(1, -1) : raw;
         if (/^(https?:|#|mailto:)/.test(t)) continue;   // 外部URLと見出しアンカーは別の話
         links++;
         // ⚠ 末尾の #見出し を落としてから見る。付いたままだと全部「無い」になる
