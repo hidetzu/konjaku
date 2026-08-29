@@ -1,17 +1,12 @@
 /* 今昔 v0.1.0 のスタイル。理由と決めごとは public-next/README.md に書いてある。 */
 
+/* 色は theme.css にしかない（決めごと）。
+   ここに色を書き戻さない。書き戻すと、色みを足したとき片方だけ切り替わる。
+   HTML が theme.css を先に読む。 */
 :root{
-  --bg:#f2f5f7; --surface:#fff; --ink:#10161d; --ink-2:#3d4b57; --ink-3:#6b7a86;
-  --line:#c9d3db; --line-strong:#9daab4; --action:#175c90; --action-ink:#fff;
   --tap:44px;
   --gap-sub:.25rem; --gap-row:.5rem; --gap-block:1rem;
   --pad-sm:.5rem; --pad-md:.75rem;
-}
-@media (prefers-color-scheme:dark){
-  :root{
-    --bg:#0b0f14; --surface:#131a21; --ink:#e7edf2; --ink-2:#b3c0cb; --ink-3:#8595a2;
-    --line:#28323c; --line-strong:#485763; --action:#69aede; --action-ink:#0b0f14;
-  }
 }
 
 *{box-sizing:border-box}
@@ -41,14 +36,14 @@ body{
   padding:0 var(--pad-md); font:inherit; font-size:.9375rem;
   background:var(--surface); color:var(--ink);
   border:1px solid var(--line-strong); border-radius:.75rem;
-  box-shadow:0 1px 6px rgb(0 0 0 / .10);
+  box-shadow:0 1px 6px color-mix(in srgb, var(--shadow) 10%, transparent);
 }
 #here{
   min-width:var(--tap); min-height:var(--tap);
   font-size:1.125rem; line-height:1;
   background:var(--surface); color:var(--ink);
   border:1px solid var(--line-strong); border-radius:.75rem;
-  box-shadow:0 1px 6px rgb(0 0 0 / .10); cursor:pointer;
+  box-shadow:0 1px 6px color-mix(in srgb, var(--shadow) 10%, transparent); cursor:pointer;
 }
 #here:focus-visible,#q:focus-visible{outline:2px solid var(--action);outline-offset:2px}
 
@@ -58,7 +53,7 @@ body{
   top:calc(var(--tap) + var(--pad-sm) * 2 + env(safe-area-inset-top));
   margin:0; padding:0; list-style:none; max-height:52vh; overflow:auto;
   background:var(--surface); border:1px solid var(--line-strong); border-radius:.75rem;
-  box-shadow:0 4px 18px rgb(0 0 0 / .16);
+  box-shadow:0 4px 18px color-mix(in srgb, var(--shadow) 16%, transparent);
   /* 検索の候補は、どの柱よりも前に出す。
      実際に踏んだ（2026-08-29）: 広い幅で保存した場所の柱（z-index 20）を立てたとき、
      候補が柱の裏に入り、1 つ目を触ると柱の見出しが返ってきた。押せなかった。
@@ -131,7 +126,7 @@ body{
   min-height:0; overflow-y:auto; overscroll-behavior:contain;
   padding:var(--pad-md);
   background:var(--surface); border:1px solid var(--line-strong); border-radius:.875rem;
-  box-shadow:0 -2px 16px rgb(0 0 0 / .12);
+  box-shadow:0 -2px 16px color-mix(in srgb, var(--shadow) 12%, transparent);
 }
 .kick{
   display:flex; align-items:center; justify-content:space-between; gap:var(--gap-sub);
@@ -199,7 +194,7 @@ body{
   bottom:calc(var(--pad-sm) + env(safe-area-inset-bottom));
   z-index:20; padding:var(--pad-md);
   background:var(--surface); border:1px solid var(--line-strong); border-radius:.875rem;
-  box-shadow:0 -2px 16px rgb(0 0 0 / .12);
+  box-shadow:0 -2px 16px color-mix(in srgb, var(--shadow) 12%, transparent);
 }
 .saved[hidden]{display:none}
 .saved header{display:flex; align-items:center; justify-content:space-between; margin-bottom:var(--gap-row)}
@@ -351,7 +346,7 @@ body{
   bottom:calc(var(--pad-sm) + env(safe-area-inset-bottom));
   z-index:41; padding:var(--pad-md);
   background:var(--surface); border:1px solid var(--line-strong); border-radius:.875rem;
-  box-shadow:0 -2px 16px rgb(0 0 0 / .12);
+  box-shadow:0 -2px 16px color-mix(in srgb, var(--shadow) 12%, transparent);
   max-height:calc(100% - var(--tap) - var(--pad-sm) * 3
                   - env(safe-area-inset-top) - env(safe-area-inset-bottom));
   overflow-y:auto; overscroll-behavior:contain;
@@ -396,7 +391,7 @@ body{
   top:calc(var(--tap) + var(--pad-sm) * 2 + env(safe-area-inset-top));
   width:calc(100% - var(--pad-sm) * 2); max-width:38rem; z-index:40;
   background:var(--surface); border:1px solid var(--line-strong); border-radius:.875rem;
-  padding:var(--pad-md); box-shadow:0 4px 20px rgb(0 0 0 / .2);
+  padding:var(--pad-md); box-shadow:0 4px 20px color-mix(in srgb, var(--shadow) 20%, transparent);
 }
 .take[hidden]{display:none}
 .take h2{margin:0; font-size:1rem}
@@ -430,11 +425,11 @@ body{
 .me{
   width:1.125rem;height:1.125rem;border-radius:50%;
   background:var(--action);
-  border:3px solid #fff;
+  border:3px solid var(--pin-ring);
   box-shadow:
-    0 0 0 1px rgb(0 0 0 / .35),
+    0 0 0 1px color-mix(in srgb, var(--shadow) 35%, transparent),
     0 0 0 .625rem color-mix(in srgb, var(--action) 22%, transparent),
-    0 2px 6px rgb(0 0 0 / .4);
+    0 2px 6px color-mix(in srgb, var(--shadow) 40%, transparent);
 }
 /* 現在地がどれか、字でも言う。色と位置だけで区別しない。 */
 .me-label{
@@ -443,7 +438,7 @@ body{
   padding:.125rem .375rem; border-radius:.25rem;
   background:var(--action); color:var(--action-ink);
   font-size:.625rem; font-weight:700; white-space:nowrap;
-  box-shadow:0 1px 4px rgb(0 0 0 / .35); pointer-events:none;
+  box-shadow:0 1px 4px color-mix(in srgb, var(--shadow) 35%, transparent); pointer-events:none;
 }
 
 /* 凡例。この画面に映っている土地に名前を付ける。
@@ -460,7 +455,7 @@ body{
 #legend li.here{color:var(--action);font-weight:700}
 #legend i{
   width:.6875rem;height:.6875rem;border-radius:.1875rem;
-  border:1px solid rgb(0 0 0 / .16); flex:none;
+  border:1px solid color-mix(in srgb, var(--shadow) 16%, transparent); flex:none;
 }
 #legend li.here i{border:2px solid var(--action)}
 
@@ -484,7 +479,7 @@ body{
   bottom:calc(var(--pad-sm) + env(safe-area-inset-bottom));
   max-height:62%; overflow:auto; padding:var(--pad-md);
   background:var(--surface); border:1px solid var(--line-strong); border-radius:.875rem;
-  box-shadow:0 -4px 22px rgb(0 0 0 / .18);
+  box-shadow:0 -4px 22px color-mix(in srgb, var(--shadow) 18%, transparent);
 }
 #sheet[hidden]{display:none}
 #sheet header{display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--gap-row)}
@@ -498,7 +493,7 @@ body{
   border-bottom:1px solid var(--line);font-size:.8125rem}
 #sheet li:last-child{border-bottom:0}
 #sheet li.here{color:var(--action);font-weight:700}
-#sheet i{width:.875rem;height:.875rem;border-radius:.1875rem;border:1px solid rgb(0 0 0 / .16);flex:none}
+#sheet i{width:.875rem;height:.875rem;border-radius:.1875rem;border:1px solid color-mix(in srgb, var(--shadow) 16%, transparent);flex:none}
 #sheet li.here i{border:2px solid var(--action)}
 /* 未整備は、土地の区分ではない。データの状態。区分一覧に混ぜない。 */
 #sheet .state{

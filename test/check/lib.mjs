@@ -330,3 +330,54 @@ for (const f of [...htmlFiles, ...jsFiles])
 //   ⚠ **語の棚卸し（SCREEN_WORDS）は `seen` のまま**（⚠ 繋ぐと二重に数える）。
 export const seenTop = `${seen["index.html"] ?? ""}\n${seen["top.js"] ?? ""}`;
 
+// ---------- 色の計算 ----------
+// ⚠ **前は `color.mjs` が持っていた**（⚠ 「使うのがこの節だけだから」と書いてあった）。
+//   ⚠ **2026-08-30 に使う先が 2 つになった**（⚠ β の `color.mjs` と、⚠ v0.1.0 の `next.mjs`）。
+//   ⚠ **だから、⚠ ここへ移した**（`CLAUDE.md` §3「同じ問いに答える実装を 2 つ持たない」）。
+//   ⚠ **中身は 1 行も変えていない。**⚠ **移しただけ。**
+// ---------- 色の計算（⚠ **WCAG 2.1 の相対輝度と、⚠ CIELAB の色差**） ----------
+// ⚠ **半透明は、⚠ 下の色に重ねてから測る。**⚠ 重ねずに測ると、
+//   ⚠ **`rgba(12,16,22,.84)` を不透明の #0c1016 として測ることになり、⚠ 数字が実際と違う。**
+// ⚠ **無いものを渡されても落とさない**（⚠ 落ちると、⚠ **そこから下の検査が 1 件も走らない**。
+//   ⚠ 2026-08-26 に実際にそうなった: ⚠ 色を 1 つ消して試したら、⚠ **検査ごと止まった**）。
+export const parseColor = (s) => {
+  const t = (s ?? "").trim();
+  if (!t) return null;
+  if (t.startsWith("#")) {
+    const h = t.slice(1).length === 3 ? [...t.slice(1)].map((c) => c + c).join("") : t.slice(1);
+    return [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16))
+      .concat(h.length === 8 ? parseInt(h.slice(6, 8), 16) / 255 : 1);
+  }
+  const m = /rgba?\(([^)]+)\)/.exec(t);
+  if (!m) return null;
+  const p = m[1].split(",").map((x) => parseFloat(x.trim()));
+  return p.length < 3 || p.some(Number.isNaN) ? null : [p[0], p[1], p[2], p.length > 3 ? p[3] : 1];
+};
+export const isColor = (s) => parseColor(s) !== null;
+// ⚠ 前景 fg を背景 bg の上に重ねた、⚠ **実際に目に入る色**
+export const composite = (fg, bg) => [0, 1, 2].map((i) => fg[i] * fg[3] + bg[i] * (1 - fg[3])).concat(1);
+export const luminance = ([r, g, b]) => {
+  const f = (v) => (v /= 255) <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+  return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
+};
+export const contrast = (a, b) => {
+  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+  return (hi + 0.05) / (lo + 0.05);
+};
+// ⚠ **色差は CIELAB の距離（ΔE76）**。⚠ **明るさだけの比では「見分けられる」を測れない**
+//   （⚠ 実測／推定 は明るさがほぼ同じで、⚠ 違うのは色相のほう）。
+// ⚠ **ΔE76 は青と緑で人の感覚とずれる**ことが知られている。⚠ **ここでは「離れている」の
+//   ⚠ 目安としてだけ使い、⚠ 「誰にでも見分けられる」とは言わない**（⚠ 色覚の違いは別の話）。
+export const toLab = ([r, g, b]) => {
+  const f = (v) => (v /= 255) <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+  const [R, G, B] = [f(r), f(g), f(b)];
+  const x = (0.4124 * R + 0.3576 * G + 0.1805 * B) / 0.95047;
+  const y = (0.2126 * R + 0.7152 * G + 0.0722 * B);
+  const z = (0.0193 * R + 0.1192 * G + 0.9505 * B) / 1.08883;
+  const k = (v) => v > 0.008856 ? Math.cbrt(v) : (7.787 * v + 16 / 116);
+  return [116 * k(y) - 16, 500 * (k(x) - k(y)), 200 * (k(y) - k(z))];
+};
+export const deltaE = (a, b) => {
+  const [A, B] = [toLab(a), toLab(b)];
+  return Math.hypot(A[0] - B[0], A[1] - B[1], A[2] - B[2]);
+};
