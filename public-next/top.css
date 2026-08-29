@@ -410,6 +410,11 @@ body{
 .take__list .n{color:var(--ink); font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
 .take__list .g{flex:none; color:var(--ink-3); font-size:.75rem}
 .take__act{display:flex; gap:var(--gap-row); margin-top:var(--gap-row)}
+/* display を持つ規則には、[hidden] の打ち消しが要る。
+   このファイルは規則ごとに書く作りで、書き忘れると hidden が効かない。
+   実際に踏んだ（2026-08-30）: 受け取り口で「足しました」と出したあとも
+   「この端末に足す」が残っていて、もう一度押せた。 */
+.take__act[hidden]{display:none}
 .take__yes,.take__no{
   flex:1; min-height:var(--tap); border-radius:.5rem; font:inherit; font-size:.8125rem;
   font-weight:700; cursor:pointer;

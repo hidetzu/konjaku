@@ -26,6 +26,13 @@
 .recv__go:focus-visible{outline:2px solid var(--action); outline-offset:2px}
 .recv__go[disabled]{opacity:.6; cursor:default}
 
+/* 押したあとに何が起きたかを言う 1 行。 */
+.recv__said{margin:var(--gap-row) 0 0; font-size:.875rem; color:var(--ink-2); line-height:1.7}
+.recv__said[hidden]{display:none}
+/* 受け取り終わったら、入力の口を畳む。1 つのことをする画面なので、
+   終わったあとに「まだ何か入れるのか」と読ませない。 */
+.recv__form[hidden]{display:none}
+
 /* 受け取れなかったとき。できることを先に、大きく。理由はそのあと。 */
 .recv__again[hidden]{display:none}
 .recv__can{margin:var(--gap-block) 0 0; font-size:1rem; font-weight:700; color:var(--ink)}

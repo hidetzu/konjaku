@@ -1628,9 +1628,21 @@ CASES.push({
       見出し: document.getElementById("gotTitle").textContent.trim(),
       控え: JSON.parse(localStorage.getItem("konjaku-next-saved-v1") ?? "[]").length,
       名前: (JSON.parse(localStorage.getItem("konjaku-next-saved-v1") ?? "[]")[0] ?? {}).name,
-      地図へ: !document.getElementById("gotMap").hidden,
+      // ⚠ **`hidden` 属性ではなく、⚠ 見えているかで見る**（⚠ `display` に負ける）
+      地図へ: document.getElementById("gotMap").checkVisibility(),
+      足すが見える: document.getElementById("gotYes").checkVisibility(),
+      入力欄が見える: document.getElementById("recvIn").checkVisibility(),
     }));
     must(後.控え === 2, `足したのに控えが 2 件でない（${後.控え} 件）`);
+    // ⚠ **終わったら、⚠ 押す口を畳む**（2026-08-30 に踏んだ）。
+    //   ⚠ **`gotAct.hidden = true` と書いてあったが、⚠ 効いていなかった。**
+    //   ⚠ **`.take__act` が `display:flex` を持っていて、⚠ `[hidden]` の打ち消しが無かった。**
+    //   ⚠ **このファイルは規則ごとに `[hidden]{display:none}` を書く作りで、⚠ 書き忘れると効かない。**
+    //   ⚠ **`hidden` 属性は付くので、⚠ 属性で見ていると素通りする。**⚠ **見えているかで見る。**
+    must(!後.足すが見える,
+      "足したあとも「この端末に足す」が見えている（⚠ もう一度押せてしまう）");
+    must(!後.入力欄が見える,
+      "足したあとも入力欄が出ている（⚠ まだ何か入れるのか、と読める）");
     must(後.名前 === "東京都江東区豊洲三丁目", `名前が欠けている: ${JSON.stringify(後.名前)}`);
     must(/足しました/.test(後.見出し), `足したと言っていない: ${後.見出し}`);
     must(後.地図へ, "足したのに、地図へ行く道が出ない");
@@ -1743,5 +1755,48 @@ CASES.push({
     must(/そのまま/.test(r.理由), `保存が無事だと言っていない: ${r.理由}`);
     must(r.控え === 0, `読めなかったのに控えが増えている（${r.控え} 件）`);
     return `「${r.理由.slice(0, 34)}…」`;
+  },
+});
+
+CASES.push({
+  // ⚠ **押したあとに何が起きたかを、⚠ 必ず字で言う**（`docs/adr/0026`）。
+  //   ⚠ **「いまはしない」を押すと板が消えるだけで、⚠ 何も言っていなかった**（2026-08-30）。
+  //   ⚠ **効いたのか、⚠ 壊れたのかが分からない。**
+  name: "受け取り口で「いまはしない」を押すと、足していないと言う",
+  path: "/take", origin: NEXT_BASE, viewport: PC,
+  setup: (page) => 合言葉の口(page),
+  async check(page) {
+    const code = await page.evaluate(async () => {
+      const 圧縮 = async (t) => {
+        const s = new Blob([t]).stream().pipeThrough(new CompressionStream("gzip"));
+        return KonjakuSaved.bytes2b64(new Uint8Array(await new Response(s).arrayBuffer()));
+      };
+      const payload = await KonjakuSaved.toText(
+        [{ lat: 35.65531, lon: 139.79672, name: "東京都江東区豊洲三丁目", value: "旧水部", at: 3 }],
+        圧縮);
+      const res = await fetch("/api/handoff", { method: "POST",
+        headers: { "content-type": "application/json" }, body: JSON.stringify({ payload }) });
+      return (await res.json()).code;
+    });
+    await page.locator("#recvIn").fill(code);
+    await page.locator("#recvGo").click();
+    await 待つ(page, () => !document.getElementById("recvGot").hidden, "受け取った中身");
+    await page.locator("#gotNo").click();
+    await page.waitForTimeout(400);
+    const r = await page.evaluate(() => ({
+      中身: document.getElementById("recvGot").checkVisibility(),
+      言った: document.getElementById("recvSaid").textContent.trim(),
+      見える: document.getElementById("recvSaid").checkVisibility(),
+      控え: JSON.parse(localStorage.getItem("konjaku-next-saved-v1") ?? "[]").length,
+      入力欄: document.getElementById("recvIn").value,
+      的: document.activeElement?.id,
+    }));
+    must(!r.中身, "「いまはしない」を押しても、中身が出たまま");
+    must(r.見える && /足していません/.test(r.言った),
+      `押したのに、何が起きたかを言っていない: ${JSON.stringify(r.言った)}`);
+    must(/そのまま/.test(r.言った), `保存が無事だと言っていない: ${r.言った}`);
+    must(r.控え === 0, `足していないのに控えが増えている（${r.控え} 件）`);
+    must(r.入力欄 === "" && r.的 === "recvIn", `次に打てる形になっていない（${r.的}）`);
+    return `「${r.言った}」／ 控え ${r.控え} 件`;
   },
 });
