@@ -41,6 +41,11 @@ if (cols.length !== 14) {
 
 // ⚠ **公開範囲図で「入っていそう／入っていなさそう」を分けて選ぶ**（2026-08-29。`tmp/tmp2.md`）。
 //   ⚠ **那覇は、⚠ 公開範囲図では対象外に見える**（⚠ いちばん明確な対照地点）。
+// 口が 2 つある。/xyz/swale/ と /xyz/lcmfc2/ で、配信範囲が違う。
+//   public/verify.js が叩いているのは swale のほう。画面に出るのはこちら。
+//   2026-08-29 に取り違えた。lcmfc2 だけを測って「網走にもある」と書いていた。
+const 口 = ["swale", "lcmfc2"];
+
 const 場所 = [
   // ⚠ 公開範囲に入っていそう
   ["旭川", 43.7708, 142.3650], ["豊洲", 35.6553, 139.7967], ["浦安", 35.6536, 139.9021],
@@ -54,11 +59,12 @@ const 場所 = [
 const b = await chromium.launch();
 const p = await b.newPage();
 console.log(`⚠ 明治期の低湿地（lcmfc2・z16）／ ⚠ 凡例 ${cols.length} 色は public/swale.js から読んだ\n`);
-console.log("場所      HTTP   ⚠ 透明  凡例の色  ⚠ 下地   判定");
-console.log("                          （区分）  （道路・注記など）");
+console.log("場所      swale（画面が使う）      lcmfc2（別の口）");
 for (const [name, lat, lon] of 場所) {
   const Z = 16;
-  const u = `https://cyberjapandata.gsi.go.jp/xyz/lcmfc2/${Z}/${x_(lon, Z)}/${y_(lat, Z)}.png`;
+  const 結果 = [];
+  for (const 名 of 口) {
+  const u = `https://cyberjapandata.gsi.go.jp/xyz/${名}/${Z}/${x_(lon, Z)}/${y_(lat, Z)}.png`;
   const r = await p.evaluate(async ({ url, cols }) => {
     let res; try { res = await fetch(url); } catch { return { status: "聞けず" }; }
     if (!res.ok) return { status: res.status };
@@ -78,14 +84,11 @@ for (const [name, lat, lon] of 場所) {
     }
     return { status: res.status, hit, miss, clear, all: d.length / 4 };
   }, { url: u, cols });
-  if (typeof r.status !== "number") { console.log(`${name.padEnd(8)}  ⚠ ${r.status}`); continue; }
-  if (r.status === 404) {
-    console.log(`${name.padEnd(8)}  404      —       —        —   ⚠ **③ 整備範囲外**（⚠ タイルそのものが無い）`);
-    continue;
+  if (typeof r.status !== "number") { 結果.push(`${名}:聞けず`); continue; }
+  if (r.status === 404) { 結果.push(`${名}:③範囲外`); continue; }
+  if (r.hit === undefined) { 結果.push(`${名}:中身未確認`); continue; }
+  結果.push(`${名}:${r.hit === 0 ? "②区分なし" : "①区分あり"}(${(r.hit / r.all * 100).toFixed(0)}%)`);
   }
-  if (r.hit === undefined) { console.log(`${name.padEnd(8)}  ${r.status}   ⚠ 中身を見ていない`); continue; }
-  const pc = (v) => `${(v / r.all * 100).toFixed(1)}%`.padStart(7);
-  console.log(`${name.padEnd(8)}  ${r.status}  ${pc(r.clear)} ${pc(r.hit)} ${pc(r.miss)}   `
-    + (r.hit === 0 ? "⚠ **② 区分が無い**" : "⚠ ① 区分あり"));
+  console.log(`${name.padEnd(8)}  ${結果.join("   ")}`);
 }
 await b.close();

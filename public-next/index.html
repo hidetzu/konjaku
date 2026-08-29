@@ -2,24 +2,54 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="robots" content="noindex">
+<meta name="color-scheme" content="light dark">
 <title>今昔 v0.1.0（作りかけ）</title>
-<style>
-  :root{ color-scheme: light dark; }
-  html{ font-size:16px }
-  body{
-    margin:0; min-height:100svh; display:grid; place-items:center;
-    font:16px/1.9 system-ui,-apple-system,"Hiragino Kaku Gothic ProN",sans-serif;
-    background:Canvas; color:CanvasText;
-  }
-  main{ max-width:34rem; padding:2rem 1.5rem }
-  h1{ font-size:1.25rem; margin:0 0 .5rem }
-  p{ margin:0 0 .75rem }
-  .dim{ opacity:.7; font-size:.875rem }
-</style>
-<main>
-  <h1>今昔 v0.1.0</h1>
-  <p>作りかけです。まだ何も見られません。</p>
-  <p class="dim">
-    いま見られるのは <a href="https://konjaku.hidetzu.work/">今昔（β）</a> です。
-  </p>
-</main>
+<link rel="stylesheet" href="./top.css">
+
+<div id="app">
+  <div id="map" role="application" aria-label="地図"></div>
+
+  <div id="bar">
+    <form id="find" role="search">
+      <input id="q" type="search" placeholder="住所・場所を検索"
+             autocomplete="off" enterkeyhint="search" aria-label="住所・場所を検索">
+    </form>
+    <button id="here" type="button" title="いまいる場所から">
+      <span aria-hidden="true">📍</span><span class="sr">いまいる場所から</span>
+    </button>
+  </div>
+  <ul id="hits" role="listbox" aria-label="検索の候補" hidden></ul>
+
+  <section id="card" aria-live="polite">
+    <p class="kick"><i class="dot" aria-hidden="true"></i><span id="kickText">地図を動かすと、その場所を調べます</span></p>
+    <div class="src">
+      <p class="src__from">いまの地形から</p>
+      <p class="big" id="gloss">　</p>
+      <p class="term" id="name">　</p>
+    </div>
+    <div class="src" id="meijiBox" hidden>
+      <p class="src__from">明治期の地図から</p>
+      <p class="src__body" id="meiji"></p>
+    </div>
+    <ul id="legend" aria-label="この画面に映っている土地"></ul>
+    <button id="more" type="button" hidden></button>
+  </section>
+
+  <section id="sheet" hidden aria-label="この画面に映っている土地">
+    <header>
+      <h2>この画面に映っている土地</h2>
+      <button class="close" type="button" id="sheetClose" aria-label="閉じる">✕</button>
+    </header>
+    <ul id="sheetList"></ul>
+    <p class="state" id="sheetState" hidden></p>
+  </section>
+</div>
+
+<script src="./esc.js"></script>
+<script src="./place-arg.js"></script>
+<script src="./words.js"></script>
+<script src="./swale.js"></script>
+<script src="./verify.js"></script>
+<script src="./land.js"></script>
+<script src="./gsi-address-search.js"></script>
+<script src="./top.js"></script>

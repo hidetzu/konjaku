@@ -1,0 +1,200 @@
+/* 今昔 v0.1.0 のスタイル。理由と決めごとは public-next/README.md に書いてある。 */
+
+:root{
+  --bg:#f2f5f7; --surface:#fff; --ink:#10161d; --ink-2:#3d4b57; --ink-3:#6b7a86;
+  --line:#c9d3db; --line-strong:#9daab4; --action:#175c90; --action-ink:#fff;
+  --tap:44px;
+  --gap-sub:.25rem; --gap-row:.5rem; --gap-block:1rem;
+  --pad-sm:.5rem; --pad-md:.75rem;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --bg:#0b0f14; --surface:#131a21; --ink:#e7edf2; --ink-2:#b3c0cb; --ink-3:#8595a2;
+    --line:#28323c; --line-strong:#485763; --action:#69aede; --action-ink:#0b0f14;
+  }
+}
+
+*{box-sizing:border-box}
+html{font-size:100%}
+body{
+  margin:0; background:var(--bg); color:var(--ink);
+  font:1rem/1.6 system-ui,-apple-system,"Hiragino Kaku Gothic ProN",sans-serif;
+  overscroll-behavior:none;
+}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+
+#app{position:fixed;inset:0}
+
+/* ---- 地図（主役） ---- */
+#map{position:absolute;inset:0;background:var(--bg)}
+#map canvas{display:block}
+
+/* ---- 上の帯 ---- */
+#bar{
+  position:absolute; left:var(--pad-sm); right:var(--pad-sm);
+  top:calc(var(--pad-sm) + env(safe-area-inset-top));
+  display:flex; gap:var(--gap-row);
+}
+#find{flex:1;display:flex}
+#q{
+  flex:1; min-width:0; min-height:var(--tap);
+  padding:0 var(--pad-md); font:inherit; font-size:.9375rem;
+  background:var(--surface); color:var(--ink);
+  border:1px solid var(--line-strong); border-radius:.75rem;
+  box-shadow:0 1px 6px rgb(0 0 0 / .10);
+}
+#here{
+  min-width:var(--tap); min-height:var(--tap);
+  font-size:1.125rem; line-height:1;
+  background:var(--surface); color:var(--ink);
+  border:1px solid var(--line-strong); border-radius:.75rem;
+  box-shadow:0 1px 6px rgb(0 0 0 / .10); cursor:pointer;
+}
+#here:focus-visible,#q:focus-visible{outline:2px solid var(--action);outline-offset:2px}
+
+/* ---- 検索の候補 ---- */
+#hits{
+  position:absolute; left:var(--pad-sm); right:var(--pad-sm);
+  top:calc(var(--tap) + var(--pad-sm) * 2 + env(safe-area-inset-top));
+  margin:0; padding:0; list-style:none; max-height:52vh; overflow:auto;
+  background:var(--surface); border:1px solid var(--line-strong); border-radius:.75rem;
+  box-shadow:0 4px 18px rgb(0 0 0 / .16);
+}
+#hits[hidden]{display:none}
+#hits li{border-bottom:1px solid var(--line)}
+#hits li:last-child{border-bottom:0}
+#hits button{
+  display:block; width:100%; min-height:var(--tap);
+  padding:var(--pad-sm) var(--pad-md); text-align:left;
+  font:inherit; font-size:.875rem; color:var(--ink);
+  background:none; border:0; cursor:pointer;
+}
+#hits button:hover,#hits button:focus-visible{background:var(--bg);outline:none}
+
+/* ---- 足元のカード ---- */
+#card{
+  position:absolute; left:var(--pad-sm); right:var(--pad-sm);
+  bottom:calc(var(--pad-sm) + env(safe-area-inset-bottom));
+  padding:var(--pad-md);
+  background:var(--surface); border:1px solid var(--line-strong); border-radius:.875rem;
+  box-shadow:0 -2px 16px rgb(0 0 0 / .12);
+}
+.kick{
+  display:flex; align-items:center; gap:.375rem;
+  margin:0 0 var(--gap-sub); font-size:.75rem; color:var(--ink-3);
+}
+.dot{
+  width:.5rem;height:.5rem;border-radius:50%;
+  border:2px solid var(--action); background:var(--surface); flex:none;
+}
+/* 主は、分かる言葉のほう。
+   利用者役 3 名のうち 2 名が「分かる言葉を小さいほうに置いているのが逆」
+   「かみ砕いたほうが読みにくいのは逆」と言った。
+   区分名は資料の言葉で、そのままでは読めない人がいる。 */
+.big{margin:0 0 var(--gap-sub); font-size:1.0625rem; font-weight:700; line-height:1.45}
+
+/* 区分名は、出典の言葉として添える。主ではない。
+   消しはしない。国土地理院の区分名を名乗れないと、何を根拠に言っているか分からなくなる。 */
+.term{
+  margin:0; font-size:.75rem; color:var(--ink-3); line-height:1.5;
+}
+.term::before{content:"国土地理院の区分：";}
+
+/* 資料ごとに箱を分ける。
+   利用者役 3 名が「上は言い切っているのに、下は資料が無いと言う。矛盾に見える」と言った。
+   上は今の地形の分類、下は明治期の地図。別の資料の話。
+   画面でも別の話だと分かる形にしないと、片方の「無い」がもう片方に効いて見える。 */
+.src + .src{
+  margin-top:var(--gap-row); padding-top:var(--gap-row);
+  border-top:1px solid var(--line);
+}
+.src[hidden]{display:none}
+.src__from{
+  margin:0 0 var(--gap-sub); font-size:.6875rem; color:var(--ink-3);
+  letter-spacing:.02em;
+}
+.src__body{margin:0; font-size:.875rem; color:var(--ink-2); line-height:1.55}
+.src__body b{color:var(--ink);font-weight:700}
+.src__body .none{color:var(--ink-3)}
+
+/* ---- 現在地の印 ----
+   利用者役 3 名のうち 2 名が「自分がどこにいるか 5 秒で分からなかった」と答えた。
+   地図の記号に紛れないよう、白い縁を回して、周りを暗く落とす。 */
+.me{
+  width:1.125rem;height:1.125rem;border-radius:50%;
+  background:var(--action);
+  border:3px solid #fff;
+  box-shadow:
+    0 0 0 1px rgb(0 0 0 / .35),
+    0 0 0 .625rem color-mix(in srgb, var(--action) 22%, transparent),
+    0 2px 6px rgb(0 0 0 / .4);
+}
+/* 現在地がどれか、字でも言う。色と位置だけで区別しない。 */
+.me-label{
+  position:absolute; left:50%; top:50%;
+  transform:translate(-50%, calc(-50% - 1.5rem));
+  padding:.125rem .375rem; border-radius:.25rem;
+  background:var(--action); color:var(--action-ink);
+  font-size:.625rem; font-weight:700; white-space:nowrap;
+  box-shadow:0 1px 4px rgb(0 0 0 / .35); pointer-events:none;
+}
+
+/* 凡例。この画面に映っている土地に名前を付ける。
+   現在地の区分を必ず含め、残りを面積順に、最大 3 種。
+   割合は言わない。整備されていないところは、ここに入れない。 */
+#legend{
+  display:flex; flex-wrap:wrap; gap:.375rem .625rem; align-items:center;
+  margin:var(--gap-row) 0 0; padding:var(--gap-row) 0 0;
+  border-top:1px solid var(--line);
+  list-style:none;
+}
+#legend:empty{display:none}
+#legend li{display:flex;align-items:center;gap:.25rem;font-size:.6875rem;color:var(--ink-3)}
+#legend li.here{color:var(--action);font-weight:700}
+#legend i{
+  width:.6875rem;height:.6875rem;border-radius:.1875rem;
+  border:1px solid rgb(0 0 0 / .16); flex:none;
+}
+#legend li.here i{border:2px solid var(--action)}
+
+/* 「ほか n 種」は押せる。押せるものは、押せる見た目にする。
+   利用者役 3 名とも「押せるように見えない」と言った。
+   出す以上は押せる先が要る、と決めてある。逆に、押せるのに押せなく見えるのも同じ問題。 */
+#more{
+  display:block; width:100%; min-height:var(--tap);
+  margin:var(--gap-row) 0 0; padding:0 var(--pad-md);
+  font:inherit; font-size:.8125rem; font-weight:700;
+  color:var(--action); background:none;
+  border:2px solid var(--action); border-radius:.625rem;
+  cursor:pointer;
+}
+#more[hidden]{display:none}
+#more:focus-visible{outline:2px solid var(--action);outline-offset:2px}
+
+/* 全区分を出す板。地図を覆いすぎない。 */
+#sheet{
+  position:absolute; left:var(--pad-sm); right:var(--pad-sm);
+  bottom:calc(var(--pad-sm) + env(safe-area-inset-bottom));
+  max-height:62%; overflow:auto; padding:var(--pad-md);
+  background:var(--surface); border:1px solid var(--line-strong); border-radius:.875rem;
+  box-shadow:0 -4px 22px rgb(0 0 0 / .18);
+}
+#sheet[hidden]{display:none}
+#sheet header{display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--gap-row)}
+#sheet h2{margin:0;font-size:.9375rem}
+#sheet .close{
+  min-width:var(--tap); min-height:var(--tap); font-size:1rem;
+  background:none; border:0; color:var(--ink-2); cursor:pointer;
+}
+#sheet ul{margin:0;padding:0;list-style:none}
+#sheet li{display:flex;align-items:center;gap:.5rem;padding:.4375rem 0;
+  border-bottom:1px solid var(--line);font-size:.8125rem}
+#sheet li:last-child{border-bottom:0}
+#sheet li.here{color:var(--action);font-weight:700}
+#sheet i{width:.875rem;height:.875rem;border-radius:.1875rem;border:1px solid rgb(0 0 0 / .16);flex:none}
+#sheet li.here i{border:2px solid var(--action)}
+/* 未整備は、土地の区分ではない。データの状態。区分一覧に混ぜない。 */
+#sheet .state{
+  margin:var(--gap-row) 0 0; padding-top:var(--gap-row);
+  border-top:1px dashed var(--line); font-size:.75rem; color:var(--ink-3); line-height:1.5;
+}
