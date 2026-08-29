@@ -1480,7 +1480,23 @@ CASES.push({
     });
     // ⚠ **合言葉は本物が作る**ので、⚠ 字そのものは決め打ちしない。⚠ **形だけ見る**
     must(/^[0-9A-HJKMNP-TV-Z]{8}$/.test(r.合言葉), `合言葉の形が違う: ${r.合言葉}`);
+    // ⚠ **画面が出した住所を、⚠ そのまま開く**（⚠ 字を突き合わせない）。
+    //   ⚠ **本番では `/take.html` が `/take` へ 307 で寄せられる**（⚠ 実測 2026-08-30）。
+    //   ⚠ **手元の配信は寄せないので、⚠ 字で見ていると、⚠ 本番と 1 手ずれても気づけない。**
+    //   ⚠ **だから「出した住所が本当に開くか」を見る。**
     must(/\/take$/.test(r.住所), `受け取り口の住所が出ていない: ${r.住所}`);
+    const 開いた = await page.evaluate(async (u) => {
+      // ⚠ **開けないことを、⚠ 例外のまま投げない。**⚠ **何が起きたかを字で返す**
+      //   （⚠ 「Failed to fetch」だけだと、⚠ 住所が悪いのか配信が落ちたのか分からない）。
+      try {
+        const res = await fetch(`${location.protocol}//${u}`, { redirect: "follow" });
+        return { status: res.status, 字: (await res.text()).slice(0, 4000) };
+      } catch (e) { return { status: 0, 字: "", 失敗: String(e).slice(0, 80) }; }
+    }, r.住所);
+    must(開いた.status === 200,
+      `画面が出した住所が開かない（${r.住所} → ${開いた.失敗 ?? 開いた.status}）`);
+    must(/保存した場所を受け取る/.test(開いた.字),
+      `画面が出した住所が、受け取り口ではない（${r.住所}）`);
     // ⚠ **ttl_sec から作っていること**（⚠ 600 秒 → 10 分。⚠ 直書きなら 5 分のまま）
     must(/10 分/.test(r.断り), `残り時間が ttl_sec から作られていない: ${r.断り}`);
     must(!/消えます/.test(r.断り), `「消えます」と言っている: ${r.断り}`);
@@ -1567,7 +1583,7 @@ const 送る = async (route, W, env, opts) => {
 
 CASES.push({
   name: "受け取り口で合言葉を打つと、足す前に中身を見せる",
-  path: "/take.html", origin: NEXT_BASE, viewport: PC,
+  path: "/take", origin: NEXT_BASE, viewport: PC,
   setup: (page) => 合言葉の口(page),
   async check(page) {
     // ⚠ **預けるところから、⚠ 本物の口を通す**（⚠ 実物の `saved.js` で詰めて、⚠ 実物の口へ）。
@@ -1659,7 +1675,7 @@ for (const [status, 名, 要る] of [
     // ⚠ **できないことから書き始めない**（`CLAUDE.md` §4-1）。
     //   ⚠ **1 行目は「できること」。**⚠ **手順は 410 も 404 も同じ。**⚠ **違うのは理由だけ。**
     name: `受け取り口は、${名}も次にすることを先に出す`,
-    path: "/take.html", origin: NEXT_BASE, viewport: PC,
+    path: "/take", origin: NEXT_BASE, viewport: PC,
     setup: (page) => 合言葉の口(page, 受け取れない[status]),
     async check(page) {
       const code = await 受け取れない[status].仕込む(page);
@@ -1700,7 +1716,7 @@ CASES.push({
   //   ⚠ **「0 件を受け取りました」と言わない。**⚠ **読めなかったことと、⚠ 0 件は違う。**
   // ⚠ **これは他の検査では見えない**（⚠ 実際に、⚠ この道を消しても素通りした）。
   name: "受け取り口は、読めない字を「0 件」と言わない",
-  path: "/take.html", origin: NEXT_BASE, viewport: PC,
+  path: "/take", origin: NEXT_BASE, viewport: PC,
   setup: (page) => 合言葉の口(page),
   async check(page) {
     // ⚠ **知らない版を、⚠ 本物の口に預ける**（⚠ 先頭が `9`）。
