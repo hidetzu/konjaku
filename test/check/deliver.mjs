@@ -608,8 +608,9 @@ head("8. CI の固定");
           + "（⚠ **PR で走ると、⚠ fork からの PR に秘密を渡す口になる**）");
 
     // ⚠ **出しっぱなしにしない。**⚠ 「デプロイが成功した」は「出ている」ではない（`CLAUDE.md` §1）
-    /sha256sum/.test(dep.body)
-      ? ok("出したあと、配った実体を取り直して手元と突き合わせている（sha256）")
+    // ⚠ **判定は走者が 1 か所で持つ**（⚠ 下でその `judge()` を直に呼んでいる）
+    /scripts\/check-next-deploy\.mjs/.test(dep.body)
+      ? ok("出したあと、配った実体を取り直して手元と突き合わせている")
       : bad("出したあと、⚠ 配った実体を確かめていない"
           + "（⚠ **「デプロイが成功した」は、⚠ 「出ている」ではない**）");
 
@@ -619,6 +620,47 @@ head("8. CI の固定");
           + "（⚠ **PR では走らないので、⚠ 報告が来ないまま永久に待ちになる**）")
       : ok("出す段は必須チェックにしていない（⚠ PR では走らないため）");
   }
+}
+
+
+// ── 出したものの照合が、⚠ 何を許して何を許さないか ────────────────
+// ⚠ **2026-08-29 に足した**（`docs/adr/0070`）。⚠ **初回の自動デプロイで、⚠ 実際に落ちた。**
+//   ⚠ **`robots.txt` だけが 3 回とも違った。**⚠ **Cloudflare の Managed robots.txt が、
+//     ⚠ こちらの `robots.txt` の前に `User-agent: *` ＋ `Allow: /` を挿入していた。**
+//   ⚠ **例外を作ると、⚠ そこは誰も見なくなる。**⚠ **だから例外そのものを検査する。**
+// ⚠ **走者の `judge()` を直に呼ぶ**（⚠ 字面を写さない。`CLAUDE.md` §3）。
+//   ⚠ **読み込んでも外へは出ない**（⚠ 走者は「自分が起動されたときだけ」動く形にしてある）。
+{
+  const { judge, NOT_SERVED, PREPENDED } = await import("../../scripts/check-next-deploy.mjs");
+
+  // ⚠ **配られないものを、⚠ 「届いていない」と読まない**（⚠ `_headers` は 404 になる）
+  NOT_SERVED.has("_headers")
+    ? ok("配られないもの（_headers）は、照合の対象から外れている")
+    : bad("_headers を照合しようとしている"
+        + "（⚠ **Cloudflare が消費するので 404 になる。**⚠ **毎回落ちる**）");
+
+  const cases = [
+    ["中身が同じなら通る", judge("top.js", "a=1\n", "a=1\n"), true],
+    ["⚠ 1 バイト違えば落ちる", judge("top.js", "a=1\n", "a=2\n"), false],
+    ["⚠ 取れなかったら落ちる", judge("top.js", "a=1\n", null), false],
+    ["⚠ 前に足されただけの robots.txt は通る",
+      judge("robots.txt", "User-agent: *\nDisallow: /\n",
+        "# Cloudflare\nAllow: /\n\nUser-agent: *\nDisallow: /\n"), true],
+    ["⚠ 中身が入っていない robots.txt は落ちる",
+      judge("robots.txt", "User-agent: *\nDisallow: /\n", "# Cloudflare\nAllow: /\n"), false],
+    ["⚠ robots.txt 以外は、前に足されたら落ちる",
+      judge("index.html", "<p>x</p>", "<!--足された-->\n<p>x</p>"), false],
+  ];
+  const wrong = cases.filter(([, got, want]) => got.ok !== want).map(([label]) => label);
+  wrong.length
+    ? bad(`照合の判定が仕様どおりでない: ${wrong.join(" ／ ")}`)
+    : ok(`照合の判定は、⚠ 許すものと許さないものを分けている（${cases.length} 通り）`);
+
+  // ⚠ **例外に理由が書いてあること**（⚠ 空の許可を作らない。⚠ 増えたときに読み返せるように）
+  const noWhy = [...PREPENDED].filter(([, why]) => !why || why.length < 20).map(([k]) => k);
+  noWhy.length
+    ? bad(`前に足されることを許しているのに、理由が書かれていない: ${noWhy.join(" ／ ")}`)
+    : ok(`前に足されることを許しているものは、⚠ 全部に理由がある（${PREPENDED.size} 件）`);
 }
 
 

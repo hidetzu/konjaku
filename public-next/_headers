@@ -1,0 +1,21 @@
+# ⚠ 作りかけの場所。⚠ 検索にも、⚠ AI の学習にも出さない。
+#
+# ⚠ **`robots.txt` だけでは足りなかった**（2026-08-29。`docs/adr/0070`）。
+#   ⚠ **Cloudflare の Managed robots.txt が、⚠ こちらの `robots.txt` の前に挿入される。**
+#   ⚠ **挿入されるのは `User-agent: *` ＋ `Allow: /`。**⚠ こちらは `User-agent: *` ＋ `Disallow: /`。
+#   ⚠ **RFC 9309 では、⚠ 同じ user-agent のグループは 1 つに統合され、
+#     ⚠ 同じ長さの一致では Allow が勝つ。**⚠ **つまり `Disallow: /` は打ち消されうる。**
+#   ⚠ **実測（2026-08-29）**: `dev.konjaku.hidetzu.work/robots.txt` を取ると、
+#     ⚠ **Cloudflare の塊が先に来て、⚠ こちらの 3 行は末尾に付いていた。**
+#   ⚠ **zone 全体（β 版も同じ zone）の設定なので、⚠ こちらからは外せない**
+#     （⚠ 外すと、⚠ β 版が持っている AI ボット 9 種の拒否も一緒に消える。
+#      ⚠ β 版は `public/robots.txt` を持たず、⚠ Cloudflare の分だけで出来ている）。
+#
+# ⚠ **ヘッダなら打ち消されない。**⚠ 配信の応答そのものなので、
+#   ⚠ **`robots.txt` の解釈に依らない。**⚠ **`noindex` は「索引に載せない」で、
+#   ⚠ `Disallow` の「取りに来ない」より強い**（⚠ 取りに来た上で載せない）。
+#
+# ⚠ **規則は 1 つだけにしてある。**⚠ **`_headers` は、⚠ 一致した規則を全部連結する**
+#   （⚠ 最も具体的なものが勝つ、ではない。`CLAUDE.md` §9）。
+/*
+  X-Robots-Tag: noindex, nofollow
