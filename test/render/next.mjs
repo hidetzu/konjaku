@@ -1171,16 +1171,15 @@ CASES.push({
     must(受け.行 > 0, "何が来たかを見せていない");
 
     await p2.locator("#gotYes").click();
-    await p2.waitForTimeout(1200);
+    await p2.waitForFunction(() => location.pathname.endsWith("/saved")
+      && document.querySelectorAll("#listItems li").length > 0, null, { timeout: 20000 });
     const 後 = await p2.evaluate(() => ({
-      見出し: document.getElementById("gotTitle").textContent.trim(),
+      見出し: document.querySelector(".list__h")?.textContent.trim() ?? "",
       控え: JSON.parse(localStorage.getItem("konjaku-next-saved-v1") ?? "[]").length,
-      // ⚠ **「地図をひらく」は消した**（2026-08-30）。⚠ **出口は名乗りと「深く読む」。**
       入口: document.querySelector(".brand__name")?.getAttribute("href") === "./",
       // ⚠ **`#` 側で見る**（2026-08-30）。⚠ **`?take=` は読まなくなった。**
-      //   ⚠ **`searchParams` で見ていると、⚠ 何も見なくなる。**
       URLに残る: !!location.hash,
-      深掘り: [...document.querySelectorAll("#gotList a")].map((a) => a.getAttribute("href")),
+      深掘り: [...document.querySelectorAll("#listItems a")].map((a) => a.getAttribute("href")),
     }));
     must(後.控え > 0, `足したのに、控えが増えていない（${後.控え} 件）`);
     // ⚠ **足したあとに `?take=` を残さない**（2026-08-30 に踏んだ）。
@@ -1190,8 +1189,8 @@ CASES.push({
     // ⚠ **受け取ったあと、⚠ 深掘りへ行ける**（`docs/adr/0049`「PC は深掘りする場所」）
     must(後.深掘り.length > 0 && 後.深掘り.every((h) => /deep\?ll=/.test(h)),
       `受け取った場所から深掘りへ行けない: ${JSON.stringify(後.深掘り)}`);
-    must(/足しました/.test(後.見出し), `足したと言っていない: ${後.見出し}`);
-    must(後.入口, "足したのに、一覧への入口が出ない");
+    must(/保存した場所/.test(後.見出し), `一覧へ進んでいない: ${後.見出し}`);
+    must(後.入口, "足したのに、アプリへ戻る道が無い");
     await 別.close();
     return `${url.length} 文字・${受け.行} 件を見せて・押すと ${後.控え} 件`;
   },
@@ -1649,16 +1648,17 @@ CASES.push({
     must(/消えません/.test(前.本文), `いまの保存が消えないと言っていない: ${前.本文}`);
     must(/どこにも送りません/.test(前.断り), `どこにも送らないと言っていない: ${前.断り}`);
 
+    // ⚠ **足したら `/saved` へ進む**（2026-08-30）。⚠ **進んだ先で確かめる。**
     await page.locator("#gotYes").click();
-    await page.waitForTimeout(600);
+    await 待つ(page, () => location.pathname.endsWith("/saved"), "保存した場所の一覧");
     const 後 = await page.evaluate(() => ({
-      見出し: document.getElementById("gotTitle").textContent.trim(),
+      見出し: document.querySelector(".list__h")?.textContent.trim() ?? "",
       控え: JSON.parse(localStorage.getItem("konjaku-next-saved-v1") ?? "[]").length,
       名前: (JSON.parse(localStorage.getItem("konjaku-next-saved-v1") ?? "[]")[0] ?? {}).name,
-      // ⚠ **`hidden` 属性ではなく、⚠ 見えているかで見る**（⚠ `display` に負ける）
       地図へ: document.querySelector(".brand__name")?.getAttribute("href") === "./",
-      足すが見える: document.getElementById("gotYes").checkVisibility(),
-      入力欄が見える: document.getElementById("recvIn").checkVisibility(),
+      // ⚠ **受け取り口の器が残っていないこと**（⚠ 進んだので、⚠ もう無い）
+      足すが見える: !!document.getElementById("gotYes"),
+      入力欄が見える: !!document.getElementById("recvIn"),
     }));
     must(後.控え === 2, `足したのに控えが 2 件でない（${後.控え} 件）`);
     // ⚠ **終わったら、⚠ 押す口を畳む**（2026-08-30 に踏んだ）。
@@ -1666,12 +1666,10 @@ CASES.push({
     //   ⚠ **`.take__act` が `display:flex` を持っていて、⚠ `[hidden]` の打ち消しが無かった。**
     //   ⚠ **このファイルは規則ごとに `[hidden]{display:none}` を書く作りで、⚠ 書き忘れると効かない。**
     //   ⚠ **`hidden` 属性は付くので、⚠ 属性で見ていると素通りする。**⚠ **見えているかで見る。**
-    must(!後.足すが見える,
-      "足したあとも「この端末に足す」が見えている（⚠ もう一度押せてしまう）");
-    must(!後.入力欄が見える,
-      "足したあとも入力欄が出ている（⚠ まだ何か入れるのか、と読める）");
+    must(!後.足すが見える, "足したあとも受け取り口に居る（⚠ もう一度押せてしまう）");
+    must(!後.入力欄が見える, "足したあとも受け取り口に居る（⚠ まだ何か入れるのか、と読める）");
     must(後.名前 === "東京都江東区豊洲三丁目", `名前が欠けている: ${JSON.stringify(後.名前)}`);
-    must(/足しました/.test(後.見出し), `足したと言っていない: ${後.見出し}`);
+    must(/保存した場所/.test(後.見出し), `一覧へ進んでいない: ${後.見出し}`);
     must(後.地図へ, "足したのに、アプリへ戻る道が無い");
     return `${code} を小文字と区切りつきで打って ${前.行} 件を見せ、押すと ${後.控え} 件`;
   },
@@ -2347,28 +2345,73 @@ CASES.push({
     await page.locator("#recvIn").fill(code);
     await page.locator("#recvGo").click();
     await 待つ(page, () => !document.getElementById("recvGot").hidden, "受け取った中身");
-    const 前 = await page.evaluate(() => document.getElementById("gotSaved").checkVisibility());
-    must(!前, "足す前から、一覧への道が出ている");
+    // ⚠ **足したら、⚠ そのまま一覧へ進む**（2026-08-30。⚠ Owner 判断）。
+    //   ⚠ **前は「N 件を足しました」と一覧をもう一度出していた。**
+    //   ⚠ **同じ一覧を 2 度見せる意味が薄い。**⚠ **次にやること（深掘り）は `/saved` が引き受ける。**
+    //   ⚠ **確かめの一歩（足す前に見せて押してもらう）は残す**（`docs/adr/0069`・`0072`）。
     await page.locator("#gotYes").click();
-    await page.waitForTimeout(600);
-    const r = await page.evaluate(() => {
-      const a = document.getElementById("gotSaved");
-      const q = a.getBoundingClientRect();
-      return { 見える: a.checkVisibility(), 先: a.getAttribute("href"),
-               字: a.textContent.trim(), h: Math.round(q.height) };
-    });
-    must(r.見える, "足したのに、一覧への道が出ない");
-    must(r.先 === "./saved", `一覧への行き先が違う: ${r.先}`);
-    must(r.h >= 44, `一覧への道が 44 を割っている（${r.h}px）`);
-    // ⚠ **実際に開いて、⚠ 足したものが並ぶこと**（⚠ リンクが在るだけでは足りない）
-    await page.locator("#gotSaved").click();
     await 待つ(page, () => document.querySelectorAll("#listItems li").length > 0, "一覧の行");
     const 一覧 = await page.evaluate(() => ({
+      道: location.pathname,
       行: document.querySelectorAll("#listItems li").length,
       字: document.querySelector("#listItems li")?.textContent.replace(/\s+/g, " ").trim(),
     }));
+    must(/\/saved$/.test(一覧.道), `一覧へ進んでいない（いま ${一覧.道}）`);
     must(一覧.行 === 1, `一覧に足したものが並んでいない（${一覧.行} 行）`);
     must(/豊洲/.test(一覧.字 ?? ""), `並んだものが違う: ${一覧.字}`);
-    return `「${r.字}」→ ${r.先} ／ 一覧に ${一覧.行} 件`;
+    return `足す → ${一覧.道} ／ 一覧に ${一覧.行} 件`;
+  },
+});
+
+CASES.push({
+  // ⚠ **置けなかったときは、⚠ 進まない**（2026-08-30）。
+  //   ⚠ **`/saved` は `localStorage` から作る。**⚠ **置けていなければ、⚠ 何も並ばない。**
+  //   ⚠ **黙って空の一覧へ送ると、⚠ 「消えた」と読める**（`CLAUDE.md` §1）。
+  // ⚠ **この道は、⚠ 検査を足すまで一度も通っていなかった**（⚠ わざと壊しても素通りした）。
+  name: "受け取り口は、置けなかったときに一覧へ進まない",
+  path: "/take", origin: NEXT_BASE, viewport: PC,
+  setup: async (page) => {
+    await 合言葉の口(page);
+    // ⚠ **読むのはできるが、⚠ 書けない端末**（⚠ ブラウザの設定でそうなることがある）
+    await page.addInitScript(() => {
+      const 元 = Storage.prototype.setItem;
+      Storage.prototype.setItem = function (k, v) {
+        if (k === "konjaku-next-saved-v1") throw new Error("置けない（わざと）");
+        return 元.call(this, k, v);
+      };
+    });
+  },
+  async check(page) {
+    const code = await page.evaluate(async () => {
+      const 圧縮 = async (t) => {
+        const s = new Blob([t]).stream().pipeThrough(new CompressionStream("gzip"));
+        return KonjakuSaved.bytes2b64(new Uint8Array(await new Response(s).arrayBuffer()));
+      };
+      const payload = await KonjakuSaved.toText(
+        [{ lat: 35.65531, lon: 139.79672, name: "東京都江東区豊洲三丁目", value: "旧水部", at: 3 }],
+        圧縮);
+      const res = await fetch("/api/handoff", { method: "POST",
+        headers: { "content-type": "application/json" }, body: JSON.stringify({ payload }) });
+      return (await res.json()).code;
+    });
+    await page.locator("#recvIn").fill(code);
+    await page.locator("#recvGo").click();
+    await 待つ(page, () => !document.getElementById("recvGot").hidden, "受け取った中身");
+    await page.locator("#gotYes").click();
+    await page.waitForTimeout(1200);
+    const r = await page.evaluate(() => ({
+      道: location.pathname,
+      見出し: document.getElementById("gotTitle")?.textContent.trim() ?? "",
+      本文: document.getElementById("gotBody")?.textContent.trim() ?? "",
+      足すが見える: document.getElementById("gotYes")?.checkVisibility() ?? false,
+    }));
+    must(!/\/saved$/.test(r.道), `置けていないのに一覧へ進んだ（${r.道}）`);
+    // ⚠ **「足しました」と言わない**（⚠ 置けていない）
+    must(!/足しました/.test(r.見出し), `置けていないのに足したと言っている: ${r.見出し}`);
+    must(/残せませんでした/.test(r.見出し), `置けなかったと言っていない: ${r.見出し}`);
+    // ⚠ **こちらの都合を、⚠ 相手の都合のように言わない**
+    must(/ブラウザの設定/.test(r.本文), `なぜ置けないかを言っていない: ${r.本文}`);
+    must(!r.足すが見える, "置けなかったのに、もう一度押せる");
+    return `${r.道} に留まり「${r.見出し}」`;
   },
 });
