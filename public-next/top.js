@@ -25,6 +25,7 @@
   const kickText = $("kickText"), nameEl = $("name"), glossEl = $("gloss"), legendEl = $("legend");
   const moreBtn = $("more"), sheet = $("sheet"), sheetList = $("sheetList"), sheetState = $("sheetState");
   const subEl = $("sub"), whyEl = $("why");
+  const erasLabel = $("erasLabel"), erasLabelText = $("erasLabelText");
   const meijiEl = $("meiji"), meijiRow = $("meijiRow");
   const photoEl = $("photo"), photoRow = $("photoRow");
   const areaEl = $("area"), areaRow = $("areaRow"), areaNote = $("areaNote"), areaCite = $("areaCite");
@@ -357,6 +358,7 @@
     drawShare();           // 同上。開いた人が何も読めない URL を配らせない
     setEra(null);          // 場所が変わったら、前の場所の写真を残さない
     subEl.textContent = ""; subEl.hidden = true;
+    erasLabel.hidden = true;
     erasEl.hidden = true; erasEl.innerHTML = "";
     if (!v || v.state === Konjaku.STATE.UNREACHABLE) {
       glossEl.textContent = "いま、この場所を調べられません";
@@ -393,9 +395,11 @@
   // まとめの 1 行。「明治期は X／空中写真 N 年代」。
   //   取れたものだけ並べる。取れなかったことは、ここでは言わない（「なぜそう言える？」の中で言う）。
   //   前提は「長い文章はその場では読まれない」。ここは 1 行を超えさせない。
-  const 概略 = { meiji: null, photo: null };
+  //   空中写真の数は、ここには置かない（2026-08-30）。チップの見出しが引き取った。
+  //   同じことを 2 か所で言うと、片方だけ古くなる。
+  const 概略 = { meiji: null };
   function drawSub() {
-    const 並び = [概略.meiji, 概略.photo].filter(Boolean);
+    const 並び = [概略.meiji].filter(Boolean);
     subEl.hidden = !並び.length;
     subEl.innerHTML = 並び.join("／");
   }
@@ -451,7 +455,7 @@
   async function askPhoto(lon, lat, seq) {
     photoRow.hidden = true;
     erasEl.hidden = true; erasEl.innerHTML = "";
-    概略.photo = null;
+    erasLabel.hidden = true;
     const f = await KonjakuLand.photos(lon, lat).catch(() => null);
     if (seq !== askSeq) return;
     if (!f) return;                                     // 取れなかった。黙る
@@ -469,8 +473,11 @@
       photoEl.innerHTML = `<span class="none">この場所の空中写真は、残っていません</span>`;
       return;
     }
-    概略.photo = `空中写真 <b>${残る.length} 年代</b>`;
-    drawSub();
+    // 数はチップから数える。まとめの 1 行には出さない。
+    //   出すと同じことを 2 か所で言うことになり、片方だけ古くなる。
+    //   「（7）」と書いてチップが 5 つ、も起きない。
+    erasLabelText.textContent = `空中写真がある年代（${残る.length}）`;
+    erasLabel.hidden = false;
     // 既定は地図。押されるまで写真は出さない。
     //   古い順。verify.js が時系列に並べ替えて返している。
     //   年は 2 行に割る（「1936」「–42」）。1 行だと 7 つが画面に収まらない。

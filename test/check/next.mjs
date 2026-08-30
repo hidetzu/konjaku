@@ -11,7 +11,8 @@
 
 import { readFileSync, existsSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
-import { ROOT, ok, bad, warn, head, HEAD_COMMENT } from "./lib.mjs";
+import { ROOT, ok, bad, warn, head, HEAD_COMMENT, BLOCK_COMMENT,
+         parseColor, contrast } from "./lib.mjs";
 
 head("v0.1.0 の器");
 
@@ -100,6 +101,12 @@ else {
     //   ⚠ **原典（landform.json の why）との関係も決まっている**（⚠ 置き換えではない）。
     //   ⚠ **同じ問いに答えるものを 2 つ持たない**（`CLAUDE.md` §3）。⚠ 作り直すと 2 つになる。
     "words.js",
+
+    // ⚠ **`favicon.svg`**（2026-08-30。Owner 判断。⚠ 絵を見て決めた）。
+    //   ⚠ **同じ道具の、⚠ 同じマーク。**⚠ **作り直すと 2 つになる**（`CLAUDE.md` §3）。
+    //   ⚠ **中身は `public/favicon.svg` と 1 バイトも違わない**（⚠ 検査が突き合わせている）。
+    //   ⚠ **これは「β 版の画面を前提にする」ではない。**⚠ **道具の名乗りは 1 つ。**
+    "favicon.svg",
 
     // ⚠ **最初の縦切りで運ぶもの**（2026-08-29。Owner 指示。`docs/adr/0059` の実装フェーズ）。
     //   ⚠ **住所検索／現在地 → 地図 → 足元の地形分類 → 区分名と説明文、まで。**
@@ -293,4 +300,97 @@ else {
       ? ok("v0.1.0 は空の器だが、β 版へ戻れる")
       : warn("v0.1.0 が空の器なのに、β 版への行き先が無い（⚠ 見せられた人の行き場が無い）");
   }
+
+  // ---- ⚠ ⑩ 色は 1 か所か。⚠ どの色みでも読めるか ----
+  //
+  // ⚠ **2026-08-30 に集めた**（⚠ `public-next/theme.css`）。⚠ **それまでは誰も測っていなかった。**
+  //   ⚠ **`test/check/color.mjs` は `public/css/theme.css` しか読まない。**
+  //   ⚠ **v0.1.0 の色は、⚠ コントラストの検査を 1 つも受けていなかった。**
+  //   ⚠ **集めた結果、⚠ 3 つが下限を割っていた**（⚠ `--ink-3` 明 3.95 ／ `--line-strong` 明暗 2.1 台）。
+  //
+  // ⚠ **色の計算は `lib.mjs` が持つ。**⚠ **ここで持ち直さない。**
+  {
+    const THEME = join(NEXT, "theme.css");
+    if (!existsSync(THEME)) bad("public-next/theme.css が無い（⚠ 色を 1 か所に集める先）");
+    else {
+      const css = readFileSync(THEME, "utf8").replace(BLOCK_COMMENT, " ");
+
+      // ⚠ **色みごとに、⚠ 名前 → 値の表を作る。**⚠ **明るいが既定、⚠ 暗いは media の中。**
+      const 明 = {}, 暗 = {};
+      const 拾う = (chunk, into) => {
+        for (const m of chunk.matchAll(/--([\w-]+)\s*:\s*([^;]+);/g)) {
+          const v = m[2].trim();
+          if (parseColor(v)) into[m[1]] = v;
+        }
+      };
+      const i = css.indexOf("@media");
+      拾う(css.slice(0, i < 0 ? css.length : i), 明);
+      Object.assign(暗, 明);
+      if (i >= 0) 拾う(css.slice(i), 暗);
+
+      // ⚠ **名前が色みどうしで揃っているか**（⚠ 欠けると、⚠ 前の色みの色がそこだけ残る）。
+      //   ⚠ **重ねたあとで数えない。**⚠ **重ねると、⚠ 欠けた名前が明るい色みの値を継いで見えなくなる**
+      //   （⚠ 2026-08-30 に実際にそうなった: ⚠ 暗い色みの `--line` を消しても素通りした）。
+      //   ⚠ **だから、⚠ それぞれの節が「自分で宣言した名前」を数える。**
+      const 宣言 = {};
+      拾う(css.slice(0, i < 0 ? css.length : i), 宣言);   // ⚠ 明るい色みの宣言（＝ 明 と同じ）
+      const 暗の宣言 = {};
+      if (i >= 0) 拾う(css.slice(i), 暗の宣言);
+      const 欠け = Object.keys(宣言).filter((k) => !(k in 暗の宣言));
+      欠け.length
+        ? bad(`暗い色みで宣言されていない色がある: ${欠け.join(" ")}`
+            + "。⚠ **明るい色みの値がそこだけ残る**")
+        : ok(`色の名前が 2 つの色みで揃っている（${Object.keys(宣言).length} 個）`);
+
+      // ⚠ **色の値が theme.css の外に無いか**（`.claude/rules/css.md` の MUST）
+      //   ⚠ **`mask-image` の中は見ない**（⚠ 色ではなく「隠す／出す」の指定）。
+      const 外 = [];
+      for (const f of readdirSync(NEXT).filter((f) => f.endsWith(".css") && f !== "theme.css")) {
+        const t = readFileSync(join(NEXT, f), "utf8").replace(BLOCK_COMMENT, " ");
+        for (const line of t.split("\n")) {
+          if (/mask-image|url\(/.test(line)) continue;
+          for (const m of line.matchAll(/#[0-9a-fA-F]{3,8}\b|rgba?\(/g)) 外.push(`${f}: ${m[0]}`);
+        }
+      }
+      外.length
+        ? bad(`色の値が theme.css の外にある: ${外.join(" / ")}`
+            + "。⚠ **2 か所に持つと、⚠ 色みを足したとき片方だけ切り替わる**")
+        : ok("色の値は theme.css にしかない（⚠ 画面の CSS には 1 つも無い）");
+
+      // ⚠ **読めるか。**⚠ **地は 3 つ**（`--bg` `--surface` `--surface-2`）。
+      //   ⚠ **いちばん厳しい地に対して測る。**⚠ **面の上のほうが厳しいことがある**
+      //   （⚠ β で実際に踏んでいる: ⚠ 地だけで測ると惜しいだけに見えた）。
+      const 地 = ["bg", "surface", "surface-2"];
+      const AA = 4.5, 枠 = 3.0;
+      const 悪い = [], 名乗り = [];
+      for (const [色み, t] of [["明るい", 明], ["暗い", 暗]]) {
+        for (const [名, 要る] of [["ink", AA], ["ink-2", AA], ["ink-3", AA], ["line-strong", 枠]]) {
+          if (!t[名]) continue;
+          const 値 = 地.filter((g) => t[g])
+            .map((g) => contrast(parseColor(t[名]), parseColor(t[g])));
+          const 最小 = Math.min(...値);
+          名乗り.push(`${色み} --${名} ${最小.toFixed(2)}`);
+          if (最小 < 要る) 悪い.push(`${色み}の --${名} が ${最小.toFixed(2)}（${要る} 未満）`);
+        }
+        // ⚠ **押せる色の上の文字は、⚠ 乗る相手に対して測る**（⚠ 地に対して測っても意味がない）
+        if (t["action"] && t["action-ink"]) {
+          const r = contrast(parseColor(t["action-ink"]), parseColor(t["action"]));
+          名乗り.push(`${色み} --action-ink ${r.toFixed(2)}`);
+          if (r < AA) 悪い.push(`${色み}の --action-ink が ${r.toFixed(2)}（${AA} 未満・乗る相手は --action）`);
+        }
+      }
+      悪い.length
+        ? bad(`v0.1.0 の色が下限に届いていない: ${悪い.join(" ／ ")}`)
+        : ok(`v0.1.0 の色は、⚠ 3 つの地すべてで下限を満たす（${名乗り.join(" ／ ")}）`);
+
+      // ⚠ **3 つの画面が theme.css を読んでいるか**（⚠ 読まないと、⚠ 色が 1 つも効かない）
+      const 読まない = ["index.html", "take.html", "deep.html"]
+        .filter((f) => existsSync(join(NEXT, f)))
+        .filter((f) => !/href="\.\/theme\.css"/.test(readFileSync(join(NEXT, f), "utf8")));
+      読まない.length
+        ? bad(`theme.css を読んでいない画面がある: ${読まない.join(" ")}`)
+        : ok("v0.1.0 の 3 つの画面が theme.css を読んでいる");
+    }
+  }
+
 }

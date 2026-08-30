@@ -4,11 +4,19 @@
 <meta name="robots" content="noindex">
 <meta name="color-scheme" content="light dark">
 <title>今昔 v0.1.0（作りかけ）</title>
+<link rel="stylesheet" href="./theme.css">
 <link rel="stylesheet" href="./top.css">
 
 <div id="app">
   <div id="map" role="application" aria-label="地図"></div>
-
+  <!-- 名乗り。何のサイトかを、画面のどこにも書いていなかった。
+       同じ問題を β 版が実測で踏んで、同じ形で解いている。 -->
+  <header class="brand" id="brand">
+    <span class="brand__name">
+      <img class="brand__mark" src="./favicon.svg" alt="" width="20" height="20">
+      今昔　この土地は、昔なんだったのか？
+    </span>
+  </header>
   <div id="bar">
     <form id="find" role="search">
       <input id="q" type="search" placeholder="住所・場所を検索"
@@ -40,7 +48,12 @@
     <p class="ans" id="gloss">　</p>
     <p class="sub" id="sub"></p>
 
-    <!-- 空中写真の年代。押すと、その年代の写真が地図になる。 -->
+    <!-- 空中写真の年代。押すと、その年代の写真が地図になる。
+         チップの直上に「これは何か」を置く。置かないと、押す前に
+         「いつ変わったか」と読まれる（利用者役 5 名中 3 名）。 -->
+    <p class="eras__label" id="erasLabel" hidden>
+      <i class="eras__mark" aria-hidden="true"></i><span id="erasLabelText"></span>
+    </p>
     <div class="eras" id="eras" role="group" aria-label="空中写真の年代" hidden></div>
     <p class="era-note" id="eraNote" hidden></p>
     <button class="era-back" id="eraBack" type="button" hidden>地図に戻す</button>
