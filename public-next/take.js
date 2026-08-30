@@ -33,7 +33,22 @@
   //   これは画面がそう言っているので、ここで必ず守る。
   const 整える = (s) => String(s ?? "").replace(/[\s-]/g, "").toUpperCase();
 
+  // 深掘りの行き先。座標の渡し方は 1 か所（place-arg.js）に寄せたいが、
+  //   この画面は地図も検索も持たないので、ここでは緯度経度だけを渡す。
+  const 深掘りへ = (r) =>
+    `./deep?ll=${Number(r.lat).toFixed(5)},${Number(r.lon).toFixed(5)}`;
+
   let 来たもの = null;
+
+  // ② URL から take を落とす。読み込み直しで、また同じ問いが出ないように。
+  //   前は「いまはしない」にしか無く、足したあとは残っていた（2026-08-30 に踏んだ）。
+  //   残ると、履歴とアドレス欄に荷物が残り、そのまま共有すると場所を配る。
+  const URLを掃除 = () => {
+    const u = new URL(location.href);
+    if (!u.searchParams.has("take") && !u.hash) return;
+    u.searchParams.delete("take");
+    history.replaceState(null, "", u.pathname + u.search);
+  };
 
   // 押したあとに何が起きたかを、必ず字で言う。
   const 言う = (t) => { said.textContent = t ?? ""; said.hidden = !t; };
@@ -63,6 +78,30 @@
     gotAct.hidden = false;
     gotMap.hidden = true;
     gotNote.textContent = "受け取った場所は、この端末の中だけに残ります。どこにも送りません。";
+  }
+
+  // ③ リンク（?take=）で来た人。合言葉は要らない。荷物が URL に載っている。
+  //   受けるのはこの画面だけ（2026-08-30。Owner 判断）。前は地図の上にも板があった。
+  //
+  // 荷物は # に載っている。? だと配信元へ届く（2026-08-30 に直した）。
+  //   古いリンク（?take=）も読む。読めなくすると、すでに送った人が受け取れない。
+  //   ただし新しく作るリンクは # だけ（top.js の handUrl）。
+  async function リンクで受ける() {
+    const t = location.hash.slice(1)
+      || new URLSearchParams(location.search).get("take");
+    if (!t) return false;
+    const list = await S.fromText(t, 解凍).catch(() => null);
+    if (!list) {
+      // 読み取れなかった。「無い」とも「0 件」とも言わない。
+      //   ここは合言葉を出し直しても解けない（リンクが壊れている）ので、字を分ける。
+      again.hidden = false;
+      why.textContent = "このリンクは読み取れませんでした。"
+        + "この端末に保存した場所は、そのままです。";
+      URLを掃除();
+      return true;
+    }
+    見せる(list);
+    return true;
   }
 
   form.addEventListener("submit", async (e) => {
@@ -119,12 +158,24 @@
     gotBody.textContent = r.重なった
       ? `${r.重なった} 件は、すでにこの端末にありました。`
       : "";
-    gotList.innerHTML = "";
+    // ④ 受け取った場所から、深掘りへ行けるようにする。
+    //   前は名前が消えて「地図をひらく」だけが残り、しかも場所を渡していなかった。
+    //   この画面は帰宅後の PC で開く。深掘りは、まさにここでやること。
+    gotList.innerHTML = r.list.slice(0, 20).map((x) =>
+      `<li><span class="n">${esc(x.name ?? "地図から選んだ場所")}</span>`
+      + `<a class="recv__deep" href="${深掘りへ(x)}">深く読む</a></li>`).join("")
+      + (r.list.length > 20 ? `<li><span class="n">ほか ${r.list.length - 20} 件</span></li>` : "");
     gotAct.hidden = true;
     gotMap.hidden = false;
+    // 地図も、受け取った場所へ寄せる。既定の場所を開かない。
+    const 先頭 = r.list[0];
+    gotMap.href = 先頭
+      ? `./?ll=${Number(先頭.lat).toFixed(5)},${Number(先頭.lon).toFixed(5)}`
+      : "./";
     gotNote.textContent = 置けた
       ? ""
       : "この端末では、保存した場所を覚えておけません（ブラウザの設定によります）。";
+    URLを掃除();
     // 終わったら、入力の口を畳む。この画面は 1 つのことをする画面で、
     //   足したあとに「まだ何か入れるのか」と読ませない。
     //   もう一度受け取りたい人のために、開き直す道は残す。
@@ -133,9 +184,13 @@
     hint.textContent = "別の合言葉で受け取るときは、この画面を開き直してください。";
   });
 
+  // 起動時。リンクで来ていれば、合言葉を待たずに受ける。
+  リンクで受ける();
+
   $("gotNo").addEventListener("click", () => {
     got.hidden = true;
     来たもの = null;
+    URLを掃除();
     // 押したのに何も言わないと、効いたのか分からない。
     言う("足していません。この端末に保存した場所は、そのままです。");
     input.value = "";

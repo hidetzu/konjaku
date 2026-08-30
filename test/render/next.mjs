@@ -1133,21 +1133,31 @@ CASES.push({
     await page.locator("#handOut").click();
     await page.waitForTimeout(800);
     const url = await page.evaluate(() => navigator.clipboard.readText());
-    must(url && /[?&]take=/.test(url), `渡すリンクに中身が入っていない: ${url}`);
+    must(url && /#\S/.test(url), `渡すリンクに中身が入っていない: ${url}`);
     // ⚠ **長すぎる URL は、⚠ 開いた先で切れる**（⚠ 実用上 2000 文字）
     must(url.length <= 2000, `渡すリンクが長すぎる（${url.length} 文字）`);
+
+    // ⚠ **リンクの行き先は受け取り口**（2026-08-30）。⚠ **地図の上では受けない。**
+    //   ⚠ **前はトップ（`/?take=`）で受けていて、⚠ 受け取る画面が 2 つあった。**
+    //   ⚠ **同じ問いに答える画面が 2 つあると、⚠ 片方だけ直る**（⚠ 実際にそうなった）。
+    must(/\/take#/.test(url), `リンクが受け取り口を指していない: ${url.slice(0, 60)}`);
+    // ⚠ **荷物を `?` に載せない**（2026-08-30 に直した）。
+    //   ⚠ **クエリは HTTP のリクエスト行に載る。**⚠ **開いた瞬間に配信元へ届く。**
+    //   ⚠ **画面は「サーバを通さずに渡す」と言っている。**⚠ **`#` にして初めて字義どおりになる。**
+    must(!/[?&]take=/.test(url), `荷物がクエリに載っている（配信元へ届く）: ${url.slice(0, 60)}`);
 
     // ⚠ **別の端末で開く**（⚠ 器を分ける。⚠ localStorage も別）
     const 別 = await page.context().browser().newContext({ viewport: { width: 1440, height: 950 } });
     const p2 = await 別.newPage();
     await p2.goto(url.replace(/^https?:\/\/[^/]+/, NEXT_BASE), { waitUntil: "domcontentloaded" });
-    await p2.waitForFunction(() => !document.getElementById("take").hidden, null, { timeout: 20000 });
+    await p2.waitForFunction(() => !document.getElementById("recvGot").hidden, null, { timeout: 20000 });
     const 受け = await p2.evaluate(() => ({
-      見出し: document.getElementById("takeTitle").textContent.trim(),
-      本文: document.getElementById("takeBody").textContent.trim(),
-      断り: document.getElementById("takeNote").textContent.trim(),
-      行: document.querySelectorAll("#takeList li").length,
+      見出し: document.getElementById("gotTitle").textContent.trim(),
+      本文: document.getElementById("gotBody").textContent.trim(),
+      断り: document.getElementById("gotNote").textContent.trim(),
+      行: document.querySelectorAll("#gotList li").length,
       控え: JSON.parse(localStorage.getItem("konjaku-next-saved-v1") ?? "[]").length,
+      合言葉の欄: document.getElementById("recvIn").checkVisibility(),
     }));
     // ⚠ **開いた瞬間に混ぜない。**⚠ **見せて、⚠ 押してもらう**
     must(受け.控え === 0, `開いただけで混ざっている（控え ${受け.控え} 件）`);
@@ -1157,14 +1167,23 @@ CASES.push({
     must(/どこにも送りません/.test(受け.断り), `どこにも送らないと言っていない: ${受け.断り}`);
     must(受け.行 > 0, "何が来たかを見せていない");
 
-    await p2.locator("#takeYes").click();
+    await p2.locator("#gotYes").click();
     await p2.waitForTimeout(1200);
     const 後 = await p2.evaluate(() => ({
-      見出し: document.getElementById("takeTitle").textContent.trim(),
+      見出し: document.getElementById("gotTitle").textContent.trim(),
       控え: JSON.parse(localStorage.getItem("konjaku-next-saved-v1") ?? "[]").length,
-      入口: !document.getElementById("savedOpen").hidden,
+      入口: document.getElementById("gotMap").checkVisibility(),
+      URLに残る: new URL(location.href).searchParams.has("take"),
+      深掘り: [...document.querySelectorAll("#gotList a")].map((a) => a.getAttribute("href")),
     }));
     must(後.控え > 0, `足したのに、控えが増えていない（${後.控え} 件）`);
+    // ⚠ **足したあとに `?take=` を残さない**（2026-08-30 に踏んだ）。
+    //   ⚠ **残ると、⚠ 読み込み直しでまた同じ問いが出る。**
+    //   ⚠ **履歴とアドレス欄に荷物が残り、⚠ そのまま共有すると場所を配る。**
+    must(!後.URLに残る, "足したのに、URL に take= が残っている");
+    // ⚠ **受け取ったあと、⚠ 深掘りへ行ける**（`docs/adr/0049`「PC は深掘りする場所」）
+    must(後.深掘り.length > 0 && 後.深掘り.every((h) => /deep\?ll=/.test(h)),
+      `受け取った場所から深掘りへ行けない: ${JSON.stringify(後.深掘り)}`);
     must(/足しました/.test(後.見出し), `足したと言っていない: ${後.見出し}`);
     must(後.入口, "足したのに、一覧への入口が出ない");
     await 別.close();
@@ -1362,7 +1381,9 @@ CASES.push({
     await page.locator("#handOut").click();
     await 待つ(page, () => globalThis.__shared.length > 0, "共有シートへ渡すもの");
     const 渡した = await page.evaluate(() => globalThis.__shared[0]);
-    must(渡した.url && /[?&]take=/.test(渡した.url), `リンクに中身が入っていない: ${渡した.url}`);
+    // ⚠ **荷物は `#` に載る**（2026-08-30）。⚠ **`?` だと配信元へ届く。**
+    must(渡した.url && /\/take#\S/.test(渡した.url), `リンクに中身が入っていない: ${渡した.url}`);
+    must(!/[?&]take=/.test(渡した.url), `荷物がクエリに載っている: ${渡した.url.slice(0, 60)}`);
     // ⚠ **以前の上限（2000）なら、⚠ ここで「渡せません」になっていた**
     must(渡した.url.length > 2000,
       `100 件のリンクが 2000 文字以下（${渡した.url.length} 文字）。⚠ この検査は何も見ていない`);
@@ -1975,3 +1996,78 @@ for (const [名, viewport] of [["スマホ", SP], ["PC", PC]]) {
     },
   });
 }
+
+CASES.push({
+  // ⚠ **写す口と送る口を分けた**（2026-08-30。⚠ Owner が実機で踏んだ）。
+  //   ⚠ **共有シートの「コピー」は、⚠ 題と説明と URL をつなげて写す。**⚠ **貼っても開けない。**
+  //   ⚠ **消すのではなく分ける**（`docs/adr/0072` は「共有シートの先で何のリンクか字で分かる」を
+  //   ⚠ 求めている。⚠ **両方を立てる**）。
+  name: "リンクは、送る口と写す口が分かれている",
+  path: `/?${TOYOSU}`, origin: NEXT_BASE, viewport: SP,
+  setup: (page) => Promise.all([
+    page.context().grantPermissions(["clipboard-read", "clipboard-write"], { origin: NEXT_BASE }),
+    page.addInitScript(() => {
+      globalThis.__shared = [];
+      navigator.share = (d) => { globalThis.__shared.push(d); return Promise.resolve(); };
+    }),
+  ]),
+  async check(page) {
+    await waitAnswer(page);
+    await 待つ(page, () => !document.getElementById("save").hidden, "保存");
+    await page.locator("#save").click();
+    await 待つ(page,
+      () => document.getElementById("save").getAttribute("aria-pressed") === "true", "保存ずみ");
+    await page.waitForTimeout(2000);
+    await page.locator("#savedOpen").click();
+    await page.waitForTimeout(400);
+    await リンクの道を開く(page);
+
+    // ⚠ **写す口。**⚠ **URL だけが写ること**（⚠ 題も説明も混ざらない）
+    await page.evaluate(() => navigator.clipboard.writeText(""));
+    await page.locator("#handCopy").click();
+    await 待つ(page, async () => (await navigator.clipboard.readText()).length > 0, "写した字");
+    const 写した = await page.evaluate(() => navigator.clipboard.readText());
+    must(/^https?:\/\/\S+$/.test(写した.trim()),
+      `写した字が URL だけではない（${写した.length} 文字）: ${写した.slice(0, 80)}`);
+    must(!/今昔|保存した場所|件/.test(写した),
+      `写した字に題や説明が混ざっている: ${写した.slice(0, 80)}`);
+    must(/\/take#/.test(写した), `写した URL が受け取り口を指していない: ${写した.slice(0, 60)}`);
+    must(!/[?&]take=/.test(写した), `写した URL の荷物がクエリに載っている: ${写した.slice(0, 60)}`);
+
+    // ⚠ **送る口。**⚠ **題と説明が付くこと**（⚠ 送った先で何のリンクか分かる）
+    await page.locator("#handOut").click();
+    await 待つ(page, () => globalThis.__shared.length > 0, "共有シートへ渡すもの");
+    const 送った = await page.evaluate(() => globalThis.__shared[0]);
+    must(送った.title && /今昔/.test(送った.title), `送る口に題が無い: ${送った.title}`);
+    must(送った.text && /件/.test(送った.text), `送る口に説明が無い: ${送った.text}`);
+    must(送った.url === 写した.trim() || /\/take#/.test(送った.url),
+      `送る口の URL が違う: ${送った.url?.slice(0, 60)}`);
+    // ⚠ **地名を入れない**（⚠ 共有シートの先に地名が残る）
+    must(!/豊洲/.test(`${送った.title}${送った.text}`),
+      `送る口の題か説明に地名が入っている: ${送った.title} ／ ${送った.text}`);
+    return `写す ${写した.length} 文字（URL だけ）／ 送る 題と説明つき`;
+  },
+});
+
+CASES.push({
+  // ⚠ **受け取る画面は 1 つ**（2026-08-30。Owner 判断。`docs/adr/0072` が「2 つ作らない」）。
+  //   ⚠ **前はトップ（`/?take=`）にも板があった。**⚠ **消したことを、⚠ ここで押さえる。**
+  //   ⚠ **「板が無い」だけを見ない。**⚠ **リンクで来た人が、⚠ ちゃんと受け取れることまで見る。**
+  name: "トップは受け取らない（受け取る画面は /take だけ）",
+  path: "/?take=1W1szNS42NTUzLDEzOS43OTY3LCLosYrmtLIiLCLml6fmsLTpg6giLDNdXQ",
+  origin: NEXT_BASE, viewport: SP,
+  async check(page) {
+    await page.waitForTimeout(3000);
+    const r = await page.evaluate(() => ({
+      板: !!document.getElementById("take"),
+      受け取りの字: [...document.querySelectorAll("body *")]
+        .filter((e) => e.checkVisibility() && /件の場所を受け取りました/.test(e.textContent)).length,
+      控え: JSON.parse(localStorage.getItem("konjaku-next-saved-v1") ?? "[]").length,
+    }));
+    must(!r.板, "トップに受け取りの板が残っている（⚠ 受け取る画面は /take だけ）");
+    must(r.受け取りの字 === 0, "トップが受け取りの字を出している");
+    // ⚠ **勝手に足さない**（⚠ 見せずに混ぜるのが、⚠ いちばん悪い）
+    must(r.控え === 0, `トップが黙って足している（控え ${r.控え} 件）`);
+    return "トップは受け取らない（板 0 ／ 字 0 ／ 控え 0）";
+  },
+});
