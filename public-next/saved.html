@@ -1,0 +1,40 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex">
+<meta name="color-scheme" content="light dark">
+<title>保存した場所 — 今昔 v0.1.0</title>
+<link rel="stylesheet" href="./theme.css">
+<link rel="stylesheet" href="./brand.css">
+<link rel="stylesheet" href="./saved.css">
+
+<!-- 保存した場所の一覧。深掘りの入口。
+     板（地図の上）と違って URL を持つので、/deep から戻ってこられる。
+     地図は持たない。ここでやることは「次に読む 1 件を選ぶ」だけ。 -->
+<header class="brand">
+  <a class="brand__name" href="./">
+    <img class="brand__mark" src="./favicon.svg" alt="" width="20" height="20">
+    今昔　この土地は、昔なんだったのか？
+  </a>
+</header>
+
+<main class="list" id="list">
+  <h1 class="list__h">保存した場所<span class="list__n" id="listN"></span></h1>
+
+  <ol class="list__items" id="listItems"></ol>
+
+  <!-- 1 件も無いとき。空白にしない。何をすれば並ぶかを言う。 -->
+  <section class="list__empty" id="listEmpty" hidden>
+    <h2 class="list__emptyH">まだ 1 件も保存していません</h2>
+    <p class="list__emptyP">地図で場所を決めて「☆ 保存」を押すと、ここに並びます。
+      別の端末で保存したものは、合言葉で受け取れます。</p>
+  </section>
+
+  <p class="list__note" id="listNote" hidden>この端末の中だけに残ります。どこにも送りません。</p>
+</main>
+
+<script src="./esc.js"></script>
+<script src="./saved.js"></script>
+<script src="./when.js"></script>
+<script src="./place-arg.js"></script>
+<script src="./saved-page.js"></script>

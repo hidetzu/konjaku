@@ -1,13 +1,8 @@
 /* 今昔 v0.1.0 のスタイル。理由と決めごとは public-next/README.md に書いてある。 */
 
-/* 色は theme.css にしかない（決めごと）。
-   ここに色を書き戻さない。書き戻すと、色みを足したとき片方だけ切り替わる。
+/* 色も、--tap も、余白の段も theme.css にしかない（決めごと）。
+   ここに書き戻さない。2 か所に持つと、片方だけ直る。
    HTML が theme.css を先に読む。 */
-:root{
-  --tap:44px;
-  --gap-sub:.25rem; --gap-row:.5rem; --gap-block:1rem;
-  --pad-sm:.5rem; --pad-md:.75rem;
-}
 
 *{box-sizing:border-box}
 html{font-size:100%}

@@ -12,6 +12,7 @@
   const again = $("recvAgain"), why = $("recvWhy"), hint = $("recvHint");
   const got = $("recvGot"), gotTitle = $("gotTitle"), gotBody = $("gotBody");
   const gotList = $("gotList"), gotAct = $("gotAct"), gotNote = $("gotNote");
+  const gotSaved = $("gotSaved");
   const S = globalThis.KonjakuSaved;
   // 名前は「別の端末が送ってきた字」。素通しで組み立てない。
   //   ⚠ 取れなかったときに素通しへ落ちる書き方をしない。落ちるなら、ここで落とす。
@@ -75,6 +76,7 @@
       + `<span class="g">${esc(r.value ?? "")}</span></li>`).join("")
       + (list.length > 20 ? `<li><span class="n">ほか ${list.length - 20} 件</span></li>` : "");
     gotAct.hidden = false;
+    gotSaved.hidden = true;
     gotNote.textContent = "受け取った場所は、この端末の中だけに残ります。どこにも送りません。";
   }
 
@@ -163,6 +165,8 @@
       + `<a class="recv__deep" href="${深掘りへ(x)}">深く読む</a></li>`).join("")
       + (r.list.length > 20 ? `<li><span class="n">ほか ${r.list.length - 20} 件</span></li>` : "");
     gotAct.hidden = true;
+    // ここから先は /saved が引き受ける。この画面の一覧は、いま足したものの控え。
+    gotSaved.hidden = false;
     // 「地図をひらく」は置かない（2026-08-30。Owner 判断）。
     //   保存した場所を地図にまとめて出す仕組みが、どこにも無い。地図に出る印は「ここ」1 点だけ。
     //   前は受け取った 1 件目へ飛ばしていたが、それは「まとめて見る」ではない。
