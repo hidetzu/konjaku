@@ -13,9 +13,7 @@
        散歩中  ここは昔なんだった？  5 秒   地図が主役
        帰宅後  なぜこうなった？      10 分  読み物
      上から順に「いつ → まわり → なぜ」で読み下す。タブを並べない。 -->
-  <!-- 名乗り。アプリのトップへ行く道でもある。
-       この画面はリンクで直接ひらかれるので、その端末ではトップを一度も見ていない。
-       だから history.back() は使えないし、「戻る」とも言えない。 -->
+  <!-- 名乗り。アプリのトップへ行く道。どの入口から来ても、ここから / へ行ける。 -->
   <header class="brand">
     <a class="brand__name" href="./">
       <img class="brand__mark" src="./favicon.svg" alt="" width="20" height="20">
@@ -25,7 +23,10 @@
 
 <article id="doc">
   <header id="head">
-    <a class="back" id="back" href="./">← 地図にもどる</a>
+    <!-- 直前へ返す道。入口が 3 つある（地図・保存の一覧・共有リンク）ので、
+         行き先を名指しできない。同じサイトから来たときだけ「ひとつ前へ」と言う。
+         直接ひらいた人には、行き先を言う字にする（deep.js が決める）。 -->
+    <a class="back" id="back" href="./">この場所を地図で見る</a>
     <p class="place" id="place">　</p>
     <h1 class="ans" id="gloss">　</h1>
     <p class="term" id="term"></p>
