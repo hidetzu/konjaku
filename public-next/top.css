@@ -24,29 +24,6 @@ body{
 #map{position:absolute;inset:0;background:var(--bg)}
 #map canvas{display:block}
 
-/* ---- 名乗り ---- */
-/* 何のサイトかを、画面のどこにも書いていなかった。
-   利用者役に「地図の部品を貼り付けたページに見える」と言われた。
-   β 版が同じ問題を実測で踏んで、同じ形で解いている。
-   帯は不透明にする。面が透けると、地図の上で字が読めなくなる。 */
-.brand{
-  position:absolute; left:0; right:0;
-  top:0; height:calc(2.75rem + env(safe-area-inset-top));
-  padding:env(safe-area-inset-top) var(--pad-md) 0;
-  display:flex; align-items:center; gap:var(--gap-row);
-  background:var(--surface); border-bottom:1px solid var(--line);
-  z-index:60;
-}
-.brand__name{
-  display:flex; align-items:center; gap:.5rem; min-width:0;
-  font-size:.9375rem; font-weight:700; color:var(--ink);
-  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
-}
-.brand[hidden]{display:none}
-.brand__mark{width:1.25rem; height:1.25rem; border-radius:.25rem; flex:none; display:block}
-/* 右端は空けてある。「このサイトについて」を置く場所だが、中身がまだ無い。
-   中身の無いものを置くと、押しても何も起きない導線になる。 */
-
 /* ---- 上の帯 ---- */
 /* 名乗りのぶん下げる。safe-area は名乗りが持つので、ここでは足さない。
    足すと二重に効いて、検索窓が切り欠きのぶん余計に下がる。 */

@@ -5,6 +5,7 @@
 <meta name="color-scheme" content="light dark">
 <title>保存した場所を受け取る — 今昔 v0.1.0</title>
 <link rel="stylesheet" href="./theme.css">
+<link rel="stylesheet" href="./brand.css">
 <link rel="stylesheet" href="./top.css">
 <link rel="stylesheet" href="./take.css">
 
@@ -12,6 +13,16 @@
      地図には重ねない。他に押すものが無いので、専用のページのほうが迷わない。
      受け取ったあとの見せ方は、散歩中の画面と同じ形にそろえてある。
        見せる → 押してもらう → 足す。開いた瞬間には混ぜない。 -->
+  <!-- 名乗り。アプリのトップへ行く道でもある。
+       この画面はリンクで直接ひらかれるので、その端末ではトップを一度も見ていない。
+       だから history.back() は使えないし、「戻る」とも言えない。 -->
+  <header class="brand">
+    <a class="brand__name" href="./">
+      <img class="brand__mark" src="./favicon.svg" alt="" width="20" height="20">
+      今昔　この土地は、昔なんだったのか？
+    </a>
+  </header>
+
 <main class="recv" id="recv">
   <h1 class="recv__h">保存した場所を受け取る</h1>
   <p class="recv__lead" id="recvLead">スマホの画面に出ている合言葉を入れてください。</p>

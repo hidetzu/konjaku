@@ -712,8 +712,11 @@ CASES.push({
     await page.locator("#save").click();
     await page.waitForTimeout(2000);
     const r = await page.evaluate(() => {
+      // ⚠ **名乗りの帯は数えない**（2026-08-30）。⚠ **柱ではない。**⚠ **画面いっぱいが意図。**
+      //   ⚠ **押せるようにした日から、⚠ ここに入るようになった**（⚠ 前は `<span>` だった）。
+      //   ⚠ **見たいのは「板の中の操作が散らばっていないか」。**⚠ **画面の器は別の話。**
       const 押せる = [...document.querySelectorAll("button, a, summary, input")]
-        .filter((e) => e.checkVisibility());
+        .filter((e) => e.checkVisibility() && !e.closest(".brand"));
       const xs = 押せる.map((e) => { const b = e.getBoundingClientRect(); return b.x + b.width / 2; });
       const bar = document.getElementById("bar").getBoundingClientRect();
       const card = document.getElementById("card").getBoundingClientRect();
@@ -1172,8 +1175,11 @@ CASES.push({
     const 後 = await p2.evaluate(() => ({
       見出し: document.getElementById("gotTitle").textContent.trim(),
       控え: JSON.parse(localStorage.getItem("konjaku-next-saved-v1") ?? "[]").length,
-      入口: document.getElementById("gotMap").checkVisibility(),
-      URLに残る: new URL(location.href).searchParams.has("take"),
+      // ⚠ **「地図をひらく」は消した**（2026-08-30）。⚠ **出口は名乗りと「深く読む」。**
+      入口: document.querySelector(".brand__name")?.getAttribute("href") === "./",
+      // ⚠ **`#` 側で見る**（2026-08-30）。⚠ **`?take=` は読まなくなった。**
+      //   ⚠ **`searchParams` で見ていると、⚠ 何も見なくなる。**
+      URLに残る: !!location.hash,
       深掘り: [...document.querySelectorAll("#gotList a")].map((a) => a.getAttribute("href")),
     }));
     must(後.控え > 0, `足したのに、控えが増えていない（${後.控え} 件）`);
@@ -1650,7 +1656,7 @@ CASES.push({
       控え: JSON.parse(localStorage.getItem("konjaku-next-saved-v1") ?? "[]").length,
       名前: (JSON.parse(localStorage.getItem("konjaku-next-saved-v1") ?? "[]")[0] ?? {}).name,
       // ⚠ **`hidden` 属性ではなく、⚠ 見えているかで見る**（⚠ `display` に負ける）
-      地図へ: document.getElementById("gotMap").checkVisibility(),
+      地図へ: document.querySelector(".brand__name")?.getAttribute("href") === "./",
       足すが見える: document.getElementById("gotYes").checkVisibility(),
       入力欄が見える: document.getElementById("recvIn").checkVisibility(),
     }));
@@ -1666,7 +1672,7 @@ CASES.push({
       "足したあとも入力欄が出ている（⚠ まだ何か入れるのか、と読める）");
     must(後.名前 === "東京都江東区豊洲三丁目", `名前が欠けている: ${JSON.stringify(後.名前)}`);
     must(/足しました/.test(後.見出し), `足したと言っていない: ${後.見出し}`);
-    must(後.地図へ, "足したのに、地図へ行く道が出ない");
+    must(後.地図へ, "足したのに、アプリへ戻る道が無い");
     return `${code} を小文字と区切りつきで打って ${前.行} 件を見せ、押すと ${後.控え} 件`;
   },
 });
@@ -2120,3 +2126,113 @@ for (const [名, viewport] of [
     },
   });
 }
+
+// ⚠ **3 画面に、⚠ アプリへ戻る道が在る**（2026-08-30。⚠ Owner 判断）。
+//
+// ⚠ **`/take` と `/deep` は、⚠ リンクで直接ひらかれる。**
+//   ⚠ **その端末では、⚠ トップを一度も見ていない。**⚠ **履歴も無い。**
+//   ⚠ **だから `history.back()` は使えないし、⚠ 「戻る」とも言えない**（`CLAUDE.md` §4）。
+//   ⚠ **名乗りが home を兼ねる。**⚠ **どのサイトでもそうなので説明が要らない。**
+//
+// ⚠ **字で探さない。**⚠ **押せる要素の行き先で見る**（⚠ 名乗りの字が在るだけで通ってしまう）。
+for (const [名, path] of [
+  ["トップ", `/?${TOYOSU}`],
+  ["受け取り口", "/take"],
+  ["深掘り画面", `/deep?${TOYOSU}`],
+]) {
+  CASES.push({
+    name: `${名}に、アプリへ戻る道がある`,
+    path, origin: NEXT_BASE, viewport: PC,
+    async check(page) {
+      await page.waitForTimeout(3000);
+      const r = await page.evaluate(() => {
+        const a = document.querySelector(".brand__name");
+        if (!a) return { 無い: true };
+        const q = a.getBoundingClientRect();
+        return {
+          tag: a.tagName, href: a.getAttribute("href"),
+          字: a.textContent.trim(),
+          w: Math.round(q.width), h: Math.round(q.height),
+          押せる: (() => {
+            const t = document.elementFromPoint(Math.round(q.x + q.width / 2),
+                                                Math.round(q.y + q.height / 2));
+            return !!(t && a.contains(t));
+          })(),
+        };
+      });
+      must(!r.無い, "名乗りが無い");
+      must(r.tag === "A", `名乗りが押せない（${r.tag}）`);
+      must(r.href === "./", `名乗りの行き先が違う: ${r.href}`);
+      must(/今昔/.test(r.字), `名乗りに道具の名前が無い: ${r.字}`);
+      // ⚠ **リンクにするだけでは 44 を割る**（⚠ 実測 2026-08-30: 中の字は 298×24 だった）
+      must(r.h >= 44, `名乗りが 44 を割っている（${r.w}x${r.h}）`);
+      must(r.押せる, "名乗りが、何かに覆われて押せない");
+      // ⚠ **「戻る」と言わない**（⚠ 一度も見ていない場所には戻れない）
+      must(!/もどる|戻る/.test(r.字), `名乗りが「戻る」と言っている: ${r.字}`);
+      return `${r.字}（${r.w}x${r.h}）→ ${r.href}`;
+    },
+  });
+}
+
+CASES.push({
+  // ⚠ **「地図をひらく」は置かない**（2026-08-30。⚠ Owner 判断）。
+  //   ⚠ **保存した場所を地図にまとめて出す仕組みが、⚠ どこにも無い。**
+  //   ⚠ **地図に出る印は「ここ」1 点だけ。**⚠ **前は受け取った 1 件目へ飛ばしていた。**
+  //   ⚠ **地図を見たい要求は、⚠ 各行の「深く読む」→ `/deep` から、⚠ 場所を選んだ状態で行ける。**
+  name: "受け取り口に「地図をひらく」を置かない",
+  path: "/take", origin: NEXT_BASE, viewport: PC,
+  setup: (page) => 合言葉の口(page),
+  async check(page) {
+    const code = await page.evaluate(async () => {
+      const 圧縮 = async (t) => {
+        const s = new Blob([t]).stream().pipeThrough(new CompressionStream("gzip"));
+        return KonjakuSaved.bytes2b64(new Uint8Array(await new Response(s).arrayBuffer()));
+      };
+      const payload = await KonjakuSaved.toText(
+        [{ lat: 35.65531, lon: 139.79672, name: "東京都江東区豊洲三丁目", value: "旧水部", at: 3 }],
+        圧縮);
+      const res = await fetch("/api/handoff", { method: "POST",
+        headers: { "content-type": "application/json" }, body: JSON.stringify({ payload }) });
+      return (await res.json()).code;
+    });
+    await page.locator("#recvIn").fill(code);
+    await page.locator("#recvGo").click();
+    await 待つ(page, () => !document.getElementById("recvGot").hidden, "受け取った中身");
+    await page.locator("#gotYes").click();
+    await page.waitForTimeout(600);
+    const r = await page.evaluate(() => ({
+      // ⚠ **字で探す**（⚠ ここは「無いこと」を見るので、⚠ 字で探すのが正しい）
+      地図をひらく: [...document.querySelectorAll("a,button")]
+        .filter((e) => e.checkVisibility() && /地図をひらく/.test(e.textContent)).length,
+      出口: [...document.querySelectorAll("a[href]")].filter((e) => e.checkVisibility())
+        .map((e) => e.getAttribute("href")),
+    }));
+    must(r.地図をひらく === 0, "受け取り口に「地図をひらく」が残っている");
+    // ⚠ **出口をゼロにしない**（⚠ 消すだけだと、⚠ 深掘り以外の道が無くなる）
+    must(r.出口.includes("./"), `アプリへ戻る道が無い: ${JSON.stringify(r.出口)}`);
+    must(r.出口.some((h) => /deep\?ll=/.test(h)), `深掘りへの道が無い: ${JSON.stringify(r.出口)}`);
+    return `「地図をひらく」0 件 ／ 出口 ${r.出口.join(" ")}`;
+  },
+});
+
+CASES.push({
+  // ⚠ **古いリンク（`?take=`）は読まない**（2026-08-30。⚠ Owner 判断）。
+  //   ⚠ **まだリリースしていないので、⚠ 古いリンクを持っている人がいない。**
+  //   ⚠ **残す限り、⚠ 開けば荷物が配信元へ届く**（⚠ クエリは HTTP のリクエスト行に載る）。
+  name: "受け取り口は、クエリに載った荷物を読まない",
+  path: "/take?take=1W1szNS42NTUzLDEzOS43OTY3LCLosYrmtLIiLCLml6fmsLTpg6giLDNdXQ",
+  origin: NEXT_BASE, viewport: PC,
+  async check(page) {
+    await page.waitForTimeout(2500);
+    const r = await page.evaluate(() => ({
+      受け取った: !document.getElementById("recvGot").hidden,
+      入力欄: document.getElementById("recvIn").checkVisibility(),
+      控え: JSON.parse(localStorage.getItem("konjaku-next-saved-v1") ?? "[]").length,
+    }));
+    must(!r.受け取った, "クエリの荷物を読んでいる（⚠ 開くだけで配信元へ届く形）");
+    must(r.控え === 0, `クエリの荷物を黙って足している（${r.控え} 件）`);
+    // ⚠ **画面は壊さない。**⚠ **合言葉を打つ道は残る**
+    must(r.入力欄, "合言葉の入力欄が出ていない");
+    return "クエリの荷物は読まない（受け取り 0 ／ 控え 0 ／ 入力欄は出る）";
+  },
+});
