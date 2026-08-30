@@ -12,7 +12,6 @@
   const again = $("recvAgain"), why = $("recvWhy"), hint = $("recvHint");
   const got = $("recvGot"), gotTitle = $("gotTitle"), gotBody = $("gotBody");
   const gotList = $("gotList"), gotAct = $("gotAct"), gotNote = $("gotNote");
-  const gotSaved = $("gotSaved");
   const S = globalThis.KonjakuSaved;
   // 名前は「別の端末が送ってきた字」。素通しで組み立てない。
   //   ⚠ 取れなかったときに素通しへ落ちる書き方をしない。落ちるなら、ここで落とす。
@@ -35,10 +34,6 @@
   const 整える = (s) => String(s ?? "").replace(/[\s-]/g, "").toUpperCase();
 
   // 深掘りの行き先。座標の渡し方は 1 か所（place-arg.js）に寄せたいが、
-  //   この画面は地図も検索も持たないので、ここでは緯度経度だけを渡す。
-  const 深掘りへ = (r) =>
-    `./deep?ll=${Number(r.lat).toFixed(5)},${Number(r.lon).toFixed(5)}`;
-
   let 来たもの = null;
 
   // ② URL から take を落とす。読み込み直しで、また同じ問いが出ないように。
@@ -76,7 +71,6 @@
       + `<span class="g">${esc(r.value ?? "")}</span></li>`).join("")
       + (list.length > 20 ? `<li><span class="n">ほか ${list.length - 20} 件</span></li>` : "");
     gotAct.hidden = false;
-    gotSaved.hidden = true;
     gotNote.textContent = "受け取った場所は、この端末の中だけに残ります。どこにも送りません。";
   }
 
@@ -153,35 +147,29 @@
     const r = S.merge(いま.list ?? [], 来たもの);
     const 置けた = store ? S.save(store, r.list) : false;
     来たもの = null;
-    gotTitle.textContent = `${r.足した} 件を足しました`;
-    gotBody.textContent = r.重なった
-      ? `${r.重なった} 件は、すでにこの端末にありました。`
-      : "";
-    // ④ 受け取った場所から、深掘りへ行けるようにする。
-    //   前は名前が消えて「地図をひらく」だけが残り、しかも場所を渡していなかった。
-    //   この画面は帰宅後の PC で開く。深掘りは、まさにここでやること。
-    gotList.innerHTML = r.list.slice(0, 20).map((x) =>
-      `<li><span class="n">${esc(x.name ?? "地図から選んだ場所")}</span>`
-      + `<a class="recv__deep" href="${深掘りへ(x)}">深く読む</a></li>`).join("")
-      + (r.list.length > 20 ? `<li><span class="n">ほか ${r.list.length - 20} 件</span></li>` : "");
-    gotAct.hidden = true;
-    // ここから先は /saved が引き受ける。この画面の一覧は、いま足したものの控え。
-    gotSaved.hidden = false;
-    // 「地図をひらく」は置かない（2026-08-30。Owner 判断）。
-    //   保存した場所を地図にまとめて出す仕組みが、どこにも無い。地図に出る印は「ここ」1 点だけ。
-    //   前は受け取った 1 件目へ飛ばしていたが、それは「まとめて見る」ではない。
-    //   地図を見たい要求は、各行の「深く読む」→ /deep から、場所を選んだ状態で行ける。
-    //   アプリのトップへは、上の名乗りから行ける。
-    gotNote.textContent = 置けた
-      ? ""
-      : "この端末では、保存した場所を覚えておけません（ブラウザの設定によります）。";
     URLを掃除();
-    // 終わったら、入力の口を畳む。この画面は 1 つのことをする画面で、
-    //   足したあとに「まだ何か入れるのか」と読ませない。
-    //   もう一度受け取りたい人のために、開き直す道は残す。
-    form.hidden = true;
-    lead.hidden = true;
-    hint.textContent = "別の合言葉で受け取るときは、この画面を開き直してください。";
+
+    // 置けなかったときだけ、この画面に留まる。
+    //   /saved は localStorage から作るので、置けていなければ何も並ばない。
+    //   何も言わずに空の一覧へ送ると、「消えた」と読める。
+    if (!置けた) {
+      gotTitle.textContent = "この端末には残せませんでした";
+      gotBody.textContent =
+        "この端末では、保存した場所を覚えておけません（ブラウザの設定によります）。";
+      gotList.innerHTML = "";
+      gotAct.hidden = true;
+      gotNote.textContent = "";
+      form.hidden = true;
+      lead.hidden = true;
+      hint.textContent = "";
+      return;
+    }
+
+    // 足したら、そのまま一覧へ進む（2026-08-30。Owner 判断）。
+    //   前はここで「N 件を足しました」と一覧をもう一度出していた。
+    //   同じ一覧を 2 度見せる意味が薄く、次にやること（深掘り）は /saved が引き受ける。
+    //   確かめの一歩（足す前に見せて押してもらう）は残す。ADR 0069 / 0072。
+    location.replace("./saved");
   });
 
   // 起動時。リンクで来ていれば、合言葉を待たずに受ける。
