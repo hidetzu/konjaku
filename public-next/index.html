@@ -123,19 +123,13 @@
       <button class="code__link" id="handOut" type="button">
         <span aria-hidden="true">⇱</span><span id="handOutText">リンクを作って送る</span>
       </button>
+      <!-- 写す口を分ける。共有シートの「コピー」は題と説明と URL をつなげて写すので、
+           貼っても開けない。ここは URL だけを写す。 -->
+      <button class="code__link" id="handCopy" type="button">
+        <span aria-hidden="true">⧉</span><span id="handCopyText">リンクだけを写す</span>
+      </button>
     </details>
     <button class="code__close" id="codeClose" type="button">閉じる</button>
-  </section>
-
-  <section class="take" id="take" hidden aria-label="受け取った場所">
-    <h2 id="takeTitle">　</h2>
-    <p class="take__body" id="takeBody"></p>
-    <ul class="take__list" id="takeList"></ul>
-    <div class="take__act">
-      <button class="take__yes" id="takeYes" type="button">この端末に足す</button>
-      <button class="take__no" id="takeNo" type="button">いまはしない</button>
-    </div>
-    <p class="take__note" id="takeNote"></p>
   </section>
 
   <section id="sheet" hidden aria-label="この画面に映っている土地">

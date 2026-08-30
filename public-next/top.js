@@ -36,10 +36,12 @@
   const savedSheet = $("savedSheet"), savedList = $("savedList"), savedNote = $("savedNote");
   const crossDev = $("crossDev"), crossDevText = $("crossDevText");
   const handOut = $("handOut"), handOutText = $("handOutText");
+  const handCopy = $("handCopy"), handCopyText = $("handCopyText");
+  // 共有シートへ渡す題と説明。写す口には渡さない（つながって貼れなくなる）。
+  const 送る題 = "今昔 — 保存した場所";
+  const 送る説明 = (n) => `保存した場所 ${n} 件。PC やタブレットで開くと、この端末の保存を足せます。`;
   const codeEl = $("code"), codeUrl = $("codeUrl"), codeWord = $("codeWord");
   const codeNote = $("codeNote"), codeAlt = $("codeAlt"), codeBody = $("codeBody");
-  const takeEl = $("take"), takeTitle = $("takeTitle"), takeBody = $("takeBody");
-  const takeList = $("takeList"), takeNote = $("takeNote");
 
   // ⚠ **地図はタイルを並べて作る**（⚠ β 版の `/peel` は MapLibre だが、⚠ 運んでいない）。
   //   ⚠ **この縦切りでは、⚠ 動かせる地図が要る。**⚠ 依存を足す前に、⚠ まず素で作る
@@ -803,9 +805,11 @@
     return await new Response(s).text();
   };
 
+  // 受け取るのは /take（2026-08-30）。地図の上では受けない。
+  //   前は location.pathname に戻していたので、トップで受けていた。
   async function handUrl() {
     const t = await KonjakuSaved.toText(saved, globalThis.CompressionStream ? 圧縮 : null);
-    return location.origin + location.pathname + "?take=" + t;
+    return `${location.origin}/take?take=${t}`;
   }
 
   // 渡せる長さの上限。実測で決めている（2026-08-29・Chromium・tmp/measure-urllen.mjs）。
@@ -899,77 +903,41 @@
       clearTimeout(handTimer);
       handTimer = setTimeout(() => { handOutText.textContent = "リンクを作って送る"; }, 2600);
     };
+    // 送る口。題と説明を付ける。共有シートの先（トーク・メール・メモ）に残ったとき、
+    //   URL だけだと後から探せない。場所の名前は入れない。
+    //   ⚠ この口では「写す」を当てにしない。共有シートの「コピー」は
+    //     題と説明と URL をつなげて写すので、貼っても開けない（Owner が実機で踏んだ）。
+    //     写したい人のために、別に写す口を置いてある。
     if (navigator.share) {
-      // 題と説明を付ける。共有シートの先（LINE のトーク・メール・メモ）に残ったとき、
-      //   URL だけだと後から探せない。何のリンクかが字で分かるようにする。
-      //   ⚠ 場所の名前は入れない。共有シートの先に地名が残る（docs/adr/0008 の主旨）。
-      try {
-        await navigator.share({
-          title: "今昔 — 保存した場所",
-          text: `保存した場所 ${saved.length} 件。PC やタブレットで開くと、この端末の保存を足せます。`,
-          url,
-        });
-        return;
-      } catch (e) { if (e?.name === "AbortError") return; }
+      try { await navigator.share({ title: 送る題, text: 送る説明(saved.length), url }); return; }
+      catch (e) { if (e?.name === "AbortError") return; }
     }
+    // 共有シートが無い端末（PC の多く）。ここは写すしかない。
     try { await navigator.clipboard.writeText(url); 言う("リンクを写しました"); }
     catch { 言う("この端末では写せません"); }
   });
 
-  // ---- 受け取る ----
-  //
-  // 開いた瞬間に混ぜない。何が来たかを見せて、押してもらう。
-  //   断っても、それまでの控えは 1 件も変わらない。
-  let 来たもの = null;
-  async function drawTake() {
-    const t = new URLSearchParams(location.search).get("take");
-    if (!t) return;
-    const list = await KonjakuSaved.fromText(t, 解凍).catch(() => null);
-    takeEl.hidden = false;
-    if (!list) {
-      // 読み取れなかった。「無い」とも「壊れている」とも言わない
-      takeTitle.textContent = "受け取れませんでした";
-      takeBody.textContent =
-        "このリンクは読み取れませんでした。この端末に保存した場所は、そのままです。";
-      takeList.innerHTML = "";
-      $("takeYes").hidden = true;
-      $("takeNo").textContent = "閉じる";
-      takeNote.textContent = "";
-      return;
-    }
-    来たもの = list;
-    takeTitle.textContent = `${list.length} 件の場所を受け取りました`;
-    takeBody.textContent = "この端末に足しますか。足しても、いまある保存は消えません。";
-    takeList.innerHTML = list.slice(0, 20).map((r) =>
-      `<li><span class="n">${esc(r.name ?? "地図から選んだ場所")}</span>`
-      + `<span class="g">${esc(r.value ?? "")}</span></li>`).join("")
-      + (list.length > 20 ? `<li><span class="n">ほか ${list.length - 20} 件</span></li>` : "");
-    takeNote.textContent =
-      "受け取った場所は、この端末の中だけに残ります。どこにも送りません。";
-  }
+  // 写す口。⚠ URL だけを写す。題も説明も付けない。
+  //   共有シートの「コピー」で貼っても開けない、という報告から分けた（2026-08-30）。
+  let copyTimer = null;
+  handCopy.addEventListener("click", async () => {
+    const url = await handUrl();
+    const 言う = (t) => {
+      handCopyText.textContent = t;
+      clearTimeout(copyTimer);
+      copyTimer = setTimeout(() => { handCopyText.textContent = "リンクだけを写す"; }, 2600);
+    };
+    if (url.length > 渡せる長さ) { 言う("件数が多くて渡せません"); return; }
+    try { await navigator.clipboard.writeText(url); 言う("写しました"); }
+    catch { 言う("この端末では写せません"); }
+  });
 
-  $("takeYes").addEventListener("click", () => {
-    if (!来たもの) return;
-    const r = KonjakuSaved.merge(saved, 来たもの);
-    saved = r.list;
-    if (store) KonjakuSaved.save(store, saved);
-    takeTitle.textContent = `${r.足した} 件を足しました`;
-    takeBody.textContent = r.重なった
-      ? `${r.重なった} 件は、すでにこの端末にありました。`
-      : "";
-    takeList.innerHTML = ""; $("takeYes").hidden = true;
-    $("takeNo").textContent = "閉じる";
-    takeNote.textContent = "";
-    drawSave(); drawSavedOpen(); drawSavedList();
-  });
-  $("takeNo").addEventListener("click", () => {
-    takeEl.hidden = true;
-    // ⚠ URL から take を落とす。読み込み直しで、また同じ問いが出ないように
-    const u = new URL(location.href);
-    u.searchParams.delete("take");
-    history.replaceState(null, "", u.pathname + u.search);
-  });
-  drawTake();
+  // 受け取るのは /take だけ（2026-08-30。Owner 判断）。
+  //   前はここにも板があり、リンクで来た人を地図の上で受けていた。
+  //   同じ問いに答える画面が 2 つあると、片方だけ直る。実際にそうなった
+  //   （URL の掃除が「いまはしない」にしか無かった）。
+  //   だから手渡しのリンクも /take へ向ける（下の handUrl）。
+
 
   savedOpen.addEventListener("click", () => {
     drawSavedList();

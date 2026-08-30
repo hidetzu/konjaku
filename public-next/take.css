@@ -68,4 +68,12 @@
 .recv__map[hidden]{display:none}
 .recv__map:focus-visible{outline:2px solid var(--action); outline-offset:2px}
 
+/* 受け取ったあと、1 件ずつ深掘りへ行ける。この画面は帰宅後の PC で開く。 */
+.recv__deep{
+  flex:none; min-height:var(--tap); display:flex; align-items:center;
+  padding:0 var(--gap-row); margin-right:calc(var(--gap-row) * -1);
+  font-size:.8125rem; font-weight:700; color:var(--action); text-decoration:none;
+}
+.recv__deep:focus-visible{outline:2px solid var(--action); outline-offset:2px}
+
 .recv__hint{margin:var(--gap-block) 0 0; font-size:.75rem; color:var(--ink-3); line-height:1.6}
