@@ -1,0 +1,32 @@
+/* 名乗り ── 3 つの画面で同じものを使う（index / take / deep）。
+   1 か所に置く。2 か所に持つと、片方だけ直る。
+
+   何のサイトかを、画面のどこにも書いていなかった。
+   利用者役に「地図の部品を貼り付けたページに見える」と言われた。
+   β 版が同じ問題を実測で踏んで、同じ形で解いている。
+   帯は不透明にする。面が透けると、地図の上で字が読めなくなる。 */
+.brand{
+  position:absolute; left:0; right:0;
+  top:0; height:calc(2.75rem + env(safe-area-inset-top));
+  padding:env(safe-area-inset-top) var(--pad-md) 0;
+  display:flex; align-items:center; gap:var(--gap-row);
+  background:var(--surface); border-bottom:1px solid var(--line);
+  z-index:60;
+}
+/* 名乗りは、アプリのトップへ行く道でもある。
+   /take と /deep は、リンクで直接ひらかれる。その端末ではトップを一度も見ていないので、
+   history.back() は使えないし、「戻る」とも言えない（見ていない場所には戻れない）。
+   名乗りが home を兼ねるのは、どのサイトでもそうなので説明が要らない。
+   押せるものなので 44 を割らない。字だけだと縦が 24px しかなかった（実測 2026-08-30）。 */
+.brand__name{
+  display:flex; align-items:center; gap:.5rem; min-width:0;
+  min-height:var(--tap);
+  font-size:.9375rem; font-weight:700; color:var(--ink); text-decoration:none;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+}
+a.brand__name:hover{color:var(--action)}
+.brand__name:focus-visible{outline:2px solid var(--action); outline-offset:2px}
+.brand[hidden]{display:none}
+.brand__mark{width:1.25rem; height:1.25rem; border-radius:.25rem; flex:none; display:block}
+/* 右端は空けてある。「このサイトについて」を置く場所だが、中身がまだ無い。
+   中身の無いものを置くと、押しても何も起きない導線になる。 */

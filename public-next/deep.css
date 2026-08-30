@@ -16,8 +16,12 @@ body{
   margin:0; background:var(--bg); color:var(--ink-2);
   font:16px/1.9 system-ui,-apple-system,"Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif;
 }
-#doc{max-width:var(--read); margin:0 auto; padding:var(--pad-md) var(--pad-md) 6rem}
-@media (min-width:700px){ #doc{padding:2rem 1.5rem 8rem} }
+/* 名乗りの帯のぶん下げる。帯は position:absolute なので、場所を取らない。 */
+#doc{max-width:var(--read); margin:0 auto;
+  padding:calc(2.75rem + env(safe-area-inset-top) + var(--pad-md)) var(--pad-md) 6rem}
+@media (min-width:700px){
+  #doc{padding:calc(2.75rem + env(safe-area-inset-top) + 2rem) 1.5rem 8rem}
+}
 
 .back{
   display:inline-flex; align-items:center; min-height:var(--tap);

@@ -11,7 +11,7 @@
   const lead = $("recvLead"), said = $("recvSaid");
   const again = $("recvAgain"), why = $("recvWhy"), hint = $("recvHint");
   const got = $("recvGot"), gotTitle = $("gotTitle"), gotBody = $("gotBody");
-  const gotList = $("gotList"), gotAct = $("gotAct"), gotNote = $("gotNote"), gotMap = $("gotMap");
+  const gotList = $("gotList"), gotAct = $("gotAct"), gotNote = $("gotNote");
   const S = globalThis.KonjakuSaved;
   // 名前は「別の端末が送ってきた字」。素通しで組み立てない。
   //   ⚠ 取れなかったときに素通しへ落ちる書き方をしない。落ちるなら、ここで落とす。
@@ -44,9 +44,8 @@
   //   前は「いまはしない」にしか無く、足したあとは残っていた（2026-08-30 に踏んだ）。
   //   残ると、履歴とアドレス欄に荷物が残り、そのまま共有すると場所を配る。
   const URLを掃除 = () => {
+    if (!location.hash) return;
     const u = new URL(location.href);
-    if (!u.searchParams.has("take") && !u.hash) return;
-    u.searchParams.delete("take");
     history.replaceState(null, "", u.pathname + u.search);
   };
 
@@ -76,19 +75,17 @@
       + `<span class="g">${esc(r.value ?? "")}</span></li>`).join("")
       + (list.length > 20 ? `<li><span class="n">ほか ${list.length - 20} 件</span></li>` : "");
     gotAct.hidden = false;
-    gotMap.hidden = true;
     gotNote.textContent = "受け取った場所は、この端末の中だけに残ります。どこにも送りません。";
   }
 
   // ③ リンク（?take=）で来た人。合言葉は要らない。荷物が URL に載っている。
   //   受けるのはこの画面だけ（2026-08-30。Owner 判断）。前は地図の上にも板があった。
   //
-  // 荷物は # に載っている。? だと配信元へ届く（2026-08-30 に直した）。
-  //   古いリンク（?take=）も読む。読めなくすると、すでに送った人が受け取れない。
-  //   ただし新しく作るリンクは # だけ（top.js の handUrl）。
+  // 荷物は # にしか載らない。? だと配信元へ届く（クエリは HTTP のリクエスト行に載る）。
+  //   ?take= を読む口は外した（2026-08-30。Owner 判断）。まだリリースしていないので、
+  //   古いリンクを持っている人がいない。残す限り、開けば荷物が配信元へ届く。
   async function リンクで受ける() {
-    const t = location.hash.slice(1)
-      || new URLSearchParams(location.search).get("take");
+    const t = location.hash.slice(1);
     if (!t) return false;
     const list = await S.fromText(t, 解凍).catch(() => null);
     if (!list) {
@@ -166,12 +163,11 @@
       + `<a class="recv__deep" href="${深掘りへ(x)}">深く読む</a></li>`).join("")
       + (r.list.length > 20 ? `<li><span class="n">ほか ${r.list.length - 20} 件</span></li>` : "");
     gotAct.hidden = true;
-    gotMap.hidden = false;
-    // 地図も、受け取った場所へ寄せる。既定の場所を開かない。
-    const 先頭 = r.list[0];
-    gotMap.href = 先頭
-      ? `./?ll=${Number(先頭.lat).toFixed(5)},${Number(先頭.lon).toFixed(5)}`
-      : "./";
+    // 「地図をひらく」は置かない（2026-08-30。Owner 判断）。
+    //   保存した場所を地図にまとめて出す仕組みが、どこにも無い。地図に出る印は「ここ」1 点だけ。
+    //   前は受け取った 1 件目へ飛ばしていたが、それは「まとめて見る」ではない。
+    //   地図を見たい要求は、各行の「深く読む」→ /deep から、場所を選んだ状態で行ける。
+    //   アプリのトップへは、上の名乗りから行ける。
     gotNote.textContent = 置けた
       ? ""
       : "この端末では、保存した場所を覚えておけません（ブラウザの設定によります）。";

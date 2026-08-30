@@ -5,6 +5,7 @@
 <meta name="color-scheme" content="light dark">
 <title>この場所を深掘りする — 今昔 v0.1.0</title>
 <link rel="stylesheet" href="./theme.css">
+<link rel="stylesheet" href="./brand.css">
 <link rel="stylesheet" href="./deep.css">
 
 <!-- 帰宅後に、保存した 1 地点を読む画面。
@@ -12,6 +13,16 @@
        散歩中  ここは昔なんだった？  5 秒   地図が主役
        帰宅後  なぜこうなった？      10 分  読み物
      上から順に「いつ → まわり → なぜ」で読み下す。タブを並べない。 -->
+  <!-- 名乗り。アプリのトップへ行く道でもある。
+       この画面はリンクで直接ひらかれるので、その端末ではトップを一度も見ていない。
+       だから history.back() は使えないし、「戻る」とも言えない。 -->
+  <header class="brand">
+    <a class="brand__name" href="./">
+      <img class="brand__mark" src="./favicon.svg" alt="" width="20" height="20">
+      今昔　この土地は、昔なんだったのか？
+    </a>
+  </header>
+
 <article id="doc">
   <header id="head">
     <a class="back" id="back" href="./">← 地図にもどる</a>

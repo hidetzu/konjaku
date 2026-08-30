@@ -1,8 +1,12 @@
 /* 受け取り口。読み物ではなく「1 つのことをする画面」なので、
    置くのは入力欄と、その結果だけ。地図も年代も出さない。
    色と 44px は top.css から借りる。ここで持ち直さない。 */
-.recv{max-width:38rem; margin:0 auto; padding:3rem var(--pad-md) 6rem}
-@media (min-width:700px){ .recv{padding:4rem var(--pad-md) 8rem} }
+/* 名乗りの帯のぶん下げる。帯は position:absolute なので、場所を取らない。 */
+.recv{max-width:38rem; margin:0 auto;
+  padding:calc(2.75rem + env(safe-area-inset-top) + 1.5rem) var(--pad-md) 6rem}
+@media (min-width:700px){
+  .recv{padding:calc(2.75rem + env(safe-area-inset-top) + 2.5rem) var(--pad-md) 8rem}
+}
 
 .recv__h{margin:0 0 var(--gap-sub); font-size:1.375rem; color:var(--ink)}
 .recv__lead{margin:0 0 var(--gap-block); font-size:.9375rem; color:var(--ink-2); line-height:1.7}
@@ -59,21 +63,4 @@
 }
 .recv__card[hidden]{display:none}
 .recv__got{margin:0; font-size:1rem; color:var(--ink)}
-.recv__map{
-  display:flex; align-items:center; justify-content:center;
-  min-height:var(--tap); margin-top:var(--gap-row);
-  border:1px solid var(--line-strong); border-radius:.5rem;
-  font-size:.8125rem; font-weight:700; color:var(--action); text-decoration:none;
-}
-.recv__map[hidden]{display:none}
-.recv__map:focus-visible{outline:2px solid var(--action); outline-offset:2px}
-
-/* 受け取ったあと、1 件ずつ深掘りへ行ける。この画面は帰宅後の PC で開く。 */
-.recv__deep{
-  flex:none; min-height:var(--tap); display:flex; align-items:center;
-  padding:0 var(--gap-row); margin-right:calc(var(--gap-row) * -1);
-  font-size:.8125rem; font-weight:700; color:var(--action); text-decoration:none;
-}
-.recv__deep:focus-visible{outline:2px solid var(--action); outline-offset:2px}
-
 .recv__hint{margin:var(--gap-block) 0 0; font-size:.75rem; color:var(--ink-3); line-height:1.6}
