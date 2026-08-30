@@ -45,7 +45,7 @@
   //   残ると、履歴とアドレス欄に荷物が残り、そのまま共有すると場所を配る。
   const URLを掃除 = () => {
     const u = new URL(location.href);
-    if (!u.searchParams.has("take")) return;
+    if (!u.searchParams.has("take") && !u.hash) return;
     u.searchParams.delete("take");
     history.replaceState(null, "", u.pathname + u.search);
   };
@@ -82,8 +82,13 @@
 
   // ③ リンク（?take=）で来た人。合言葉は要らない。荷物が URL に載っている。
   //   受けるのはこの画面だけ（2026-08-30。Owner 判断）。前は地図の上にも板があった。
+  //
+  // 荷物は # に載っている。? だと配信元へ届く（2026-08-30 に直した）。
+  //   古いリンク（?take=）も読む。読めなくすると、すでに送った人が受け取れない。
+  //   ただし新しく作るリンクは # だけ（top.js の handUrl）。
   async function リンクで受ける() {
-    const t = new URLSearchParams(location.search).get("take");
+    const t = location.hash.slice(1)
+      || new URLSearchParams(location.search).get("take");
     if (!t) return false;
     const list = await S.fromText(t, 解凍).catch(() => null);
     if (!list) {

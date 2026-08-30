@@ -1133,14 +1133,18 @@ CASES.push({
     await page.locator("#handOut").click();
     await page.waitForTimeout(800);
     const url = await page.evaluate(() => navigator.clipboard.readText());
-    must(url && /[?&]take=/.test(url), `渡すリンクに中身が入っていない: ${url}`);
+    must(url && /#\S/.test(url), `渡すリンクに中身が入っていない: ${url}`);
     // ⚠ **長すぎる URL は、⚠ 開いた先で切れる**（⚠ 実用上 2000 文字）
     must(url.length <= 2000, `渡すリンクが長すぎる（${url.length} 文字）`);
 
     // ⚠ **リンクの行き先は受け取り口**（2026-08-30）。⚠ **地図の上では受けない。**
     //   ⚠ **前はトップ（`/?take=`）で受けていて、⚠ 受け取る画面が 2 つあった。**
     //   ⚠ **同じ問いに答える画面が 2 つあると、⚠ 片方だけ直る**（⚠ 実際にそうなった）。
-    must(/\/take\?take=/.test(url), `リンクが受け取り口を指していない: ${url.slice(0, 60)}`);
+    must(/\/take#/.test(url), `リンクが受け取り口を指していない: ${url.slice(0, 60)}`);
+    // ⚠ **荷物を `?` に載せない**（2026-08-30 に直した）。
+    //   ⚠ **クエリは HTTP のリクエスト行に載る。**⚠ **開いた瞬間に配信元へ届く。**
+    //   ⚠ **画面は「サーバを通さずに渡す」と言っている。**⚠ **`#` にして初めて字義どおりになる。**
+    must(!/[?&]take=/.test(url), `荷物がクエリに載っている（配信元へ届く）: ${url.slice(0, 60)}`);
 
     // ⚠ **別の端末で開く**（⚠ 器を分ける。⚠ localStorage も別）
     const 別 = await page.context().browser().newContext({ viewport: { width: 1440, height: 950 } });
@@ -1377,7 +1381,9 @@ CASES.push({
     await page.locator("#handOut").click();
     await 待つ(page, () => globalThis.__shared.length > 0, "共有シートへ渡すもの");
     const 渡した = await page.evaluate(() => globalThis.__shared[0]);
-    must(渡した.url && /[?&]take=/.test(渡した.url), `リンクに中身が入っていない: ${渡した.url}`);
+    // ⚠ **荷物は `#` に載る**（2026-08-30）。⚠ **`?` だと配信元へ届く。**
+    must(渡した.url && /\/take#\S/.test(渡した.url), `リンクに中身が入っていない: ${渡した.url}`);
+    must(!/[?&]take=/.test(渡した.url), `荷物がクエリに載っている: ${渡した.url.slice(0, 60)}`);
     // ⚠ **以前の上限（2000）なら、⚠ ここで「渡せません」になっていた**
     must(渡した.url.length > 2000,
       `100 件のリンクが 2000 文字以下（${渡した.url.length} 文字）。⚠ この検査は何も見ていない`);
@@ -2025,7 +2031,8 @@ CASES.push({
       `写した字が URL だけではない（${写した.length} 文字）: ${写した.slice(0, 80)}`);
     must(!/今昔|保存した場所|件/.test(写した),
       `写した字に題や説明が混ざっている: ${写した.slice(0, 80)}`);
-    must(/\/take\?take=/.test(写した), `写した URL が受け取り口を指していない: ${写した.slice(0, 60)}`);
+    must(/\/take#/.test(写した), `写した URL が受け取り口を指していない: ${写した.slice(0, 60)}`);
+    must(!/[?&]take=/.test(写した), `写した URL の荷物がクエリに載っている: ${写した.slice(0, 60)}`);
 
     // ⚠ **送る口。**⚠ **題と説明が付くこと**（⚠ 送った先で何のリンクか分かる）
     await page.locator("#handOut").click();
@@ -2033,7 +2040,7 @@ CASES.push({
     const 送った = await page.evaluate(() => globalThis.__shared[0]);
     must(送った.title && /今昔/.test(送った.title), `送る口に題が無い: ${送った.title}`);
     must(送った.text && /件/.test(送った.text), `送る口に説明が無い: ${送った.text}`);
-    must(送った.url === 写した.trim() || /\/take\?take=/.test(送った.url),
+    must(送った.url === 写した.trim() || /\/take#/.test(送った.url),
       `送る口の URL が違う: ${送った.url?.slice(0, 60)}`);
     // ⚠ **地名を入れない**（⚠ 共有シートの先に地名が残る）
     must(!/豊洲/.test(`${送った.title}${送った.text}`),

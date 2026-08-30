@@ -807,9 +807,15 @@
 
   // 受け取るのは /take（2026-08-30）。地図の上では受けない。
   //   前は location.pathname に戻していたので、トップで受けていた。
+  //
+  // 荷物は # に載せる。? だと配信元へ届く（2026-08-30 に直した）。
+  //   クエリは HTTP のリクエスト行に載るので、開いた瞬間に保存した場所ぜんぶが
+  //   配信元（Cloudflare）へ届いていた。画面は「サーバを通さずに渡す」と言っている。
+  //   フラグメントはリクエストに含まれない。ブラウザの中だけに残る。
+  //   これで、画面の字が字義どおりになる（ADR 0069 の意図）。
   async function handUrl() {
     const t = await KonjakuSaved.toText(saved, globalThis.CompressionStream ? 圧縮 : null);
-    return `${location.origin}/take?take=${t}`;
+    return `${location.origin}/take#${t}`;
   }
 
   // 渡せる長さの上限。実測で決めている（2026-08-29・Chromium・tmp/measure-urllen.mjs）。
