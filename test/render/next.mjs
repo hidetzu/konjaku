@@ -2304,3 +2304,95 @@ CASES.push({
     return `${r.道} に留まり「${r.見出し}」`;
   },
 });
+
+// ⚠ **`/deep` の戻る道**（2026-08-30。⚠ Owner が決めた）。
+//
+// ⚠ **入口が 3 つあるのに、⚠ 出口が 1 つしか無かった。**
+//     地図 → /deep         ⚠ 地図へ戻るのが自然
+//     保存の一覧 → /deep   ⚠ 一覧へ戻るのが自然
+//     共有リンクで直接      ⚠ どちらでもない。⚠ **「もどる」は嘘**
+//
+// ⚠ **`history.length` では分からない**（⚠ 実測 2026-08-30: ⚠ 直接ひらいても 2）。
+//   ⚠ **`document.referrer` なら分かれる。**
+CASES.push({
+  name: "深掘り画面を直接ひらいたら、行き先を言う字にする",
+  path: `/deep?${TOYOSU}`, origin: NEXT_BASE, viewport: PC,
+  async check(page) {
+    await page.waitForTimeout(3000);
+    const r = await page.evaluate(() => {
+      const a = document.getElementById("back");
+      return { 字: a.textContent.trim(), 先: a.getAttribute("href"),
+               referrer: document.referrer };
+    });
+    must(r.referrer === "", `直接ひらいたのに referrer がある: ${r.referrer}`);
+    // ⚠ **見ていない場所に「もどる」とは言えない**（`CLAUDE.md` §4）
+    must(!/もどる|戻る|ひとつ前/.test(r.字), `直接ひらいたのに戻ると言っている: ${r.字}`);
+    must(/地図で見る/.test(r.字), `行き先を言っていない: ${r.字}`);
+    // ⚠ **場所を渡す**（⚠ 既定の場所へ飛ばさない）
+    must(/ll=\d/.test(r.先 ?? ""), `地図へ場所を渡していない: ${r.先}`);
+    return `「${r.字}」→ ${r.先}`;
+  },
+});
+
+CASES.push({
+  // ⚠ **同じサイトから来たとき。**⚠ **直前へ返す。**
+  //   ⚠ **本当に戻るところまで見る**（⚠ 字が変わるだけでは、⚠ 何も確かめていない）。
+  name: "深掘り画面から、来た画面へ戻れる",
+  path: "/saved", origin: NEXT_BASE, viewport: PC,
+  setup: (page) => page.addInitScript((l) => {
+    localStorage.setItem("konjaku-next-saved-v1", JSON.stringify(l));
+  }, [{ lat: 35.65531, lon: 139.79672, name: "東京都江東区豊洲三丁目",
+        value: "旧水部", at: 1788000000000 }]),
+  async check(page) {
+    await 待つ(page, () => document.querySelectorAll("#listItems li").length > 0, "一覧の行");
+    await page.locator("#listItems a").first().click();
+    await 待つ(page, () => location.pathname.includes("deep"), "深掘り画面");
+    await page.waitForTimeout(2500);
+    const 字 = await page.evaluate(() => document.getElementById("back").textContent.trim());
+    must(/ひとつ前/.test(字), `同じサイトから来たのに、直前へ返す字でない: ${字}`);
+    await page.locator("#back").click();
+    await 待つ(page, () => location.pathname.endsWith("/saved"), "戻った先");
+    const 戻り = await page.evaluate(() => ({
+      道: location.pathname,
+      行: document.querySelectorAll("#listItems li").length,
+    }));
+    must(/\/saved$/.test(戻り.道), `来た画面へ戻っていない（いま ${戻り.道}）`);
+    must(戻り.行 === 1, `戻った先が作り直されていない（${戻り.行} 行）`);
+    return `「${字}」→ ${戻り.道}（${戻り.行} 件）`;
+  },
+});
+
+CASES.push({
+  // ⚠ **新しいタブで開かれた場合**（⚠ ctrl＋クリック・中クリック）。
+  //   ⚠ **referrer は同じサイトなのに、⚠ 戻る先が無い。**
+  //   ⚠ **`history.length` では見分けられない**（⚠ 文書の実測）。
+  //   ⚠ **戻れたかどうかは、⚠ 戻ってみないと分からない。**⚠ **戻らなければ地図へ送る。**
+  name: "新しいタブで深掘りを開いても、押して行き止まりにならない",
+  path: `/deep?${TOYOSU}`, origin: NEXT_BASE, viewport: PC,
+  // ⚠ **同じサイトの referrer を付けて開く。**⚠ **そのうえで `back()` を効かなくする。**
+  //   ⚠ **走者は `about:blank` から始まるので、⚠ 「戻る先が無い」をそのままは作れない**
+  //   （⚠ `back()` が `about:blank` へ戻ってしまう）。⚠ **だから直接そうする。**
+  //   ⚠ **実機の中クリックは、⚠ これで確かめたことにはならない**（`CLAUDE.md` §1）。
+  //   ⚠ **ここで言えるのは「戻れなかったときに受け皿が働く」まで。**
+  goto: { referer: `${NEXT_BASE}/saved` },
+  setup: (page) => page.addInitScript(() => {
+    history.back = () => {};   // ⚠ 新しいタブ（戻る先が無い）と同じ状態
+  }),
+  async check(page) {
+    await page.waitForTimeout(3000);
+    const 前 = await page.evaluate(() => ({
+      字: document.getElementById("back").textContent.trim(),
+      referrer: document.referrer, 履歴: history.length,
+    }));
+    must(/ひとつ前/.test(前.字), `同じサイトの referrer なのに字が違う: ${前.字}`);
+    await page.locator("#back").click();
+    // ⚠ **戻れないので、⚠ 受け皿が働いて地図へ出る**（⚠ 押しても何も起きない、にしない）
+    await page.waitForTimeout(1500);
+    const 後 = await page.evaluate(() => ({
+      道: location.pathname, 場所: new URL(location.href).searchParams.get("ll"),
+    }));
+    must(!/deep/.test(後.道), `押しても行き止まりのまま（いま ${後.道}）`);
+    must(後.場所, `地図へ場所を渡していない（${後.道} ／ ll=${後.場所}）`);
+    return `戻れない → ${後.道}?ll=${後.場所}`;
+  },
+});

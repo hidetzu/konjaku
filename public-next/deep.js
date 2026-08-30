@@ -24,10 +24,43 @@
   // 場所は URL から。読む口は place-arg.js の 1 か所（同じ問いに答える実装を 2 つ持たない）。
   const arg = KonjakuPlaceArg.readPlace(new URLSearchParams(location.search));
 
-  // 地図へ戻る先も、同じ口で組み立てる。手で書かない
-  if (arg.state === "ok") {
+  // 戻る道。入口が 3 つあるので、行き先を名指しできない。
+  //   地図 → ここ         地図へ戻るのが自然
+  //   保存の一覧 → ここ   一覧へ戻るのが自然
+  //   共有リンクで直接    どちらでもない。「もどる」は嘘になる
+  //
+  // 同じサイトから来たかは document.referrer で分かる。history.length では分からない
+  //   （実測 2026-08-30: 直接ひらいても 2 になる）。
+  // referrer は環境で消える（プライバシー設定・拡張・アプリ内ブラウザ）。
+  //   空は「直前が無い」として扱う。安全側に倒れる（誤って外へ出さない）。
+  const 地図へ = (() => {
+    if (arg.state !== "ok") return "./";
     const q = KonjakuPlaceArg.placeQuery({ lat: arg.lat, lon: arg.lon });
-    if (q) backEl.href = "./" + q.replace(/^\?q=&/, "?");
+    return "./" + (q ? q.replace(/^\?q=&/, "?") : "");
+  })();
+  backEl.href = 地図へ;
+
+  const 同じサイトから = (() => {
+    try { return !!document.referrer && new URL(document.referrer).origin === location.origin; }
+    catch { return false; }
+  })();
+
+  if (同じサイトから) {
+    backEl.textContent = "← ひとつ前へ";
+    backEl.addEventListener("click", (e) => {
+      // 新しいタブで開かれていると、referrer は同じでも戻る先が無い
+      //   （ctrl＋クリック・中クリック）。history.length では見分けられない。
+      //   戻れたかどうかは、戻ってみないと分からない。戻らなければ地図へ送る。
+      e.preventDefault();
+      let 戻れた = false;
+      const 見張り = () => { 戻れた = true; };
+      addEventListener("pagehide", 見張り, { once: true });
+      history.back();
+      setTimeout(() => {
+        removeEventListener("pagehide", 見張り);
+        if (!戻れた) location.href = 地図へ;
+      }, 400);
+    });
   }
 
   // 保存した控えから、この地点の名前を引く。控えの形は saved.js が持つ。

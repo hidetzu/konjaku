@@ -258,7 +258,10 @@ async function runCase(c, attempt) {
     return route.fulfill(rec);
   });
   await c.setup?.(page);
-    await page.goto((c.origin ?? BASE) + c.path, { waitUntil: "domcontentloaded", timeout: 45000 });
+    // ⚠ **`goto` を渡せる**（2026-08-30）。⚠ **`referer` を付けて開く形が要る**
+    //   （⚠ 「新しいタブで開いた」＝ ⚠ 同じサイトの referrer なのに履歴が無い、を作る）。
+    await page.goto((c.origin ?? BASE) + c.path,
+      { waitUntil: "domcontentloaded", timeout: 45000, ...(c.goto ?? {}) });
     const detail = await c.check(page, reqs);
     // 描画自体は通っても、裏でエラーが出ていれば見逃さない
     if (errors.length) throw new Error(`JSエラー: ${errors[0]}`);
