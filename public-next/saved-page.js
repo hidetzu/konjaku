@@ -34,6 +34,30 @@
   const { ok, list } = 読む();
   const items = $("listItems");
 
+  // 受け取り口から来たとき、何が起きたかを言う（docs/adr/0026）。
+  //   数は URL で渡ってくる。0 件のときも黙らない（「押したのに何も起きない」に見える）。
+  //   ⚠ 数えたのは受け取り口。ここでは数え直さない（2 か所で数えると食い違う）。
+  {
+    const sp = new URLSearchParams(location.search);
+    if (sp.has("added")) {
+      const 足した = Math.max(0, Number(sp.get("added")) || 0);
+      const 重なった = Math.max(0, Number(sp.get("same")) || 0);
+      const said = $("listSaid");
+      said.hidden = false;
+      said.textContent = 足した
+        ? `${足した} 件を足しました。`
+          + (重なった ? `${重なった} 件は、すでにこの端末にありました。` : "")
+        : 重なった
+          ? `${重なった} 件とも、すでにこの端末にありました。`
+          : "足すものがありませんでした。";
+      // 読み込み直しで、また同じことを言わないように落とす。
+      const u = new URL(location.href);
+      u.searchParams.delete("added");
+      u.searchParams.delete("same");
+      history.replaceState(null, "", u.pathname + u.search);
+    }
+  }
+
   if (list.length) {
     $("listN").textContent = `${list.length} 件`;
     $("listNote").hidden = false;

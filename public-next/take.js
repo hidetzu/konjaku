@@ -1,21 +1,21 @@
-// 受け取り口。合言葉を打つと、別の端末で保存した場所を受け取る。
+// 受け取り口。合言葉を打つか、リンクで来ると、別の端末で保存した場所を受け取る。
 //
 // ここでやること:
-//   合言葉を送る → 返ってきた字を解く → 見せる → 押されたら足す
+//   合言葉を送る → 返ってきた字を解く → 足す → /saved へ進む
 // ここでやらないこと:
 //   同じ場所かどうかの判定、混ぜ方（saved.js が持つ）
 //   地図、年代、判定（この画面は 1 つのことだけする）
+//
+// 見せてから押してもらう一歩は置かない（2026-08-30。Owner 判断。ADR 0069 / 0072 を直した）。
+//   合言葉は自分で 8 文字を打つし、リンクも自分で押している。
+//   何を足したかは、進んだ先（/saved）で字にする。押したあとに何が起きたかは必ず言う。
 (() => {
   const $ = (id) => document.getElementById(id);
   const form = $("recvForm"), input = $("recvIn"), go = $("recvGo");
   const lead = $("recvLead"), said = $("recvSaid");
   const again = $("recvAgain"), why = $("recvWhy"), hint = $("recvHint");
   const got = $("recvGot"), gotTitle = $("gotTitle"), gotBody = $("gotBody");
-  const gotList = $("gotList"), gotAct = $("gotAct"), gotNote = $("gotNote");
   const S = globalThis.KonjakuSaved;
-  // 名前は「別の端末が送ってきた字」。素通しで組み立てない。
-  //   ⚠ 取れなかったときに素通しへ落ちる書き方をしない。落ちるなら、ここで落とす。
-  const { esc } = window.KonjakuEsc;
 
   // 置き場が読めないことと、1 件も無いことは違う。読めないときだけ断る。
   const store = (() => {
@@ -33,11 +33,7 @@
   //   これは画面がそう言っているので、ここで必ず守る。
   const 整える = (s) => String(s ?? "").replace(/[\s-]/g, "").toUpperCase();
 
-  // 深掘りの行き先。座標の渡し方は 1 か所（place-arg.js）に寄せたいが、
-  let 来たもの = null;
-
-  // ② URL から take を落とす。読み込み直しで、また同じ問いが出ないように。
-  //   前は「いまはしない」にしか無く、足したあとは残っていた（2026-08-30 に踏んだ）。
+  // URL から荷物を落とす。読み込み直しで、また同じことが起きないように。
   //   残ると、履歴とアドレス欄に荷物が残り、そのまま共有すると場所を配る。
   const URLを掃除 = () => {
     if (!location.hash) return;
@@ -48,6 +44,8 @@
   // 押したあとに何が起きたかを、必ず字で言う。
   const 言う = (t) => { said.textContent = t ?? ""; said.hidden = !t; };
 
+  // 受け取れなかったとき。できることから書く（CLAUDE.md §4-1）。
+  //   1 行目と手順は、どの理由でも同じ。やることが同じだから。違うのは理由だけ。
   function 出し直しへ(理由) {
     got.hidden = true;
     言う(null);
@@ -59,27 +57,35 @@
     input.focus();
   }
 
-  function 見せる(list) {
+  // 受け取ったものを足して、一覧へ進む。
+  //   置けなかったときだけ、この画面に留まる。/saved は localStorage から作るので、
+  //   置けていなければ何も並ばない。黙って空の一覧へ送ると「消えた」と読める。
+  function 足して進む(list) {
     again.hidden = true;
     言う(null);
-    got.hidden = false;
-    来たもの = list;
-    gotTitle.textContent = `${list.length} 件の場所を受け取りました`;
-    gotBody.textContent = "この端末に足しますか。足しても、いまある保存は消えません。";
-    gotList.innerHTML = list.slice(0, 20).map((r) =>
-      `<li><span class="n">${esc(r.name ?? "地図から選んだ場所")}</span>`
-      + `<span class="g">${esc(r.value ?? "")}</span></li>`).join("")
-      + (list.length > 20 ? `<li><span class="n">ほか ${list.length - 20} 件</span></li>` : "");
-    gotAct.hidden = false;
-    gotNote.textContent = "受け取った場所は、この端末の中だけに残ります。どこにも送りません。";
+    const いま = store ? S.load(store) : { ok: false, list: [] };
+    const r = S.merge(いま.list ?? [], list);
+    const 置けた = store ? S.save(store, r.list) : false;
+    URLを掃除();
+
+    if (!置けた) {
+      got.hidden = false;
+      gotTitle.textContent = "この端末には残せませんでした";
+      gotBody.textContent =
+        "この端末では、保存した場所を覚えておけません（ブラウザの設定によります）。";
+      form.hidden = true;
+      lead.hidden = true;
+      hint.textContent = "";
+      return;
+    }
+
+    // 何が起きたかは、進んだ先で言う（docs/adr/0026）。数を URL に載せて渡す。
+    //   戻ったときにこの画面へ戻らないよう replace にする。戻れると二重に足しうる。
+    location.replace(`./saved?added=${r.足した}&same=${r.重なった}`);
   }
 
-  // ③ リンク（?take=）で来た人。合言葉は要らない。荷物が URL に載っている。
-  //   受けるのはこの画面だけ（2026-08-30。Owner 判断）。前は地図の上にも板があった。
-  //
-  // 荷物は # にしか載らない。? だと配信元へ届く（クエリは HTTP のリクエスト行に載る）。
-  //   ?take= を読む口は外した（2026-08-30。Owner 判断）。まだリリースしていないので、
-  //   古いリンクを持っている人がいない。残す限り、開けば荷物が配信元へ届く。
+  // リンク（#）で来た人。合言葉は要らない。荷物が URL に載っている。
+  //   ? には載せない。クエリは HTTP のリクエスト行に載るので、開いた瞬間に配信元へ届く。
   async function リンクで受ける() {
     const t = location.hash.slice(1);
     if (!t) return false;
@@ -93,7 +99,7 @@
       URLを掃除();
       return true;
     }
-    見せる(list);
+    足して進む(list);
     return true;
   }
 
@@ -138,50 +144,9 @@
         + "この端末に保存した場所は、そのままです。");
       return;
     }
-    見せる(list);
-  });
-
-  $("gotYes").addEventListener("click", () => {
-    if (!来たもの) return;
-    const いま = store ? S.load(store) : { ok: false, list: [] };
-    const r = S.merge(いま.list ?? [], 来たもの);
-    const 置けた = store ? S.save(store, r.list) : false;
-    来たもの = null;
-    URLを掃除();
-
-    // 置けなかったときだけ、この画面に留まる。
-    //   /saved は localStorage から作るので、置けていなければ何も並ばない。
-    //   何も言わずに空の一覧へ送ると、「消えた」と読める。
-    if (!置けた) {
-      gotTitle.textContent = "この端末には残せませんでした";
-      gotBody.textContent =
-        "この端末では、保存した場所を覚えておけません（ブラウザの設定によります）。";
-      gotList.innerHTML = "";
-      gotAct.hidden = true;
-      gotNote.textContent = "";
-      form.hidden = true;
-      lead.hidden = true;
-      hint.textContent = "";
-      return;
-    }
-
-    // 足したら、そのまま一覧へ進む（2026-08-30。Owner 判断）。
-    //   前はここで「N 件を足しました」と一覧をもう一度出していた。
-    //   同じ一覧を 2 度見せる意味が薄く、次にやること（深掘り）は /saved が引き受ける。
-    //   確かめの一歩（足す前に見せて押してもらう）は残す。ADR 0069 / 0072。
-    location.replace("./saved");
+    足して進む(list);
   });
 
   // 起動時。リンクで来ていれば、合言葉を待たずに受ける。
   リンクで受ける();
-
-  $("gotNo").addEventListener("click", () => {
-    got.hidden = true;
-    来たもの = null;
-    URLを掃除();
-    // 押したのに何も言わないと、効いたのか分からない。
-    言う("足していません。この端末に保存した場所は、そのままです。");
-    input.value = "";
-    input.focus();
-  });
 })();
