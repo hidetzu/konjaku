@@ -2071,3 +2071,52 @@ CASES.push({
     return "トップは受け取らない（板 0 ／ 字 0 ／ 控え 0）";
   },
 });
+
+// ⚠ **柱の幅**（2026-08-30。⚠ Owner 判断で `#id` の列挙をやめ、⚠ 共通クラスにした）。
+//
+// ⚠ **同じ形を 2 回踏んでいる**（⚠ 保存の板 2026-08-29 ／ 合言葉の板 2026-08-30）。
+//   ⚠ **どちらも `@media` の一覧に足し忘れ、⚠ その板だけ 1424px のまま残った。**
+//   ⚠ **落ちないので気づけない。**⚠ **コメントで注意しても止まらなかった。**
+//
+// ⚠ **「class が付いているか」を見ない。**⚠ **付け忘れた新しい板を見逃す**（⚠ いまと同じ）。
+//   ⚠ **幅そのものを見る。**⚠ **板が増えても勝手に捕まる。**
+// ⚠ **狭い幅（700px 未満）では全幅が正しい。**⚠ **見るのは広い幅だけ。**
+for (const [名, viewport] of [
+  ["タブレット横", { width: 1024, height: 768 }],
+  ["PC", PC],
+  ["広い PC", { width: 1920, height: 1080 }],
+]) {
+  CASES.push({
+    name: `${名}では、柱の幅がそろっている`,
+    path: `/?${TOYOSU}`, origin: NEXT_BASE, viewport,
+    async check(page) {
+      await waitAnswer(page);
+      await page.waitForTimeout(1500);
+      const r = await page.evaluate(() => {
+        // ⚠ **画面の上に重ねる面を、⚠ 全部集める**（⚠ 隠れているものも開いて測る）。
+        //   ⚠ **地図（`#map`）は柱ではない。**⚠ **名乗りの帯も柱ではない**（⚠ 画面いっぱいが意図）。
+        const 除く = new Set(["map", "brand"]);
+        const 面 = [...document.getElementById("app").children]
+          .filter((e) => !除く.has(e.id) && getComputedStyle(e).position === "absolute");
+        const out = [];
+        for (const e of 面) {
+          const 元 = e.hidden;
+          e.hidden = false;
+          const q = e.getBoundingClientRect();
+          out.push({ id: e.id || e.className, w: Math.round(q.width) });
+          e.hidden = 元;
+        }
+        return { 板: out, 画面: innerWidth };
+      });
+      must(r.板.length >= 5,
+        `柱が少なすぎる（${r.板.length} 枚）。⚠ 集め方が効いていない可能性`);
+      const 幅 = [...new Set(r.板.map((x) => x.w))];
+      must(幅.length === 1,
+        `柱の幅がそろっていない: ${r.板.map((x) => `${x.id}=${x.w}`).join(" ")}`);
+      // ⚠ **「そろっている」だけだと、⚠ 全部が全幅でも通る**
+      must(幅[0] < r.画面 * 0.7,
+        `柱が画面（${r.画面}px）いっぱいに広がっている（${幅[0]}px）`);
+      return `${r.板.length} 枚とも ${幅[0]}px（画面 ${r.画面}px）`;
+    },
+  });
+}
