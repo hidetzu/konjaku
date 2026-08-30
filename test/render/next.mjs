@@ -2236,3 +2236,139 @@ CASES.push({
     return "クエリの荷物は読まない（受け取り 0 ／ 控え 0 ／ 入力欄は出る）";
   },
 });
+
+// ⚠ **保存した場所の一覧（`/saved`）**（2026-08-30。⚠ Owner が絵を見て決めた）。
+//
+// ⚠ **板（地図の上）は URL を持たない。**⚠ **リロードでも戻りでも出せない。**
+//   ⚠ **画面にすると URL を持つので、⚠ `/deep` から戻ってこられる。**
+// ⚠ **地図の入口（`#savedOpen`）は変えていない**（2026-08-30。Owner 判断）。
+//   ⚠ **地図はスマホで触るもの。**⚠ **合言葉を出す入口が板の中にあるので、⚠ 板を残す。**
+const 保存の種 = [
+  { lat: 36.3418, lon: 138.6353, name: "長野県軽井沢町", value: "低地", at: 1788000000000 },
+  { lat: 35.9756, lon: 139.7527, name: "埼玉県春日部市", value: "氾濫平野", at: 1787900000000 },
+  { lat: 35.65531, lon: 139.79672, name: "東京都江東区豊洲", value: "旧水部", at: 1787800000000 },
+];
+
+for (const [名, viewport] of [["スマホ", SP], ["PC", PC]]) {
+  CASES.push({
+    name: `${名}の /saved が、保存した場所を並べる`,
+    path: "/saved", origin: NEXT_BASE, viewport,
+    setup: (page) => page.addInitScript((l) => {
+      // ⚠ **控えを先に置く**（⚠ この画面は localStorage からしか作らない）
+      localStorage.setItem("konjaku-next-saved-v1", JSON.stringify(l));
+    }, 保存の種),
+    async check(page) {
+      await 待つ(page, () => document.querySelectorAll("#listItems li").length > 0, "一覧の行");
+      const r = await page.evaluate(() => {
+        const 行 = [...document.querySelectorAll("#listItems li")];
+        return {
+          件数: 行.length,
+          見出し: document.querySelector(".list__h").textContent.trim(),
+          // ⚠ **1 行に押し先を 2 つ並べない**（`docs/adr/0072`）
+          押し先: [...new Set(行.map((li) => li.querySelectorAll("a[href],button").length))],
+          先: 行.map((li) => li.querySelector("a")?.getAttribute("href")),
+          字: 行.map((li) => li.textContent.replace(/\s+/g, " ").trim()),
+          空: document.getElementById("listEmpty").checkVisibility(),
+          断り: document.getElementById("listNote").textContent.trim(),
+          小さい: [...document.querySelectorAll("a[href],button")]
+            .filter((e) => e.checkVisibility())
+            .map((e) => { const q = e.getBoundingClientRect();
+              return { t: e.textContent.trim().slice(0, 8),
+                       w: Math.round(q.width), h: Math.round(q.height) }; })
+            .filter((x) => x.w < 44 || x.h < 44),
+          あふれ: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+        };
+      });
+      must(r.件数 === 3, `一覧の件数が違う（${r.件数}）`);
+      must(/3 件/.test(r.見出し), `件数を言っていない: ${r.見出し}`);
+      must(!r.空, "一覧が出ているのに「1 件も無い」が出ている");
+      // ⚠ **1 行 = 1 つの押し先**
+      must(r.押し先.length === 1 && r.押し先[0] === 1,
+        `1 行の押し先が 1 つでない: ${JSON.stringify(r.押し先)}`);
+      must(r.先.every((h) => /deep\?ll=\d/.test(h ?? "")),
+        `行の行き先が深掘りでない: ${JSON.stringify(r.先)}`);
+      // ⚠ **板が出していた 3 つを落とさない**（⚠ 町名・保存日・足元の区分）
+      must(/長野県軽井沢町/.test(r.字[0]), `町名が無い: ${r.字[0]}`);
+      must(/低地/.test(r.字[0]), `足元の区分が無い: ${r.字[0]}`);
+      must(/きょう|きのう|日前|週間前|か月前/.test(r.字[0]), `保存日が無い: ${r.字[0]}`);
+      must(/どこにも送りません/.test(r.断り), `どこにも送らないと言っていない: ${r.断り}`);
+      must(!r.小さい.length, `44 を割る操作要素がある: ${r.小さい.map((x) => `${x.t}=${x.w}x${x.h}`).join(" ")}`);
+      must(r.あふれ === 0, `横へ ${r.あふれ}px あふれている`);
+      return `${r.件数} 件・1 行 1 押し先・${r.先[0]}`;
+    },
+  });
+}
+
+CASES.push({
+  // ⚠ **1 件も無いとき。**⚠ **空白にしない**（`CLAUDE.md` §4-1）。
+  //   ⚠ **「無い」だけを言わない。**⚠ **何をすれば並ぶかを言う。**
+  name: "/saved は、1 件も無いときに次にすることを言う",
+  path: "/saved", origin: NEXT_BASE, viewport: SP,
+  async check(page) {
+    await 待つ(page, () => document.getElementById("listEmpty").checkVisibility(), "空の案内");
+    const r = await page.evaluate(() => ({
+      行: document.querySelectorAll("#listItems li").length,
+      見出し: document.querySelector(".list__emptyH").textContent.trim(),
+      本文: document.querySelector(".list__emptyP").textContent.replace(/\s+/g, " ").trim(),
+      断り: document.getElementById("listNote").checkVisibility(),
+      戻る道: document.querySelector(".brand__name")?.getAttribute("href"),
+    }));
+    must(r.行 === 0, `1 件も無いはずなのに ${r.行} 行ある`);
+    must(/保存していません/.test(r.見出し), `見出しが違う: ${r.見出し}`);
+    // ⚠ **何をすれば並ぶか**（⚠ 保存の道と、⚠ 受け取る道の 2 つ）
+    must(/保存/.test(r.本文) && /並びます/.test(r.本文), `保存の道を言っていない: ${r.本文}`);
+    must(/合言葉/.test(r.本文), `別の端末から受け取る道を言っていない: ${r.本文}`);
+    // ⚠ **0 件のときに「どこにも送りません」を出さない**（⚠ 送るものが無い）
+    must(!r.断り, "1 件も無いのに「どこにも送りません」を出している");
+    must(r.戻る道 === "./", `アプリへ戻る道が無い: ${r.戻る道}`);
+    return `「${r.見出し}」／ ${r.本文.slice(0, 30)}…`;
+  },
+});
+
+CASES.push({
+  // ⚠ **受け取ったあと、⚠ 一覧へ行ける**（2026-08-30）。
+  //   ⚠ **`/take` の一覧は、⚠ いま足したものの控え。**⚠ **次の 1 件は `/saved` が引き受ける。**
+  name: "受け取り口から、保存した場所の一覧へ行ける",
+  path: "/take", origin: NEXT_BASE, viewport: PC,
+  setup: (page) => 合言葉の口(page),
+  async check(page) {
+    const code = await page.evaluate(async () => {
+      const 圧縮 = async (t) => {
+        const s = new Blob([t]).stream().pipeThrough(new CompressionStream("gzip"));
+        return KonjakuSaved.bytes2b64(new Uint8Array(await new Response(s).arrayBuffer()));
+      };
+      const payload = await KonjakuSaved.toText(
+        [{ lat: 35.65531, lon: 139.79672, name: "東京都江東区豊洲三丁目", value: "旧水部", at: 3 }],
+        圧縮);
+      const res = await fetch("/api/handoff", { method: "POST",
+        headers: { "content-type": "application/json" }, body: JSON.stringify({ payload }) });
+      return (await res.json()).code;
+    });
+    await page.locator("#recvIn").fill(code);
+    await page.locator("#recvGo").click();
+    await 待つ(page, () => !document.getElementById("recvGot").hidden, "受け取った中身");
+    const 前 = await page.evaluate(() => document.getElementById("gotSaved").checkVisibility());
+    must(!前, "足す前から、一覧への道が出ている");
+    await page.locator("#gotYes").click();
+    await page.waitForTimeout(600);
+    const r = await page.evaluate(() => {
+      const a = document.getElementById("gotSaved");
+      const q = a.getBoundingClientRect();
+      return { 見える: a.checkVisibility(), 先: a.getAttribute("href"),
+               字: a.textContent.trim(), h: Math.round(q.height) };
+    });
+    must(r.見える, "足したのに、一覧への道が出ない");
+    must(r.先 === "./saved", `一覧への行き先が違う: ${r.先}`);
+    must(r.h >= 44, `一覧への道が 44 を割っている（${r.h}px）`);
+    // ⚠ **実際に開いて、⚠ 足したものが並ぶこと**（⚠ リンクが在るだけでは足りない）
+    await page.locator("#gotSaved").click();
+    await 待つ(page, () => document.querySelectorAll("#listItems li").length > 0, "一覧の行");
+    const 一覧 = await page.evaluate(() => ({
+      行: document.querySelectorAll("#listItems li").length,
+      字: document.querySelector("#listItems li")?.textContent.replace(/\s+/g, " ").trim(),
+    }));
+    must(一覧.行 === 1, `一覧に足したものが並んでいない（${一覧.行} 行）`);
+    must(/豊洲/.test(一覧.字 ?? ""), `並んだものが違う: ${一覧.字}`);
+    return `「${r.字}」→ ${r.先} ／ 一覧に ${一覧.行} 件`;
+  },
+});

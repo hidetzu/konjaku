@@ -63,4 +63,14 @@
 }
 .recv__card[hidden]{display:none}
 .recv__got{margin:0; font-size:1rem; color:var(--ink)}
+/* 足したあとの行き先。ここから先は /saved が引き受ける。 */
+.recv__saved{
+  display:flex; align-items:center; justify-content:center;
+  min-height:var(--tap); margin-top:var(--gap-row);
+  border:1px solid var(--line-strong); border-radius:.5rem;
+  font-size:.8125rem; font-weight:700; color:var(--action); text-decoration:none;
+}
+.recv__saved[hidden]{display:none}
+.recv__saved:focus-visible{outline:2px solid var(--action); outline-offset:2px}
+
 .recv__hint{margin:var(--gap-block) 0 0; font-size:.75rem; color:var(--ink-3); line-height:1.6}

@@ -669,17 +669,8 @@
   }
   loadSaved();
 
-  // 何日前か。言葉はここで決める（saved.js は数しか持たない）。
-  function whenText(at) {
-    const 日 = 86400000;
-    const 今日 = new Date(); 今日.setHours(0, 0, 0, 0);
-    const 差 = Math.floor((今日.getTime() - new Date(at).setHours(0, 0, 0, 0)) / 日);
-    if (差 <= 0) return "きょう";
-    if (差 === 1) return "きのう";
-    if (差 < 7) return `${差} 日前`;
-    if (差 < 30) return `${Math.floor(差 / 7)} 週間前`;
-    return `${Math.floor(差 / 30)} か月前`;
-  }
+  // 何日前か。言葉は when.js の 1 か所（保存の一覧が 2 画面あるので、ここに置かない）。
+  const whenText = (at) => KonjakuWhen.text(at);
 
   // 市区町村コードから名前を引く表。保存するときに一度だけ読む。
   //   一覧を開くたびには読まない（控えに名前ごと書いてある）。
