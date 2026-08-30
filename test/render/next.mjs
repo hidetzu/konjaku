@@ -1916,3 +1916,62 @@ for (const [名, ll, 数, subが残る] of [
     },
   });
 }
+
+// ⚠ **トップに名乗りを足した**（2026-08-30。⚠ Owner が絵で決めた）。
+//   ⚠ **何のサイトかを、⚠ 画面のどこにも書いていなかった**（⚠ 9 幅で数えて 0 件）。
+//   ⚠ **利用者役**: 「地図の部品を貼り付けたページに見える」。
+//   ⚠ **β 版が同じ問題を実測で踏んで、⚠ 同じ形で解いている。**
+for (const [名, viewport] of [["スマホ", SP], ["PC", PC]]) {
+  CASES.push({
+    name: `${名}のトップに、この道具の名乗りが出る`,
+    path: `/?${TOYOSU}`, origin: NEXT_BASE, viewport,
+    async check(page) {
+      await waitAnswer(page);
+      const r = await page.evaluate(() => {
+        const b = document.querySelector(".brand");
+        if (!b || !b.checkVisibility()) return { 無い: true };
+        const q = b.getBoundingClientRect();
+        const bar = document.getElementById("bar").getBoundingClientRect();
+        const mark = b.querySelector(".brand__mark");
+        // ⚠ **飾りの絵に、⚠ 読み上げの字を付けない**（⚠ 名乗りは字のほうが持つ）
+        return {
+          字: b.textContent.trim(),
+          y: Math.round(q.y), 高さ: Math.round(q.height),
+          幅: Math.round(q.width), 画面幅: innerWidth,
+          検索y: Math.round(bar.y),
+          印: !!mark, 印の代替: mark?.getAttribute("alt"),
+          印が出た: !!mark && mark.checkVisibility() && mark.naturalWidth > 0,
+          // ⚠ **地図が透けないこと**（⚠ 透けると、⚠ 地図の上で字が読めない）。
+          //   ⚠ **書き方が 2 つある**: `rgba(r, g, b, a)` と `color(srgb r g b / a)`。
+          //   ⚠ **両方から透明度を取り出す。**⚠ **無ければ 1（不透明）。**
+          地: getComputedStyle(b).backgroundColor,
+          透明度: (() => {
+            const t = getComputedStyle(b).backgroundColor;
+            const m = /\/\s*([\d.]+)\s*\)/.exec(t) || /rgba\([^,]+,[^,]+,[^,]+,\s*([\d.]+)\)/.exec(t);
+            return m ? Number(m[1]) : 1;
+          })(),
+        };
+      });
+      must(!r.無い, "トップに名乗りが無い");
+      // ⚠ **何のサイトかが分かる字**（⚠ 道具の名前だけでは、⚠ 何をするか分からない）
+      must(/今昔/.test(r.字), `名乗りに道具の名前が無い: ${r.字}`);
+      must(/昔/.test(r.字) && r.字.length >= 8,
+        `名乗りが、何をする道具かを言っていない: ${r.字}`);
+      // ⚠ **いちばん上。**⚠ **検索窓より上**（⚠ 下に置くと、⚠ 読む前に地図が始まる）
+      must(r.y === 0, `名乗りが画面のいちばん上に無い（y=${r.y}）`);
+      must(r.y < r.検索y, `名乗りが検索窓より下にある（名乗り ${r.y} ／ 検索 ${r.検索y}）`);
+      must(r.幅 === r.画面幅, `名乗りが画面の幅いっぱいでない（${r.幅} / ${r.画面幅}）`);
+      // ⚠ **不透明**（⚠ 半透明だと、⚠ 地図の絵の上で字が読めなくなる）。
+      //   ⚠ **字面で `rgba(` を探さない**（2026-08-30 に踏んだ）。
+      //   ⚠ **`color-mix` は `color(srgb … / 0.4)` の形で返る。**⚠ **`rgba(` では引っかからない。**
+      //   ⚠ **透明度そのものを見る**（⚠ どの書き方でも、⚠ 末尾の `/ 数` か 4 つ目の数に出る）。
+      must(r.透明度 === 1,
+        `名乗りの地が透けている（透明度 ${r.透明度} ／ ${r.地}）`);
+      // ⚠ **印は飾り**（⚠ `alt=""`）。⚠ **出ていること**（⚠ 404 だと絵が出ない）
+      must(r.印, "名乗りに印が無い");
+      must(r.印の代替 === "", `印に読み上げの字が付いている（alt=${JSON.stringify(r.印の代替)}）`);
+      must(r.印が出た, "名乗りの印が出ていない（⚠ favicon.svg を配れていない）");
+      return `「${r.字}」高さ ${r.高さ}px ／ 検索窓 y=${r.検索y}`;
+    },
+  });
+}

@@ -9,7 +9,14 @@
 
 <div id="app">
   <div id="map" role="application" aria-label="地図"></div>
-
+  <!-- 名乗り。何のサイトかを、画面のどこにも書いていなかった。
+       同じ問題を β 版が実測で踏んで、同じ形で解いている。 -->
+  <header class="brand" id="brand">
+    <span class="brand__name">
+      <img class="brand__mark" src="./favicon.svg" alt="" width="20" height="20">
+      今昔　この土地は、昔なんだったのか？
+    </span>
+  </header>
   <div id="bar">
     <form id="find" role="search">
       <input id="q" type="search" placeholder="住所・場所を検索"
