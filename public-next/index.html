@@ -17,7 +17,7 @@
       今昔　この土地は、昔なんだったのか？
     </span>
   </header>
-  <div id="bar">
+  <div class="column" id="bar">
     <form id="find" role="search">
       <input id="q" type="search" placeholder="住所・場所を検索"
              autocomplete="off" enterkeyhint="search" aria-label="住所・場所を検索">
@@ -26,12 +26,12 @@
       <span aria-hidden="true">📍</span><span class="sr">いまいる場所から</span>
     </button>
   </div>
-  <ul id="hits" role="listbox" aria-label="検索の候補" hidden></ul>
+  <ul class="column" id="hits" role="listbox" aria-label="検索の候補" hidden></ul>
 
   <!-- ⚠ **出典明示は、地理院タイルの利用の条件。**⚠ **隠さない・覆わない。**
        ⚠ **板と同じ積み上げに入れる。**⚠ 固定値で位置を決めると、
        ⚠ **板の高さが場所ごとに変わる（271〜325px）ので重なる。** -->
-  <div id="bottom">
+  <div class="column" id="bottom">
     <p class="attrib"><a href="https://maps.gsi.go.jp/development/ichiran.html"
        target="_blank" rel="noopener">出典 国土地理院</a></p>
 
@@ -93,7 +93,7 @@
 
   </div>
 
-  <section class="saved" id="savedSheet" hidden aria-label="保存した場所">
+  <section class="column saved" id="savedSheet" hidden aria-label="保存した場所">
     <header>
       <h2>保存した場所</h2>
       <button class="close" type="button" id="savedClose" aria-label="閉じる">✕</button>
@@ -107,7 +107,7 @@
   </section>
 
   <!-- 合言葉。スマホが出して、PC で打つ。引換券であって本人確認ではない。 -->
-  <section class="code" id="code" hidden aria-label="別の端末で開く">
+  <section class="column code" id="code" hidden aria-label="別の端末で開く">
     <h2 id="codeTitle">PC やタブレットで開く</h2>
     <div id="codeBody">
       <p class="code__label">この住所を開いて</p>
@@ -132,7 +132,7 @@
     <button class="code__close" id="codeClose" type="button">閉じる</button>
   </section>
 
-  <section id="sheet" hidden aria-label="この画面に映っている土地">
+  <section class="column" id="sheet" hidden aria-label="この画面に映っている土地">
     <header>
       <h2>この画面に映っている土地</h2>
       <button class="close" type="button" id="sheetClose" aria-label="閉じる">✕</button>
