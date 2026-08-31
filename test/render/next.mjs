@@ -41,6 +41,29 @@ const waitAnswer = (page) => 待つ(page,
 const waitEras = (page) => 待つ(page,
   () => document.querySelectorAll(".era").length > 0, "年代");
 
+// ⚠ **見出しは「問いへの近さ」順**（2026-08-31。Owner 判断。`public-next/answer.js`）。
+//   ⚠ **前は「確実性の高い順」**で、⚠ **どの土地でも「ここは、…」で始まっていた**（`docs/adr/0030`）。
+//   ⚠ **いまは 3 通りある**:
+//     明治期に区分がある      明治期、ここは 田 でした
+//     地形分類が昔を名指す    ここは、かつて水面で、その後陸地にされた土地
+//     どちらも無い            なぜ無いかを、⚠ 状態ごとに言い分ける（`docs/adr/0056`）
+// ⚠ **字を書き写さない。**⚠ **製品（`KonjakuAnswer`）から借りる。**
+//   ⚠ 書き写すと、⚠ **言い直したときに製品ではなく検査が落ちる**（`.claude/rules/domain.md`）。
+const 見出しの形 = (page) => page.evaluate(() => {
+  const s = (document.getElementById("gloss")?.textContent ?? "").trim();
+  const A = window.KonjakuAnswer;
+  if (!A) return { s, 形: null, 理由: "KonjakuAnswer が読み込まれていない（この検査が何も見ていない）" };
+  if (/^明治期、ここは .+ でした$/.test(s)) return { s, 形: "明治期" };
+  if (/^ここは、.+/.test(s)) return { s, 形: "地形" };
+  const none = Object.keys(A.MEIJI_NONE).find((k) => A.MEIJI_NONE[k] === s);
+  return none ? { s, 形: none } : { s, 形: null, 理由: "どの形にも当てはまらない" };
+});
+const 答えが出ている = async (page, where) => {
+  const r = await 見出しの形(page);
+  must(r.形 !== null, `${where}で見出しが出ていない（${r.理由 ?? ""}）: ${r.s}`);
+  return r;
+};
+
 export const CASES = [
   {
     // ⚠ **実際に踏んだ**（2026-08-29）: ⚠ 1936–42 の写真の全面に、⚠ 旧水部の青が乗っていた。
@@ -301,7 +324,7 @@ CASES.push(
           まとめ: document.getElementById("sub").textContent.trim(),
         };
       });
-      must(r.答え.startsWith("ここは、"), `足元の答えが出ていない: ${r.答え}`);
+      await 答えが出ている(page, "足元");
       must(r.明治期 !== null, "明治期の行ごと消えている（⚠ 資料が作られていないことを言えていない）");
       must(/作られていません/.test(r.明治期),
         `資料が作られていない地域なのに、そう言っていない: ${r.明治期}`);
@@ -775,7 +798,10 @@ CASES.push(
         戻る先: document.getElementById("back").getAttribute("href"),
         横あふれ: document.documentElement.scrollWidth > document.documentElement.clientWidth,
       }));
-      must(r.答え.startsWith("ここは、"), `答えが出ていない: ${r.答え}`);
+      // ⚠ **深掘り画面（`/deep`）は、⚠ いままでどおり**（`docs/adr/0030`）。
+      //   ⚠ **見出しを入れ替えたのはトップだけ**（2026-08-31。Owner 判断。`docs/adr/0075`）。
+      //   ⚠ **範囲を広げない**（`CLAUDE.md` §7）。
+      must(r.答え.startsWith("ここは、"), `深掘りで答えが出ていない: ${r.答え}`);
       must(/旧水部/.test(r.区分), `区分名を名乗っていない: ${r.区分}`);
       must(r.節.length >= 2, `成り立ちと起こりうることが出ていない: ${r.節.join(" / ")}`);
       // ⚠ **原典の字がそのまま出ていること**（⚠ 要約していないこと）
@@ -846,6 +872,7 @@ CASES.push(
         答え: document.getElementById("gloss").textContent.trim(),
         節: document.querySelectorAll(".why__k").length,
       }));
+      // ⚠ **深掘り画面はいままでどおり**（上と同じ。`docs/adr/0075` はトップだけ）。
       must(先.答え.startsWith("ここは、"), `深掘り画面で答えが出ない: ${先.答え}`);
       must(先.節 >= 2, `深掘り画面で成り立ちが出ない（${先.節} 節）`);
       return `「${r.字}」${r.w}x${r.h} → ${先.節} 節`;
@@ -1062,7 +1089,7 @@ CASES.push({
       答え: document.getElementById("gloss").textContent.trim(),
     }));
     must(後.候補, "候補を押したのに、候補が出たまま");
-    must(後.答え.startsWith("ここは、"), `候補を押したのに、答えが出ない: ${後.答え}`);
+    await 答えが出ている(page, "候補を押したあと");
     return `${r.件数} 件・柱と重なる ${r.柱と重なる}・押せる・「${前.slice(0, 12)}…」→「${後.答え.slice(0, 12)}…」`;
   },
 });
@@ -1811,12 +1838,75 @@ for (const [名, path, viewport] of [
 //   ⚠ **押す前に「いつ変わったか」と読まれていた**（⚠ 利用者役 5 名中 3 名。⚠ 実在の利用者ではない）。
 //   ⚠ **`docs/adr/0006` は「いつ変わったか」を言わないと決めている。**
 //   ⚠ **言わないと決めているのに、⚠ チップが言っているように見えていた。**
-// ⚠ **`#sub` の形は土地で違う**ので、⚠ **2 か所で見る**:
-//     豊洲     明治期は …／空中写真 N 年代     ⚠ `／` あり
-//     軽井沢   空中写真 1 年代                 ⚠ 明治期の資料が無い。⚠ 外すと空になる
+// ⚠ **見出しは「問いへの近さ」順**（2026-08-31。Owner 判断）。
+//   ⚠ **名乗り「この土地は、昔なんだったのか？」に、⚠ いちばん大きい字で答える。**
+//   ⚠ **前は「確実性の高い順」**（`docs/adr/0030`）で、⚠ **どの土地でも見出しは地形分類だった。**
+//   ⚠ **実測（2026-08-30・利用者役 5 名中 3 名。⚠ 実在の利用者ではない）**:
+//     ⚠ **春日部と軽井沢で「これは昔の答えではない」と読まれた。**
+//     ⚠ **春日部は「明治期は 田」を既に出していた。**⚠ **見出しでなかっただけ。**
+//
+// ⚠ **相手先が何を返すかは主張しない**（`CLAUDE.md` §9）。
+//   ⚠ **返ってきた明治期の値を控えてから、⚠ 見出しがそれと合っているかを見る。**
+//   ⚠ **規則そのものは `test/check/next.mjs` ⑨ がブラウザ抜きで見る。**⚠ **ここは画面を見る。**
+for (const [名, ll] of [["豊洲", TOYOSU], ["春日部", KASUKABE], ["軽井沢", "ll=36.3418,138.6353"]]) {
+  CASES.push({
+    name: `${名}で、見出しが「昔なんだったか」に答えている`,
+    path: `/?${ll}`, origin: NEXT_BASE, viewport: SP,
+    async check(page) {
+      await waitAnswer(page);
+      // ⚠ **器ではなく、⚠ 落ち着いたこと（明治期の行の字）を待つ**（`CLAUDE.md` §9）。
+      await 待つ(page, () => (document.getElementById("meiji")?.textContent ?? "").trim().length > 0,
+        "明治期の行");
+      const r = await page.evaluate(() => {
+        const A = window.KonjakuAnswer;
+        const t = (s) => (document.querySelector(s)?.textContent ?? "").trim();
+        const 明治期の字 = t("#meiji");
+        return {
+          A: !!A,
+          見出し: t("#gloss"),
+          二行目: t("#sub"),
+          区分: t("#name"),
+          明治期の区分: document.querySelector("#meiji b")?.textContent.trim() ?? null,
+          明治期の字,
+          無い理由: A ? (Object.keys(A.MEIJI_NONE).find((k) => A.MEIJI_NONE[k] === 明治期の字) ?? null) : null,
+          昔を名指す区分: A ? A.PAST_IN_TERRAIN : [],
+          NONE: A ? A.MEIJI_NONE : {},
+        };
+      });
+      must(r.A, "KonjakuAnswer が画面に読み込まれていない（⚠ この検査が何も見ていない）");
+      must(r.見出し.length > 2, `見出しが出ていない: ${JSON.stringify(r.見出し)}`);
+
+      if (r.明治期の区分) {
+        // ⚠ **明治期が答えを返した土地。**⚠ **その答えが見出しに来ていること。**
+        must(r.見出し === `明治期、ここは ${r.明治期の区分} でした`,
+          `明治期は「${r.明治期の区分}」なのに、見出しが違う: ${r.見出し}`);
+        // ⚠ **地形分類の言い方へ戻っていないこと**（⚠ これが起きると、⚠ 残 3 に逆戻りする）
+        must(!r.見出し.startsWith("ここは、"),
+          `明治期があるのに、⚠ 地形分類の言い方のまま: ${r.見出し}`);
+        must(r.二行目.startsWith("いまの地形は、"),
+          `成り立ちが 2 行目に降りていない: ${JSON.stringify(r.二行目)}`);
+      } else {
+        // ⚠ **明治期が答えを返さなかった土地。**⚠ **なぜ返らなかったかを、⚠ 見出しが言うこと。**
+        //   ⚠ **黙らない**（2026-08-29。Owner 判断）。⚠ 黙ると、何も起きなかったように見える。
+        must(r.無い理由 !== null,
+          `明治期が無い理由を、⚠ answer.js の字で言っていない: ${JSON.stringify(r.明治期の字)}`);
+        must(r.見出し === r.NONE[r.無い理由],
+          `見出しと「なぜそう言える？」の中で、⚠ 字が違う（${r.無い理由}）: `
+          + `見出し「${r.見出し}」／ 中「${r.明治期の字}」`);
+      }
+      return `見出し「${r.見出し}」／ 2 行目「${r.二行目 || "（無し）"}」／ 区分 ${r.区分}`;
+    },
+  });
+}
+
+// ⚠ **`#sub` は「いまの地形」の行**（2026-08-31。Owner 判断で見出しと入れ替わった）。
+//   ⚠ **前は「明治期は …／空中写真 N 年代」だった。**⚠ **明治期は見出しへ上がった。**
+//   ⚠ **どちらの土地でも成り立ちは出る**ので、⚠ **2 つとも `true`。**
+//     ⚠ **空になるのは、⚠ 見出しが地形分類そのものになる土地だけ**
+//     （⚠ 旧水部・旧河道・干拓地で、⚠ **かつ明治期が無い**。⚠ **規則の側は `test/check/next.mjs` ⑨ が見る**）。
 for (const [名, ll, 数, subが残る] of [
   ["豊洲", TOYOSU, 7, true],
-  ["軽井沢", "ll=36.3418,138.6353", 1, false],
+  ["軽井沢", "ll=36.3418,138.6353", 1, true],
 ]) {
   CASES.push({
     name: `${名}で、年代のチップに見出しが付く`,

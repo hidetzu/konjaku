@@ -353,9 +353,15 @@
     const seq = ++askSeq;
     const lon = px2lon(cx), lat = px2lat(cy);
     kickText.textContent = "いまいる場所";
-    const v = await KonjakuLand.terrain(lon, lat).catch(() => null);
+    // 見出しは明治期の答えを使うので、地形分類を待ってから投げると往復が 2 回直列になる。
+    //   同時に投げる。待ち時間は max になり、いままでの最悪値（どちらも 8 秒で打ち切り）を超えない。
+    //   実測 2026-08-31（手元・375×667）: 明治期は地形分類の 0〜30ms 後に届いた。
+    const 地形の約束 = KonjakuLand.terrain(lon, lat).catch(() => null);
+    const 明治期の約束 = KonjakuLand.meijiPoint(lon, lat).catch(() => null);
+    const v = await 地形の約束;
     if (seq !== askSeq) return;   // ⚠ **古い結果で上書きしない**
     hereName = null;
+    答え.terrain = null; 答え.meiji = undefined;
     drawSave();            // 判定が出るまで保存させない
     drawShare();           // 同上。開いた人が何も読めない URL を配らせない
     setEra(null);          // 場所が変わったら、前の場所の写真を残さない
@@ -379,75 +385,63 @@
       return;
     }
     hereName = v.value;
+    答え.terrain = v.value;
     drawSave();
     drawShare();
-    askMeiji(lon, lat, seq);
+    askMeiji(seq, 明治期の約束);
     askPhoto(lon, lat, seq);
     showArea(lon, lat);
-    // 主は、分かる言葉のほう。区分名は資料の言葉で、そのままでは読めない人がいる。
-    //   言葉は words.js の GROUND_GLOSS から借りる。ここで書かない。
-    //   区分名も消さない。何を根拠に言っているかが分からなくなる。
-    glossEl.textContent = `ここは、${KonjakuWords.groundGloss(v.value)}`;
     // 区分名は、出典の言葉として添える。主ではない。
     //   消しはしない。国土地理院の区分名を名乗れないと、何を根拠に言っているか分からなくなる。
     nameEl.innerHTML = `<b>${esc(v.value)}</b>（国土地理院）`;
+    drawAnswer();
     drawLegend();
   }
 
-  // まとめの 1 行。「明治期は X／空中写真 N 年代」。
-  //   取れたものだけ並べる。取れなかったことは、ここでは言わない（「なぜそう言える？」の中で言う）。
-  //   前提は「長い文章はその場では読まれない」。ここは 1 行を超えさせない。
-  //   空中写真の数は、ここには置かない（2026-08-30）。チップの見出しが引き取った。
-  //   同じことを 2 か所で言うと、片方だけ古くなる。
-  const 概略 = { meiji: null };
-  function drawSub() {
-    const 並び = [概略.meiji].filter(Boolean);
-    subEl.hidden = !並び.length;
-    subEl.innerHTML = 並び.join("／");
+  // 見出しと 2 行目。問いへの近さ順（answer.js の lines が字を決める）。
+  //   ここでは字を書かない。何を渡すかだけ決める（.claude/rules/domain.md）。
+  //   明治期が来ていないうちは描かない。描くと、来た瞬間に見出しが差し替わる。
+  //   実測 2026-08-31: 明治期は地形分類の 0〜30ms 後。待っても、待ち時間はほぼ増えない。
+  const 答え = { terrain: null, meiji: undefined };
+  function drawAnswer() {
+    if (!答え.terrain || 答え.meiji === undefined) return;
+    const { head, sub } = KonjakuAnswer.lines(答え);
+    glossEl.textContent = head;
+    subEl.textContent = sub;
+    subEl.hidden = !sub;
   }
 
   // 明治期の低湿地。地形分類とは別の出典で、別の答えを返す。
   //   同じ「旧水部」でも、明治期に何だったかは場所で変わる。そこが場所ごとの違いになる。
-  //   3 つの状態を言い分ける。「取れなかった」と「無い」を混ぜない。
-  //     区分あり     → その区分を言う
-  //     区分なし     → まだ分類されていない
-  //     整備範囲外   → この地域ではこの資料が作られていない
-  async function askMeiji(lon, lat, seq) {
+  //   3 つの状態を言い分ける。「取れなかった」と「無い」を混ぜない（docs/adr/0056）:
+  //     資料そのものが無い       absent
+  //     資料はあるが区分が無い   noClass
+  //     読めなかった             unreachable
+  //   字は answer.js の MEIJI_NONE が持つ。ここで書かない。
+  //   見出しと「なぜそう言える？」の行で同じ字を使う。2 か所に別の字を持つと片方だけ古くなる。
+  //
+  //   取れなかったときは黙らない（2026-08-29。Owner 判断）。
+  //     黙ると、行ごと消え、その地域の資料が無い場所と見分けられない。
+  //     実際に踏んだ（2026-08-29）: 明治期のタイルを塞ぐと、行が静かに消え、
+  //     利用者には何も起きなかったように見えた。
+  //
+  //   受け取るのは、ask() が投げた約束。ここでは取りに行かない（往復を 2 回直列にしない）。
+  async function askMeiji(seq, 約束) {
     meijiRow.hidden = true;
-    概略.meiji = null;
-    const m = await KonjakuLand.meijiPoint(lon, lat).catch(() => null);
+    const m = await 約束;
     if (seq !== askSeq) return;
-    // 取れなかったときは黙らない（2026-08-29。Owner 判断）。
-    //   黙ると、行ごと消え、その地域の資料が無い場所と見分けられない。
-    //   周辺の記録も空中写真も、同じ状況で「読めなかった」と言う。挙動を揃える。
-    //   実際に踏んだ（2026-08-29）: 明治期のタイルを塞ぐと、行もまとめの 1 行も
-    //   静かに消え、利用者には何も起きなかったように見えた。
-    if (!m || m.state === Konjaku.STATE.UNREACHABLE) {
-      meijiRow.hidden = false;
-      meijiEl.innerHTML =
-        `<span class="none">明治期の情報は、この場所では確認できませんでした</span>`;
-      return;
-    }
+    const none = (!m || m.state === Konjaku.STATE.UNREACHABLE) ? "unreachable"
+               : m.state === Konjaku.STATE.ABSENT ? "absent"
+               : !m.value ? "noClass" : null;
     meijiRow.hidden = false;
-    if (m.state === Konjaku.STATE.ABSENT) {
-      meijiEl.innerHTML = `<span class="none">この地域では、この資料が作られていません</span>`;
-      return;
+    if (none) {
+      meijiEl.innerHTML = `<span class="none">${esc(KonjakuAnswer.MEIJI_NONE[none])}</span>`;
+      答え.meiji = { none };
+    } else {
+      meijiEl.innerHTML = `<b>${esc(m.value)}</b> でした`;
+      答え.meiji = { value: m.value };
     }
-    if (!m.value) {
-      // 資料は読めたが、この場所に区分が無い。「読めなかった」とは別の話。
-      //   足元とも別の字にする（2026-08-29。Owner 判断）。出典が違えば理由も違う。
-      //   3 つを言い分ける（docs/adr/0056）:
-      //     この地域では、この資料が作られていません     資料そのものが無い
-      //     この場所には、明治期の区分がありません        資料はあるが、この点に区分が無い
-      //     明治期の情報は、この場所では確認できませんでした   読めなかった
-      meijiEl.innerHTML =
-        `<span class="none">この場所には、明治期の区分がありません</span>`;
-      return;
-    }
-    meijiEl.innerHTML = `<b>${esc(m.value)}</b> でした`;
-    // まとめの 1 行に出すのは、区分が取れたときだけ。
-    概略.meiji = `明治期は <b>${esc(m.value)}</b>`;
-    drawSub();
+    drawAnswer();
   }
 
   // 空中写真。どの年代が残っているかを言う。
