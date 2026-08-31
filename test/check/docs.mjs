@@ -27,7 +27,7 @@
 import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { unpack as blUnpack } from "../../scripts/bl-format.mjs";
-import { ROOT, PUB, ok, bad, head, src , BLOCK_COMMENT, HTML_COMMENT, LINE_COMMENT, dropComment } from "./lib.mjs";
+import { ROOT, PUB, ok, bad, warn, head, src , BLOCK_COMMENT, HTML_COMMENT, HEAD_COMMENT, LINE_COMMENT, dropComment } from "./lib.mjs";
 
 // ⚠ **SPEC の「静的 N件」が、本当に N 件か。**
 //   上の検査は「空・0・書き方」だけを見ていて、**中身のずれは見ていなかった**。
@@ -373,4 +373,62 @@ import { ROOT, PUB, ok, bad, head, src , BLOCK_COMMENT, HTML_COMMENT, LINE_COMME
           + "（置換に失敗しても、文書は誰も実行しないので気づけない）")
       : ok("docs/SPEC.md に空の強調は無い");
   }
+}
+
+// ⚠ **追跡ファイルが、⚠ 追跡していない場所（`tmp/`）を指していないか** ----
+//
+// ⚠ **`tmp/` は git に追跡していない。**⚠ **上書き・削除されても誰も気づけない。**
+//   ⚠ **実際に失われた**（2026-08-31 に数えた）: ⚠ **ADR が「原文」と呼んでいたものが、
+//   ⚠ 別の内容に上書きされていた。**⚠ **12 件から参照されていて、⚠ もう読めないものもある。**
+// ⚠ **v0.1.0 が何を解決するのかを書いた文書は、⚠ 7 件から参照されていたので `docs/` へ移した**
+//   （⚠ 移す前に消えていたら、⚠ どこにも無くなっていた）。
+//
+// ⚠ **コメントを先に落とす**（`CLAUDE.md` §5）。⚠ **落とさないと、⚠ この説明に書いた字面を、
+//   ⚠ 検査自身が拾う**（⚠ 2026-08-31 に踏んだ。⚠ **この節を書いた直後に、⚠ 自分で落ちた**）。
+//
+// ⚠ **既に失われたものは、⚠ 理由と一緒に一覧へ書く**（⚠ 消えた記録を、⚠ 無かったことにしない）。
+//   ⚠ **これから増えるものを止めるのが、⚠ この検査の目的。**
+{
+  const { existsSync: ex } = await import("node:fs");
+  const { execFileSync } = await import("node:child_process");
+
+  // ⚠ **もう読めないと分かっているもの**（2026-08-31 に実測）。⚠ **増やさない。**
+  const 失われた = new Map([
+    ["tmp/tmp2.md", "Owner の原文。⚠ ADR 0052・0056・0057 ほかが引く。⚠ 決めたことは ADR 本文が持つ"],
+    ["tmp/tmp3.md", "Owner の原文。⚠ ADR 0030 が引く。⚠ 決めたことは ADR 本文が持つ"],
+    ["tmp/tmp.md", "Owner の原文。⚠ ADR 0049 の「原文」。⚠ 別の内容へ上書きされていた"],
+    ["tmp/measure-urllen.mjs", "その場で測った走り書き。⚠ 数字は ADR 本文に控えてある"],
+  ]);
+
+  const 追跡 = execFileSync("git", ["ls-files", "docs", "test", "public-next", "wrangler.next.jsonc"],
+    { cwd: ROOT, encoding: "utf8" }).split("\n").filter((f) => /\.(md|mjs|js|jsonc|html)$/.test(f));
+  const 死んでいる = new Map(), 生きている = new Set();
+  for (const f of 追跡) {
+    // ⚠ **落とし方は `lib.mjs` から借りる**（⚠ コピーが増えると、⚠ どれが正か分からなくなる）。
+    const 素 = (await readFile(join(ROOT, f), "utf8").catch(() => ""))
+      .replace(HTML_COMMENT, " ")
+      .replace(BLOCK_COMMENT, " ")
+      .replace(HEAD_COMMENT, " ");
+    // ⚠ **日本語のファイル名と空白も拾う**（2026-08-31 に踏んだ。⚠ **`[A-Za-z0-9._-]` だけだと、
+    //   ⚠ `tmp/今昔 利用規約.md` のようなものを一生見ない**。⚠ **その日に直した相手がそれだった**）。
+    //   ⚠ **区切りになる字だけ外す**（⚠ 引用符・括弧・読点。⚠ ここで欲張ると隣の文まで飲む）。
+    for (const m of 素.matchAll(/tmp\/[^\n`"'、。（）()\[\]<>|]+?\.(?:md|mjs|json|jsonc|txt|png)/g)) {
+      const 先 = m[0];
+      if (失われた.has(先)) continue;
+      if (ex(join(ROOT, 先))) { 生きている.add(先); continue; }
+      if (!死んでいる.has(先)) 死んでいる.set(先, []);
+      死んでいる.get(先).push(f);
+    }
+  }
+
+  死んでいる.size
+    ? bad(`追跡ファイルが、⚠ 存在しない ${死んでいる.size} 件を指している: `
+        + [...死んでいる].map(([先, どこ]) => `${先}（${どこ.join("・")}）`).join(" ／ ")
+        + "。⚠ **参照される文書は `docs/` へ移す**"
+        + "（⚠ もう読めないものは、⚠ この検査の一覧に理由と一緒に書く）")
+    : 生きている.size
+      ? warn(`追跡ファイルが、⚠ 追跡外の ${生きている.size} 件をまだ指している: `
+          + `${[...生きている].join(" ／ ")}。⚠ **いま在るが、⚠ 消えても誰も気づけない**`)
+      : ok(`追跡ファイルは、⚠ 追跡していない場所を指していない`
+          + `（⚠ もう読めないと分かっているもの ${失われた.size} 件は、⚠ 理由つきで一覧に在る）`);
 }
