@@ -393,4 +393,37 @@ else {
     }
   }
 
+  // ---- ⚠ ⑪ 画面に、⚠ 誰も出さない部品が残っていないか ----
+  //
+  // ⚠ **`take.html` に「地図をひらく」が残っていた**（2026-08-31。⚠ 実際に踏んだ）。
+  //   ⚠ **`hidden` を外す経路が 1 つも無く、⚠ 画面には一生出ない。**
+  //   ⚠ **消し忘れは、⚠ 古いコメントと同じで、⚠ コードより強く誤誘導する**（`CLAUDE.md` §5）。
+  //   ⚠ **読む側には「まだ使う予定のもの」に見える。**
+  //
+  // ⚠ **見るのは `id` だけ。**⚠ **class は見ない**（⚠ 当たっていない規則と区別できない）。
+  // ⚠ **コメントは先に落とす**（`CLAUDE.md` §5。⚠ 落とさないと、⚠ 注記の字面を参照に数える）。
+  // ⚠ **検査は参照元に数えない。**⚠ **検査しか見ていない `id` は、⚠ 画面では死んでいる。**
+  {
+    // ⚠ **参照する側**: ⚠ 同じ画面の中（`aria-labelledby` / `for` / `href="#…"`）と、
+    //   ⚠ **その器が読む JavaScript・CSS。**
+    const コード = readdirSync(NEXT).filter((f) => /\.(js|css)$/.test(f))
+      .map((f) => readFileSync(join(NEXT, f), "utf8")
+        .replace(BLOCK_COMMENT, "").replace(HEAD_COMMENT, ""))
+      .join("\n");
+
+    const 死んでいる = [];
+    for (const f of readdirSync(NEXT).filter((f) => f.endsWith(".html"))) {
+      const src = readFileSync(join(NEXT, f), "utf8").replace(/<!--[\s\S]*?-->/g, "");
+      for (const m of src.matchAll(/\sid="([^"]+)"/g)) {
+        const id = m[1];
+        const 同じ画面 = src.split(id).length - 1 > 1;   // ⚠ 自分の宣言を 1 つ差し引く
+        if (!同じ画面 && !コード.includes(id)) 死んでいる.push(`${f}: #${id}`);
+      }
+    }
+    死んでいる.length
+      ? bad(`どこからも参照されていない id が在る: ${死んでいる.join(" / ")}`
+          + "。⚠ **出す経路が無いなら消す**（⚠ 残すと「まだ使う」に読める）")
+      : ok("v0.1.0 の画面に、⚠ 誰も出さない id は無い");
+  }
+
 }
