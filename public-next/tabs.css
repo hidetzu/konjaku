@@ -1,0 +1,33 @@
+/* 画面の下に置く、主な行き先の並び。地図と保存した場所の 2 つだけ。
+   背の低い画面では出さない（判定している点の印が、答えの板の裏へ入るため）。
+   なぜそうしたか・実測は public-next/README.md「下の帯」に置く。 */
+:root{ --tabs-h:0px }
+.tabs{ display:none }
+@media (min-height:700px){
+  :root{ --tabs-h:3.5rem }
+  .tabs{ display:flex }
+}
+.tabs{
+  /* display は上の @media が決める。ここでは触らない（後ろに書くと打ち消してしまう）。 */
+  position:fixed; left:0; right:0; bottom:0; z-index:70;
+  height:calc(var(--tabs-h) + env(safe-area-inset-bottom));
+  padding-bottom:env(safe-area-inset-bottom);
+  background:var(--surface); border-top:1px solid var(--line);
+}
+/* 広い幅でも、押すものは柱の中にまとめる。
+   端まで広げると、押すものの散らばりが柱（608px）を超える
+   （実測 2026-08-31: 720px。検査「押すものがスマホと同じところにまとまっている」が落ちた）。 */
+.tabs__inner{
+  display:flex; width:100%; max-width:38rem; margin:0 auto;
+}
+.tabs__item{
+  flex:1 1 0; min-width:0;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  gap:.125rem; min-height:var(--tap);
+  color:var(--ink-3); text-decoration:none; font-size:.6875rem; line-height:1.4;
+}
+.tabs__item:hover{color:var(--action)}
+.tabs__item:focus-visible{outline:2px solid var(--action); outline-offset:-2px}
+/* いまいる画面は、行き先ではなく現在地として見せる。 */
+.tabs__item[aria-current="page"]{color:var(--action); font-weight:700}
+.tabs__icon{width:1.25rem; height:1.25rem; display:block; flex:none}

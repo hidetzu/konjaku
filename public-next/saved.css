@@ -1,9 +1,11 @@
 /* 保存した場所の一覧。読み物ではなく「次に読む 1 件を選ぶ」画面。
    色と 44px は theme.css / brand.css から借りる。ここで持ち直さない。 */
 .list{max-width:38rem; margin:0 auto;
-  padding:calc(2.75rem + env(safe-area-inset-top) + 1.5rem) var(--pad-md) 6rem}
+  padding:calc(2.75rem + env(safe-area-inset-top) + 1.5rem) var(--pad-md)
+          calc(var(--tabs-h) + 2rem + env(safe-area-inset-bottom))}
 @media (min-width:700px){
-  .list{padding:calc(2.75rem + env(safe-area-inset-top) + 2.5rem) var(--pad-md) 8rem}
+  .list{padding:calc(2.75rem + env(safe-area-inset-top) + 2.5rem) var(--pad-md)
+          calc(var(--tabs-h) + 4rem + env(safe-area-inset-bottom))}
 }
 
 .list__h{margin:0 0 var(--gap-block); font-size:1.375rem; color:var(--ink)}
