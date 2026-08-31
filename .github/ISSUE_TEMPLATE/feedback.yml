@@ -1,0 +1,59 @@
+# ⚠ 利用者からの窓口。開発者向けの bug.md / idea.md とは別に置く。
+#   ⚠ **開発自動化のラベル（ready-for-ai）は自動で付けない。**付けるのは人だけ。
+#   ⚠ 空の Issue は config.yml で塞いである。脆弱性の導線も config.yml が持つ。
+name: 今昔へのご意見・不具合報告
+description: 画面の不具合、表示内容への指摘、こうしてほしいこと
+title: "[ご意見] "
+labels: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **ここに書いた内容は、GitHub 上で誰でも読める形で公開されます。**
+        メールアドレス・氏名・住所・電話番号などは書かないでください。
+        あとから消しても、履歴に残ることがあります。
+
+        セキュリティ上の問題は、ここではなく
+        [非公開の窓口](https://github.com/hidetzu/konjaku/security/advisories/new)へお願いします。
+        直る前に手口が広まってしまうためです。
+
+  - type: dropdown
+    id: kind
+    attributes:
+      label: 種類
+      description: いちばん近いものを選んでください
+      options:
+        - 不具合（動かない・エラーになる）
+        - 表示内容について（この土地の判定が実際と違う など）
+        - 改善してほしいこと
+        - その他
+    validations:
+      required: true
+
+  - type: input
+    id: where
+    attributes:
+      label: 対象の場所・URL
+      description: 分かる範囲で。地名だけでも、画面の URL を貼っても構いません
+      placeholder: 例）東京都江東区豊洲 ／ https://…/?ll=35.6553,139.7967
+    validations:
+      required: false
+
+  - type: textarea
+    id: detail
+    attributes:
+      label: 内容
+      description: |
+        何が起きたか、何が気になったかを書いてください。
+        不具合のときは「何をしたら」「どうなったか」があると助かります。
+      placeholder: |
+        例）豊洲を開いたら見出しが空のままでした。
+            iPhone の Safari、電波は 4 本立っています。
+    validations:
+      required: true
+
+  - type: markdown
+    attributes:
+      value: |
+        送っていただいた内容は、返信できないことがあります。
+        いただいた指摘は、直し方を決める材料として読ませていただきます。
