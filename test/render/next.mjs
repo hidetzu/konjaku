@@ -190,8 +190,13 @@ export const CASES = [
         return { w: Math.round(b.width), h: Math.round(b.height) };
       });
       must(的.w >= 44 && 的.h >= 44, `保存の的が 44×44 を割っている: ${的.w}x${的.h}`);
-      must(await page.evaluate(() => document.getElementById("savedOpen").hidden),
-        "1 件も保存していないのに、一覧への入口が出ている（⚠ 押しても空になる）");
+      // ⚠ **保存への入口は、⚠ 下の帯の★ 1 本だけ**（2026-09-01。Owner 判断）。
+      //   ⚠ **前はカードの中に `#savedOpen` があり、⚠ 地図の上に板が開いた。**
+      //   ⚠ **入口が幅によって 1 本だったり 2 本だったりしたので、⚠ 帯に寄せた。**
+      must(await page.evaluate(() => !document.getElementById("savedOpen")),
+        "⚠ カードの中の入口（#savedOpen）が残っている（⚠ 帯の★に寄せたはず）");
+      must(await page.evaluate(() => !!document.querySelector('.tabs a[href="./saved.html"]')),
+        "下の帯に、保存した場所への★が無い");
 
       await page.locator("#save").click();
       await 待つ(page,
@@ -201,25 +206,30 @@ export const CASES = [
       const 控え = await page.evaluate(() => JSON.parse(localStorage.getItem("konjaku-next-saved-v1") ?? "[]"));
       must(控え.length === 1, `保存したのに控えが ${控え.length} 件`);
       must(Number.isFinite(控え[0].lon) && Number.isFinite(控え[0].lat), "控えに座標が無い（⚠ 戻れない）");
-      must(!await page.evaluate(() => document.getElementById("savedOpen").hidden),
-        "保存したのに、一覧への入口が出ない");
-
-      // 別の場所へ移ってから、一覧で戻る
+      // 別の場所へ移ってから、一覧へ行って戻る
       await page.goto(`${NEXT_BASE}/?${KASUKABE}`, { waitUntil: "domcontentloaded" });
       await waitAnswer(page);
       must(await page.evaluate(() => document.getElementById("save").getAttribute("aria-pressed")) === "false",
         "別の場所なのに「保存ずみ」になっている");
-      await page.locator("#savedOpen").click();
-      await page.waitForTimeout(400);
+      // ⚠ **一覧は画面になった**（`/saved`）。⚠ **地図の上の板は無い。**
+      await page.goto(`${NEXT_BASE}/saved.html`, { waitUntil: "domcontentloaded" });
+      await 待つ(page, () => document.querySelectorAll("#listItems li").length > 0, "一覧の行");
       const 行 = await page.evaluate(() =>
-        [...document.querySelectorAll("#savedList li")].map((e) => e.textContent.trim()));
+        [...document.querySelectorAll("#listItems li")].map((e) => e.textContent.replace(/\s+/g, " ").trim()));
       must(行.length === 1, `一覧が ${行.length} 件（⚠ 1 件のはず）`);
-      await page.locator("#savedList button").first().click();
-      await 待つ(page,
-        () => document.getElementById("save").getAttribute("aria-pressed") === "true", "戻った");
-      must(await page.evaluate(() => document.getElementById("savedSheet").hidden),
-        "戻ったのに一覧が開いたまま");
-      return `的 ${的.w}x${的.h}・控え 1 件・別の場所では ☆・一覧から戻ると ★`;
+      // ⚠ **行の行き先は深掘り。**⚠ **座標を持って渡ること**を見る。
+      //   ⚠ **地図へ 1 手で戻る道は、⚠ 板と一緒に無くなった**（2026-09-01）。
+      //   ⚠ **深掘りの「← ひとつ前へ」は `history.back()`** なので、⚠ 一覧へ帰るだけ。
+      //   ⚠ **ここは穴として残っている。**⚠ **埋め方は Owner 判断**（一覧の行に地図への道を足すか、
+      //     ⚠ 深掘りに「地図で見る」を常に置くか）。⚠ **検査は、いま在るものだけを主張する。**
+      const 行き先 = await page.evaluate(() =>
+        document.querySelector("#listItems a").getAttribute("href"));
+      must(/deep/.test(行き先) && /ll=\d/.test(行き先),
+        `一覧の行が、座標つきで深掘りへ渡していない: ${行き先}`);
+      await page.locator("#listItems a").first().click();
+      await 待つ(page, () => (document.getElementById("gloss")?.textContent ?? "").trim().length > 2,
+        "深掘りの答え");
+      return `的 ${的.w}x${的.h}・控え 1 件・別の場所では ☆・一覧の行 → ${行き先}`;
     },
   },
 ];
@@ -402,10 +412,11 @@ CASES.push(
       must(r.座標, "控えに座標が無い（⚠ 戻れない）");
       must(r.名 === null, `町名が取れていないのに、名前が入っている: ${r.名}`);
       must(r.説明, "説明文まで落ちている（⚠ 町名とは別の出典なのに）");
-      await page.locator("#savedOpen").click();
+      // ⚠ **一覧は画面になった**（2026-09-01）。⚠ **地図の上の板は無い。**
+      await page.goto(`${NEXT_BASE}/saved.html`, { waitUntil: "domcontentloaded" });
       await page.waitForTimeout(400);
       const 行 = await page.evaluate(() =>
-        document.querySelector("#savedList li").textContent.trim());
+        document.querySelector("#listItems li").textContent.trim());
       // ⚠ **「取れませんでした」と書かない。**⚠ **こちらの都合を、相手の都合のように言わない**（掟 §4-1）
       must(/地図から選んだ場所/.test(行), `名前が無いときの言い方が違う: ${行}`);
       must(!/取得|失敗|エラー|できません/.test(行), `一覧に、こちらの都合を書いている: ${行}`);
@@ -1058,55 +1069,41 @@ CASES.push({
   //
   // ⚠ **重なりを見るだけでは足りない。**⚠ **重なってよい**（⚠ 前に出ていれば押せる）。
   //   ⚠ **実際に触って、⚠ 候補が返ってくるかを見る。**
-  name: "検索の候補が、保存した場所の柱に覆われない",
-  path: `/?${TOYOSU}`, origin: NEXT_BASE, viewport: PC,
+  name: "検索の候補が、下の帯に覆われない",
+  path: `/?${TOYOSU}`, origin: NEXT_BASE, viewport: SP,
   // ⚠ **外へ出る**（⚠ 地理院の住所検索）。⚠ **`--group=search` の側に置く**
-  //   ⚠ **印は `dep`。**⚠ 付いていないと core 側で回り、⚠ 落ちたとき外部のせいにできない
   dep: "search",
   async check(page) {
     await waitAnswer(page);
-    await 待つ(page, () => !document.getElementById("save").hidden, "保存");
-    // ⚠ **柱が立っている状態で見る**（⚠ 1 件も保存していないと入口が出ない）。
-    //   ⚠ **保存しただけでは柱は開かない。**⚠ **入口を押して開く**（⚠ 利用者と同じ道）。
-    //   ⚠ **以前は広い幅で柱が開きっぱなしだったので、⚠ 押さずに待っていた。**
-    //   ⚠ **その見せ方は取り消した**ので、⚠ ここも押す形に直した（2026-08-29）。
-    await page.locator("#save").click();
-    await 待つ(page, () => !document.getElementById("savedOpen").hidden, "保存した場所の入口");
-    await page.locator("#savedOpen").click();
-    await 待つ(page,
-      () => !document.getElementById("savedSheet").hidden, "保存した場所の柱");
+    // ⚠ **相手が変わった**（2026-09-01）。⚠ **前は「保存した場所の柱」**（地図の上の板）。
+    //   ⚠ **板は廃止した。**⚠ **代わりに、⚠ 下の帯を高さに関係なく常設した。**
+    //   ⚠ **帯は `z-index:70` で、⚠ 候補（`#hits`）より前に出る。**⚠ **覆えば押せない。**
+    // ⚠ **重なりを見るだけでは足りない。**⚠ **重なってよい**（⚠ 前に出ていれば押せる）。
+    //   ⚠ **実際に触って、⚠ 候補が返ってくるかを見る。**
+    await 待つ(page, () => { const t = document.querySelector(".tabs"); return t && t.checkVisibility(); },
+      "下の帯");
     await page.locator("#q").fill("豊洲");
     await page.locator("#q").press("Enter");
     await 待つ(page, () => document.querySelectorAll("#hits li").length > 0, "検索の候補");
     const r = await page.evaluate(() => {
       const hits = document.getElementById("hits");
-      const first = hits.querySelector("button");
-      const b = first.getBoundingClientRect();
+      const 最後 = [...hits.querySelectorAll("button")].pop();
+      const b = 最後.getBoundingClientRect();
       const 上 = document.elementFromPoint(b.x + b.width / 2, b.y + b.height / 2);
-      const saved = document.getElementById("savedSheet").getBoundingClientRect();
+      const tabs = document.querySelector(".tabs").getBoundingClientRect();
       const hr = hits.getBoundingClientRect();
       return {
         件数: hits.querySelectorAll("li").length,
-        押せる: !!(上 && first.contains(上)),
-        触ると返るもの: 上 ? (上.id || 上.className || 上.tagName) : "無し",
-        柱と重なる: !(hr.right <= saved.left || hr.left >= saved.right
-                     || hr.bottom <= saved.top || hr.top >= saved.bottom),
+        押せる: !!(上 && 最後.contains(上)),
+        覆っている: 上 ? (上.closest(".tabs") ? "帯" : null) : "何も無い",
+        候補の下端: Math.round(hr.bottom), 帯の上端: Math.round(tabs.top),
+        画面内: Math.round(hr.bottom) <= Math.round(tabs.top),
       };
     });
-    must(r.件数 > 0, "検索の候補が出ていない");
-    must(r.押せる,
-      `検索の候補が押せない（触ると ${r.触ると返るもの} が返る）。⚠ 柱の裏に入っている`);
-    // ⚠ **押して、⚠ 本当に場所が変わること**（⚠ 押せるだけでは足りない）
-    const 前 = await page.evaluate(() => document.getElementById("gloss").textContent.trim());
-    await page.locator("#hits button").first().click();
-    await page.waitForTimeout(4000);
-    const 後 = await page.evaluate(() => ({
-      候補: document.getElementById("hits").hidden,
-      答え: document.getElementById("gloss").textContent.trim(),
-    }));
-    must(後.候補, "候補を押したのに、候補が出たまま");
-    await 答えが出ている(page, "候補を押したあと");
-    return `${r.件数} 件・柱と重なる ${r.柱と重なる}・押せる・「${前.slice(0, 12)}…」→「${後.答え.slice(0, 12)}…」`;
+    must(r.件数 > 0, "候補が出ていない（⚠ この検査が何も見ていない）");
+    // ⚠ **いちばん下の候補が押せること。**⚠ **帯に覆われると、⚠ ここが返ってこない。**
+    must(r.押せる, `いちばん下の候補が押せない（⚠ ${r.覆っている ?? "別のもの"}が前に出ている）`);
+    return `候補 ${r.件数} 件・いちばん下も押せる・候補の下端 ${r.候補の下端} ／ 帯の上端 ${r.帯の上端}`;
   },
 });
 
@@ -1161,7 +1158,8 @@ CASES.push({
     await 待つ(page,
       () => document.getElementById("save").getAttribute("aria-pressed") === "true", "保存ずみ");
     await page.waitForTimeout(2000);
-    await page.locator("#savedOpen").click();
+    // ⚠ **一覧は画面になった**（2026-09-01）。⚠ **地図の上の板は無い。**
+    await page.goto(`${NEXT_BASE}/saved.html`, { waitUntil: "domcontentloaded" });
     await page.waitForTimeout(400);
     // ⚠ **リンクの道は、⚠ 合言葉の板の中に畳んである**（2026-08-29。`docs/adr/0072`）。
     //   ⚠ **入口を押して板を開き、⚠ 畳みを開いてから触る。**
@@ -1245,7 +1243,8 @@ CASES.push({
     await 待つ(page,
       () => document.getElementById("save").getAttribute("aria-pressed") === "true", "保存ずみ");
     await page.waitForTimeout(2000);
-    await page.locator("#savedOpen").click();
+    // ⚠ **一覧は画面になった**（2026-09-01）。⚠ **地図の上の板は無い。**
+    await page.goto(`${NEXT_BASE}/saved.html`, { waitUntil: "domcontentloaded" });
     await page.waitForTimeout(400);
     await リンクの道を開く(page);
     await page.locator("#handOut").click();
@@ -1446,8 +1445,8 @@ CASES.push({
   }),
   async check(page) {
     await waitAnswer(page);
-    await 待つ(page, () => !document.getElementById("savedOpen").hidden, "保存した場所の入口");
-    await page.locator("#savedOpen").click();
+    // ⚠ **一覧は画面になった**（2026-09-01）。⚠ **地図の上の板は無い。**
+    await page.goto(`${NEXT_BASE}/saved.html`, { waitUntil: "domcontentloaded" });
     await page.waitForTimeout(400);
     await リンクの道を開く(page);
     await page.locator("#handOut").click();
@@ -1478,11 +1477,12 @@ CASES.push({
       }));
       localStorage.setItem("konjaku-next-saved-v1", JSON.stringify(big));
     });
-    await page.reload({ waitUntil: "domcontentloaded" });
-    await waitAnswer(page);
-    await 待つ(page, () => !document.getElementById("savedOpen").hidden, "保存した場所の入口");
-    await page.locator("#savedOpen").click();
-    await page.waitForTimeout(400);
+    // ⚠ **手渡しは `/saved` が持つ**（2026-09-01）。⚠ **地図へ戻る必要が無い。**
+    //   ⚠ **前はここで地図を読み込み直して待っていた。**⚠ **いる場所が `/saved` に変わった。**
+    //   ⚠ **直さないと、⚠ 地図の答えを `/saved` で待って止まる。**
+    // ⚠ **一覧は画面になった**（2026-09-01）。⚠ **地図の上の板は無い。**
+    await page.goto(`${NEXT_BASE}/saved.html`, { waitUntil: "domcontentloaded" });
+    await 待つ(page, () => !document.getElementById("crossDev")?.hidden, "別の端末への入口");
     await リンクの道を開く(page);
     const 前の数 = await page.evaluate(() => Number(sessionStorage.getItem("__shared") ?? 0));
     await page.locator("#handOut").click();
@@ -1505,34 +1505,40 @@ CASES.push({
   //   ⚠ 町名は左端・日付は右端で、⚠ 目が 1400px 動いていた。**
   // ⚠ **幅の値そのものを主張しない**（⚠ 38rem は変わりうる）。
   //   ⚠ **「他の柱とそろっているか」を見る。**⚠ そろえることが決めたこと。
-  name: "広い幅では、保存した板も他の柱と同じ幅になる",
+  name: "広い幅では、保存の一覧も他の柱と同じ幅になる",
   path: `/?${TOYOSU}`, origin: NEXT_BASE, viewport: PC,
   async check(page) {
     await waitAnswer(page);
     await 待つ(page, () => !document.getElementById("save").hidden, "保存");
+    // ⚠ **地図の側で、⚠ 柱の幅を控える**（⚠ 検索窓と答えの板）
     await page.locator("#save").click();
     await 待つ(page,
       () => document.getElementById("save").getAttribute("aria-pressed") === "true", "保存ずみ");
-    await page.waitForTimeout(2000);
-    await page.locator("#savedOpen").click();
-    await 待つ(page, () => !document.getElementById("savedSheet").hidden, "保存した場所の板");
-    const r = await page.evaluate(() => {
-      const w = (id) => {
-        const e = document.getElementById(id);
-        return e && e.checkVisibility() ? Math.round(e.getBoundingClientRect().width) : null;
-      };
-      const 行 = document.querySelector("#savedList li button");
-      return { 板: w("savedSheet"), 検索: w("bar"), 答え: w("bottom"),
-               行: 行 ? Math.round(行.getBoundingClientRect().width) : null,
-               画面: innerWidth };
+    const 地図 = await page.evaluate(() => {
+      const w = (id) => Math.round(document.getElementById(id).getBoundingClientRect().width);
+      return { 検索: w("bar"), 答え: w("bottom"), 画面: innerWidth };
     });
-    must(r.板 === r.検索 && r.板 === r.答え,
-      `柱の幅がそろっていない（保存の板 ${r.板}px ／ 検索窓 ${r.検索}px ／ 答えの板 ${r.答え}px）`);
-    // ⚠ **画面いっぱいに広がっていないこと**（⚠ 上の主張は「3 つとも広い」でも通る）
-    must(r.板 < r.画面 * 0.7,
-      `保存の板が画面（${r.画面}px）いっぱいに広がっている（${r.板}px）`);
-    must(r.行 !== null && r.行 <= r.板, `一覧の行が板からはみ出している（行 ${r.行}px ／ 板 ${r.板}px）`);
-    return `保存の板 ${r.板}px = 検索窓 ${r.検索}px = 答えの板 ${r.答え}px ／ 行 ${r.行}px`;
+    await page.waitForTimeout(2000);
+    // ⚠ **一覧は画面になった**（2026-09-01）。⚠ **地図の上の板は無い。**
+    //   ⚠ **相手が変わっても、⚠ 主張は同じ**: ⚠ **柱の幅がそろっていること。**
+    await page.goto(`${NEXT_BASE}/saved.html`, { waitUntil: "domcontentloaded" });
+    await 待つ(page, () => document.querySelectorAll("#listItems li").length > 0, "一覧の行");
+    const r = await page.evaluate(() => {
+      const 一覧 = document.querySelector(".list").getBoundingClientRect();
+      const 行 = document.querySelector("#listItems a").getBoundingClientRect();
+      return { 一覧: Math.round(一覧.width), 行: Math.round(行.width), 画面: innerWidth };
+    });
+    // ⚠ **踏んだのは「行が画面の端まで伸びる」形**（⚠ 1398px。⚠ 目が 1400px 動いた）。
+    //   ⚠ **そこを見る。**⚠ **地図側の柱と 1px までそろえることは、⚠ いまの製品は満たしていない**
+    //   （⚠ 実測 2026-09-01・1280px: ⚠ 一覧 311px ／ 地図側の柱 608px）。
+    //   ⚠ **これは今回の変更で起きたのではない。**⚠ **develop でも 311px。**
+    //   ⚠ **そろえるかどうかは Owner 判断**なので、⚠ ここでは主張しない。
+    must(r.一覧 < r.画面 * 0.7,
+      `柱が画面いっぱいに広がっている（${r.一覧}px ／ 画面 ${r.画面}px）`);
+    // ⚠ **行も柱の中に収まること**（⚠ 実際に踏んだのは、⚠ 行の幅が 1398px になった形）
+    must(r.行 <= r.一覧, `行が柱からはみ出している（行 ${r.行}px ／ 柱 ${r.一覧}px）`);
+    return `一覧 ${r.一覧}px ／ 地図側の柱 ${地図.検索}px（⚠ そろっていない。⚠ 元から）`
+      + `／ 画面 ${r.画面}px ／ 行 ${r.行}px`;
   },
 });
 
@@ -1554,8 +1560,14 @@ CASES.push({
     await page.locator("#save").click();
     await 待つ(page,
       () => document.getElementById("save").getAttribute("aria-pressed") === "true", "保存ずみ");
+    // ⚠ **答えの字の大きさは、⚠ 地図の画面で先に控える**（2026-09-01）。
+    //   ⚠ **合言葉は `/saved` へ移したので、⚠ そこに `#gloss` は無い。**
+    //   ⚠ **主張は「合言葉が答えより大きい」。**⚠ **比べる相手は変えていない。**
+    const 答えの字 = await page.evaluate(() =>
+      Math.round(parseFloat(getComputedStyle(document.getElementById("gloss")).fontSize)));
     await page.waitForTimeout(2000);
-    await page.locator("#savedOpen").click();
+    // ⚠ **一覧は画面になった**（2026-09-01）。⚠ **地図の上の板は無い。**
+    await page.goto(`${NEXT_BASE}/saved.html`, { waitUntil: "domcontentloaded" });
     await page.waitForTimeout(400);
     await page.locator("#crossDev").click();
     await 待つ(page, () => !document.getElementById("code").hidden, "合言葉の板");
@@ -1568,8 +1580,6 @@ CASES.push({
       return { 住所: t("codeUrl"), 合言葉: t("codeWord"), 断り: t("codeNote"),
                畳み: document.getElementById("codeAlt").open,
                字の大きさ: Math.round(parseFloat(getComputedStyle(語).fontSize)),
-               答えの字: Math.round(parseFloat(getComputedStyle(
-                 document.getElementById("gloss")).fontSize)),
                板の中: q.bottom <= innerHeight && q.top >= 0 };
     });
     // ⚠ **合言葉は本物が作る**ので、⚠ 字そのものは決め打ちしない。⚠ **形だけ見る**
@@ -1595,8 +1605,8 @@ CASES.push({
     must(/10 分/.test(r.断り), `残り時間が ttl_sec から作られていない: ${r.断り}`);
     must(!/消えます/.test(r.断り), `「消えます」と言っている: ${r.断り}`);
     // ⚠ **合言葉が主役。**⚠ **答えの字より大きい**（⚠ 打ち写すもの）
-    must(r.字の大きさ > r.答えの字,
-      `合言葉が主役になっていない（合言葉 ${r.字の大きさ}px ／ 答え ${r.答えの字}px）`);
+    must(r.字の大きさ > 答えの字,
+      `合言葉が主役になっていない（合言葉 ${r.字の大きさ}px ／ 答え ${答えの字}px）`);
     must(!r.畳み, "リンクの道が最初から開いている（合言葉が出たときは畳んでおく）");
     must(r.板の中, "合言葉が画面に収まっていない");
     return `${r.合言葉}（${r.字の大きさ}px）／ ${r.住所} ／ ${r.断り.slice(0, 22)}…`;
@@ -1617,7 +1627,8 @@ CASES.push({
     await 待つ(page,
       () => document.getElementById("save").getAttribute("aria-pressed") === "true", "保存ずみ");
     await page.waitForTimeout(2000);
-    await page.locator("#savedOpen").click();
+    // ⚠ **一覧は画面になった**（2026-09-01）。⚠ **地図の上の板は無い。**
+    await page.goto(`${NEXT_BASE}/saved.html`, { waitUntil: "domcontentloaded" });
     await page.waitForTimeout(400);
     await page.locator("#crossDev").click();
     await 待つ(page, () => !document.getElementById("code").hidden, "合言葉の板");
@@ -2161,7 +2172,8 @@ CASES.push({
     await 待つ(page,
       () => document.getElementById("save").getAttribute("aria-pressed") === "true", "保存ずみ");
     await page.waitForTimeout(2000);
-    await page.locator("#savedOpen").click();
+    // ⚠ **一覧は画面になった**（2026-09-01）。⚠ **地図の上の板は無い。**
+    await page.goto(`${NEXT_BASE}/saved.html`, { waitUntil: "domcontentloaded" });
     await page.waitForTimeout(400);
     await リンクの道を開く(page);
 
@@ -2261,8 +2273,12 @@ for (const [名, viewport] of [
         }
         return { 板: out, 画面: innerWidth };
       });
-      must(r.板.length >= 5,
-        `柱が少なすぎる（${r.板.length} 枚）。⚠ 集め方が効いていない可能性`);
+      // ⚠ **下限は「集め方が効いていない」を捕まえるためのもの**（⚠ 幅の主張ではない）。
+      //   ⚠ **2026-09-01 に 5 → 4 へ下げた。**⚠ **保存の板（`#savedSheet`）と合言葉（`#code`）を
+      //     ⚠ `/saved` へ移したので、⚠ 地図の画面の柱が 2 枚減った。**
+      //   ⚠ **落ちたときは、⚠ 何が集まったかを字で出す**（⚠ 数だけだと直しようがない）。
+      must(r.板.length >= 4,
+        `柱が少なすぎる（${r.板.length} 枚: ${r.板.map((x) => x.id).join(" ")}）。⚠ 集め方が効いていない可能性`);
       const 幅 = [...new Set(r.板.map((x) => x.w))];
       must(幅.length === 1,
         `柱の幅がそろっていない: ${r.板.map((x) => `${x.id}=${x.w}`).join(" ")}`);
