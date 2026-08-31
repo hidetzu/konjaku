@@ -33,37 +33,13 @@
   //
   // 同じサイトから来たかは document.referrer で分かる。history.length では分からない
   //   （実測 2026-08-30: 直接ひらいても 2 になる）。
-  // referrer は環境で消える（プライバシー設定・拡張・アプリ内ブラウザ）。
-  //   空は「直前が無い」として扱う。安全側に倒れる（誤って外へ出さない）。
+  // 戻る道。同じ形を保存の一覧も持つので、back.js の 1 か所に出した（2026-09-01）。
   const 地図へ = (() => {
     if (arg.state !== "ok") return "./";
     const q = KonjakuPlaceArg.placeQuery({ lat: arg.lat, lon: arg.lon });
     return "./" + (q ? q.replace(/^\?q=&/, "?") : "");
   })();
-  backEl.href = 地図へ;
-
-  const 同じサイトから = (() => {
-    try { return !!document.referrer && new URL(document.referrer).origin === location.origin; }
-    catch { return false; }
-  })();
-
-  if (同じサイトから) {
-    backEl.textContent = "← ひとつ前へ";
-    backEl.addEventListener("click", (e) => {
-      // 新しいタブで開かれていると、referrer は同じでも戻る先が無い
-      //   （ctrl＋クリック・中クリック）。history.length では見分けられない。
-      //   戻れたかどうかは、戻ってみないと分からない。戻らなければ地図へ送る。
-      e.preventDefault();
-      let 戻れた = false;
-      const 見張り = () => { 戻れた = true; };
-      addEventListener("pagehide", 見張り, { once: true });
-      history.back();
-      setTimeout(() => {
-        removeEventListener("pagehide", 見張り);
-        if (!戻れた) location.href = 地図へ;
-      }, 400);
-    });
-  }
+  KonjakuBack.wire(backEl, 地図へ, "この場所を地図で見る");
 
   // 保存した控えから、この地点の名前を引く。控えの形は saved.js が持つ。
   //   名前が無いこともある（地理院に聞けなかった保存）。そのときは黙る。

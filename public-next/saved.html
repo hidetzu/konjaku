@@ -38,6 +38,9 @@
 </header>
 
 <main class="list" id="list">
+  <!-- 地図へ戻る道。深掘りと同じ形（back.js）。
+       地図の上の板を廃止したとき、一覧から地図へ行く道が無くなった（2026-09-01）。 -->
+  <a class="back" id="back" href="./">地図で調べる</a>
   <h1 class="list__h">保存した場所<span class="list__n" id="listN"></span></h1>
 
   <!-- 受け取り口から来たとき、何が起きたかを言う（押したのに無言にしない）。 -->
@@ -53,7 +56,40 @@
   </section>
 
   <p class="list__note" id="listNote" hidden>この端末の中だけに残ります。どこにも送りません。</p>
+
+  <!-- 別の端末で続きを見る入口。2026-09-01 に、地図の画面の板からここへ移した。
+       保存にまつわる管理は、この画面 1 か所に集める。
+       1 件も保存していないうちは出さない（渡すものが無い）。 -->
+  <button class="list__hand" id="crossDev" type="button" hidden>
+    <span aria-hidden="true">⇱</span><span id="crossDevText">PC やタブレットでも見る</span>
+  </button>
 </main>
+
+  <!-- 合言葉。スマホが出して、PC で打つ。引換券であって本人確認ではない。 -->
+<section class="column code" id="code" hidden aria-label="別の端末で開く">
+  <h2>PC やタブレットで開く</h2>
+  <div id="codeBody">
+    <p class="code__label">この住所を開いて</p>
+    <p class="code__url" id="codeUrl">　</p>
+    <p class="code__label">この合言葉を入れる</p>
+    <p class="code__word" id="codeWord">　</p>
+  </div>
+  <p class="code__note" id="codeNote"></p>
+  <!-- サーバを通さない道。消さずに畳んで残す。 -->
+  <details class="code__alt" id="codeAlt">
+    <summary>サーバを通さずに渡す</summary>
+    <p>この端末とリンクだけで渡します。合言葉より長いリンクを、自分あてに送る形になります。</p>
+    <button class="code__link" id="handOut" type="button">
+    <span aria-hidden="true">⇱</span><span id="handOutText">リンクを作って送る</span>
+    </button>
+    <!-- 写す口を分ける。共有シートの「コピー」は題と説明と URL をつなげて写すので、
+       貼っても開けない。ここは URL だけを写す。 -->
+    <button class="code__link" id="handCopy" type="button">
+    <span aria-hidden="true">⧉</span><span id="handCopyText">リンクだけを写す</span>
+    </button>
+  </details>
+  <button class="code__close" id="codeClose" type="button">閉じる</button>
+</section>
 <!-- ページの下の案内。広い幅だけが持つ（狭い幅の下は、行き先の帯が使う）。
      持つのは名乗りのメニューと同じ 4 つ。広い幅ではメニューを畳むので、
      ここが欠けると案内へ行けなくなる。
@@ -92,5 +128,6 @@
 <script src="./saved.js"></script>
 <script src="./when.js"></script>
 <script src="./place-arg.js"></script>
+<script src="./back.js"></script>
 <script src="./saved-page.js"></script>
 <script src="./menu.js"></script>
