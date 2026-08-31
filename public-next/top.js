@@ -37,9 +37,6 @@
   const crossDev = $("crossDev"), crossDevText = $("crossDevText");
   const handOut = $("handOut"), handOutText = $("handOutText");
   const handCopy = $("handCopy"), handCopyText = $("handCopyText");
-  // 共有シートへ渡す題と説明。写す口には渡さない（つながって貼れなくなる）。
-  const 送る題 = "今昔 — 保存した場所";
-  const 送る説明 = (n) => `保存した場所 ${n} 件。PC やタブレットで開くと、この端末の保存を足せます。`;
   const codeEl = $("code"), codeUrl = $("codeUrl"), codeWord = $("codeWord");
   const codeNote = $("codeNote"), codeAlt = $("codeAlt"), codeBody = $("codeBody");
 
@@ -900,13 +897,14 @@
       clearTimeout(handTimer);
       handTimer = setTimeout(() => { handOutText.textContent = "リンクを作って送る"; }, 2600);
     };
-    // 送る口。題と説明を付ける。共有シートの先（トーク・メール・メモ）に残ったとき、
-    //   URL だけだと後から探せない。場所の名前は入れない。
-    //   ⚠ この口では「写す」を当てにしない。共有シートの「コピー」は
-    //     題と説明と URL をつなげて写すので、貼っても開けない（Owner が実機で踏んだ）。
-    //     写したい人のために、別に写す口を置いてある。
+    // 送る口。⚠ URL だけを渡す。題も説明も付けない（2026-08-31 に外した）。
+    //   付けていたときは、共有シートの先で題・説明・URL がつながり、
+    //   貼っても開けなかった（Owner が実機で 2 度踏んだ。2 度目は URL の末尾に字が付いていた）。
+    //   つなぎ方は受け取ったアプリが決めるので、こちらでは前にも後ろにも置けない。
+    //   このリンクは自分あてに送るもの（画面がそう言っている）。説明する相手がいない。
+    //   場所を送る口（#share）も、前から URL だけを渡している。そちらに揃えた。
     if (navigator.share) {
-      try { await navigator.share({ title: 送る題, text: 送る説明(saved.length), url }); return; }
+      try { await navigator.share({ url }); return; }
       catch (e) { if (e?.name === "AbortError") return; }
     }
     // 共有シートが無い端末（PC の多く）。ここは写すしかない。

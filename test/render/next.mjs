@@ -1178,6 +1178,46 @@ CASES.push({
     await 別.close();
     return `${url.length} 文字のリンク → ${後.控え} 件（「${後.言った}」）`;
   },
+},
+
+{
+  // ⚠ **共有シートを持つ端末でしか出ない不具合**（⚠ Owner が実機で 2 度踏んだ）。
+  //   ⚠ **手元の Chromium に `navigator.share` は無いので、⚠ 上のケースは
+  //     写す側の道しか通っていない。**⚠ **持っているふりをして、⚠ 渡す荷物を見る。**
+  // ⚠ **題や説明を付けると、⚠ 受け取ったアプリが URL とつなげて 1 本の字にする。**
+  //   ⚠ **貼っても開けない。**⚠ **つなぎ方は向こうが決めるので、⚠ 前にも後ろにも置けない。**
+  name: "手渡しのリンクは、共有シートへ URL だけを渡す",
+  path: `/?${TOYOSU}`, origin: NEXT_BASE, viewport: SP,
+  setup: (page) => page.addInitScript(() => {
+    globalThis.__渡した = null;
+    Object.defineProperty(navigator, "share", {
+      configurable: true,
+      value: async (d) => { globalThis.__渡した = d; },
+    });
+  }),
+  async check(page) {
+    await waitAnswer(page);
+    await 待つ(page, () => !document.getElementById("save").hidden, "保存");
+    await page.locator("#save").click();
+    await 待つ(page,
+      () => document.getElementById("save").getAttribute("aria-pressed") === "true", "保存ずみ");
+    await page.waitForTimeout(2000);
+    await page.locator("#savedOpen").click();
+    await page.waitForTimeout(400);
+    await リンクの道を開く(page);
+    await page.locator("#handOut").click();
+    await page.waitForTimeout(600);
+
+    const 渡した = await page.evaluate(() => globalThis.__渡した);
+    must(渡した, "共有シートへ何も渡していない");
+    const キー = Object.keys(渡した).sort().join(",");
+    must(キー === "url", `URL 以外も渡している（${キー}）。貼ったときに 1 本につながる`);
+    const 非ASCII = [...渡した.url].filter((c) => c.charCodeAt(0) > 126);
+    must(非ASCII.length === 0,
+      `渡したものに ASCII でない字が混ざっている: ${非ASCII.slice(0, 12).join("")}`);
+    must(/\/take#\S/.test(渡した.url), `渡したものがリンクの形をしていない: ${渡した.url.slice(0, 60)}`);
+    return `渡したのは ${キー} だけ（${渡した.url.length} 文字・ASCII でない字 0）`;
+  },
 });
 
 CASES.push({
@@ -1377,13 +1417,14 @@ CASES.push({
     must(渡した.url.length > 2000,
       `100 件のリンクが 2000 文字以下（${渡した.url.length} 文字）。⚠ この検査は何も見ていない`);
     must(渡した.url.length <= 12000, `渡す上限を超えている（${渡した.url.length} 文字）`);
-    // ⚠ **題と説明が要る。**⚠ **URL だけだと、⚠ 送った先で何のリンクか分からない**
-    must(渡した.title && /今昔/.test(渡した.title), `共有に題が無い: ${JSON.stringify(渡した.title)}`);
-    must(渡した.text && /100 件/.test(渡した.text),
-      `共有の説明に件数が無い: ${JSON.stringify(渡した.text)}`);
+    // ⚠ **渡すのは URL だけ**（2026-08-31 に主張を入れ替えた）。
+    //   ⚠ **前はここで「題と説明が要る」を守っていた。**⚠ **それが不具合のほうだった。**
+    //   ⚠ **受け取ったアプリが 1 本の字につなげるので、⚠ 貼っても開けない**
+    //     （⚠ Owner が実機で 2 度踏んだ）。⚠ **件数は、⚠ 渡す前の画面で見えている。**
+    must(Object.keys(渡した).sort().join(",") === "url",
+      `共有に URL 以外が混ざっている: ${Object.keys(渡した).join(",")}`);
     // ⚠ **地名を入れない**（⚠ 共有シートの先に地名が残る。⚠ `docs/adr/0008` の主旨）
-    must(!/豊洲/.test(渡した.title + 渡した.text),
-      `共有の題か説明に地名が入っている: ${渡した.title} ／ ${渡した.text}`);
+    must(!/豊洲/.test(渡した.url), `共有の URL に地名が入っている: ${渡した.url.slice(0, 60)}`);
 
     // ⚠ **多すぎるときは、⚠ 渡さないと言う**（⚠ 黙って切らない）
     await page.evaluate(() => {
@@ -1962,18 +2003,23 @@ CASES.push({
     must(/\/take#/.test(写した), `写した URL が受け取り口を指していない: ${写した.slice(0, 60)}`);
     must(!/[?&]take=/.test(写した), `写した URL の荷物がクエリに載っている: ${写した.slice(0, 60)}`);
 
-    // ⚠ **送る口。**⚠ **題と説明が付くこと**（⚠ 送った先で何のリンクか分かる）
+    // ⚠ **送る口も、⚠ URL だけを渡す**（2026-08-31 に主張を入れ替えた）。
+    //   ⚠ **前はここで「題と説明が付くこと」を守っていた。**⚠ **それが不具合のほうだった。**
+    //   ⚠ **受け取ったアプリが題・説明・URL をつなげて 1 本の字にするので、⚠ 貼っても開けない**
+    //     （⚠ Owner が実機で 2 度踏んだ。⚠ 2 度目は URL の末尾に字が付いていた）。
+    //   ⚠ **つなぎ方は向こうが決めるので、⚠ こちらでは前にも後ろにも置けない。**
+    //   ⚠ **検査は守るべきことを固定する。**⚠ **間違った主張は、⚠ 間違ったまま固定される**
+    //     （`CLAUDE.md` §9）。⚠ **だから主張ごと入れ替える。**
     await page.locator("#handOut").click();
     await 待つ(page, () => globalThis.__shared.length > 0, "共有シートへ渡すもの");
     const 送った = await page.evaluate(() => globalThis.__shared[0]);
-    must(送った.title && /今昔/.test(送った.title), `送る口に題が無い: ${送った.title}`);
-    must(送った.text && /件/.test(送った.text), `送る口に説明が無い: ${送った.text}`);
+    const 渡した鍵 = Object.keys(送った).sort().join(",");
+    must(渡した鍵 === "url", `送る口が URL 以外も渡している（${渡した鍵}）`);
     must(送った.url === 写した.trim() || /\/take#/.test(送った.url),
       `送る口の URL が違う: ${送った.url?.slice(0, 60)}`);
     // ⚠ **地名を入れない**（⚠ 共有シートの先に地名が残る）
-    must(!/豊洲/.test(`${送った.title}${送った.text}`),
-      `送る口の題か説明に地名が入っている: ${送った.title} ／ ${送った.text}`);
-    return `写す ${写した.length} 文字（URL だけ）／ 送る 題と説明つき`;
+    must(!/豊洲/.test(送った.url), `送る口の URL に地名が入っている: ${送った.url.slice(0, 60)}`);
+    return `写す ${写した.length} 文字（URL だけ）／ 送る url だけ`;
   },
 });
 
