@@ -14,7 +14,7 @@
 
 	// ⚠ **配るのは `public-next/` だけ。**⚠ `public/` を混ぜない。
 	//   ⚠ **混ぜると「β 版を前提にしない」が、⚠ その時点で崩れる**
-	//   （`tmp/next-konjaku.md` の決め事）。
+	//   （`docs/v0.1.0-何を解決するか.md` の決め事）。
 	"assets": {
 		"directory": "./public-next"
 	},
