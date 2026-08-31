@@ -28,29 +28,50 @@ a.brand__name:hover{color:var(--action)}
 .brand__name:focus-visible{outline:2px solid var(--action); outline-offset:2px}
 .brand[hidden]{display:none}
 .brand__mark{width:1.25rem; height:1.25rem; border-radius:.25rem; flex:none; display:block}
-/* 右端。「このサイトについて」への道（2026-08-31 に中身を置いた）。
-   押せるものなので 44 を割らない。名乗りが長い画面では、名乗り側が先に詰まる
-   （.brand__name は min-width:0 と ellipsis を持っている）。 */
-.brand__about{
-  margin-left:auto; flex:none;
-  display:flex; align-items:center;
-  min-height:var(--tap); padding:0 var(--pad-sm);
-  font-size:.8125rem; color:var(--ink-3); text-decoration:none; white-space:nowrap;
-}
-a.brand__about:hover{color:var(--action)}
-.brand__about:focus-visible{outline:2px solid var(--action); outline-offset:2px}
-/* 狭い幅では記号だけにする。字を並べると、名乗りのほうが切れる
-   （実測 2026-08-31・375px: 字だと「昔なんだったのか？」が入らない）。
-   DOM は 1 つのまま。読み上げは aria-label が持つので、どちらでも同じ字が出る。 */
-.brand__about__mark{
+/* 右端のメニュー。押すと、サイトの案内が縦に並ぶ。
+   1 つずつ帯に並べると、狭い幅で名乗りが切れる
+   （実測 2026-08-31・375px: 字を 1 つ置いただけで「昔なんだったのか？」が入らない）。
+
+   details でやる。開け閉めに JavaScript を要らなくするため（落ちても開ける）。
+   menu.js が足すのは「外を押す・Esc で閉じる」だけで、無くても使える。 */
+.menu{position:relative; margin-left:auto; flex:none}
+.menu__btn{
   display:flex; align-items:center; justify-content:center;
   width:var(--tap); height:var(--tap);
-  border:1px solid var(--line-strong); border-radius:50%;
-  font-size:.9375rem; font-weight:700; color:var(--ink-2);
+  border:1px solid var(--line-strong); border-radius:.5rem;
+  cursor:pointer; list-style:none;
 }
-.brand__about__text{display:none}
-a.brand__about:hover .brand__about__mark{border-color:var(--action); color:var(--action)}
-@media (min-width:700px){
-  .brand__about__mark{display:none}
-  .brand__about__text{display:inline}
+.menu__btn::-webkit-details-marker{display:none}
+.menu__btn:hover{border-color:var(--action)}
+.menu__btn:focus-visible{outline:2px solid var(--action); outline-offset:2px}
+
+/* 三本線。真ん中の 1 本が実体で、上下は擬似要素。 */
+.menu__bars, .menu__bars::before, .menu__bars::after{
+  display:block; width:1.125rem; height:2px; border-radius:1px; background:var(--ink-2);
 }
+.menu__bars{position:relative}
+.menu__bars::before, .menu__bars::after{content:""; position:absolute; left:0}
+.menu__bars::before{top:-6px}
+.menu__bars::after{top:6px}
+.menu[open] .menu__bars{background:var(--action)}
+.menu[open] .menu__bars::before, .menu[open] .menu__bars::after{background:var(--action)}
+
+/* 開いた中身。帯の下へ、右端をそろえて出す。 */
+.menu__panel{
+  position:absolute; top:calc(100% + .25rem); right:0; z-index:1;
+  display:flex; flex-direction:column; min-width:13rem;
+  background:var(--surface); border:1px solid var(--line-strong); border-radius:.5rem;
+  box-shadow:0 6px 24px color-mix(in srgb, var(--shadow) 18%, transparent);
+  overflow:hidden;
+}
+.menu__item{
+  display:flex; align-items:center; min-height:var(--tap);
+  padding:0 var(--pad-md); font-size:.875rem; color:var(--ink); text-decoration:none;
+  border-bottom:1px solid var(--line);
+}
+.menu__item:last-child{border-bottom:0}
+.menu__item:hover{background:var(--surface-2); color:var(--action)}
+.menu__item:focus-visible{outline:2px solid var(--action); outline-offset:-2px}
+/* いま開いている画面は、行き先ではなく現在地として見せる。 */
+.menu__item[aria-current="page"]{color:var(--ink-3); background:var(--surface-2)}
+

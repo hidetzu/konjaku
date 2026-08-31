@@ -17,7 +17,15 @@
       <img class="brand__mark" src="./favicon.svg" alt="" width="20" height="20">
       今昔　この土地は、昔なんだったのか？
     </a>
-    <a class="brand__about" href="./about.html" aria-label="このサイトについて"><span class="brand__about__mark" aria-hidden="true">i</span><span class="brand__about__text">このサイトについて</span></a>
+    <details class="menu">
+      <summary class="menu__btn" aria-label="メニュー">
+        <span class="menu__bars" aria-hidden="true"></span>
+      </summary>
+      <nav class="menu__panel" aria-label="サイトの案内">
+        <a class="menu__item" href="./about.html">このサイトについて</a>
+        <a class="menu__item" href="./privacy.html">プライバシーポリシー</a>
+      </nav>
+    </details>
   </header>
   <div class="column" id="bar">
     <form id="find" role="search">
@@ -154,3 +162,4 @@
 <script src="./land.js"></script>
 <script src="./gsi-address-search.js"></script>
 <script src="./top.js"></script>
+<script src="./menu.js"></script>
