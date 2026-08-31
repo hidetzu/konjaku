@@ -794,4 +794,64 @@ else {
           + "（⚠ 表と実ファイルが一致・⚠ 重さは上限内・⚠ 3 状態を言い分ける）");
   }
 
+  // ---- ⚠ ⑯ 仮想利用者レビューで出た 3 つの読み違いが、⚠ 戻っていないか ----
+  //   ⚠ **2026-09-01。**⚠ **利用者役 6 名に画面だけを見せた**（⚠ 実在の利用者ではない）。
+  //   ⚠ **直した不具合は検査として残す**（`CLAUDE.md` §2）。
+  {
+    const 欠け = [];
+    const 素 = (f) => readFileSync(join(NEXT, f), "utf8")
+      .replace(BLOCK_COMMENT, " ").replace(HEAD_COMMENT, " ");
+    const DEEP = 素("deep.js");
+    // ⚠ **HTML のコメントを先に落とす。**⚠ **落とさないと、⚠ この検査を説明する
+    //   コメントの字を、⚠ 検査自身が拾う**（`CLAUDE.md` §5。⚠ 何度も踏んでいる）。
+    const HTML = readFileSync(join(NEXT, "deep.html"), "utf8").replace(/<!--[\s\S]*?-->/g, " ");
+
+    // ⚠ 1. ⚠ **資料が無いときの字が、⚠ アプリ全体の話に読まれた**（⚠ 6 名中 3 名）。
+    //   ⚠ **「対象」の持ち主が字の中に無かった。**⚠ **主語を字の中で名乗ること。**
+    //   ⚠ **借りて見る。**⚠ **字を写すと、⚠ 製品ではなく検査が落ちる。**
+    const win = {};
+    for (const f of ["words.js", "answer.js"])
+      new Function("window", "module", readFileSync(join(NEXT, f), "utf8"))(win, undefined);
+    const 三状態 = win.KonjakuAnswer?.MEIJI_NONE ?? {};
+    if (Object.keys(三状態).length !== 3)
+      欠け.push("KonjakuAnswer.MEIJI_NONE を読めていない（⚠ この検査が何も見ていない）");
+    for (const [k, 字] of Object.entries(三状態)) {
+      if (!字.includes("この地図"))
+        欠け.push(`資料が無いときの字（${k}）が、⚠ 何の話かを名乗っていない: 「${字}」`);
+      // ⚠ **アプリ全体の話に読める語を、⚠ 主語なしで置かない。**
+      for (const 悪 of ["対象の範囲の外", "対象外", "使えません", "調べられません"])
+        if (字.includes(悪)) 欠け.push(`資料が無いときの字（${k}）に、⚠ アプリ全体に読める語がある: ${悪}`);
+    }
+    // ⚠ **3 つが別の字であること**（`docs/adr/0056`）。⚠ **主語を揃えて 1 つに潰さない。**
+    if (new Set(Object.values(三状態)).size !== 3)
+      欠け.push("資料が無いときの 3 状態が、⚠ 同じ字になっている（⚠ 無い・区分が無い・読めなかったは別）");
+
+    // ⚠ 2. ⚠ **近くの碑が、⚠ その地点そのものの履歴に読まれた**（⚠ 6 名中 2 名）。
+    //   ⚠ **一段分離して、⚠ 重要な情報より下に置くこと。**
+    const 位置 = (id) => HTML.indexOf(`id="${id}"`);
+    for (const 上 of ["timeSec", "whySec", "nearSec"])
+      if (!(位置(上) >= 0 && 位置("monSec") > 位置(上)))
+        欠け.push(`近くの碑（monSec）が、⚠ ${上} より上にある（⚠ 重要な情報より下と決めてある）`);
+    if (!/<section[^>]*class="[^"]*sec--around[^"]*"[^>]*id="monSec"/.test(HTML))
+      欠け.push("近くの碑の節に、⚠ 分離の印（sec--around）が無い");
+    if (!/id="monSec"[\s\S]*?class="sec__kind"[\s\S]*?<h2>/.test(HTML))
+      欠け.push("近くの碑の節が、⚠ 見出しより先に「まわりの記録である」と断っていない");
+    if (!/\.sec--around\{[^}]*border-top/.test(readFileSync(join(NEXT, "deep.css"), "utf8")))
+      欠け.push("分離の印（sec--around）に、⚠ 見た目の区切りが無い（⚠ class だけでは分離されない）");
+
+    // ⚠ 3. ⚠ **読んだ資料が、⚠ 生の URL のまま並んでいた。**⚠ **資料名を押す形にすること。**
+    //   ⚠ **行き先は変えない**（⚠ 出典へ直接行けることは、⚠ 別の 1 名が挙げた利点）。
+    if (/>\$\{esc\(u\)\}</.test(DEEP) || /<a[^>]*>\$\{esc\(u\)\}/.test(DEEP))
+      欠け.push("読んだ資料が、⚠ URL そのものを字にしている（⚠ 資料名を出すと決めてある）");
+    const 名 = DEEP.match(/リンク\([^,)]+, *"([^"]+)"\)/g) ?? [];
+    if (名.length < 4) 欠け.push(`読んだ資料の資料名が ${名.length} 本しかない（⚠ 地形分類 2・明治期・標高で 4 本）`);
+    for (const m of 名)
+      if (!/国土地理院/.test(m)) 欠け.push(`資料名が出典を名乗っていない: ${m}`);
+
+    欠け.length
+      ? bad(`仮想利用者レビューで直したことが戻っている: ${欠け.join(" ／ ")}`)
+      : ok("資料が無いときの字は「この地図」を主語に持ち、⚠ 近くの碑は重要な情報より下で分離され、"
+          + "⚠ 読んだ資料は資料名を押す形（⚠ 3 状態は別の字のまま）");
+  }
+
 }

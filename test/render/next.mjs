@@ -544,12 +544,18 @@ CASES.push(
         return { 出る: !row.hidden,
                  明治期: document.getElementById("meiji").textContent.trim(),
                  足元: document.getElementById("gloss").textContent.trim(),
-                 まとめ: document.getElementById("sub").textContent.trim() };
+                 まとめ: document.getElementById("sub").textContent.trim(),
+                 NONE: window.KonjakuAnswer ? window.KonjakuAnswer.MEIJI_NONE : null };
       });
       must(r.出る, "明治期を読めないのに、行ごと黙っている（⚠ 周辺と空中写真は言う。⚠ 揃っていない）");
-      must(/確認できませんでした/.test(r.明治期), `読めなかったことを言っていない: ${r.明治期}`);
-      // ⚠ **「無い」と言わない**（掟 §1）
-      must(!/ありません$|無いです|存在しません/.test(r.明治期), `読めなかったのに「無い」と言っている: ${r.明治期}`);
+      // ⚠ **字を書き写さない。**⚠ **製品（`KonjakuAnswer`）から借りる**（`.claude/rules/domain.md`）。
+      //   ⚠ **写すと、⚠ 字を直したときに製品ではなく検査が落ちる**（⚠ 実際に踏んだ）。
+      must(r.NONE !== null, "KonjakuAnswer が読み込まれていない（⚠ この検査が何も見ていない）");
+      must(r.明治期 === r.NONE.unreachable,
+        `読めなかったことを言っていない: ${r.明治期}（⚠ 出るべきは「${r.NONE?.unreachable}」）`);
+      // ⚠ **「無い」と混ぜない**（掟 §1）。⚠ **読めなかったのに、⚠ 無いときの字を出さない。**
+      for (const k of ["absent", "noClass"])
+        must(r.明治期 !== r.NONE[k], `読めなかったのに、⚠ 無いときの字（${k}）を出している: ${r.明治期}`);
       // ⚠ **まとめの 1 行には出さない**（⚠ 取れていないものを、⚠ 言えることの行に混ぜない）
       must(!/明治期/.test(r.まとめ), `まとめに、取れていない明治期が出ている: ${r.まとめ}`);
       // ⚠ **「足元と同じ字を使わない」は、⚠ ここでは確かめられない。**

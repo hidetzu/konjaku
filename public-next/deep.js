@@ -183,22 +183,29 @@
     const 行 = [];
     const 足す = (名, 中身) => 行.push(
       `<div><dt>${esc(名)}</dt><dd>${中身}</dd></div>`);
-    const リンク = (u) => `<a href="${esc(u)}" target="_blank" rel="noopener">${esc(u)}</a>`;
+    // 生の URL を並べない（2026-09-01。Owner 指示）。
+    //   仮想利用者 6 名のうち 1 名が「生 URL そのものではなく、資料名を押すと
+    //   出典に行ける形だと使いやすい」と答えた。行き先は変えていないので、
+    //   出典へ直接行けること（別の 1 名が挙げた利点）は失っていない。
+    //
+    //   資料名は、こちらで要約しない。verify.js が実際に読んでいるタイルの
+    //   名乗りをそのまま書く（LFC_NAT / LFC_ART / swale / dem）。
+    const リンク = (u, 名) => `<a href="${esc(u)}" target="_blank" rel="noopener">${esc(名)}</a>`;
 
     const ev = t.evidence ?? {};
-    if (ev.tile) 足す("いまの地形分類", `${リンク(ev.tile)}<br>区分コード ${esc(String(ev.code ?? "—"))}`
+    if (ev.tile) 足す("いまの地形分類", `${リンク(ev.tile, "国土地理院「地形分類（自然地形）」")}<br>区分コード ${esc(String(ev.code ?? "—"))}`
       + (ev.detail ? `・${esc(ev.detail)}` : ""));
     if (ev.artificialTile) 足す("人の手が入った地形",
-      `${リンク(ev.artificialTile)}<br>区分コード ${esc(String(ev.artificialCode ?? "—"))}`);
+      `${リンク(ev.artificialTile, "国土地理院「地形分類（人工地形）」")}<br>区分コード ${esc(String(ev.artificialCode ?? "—"))}`);
 
     const m = await KonjakuLand.meijiPoint(lon, lat).catch(() => null);
     if (m?.evidence?.tile) {
       const px = m.evidence.pixel;
-      足す("明治期の低湿地", `${リンク(m.evidence.tile)}`
+      足す("明治期の低湿地", `${リンク(m.evidence.tile, "国土地理院「明治期の低湿地」")}`
         + (px ? `<br>タイル ${esc(String(px[0]))}/${esc(String(px[1]))} の画素 (${esc(String(px[2]))}, ${esc(String(px[3]))})` : ""));
     }
     const e = await KonjakuLand.elevation(lon, lat).catch(() => null);
-    if (e?.evidence?.tile) 足す("標高", `${リンク(e.evidence.tile)}`
+    if (e?.evidence?.tile) 足す("標高", `${リンク(e.evidence.tile, "国土地理院「標高タイル」")}`
       + (e.evidence.source ? `<br>${esc(e.evidence.source)}` : ""));
 
     const f = await KonjakuLand.photos(lon, lat).catch(() => null);
