@@ -26,25 +26,36 @@
    history.back() は使えないし、「戻る」とも言えない（見ていない場所には戻れない）。
    名乗りが home を兼ねるのは、どのサイトでもそうなので説明が要らない。
    押せるものなので 44 を割らない。字だけだと縦が 24px しかなかった（実測 2026-08-30）。 */
+/* 印と字を、縦の真ん中でそろえる。
+   前は align-items:baseline だったので、字の塊が帯の上端へ貼り付き、
+   align-self:center の印だけが真ん中にいた（実測 2026-09-01・1440px:
+   印の中心 y22 に対して、今昔 y10 ／ 添え書き y10.5。12px ずれていた）。
+   名前と添え書きの字の大きさが違うので、2 つは中で行として並べる。
+   inline は放っておいてもベースラインでそろう。 */
 .brand__name{
-  display:flex; align-items:baseline; gap:.375rem; min-width:0;
+  display:flex; align-items:center; gap:.375rem; min-width:0;
   min-height:var(--tap);
   color:var(--ink); text-decoration:none;
-  overflow:hidden; white-space:nowrap;
 }
+/* 切れるのはここ。狭い幅では添え書きの末尾から落ちる（名前は先頭なので残る）。 */
+.brand__words{min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
 /* 帯は道具であって、読ませる場所ではない。
    太字を帯の幅いっぱいに置くと、答えの 1 文と太さで競う。
    名前だけ太字にして、続きは注記の濃さへ落とす（2026-08-31。字は 1 文字も変えていない）。 */
-.brand__title{font-size:.875rem; font-weight:700; flex:none}
+.brand__title{font-size:.875rem; font-weight:700}
+/* 印と名前は 1 つのまとまり、添え書きはその説明。
+   間を同じにすると 3 つが等間隔に並び、印が名前から離れて見える。
+   印→名前 6px に対して、名前→添え書きは 8px（--gap-row）。 */
 .brand__tag{
+  margin-left:var(--gap-row);
   font-size:.75rem; font-weight:400; color:var(--ink-3);
-  min-width:0; overflow:hidden; text-overflow:ellipsis;
 }
 a.brand__name:hover{color:var(--action)}
 .brand__name:focus-visible{outline:2px solid var(--action); outline-offset:2px}
 .brand[hidden]{display:none}
+/* align-self は要らない（親が align-items:center で真ん中にそろえる）。 */
 .brand__mark{width:1.125rem; height:1.125rem; border-radius:.25rem;
-  flex:none; display:block; align-self:center}
+  flex:none; display:block}
 /* 広い幅の行き先。狭い幅では画面の下の帯（tabs.css）が持つので、ここには出さない。
    同じ道を、同じ画面に 2 つ出さない。
    狭い幅の帯と字が違うのは、置ける幅が違うから（帯は絵と 2〜3 字ぶんしかない）。 */
@@ -110,15 +121,16 @@ a.brand__name:hover{color:var(--action)}
 
 
 /* ---- 広い幅 ---- */
-/* 押すものの置き場が、狭い幅と入れかわる。
-     狭い幅  行き先＝画面の下の帯   ／ サイトの案内＝この帯のメニュー
-     広い幅  行き先＝この帯のナビ   ／ サイトの案内＝ページの下（foot.css）
-   地図の画面（.brand--app）だけは、ページの下を持てない（画面いっぱいが地図）。
-   そこでは、案内をこの帯のメニューが持ち続ける。 */
+/* 行き先の置き場だけが、狭い幅と入れかわる。
+     狭い幅  行き先＝画面の下の帯   広い幅  行き先＝この帯のナビ
+   サイトの案内は、どの幅・どの画面でも、この帯のメニューが持つ。
+   一度、広い幅の読み物ではメニューを畳んでページの下に任せたが、
+   画面によって帯の形が変わるのをやめた（2026-09-01。Owner 指示）。
+   ページの下は、地図の画面が持てないぶんを埋める側ではなく、
+   読み終えたところに置く案内として残す。 */
 @media (min-width:700px){
   .brand__nav{display:flex; align-items:center; gap:var(--gap-sub); margin-left:auto}
   /* 右へ寄せるのはナビのほう。メニューの margin-left:auto を残すと、
      余りが 2 つの auto で分けられて、ナビが真ん中へ流れる。 */
   .menu{margin-left:var(--gap-sub)}
-  .brand:not(.brand--app) .menu{display:none}
 }
