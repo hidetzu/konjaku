@@ -82,7 +82,7 @@ body{
      この画面は地図が主役。見えていない箱に、地図の操作を取らせない。 */
   pointer-events:none;
   position:absolute;
-  bottom:calc(var(--pad-sm) + env(safe-area-inset-bottom));
+  bottom:calc(var(--pad-sm) + var(--tabs-h) + env(safe-area-inset-bottom));
   display:flex; flex-direction:column; gap:var(--gap-sub);
   /* 上のバーの下まで。板が伸びても、検索窓と現在地を押し出さない。
      実際に踏んだ（2026-08-29）: 文字を 20px にして「なぜそう言える？」を開くと、
@@ -91,8 +91,10 @@ body{
      上限を決めずに下端へ貼ると、中身が増えたぶんだけ上へ伸びる。
      44px は検索窓の高さ（--tap）、pad-sm ×3 はバーの上下と板との間。
      2.75rem は名乗りの帯（2026-08-30 に足した）。引き忘れて、文字 20px で
-     検索窓と出典が重なった。名乗りは rem なので、文字を大きくすると帯も伸びる。 */
-  max-height:calc(100% - 2.75rem - var(--tap) - var(--pad-sm) * 3
+     検索窓と出典が重なった。名乗りは rem なので、文字を大きくすると帯も伸びる。
+     --tabs-h は下の帯（2026-08-31 に足した）。下端に貼るものは 4 つあるので、
+     4 つとも同じだけ持ち上げる。1 つ忘れると、その板だけ帯の裏へ潜る。 */
+  max-height:calc(100% - 2.75rem - var(--tap) - var(--tabs-h) - var(--pad-sm) * 3
                   - env(safe-area-inset-top) - env(safe-area-inset-bottom));
   min-height:0;
 }
@@ -190,7 +192,7 @@ body{
    地図は 314px 残る。全画面にすると、いまどこにいるかを失う。 */
 .saved{
   position:absolute;
-  bottom:calc(var(--pad-sm) + env(safe-area-inset-bottom));
+  bottom:calc(var(--pad-sm) + var(--tabs-h) + env(safe-area-inset-bottom));
   z-index:20; padding:var(--pad-md);
   background:var(--surface); border:1px solid var(--line-strong); border-radius:.875rem;
   box-shadow:0 -2px 16px color-mix(in srgb, var(--shadow) 12%, transparent);
@@ -357,11 +359,11 @@ body{
 /* 合言葉の板。答えの板と同じ作りに寄せる（.take と同じ位置・同じ枠）。 */
 .code{
   position:absolute;
-  bottom:calc(var(--pad-sm) + env(safe-area-inset-bottom));
+  bottom:calc(var(--pad-sm) + var(--tabs-h) + env(safe-area-inset-bottom));
   z-index:41; padding:var(--pad-md);
   background:var(--surface); border:1px solid var(--line-strong); border-radius:.875rem;
   box-shadow:0 -2px 16px color-mix(in srgb, var(--shadow) 12%, transparent);
-  max-height:calc(100% - var(--tap) - var(--pad-sm) * 3
+  max-height:calc(100% - var(--tap) - var(--tabs-h) - var(--pad-sm) * 3
                   - env(safe-area-inset-top) - env(safe-area-inset-bottom));
   overflow-y:auto; overscroll-behavior:contain;
 }
@@ -490,7 +492,7 @@ body{
 /* 全区分を出す板。地図を覆いすぎない。 */
 #sheet{
   position:absolute;
-  bottom:calc(var(--pad-sm) + env(safe-area-inset-bottom));
+  bottom:calc(var(--pad-sm) + var(--tabs-h) + env(safe-area-inset-bottom));
   max-height:62%; overflow:auto; padding:var(--pad-md);
   background:var(--surface); border:1px solid var(--line-strong); border-radius:.875rem;
   box-shadow:0 -4px 22px color-mix(in srgb, var(--shadow) 18%, transparent);

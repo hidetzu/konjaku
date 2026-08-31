@@ -19,8 +19,18 @@
   <header class="brand">
     <a class="brand__name" href="./">
       <img class="brand__mark" src="./favicon.svg" alt="" width="20" height="20">
-      今昔　この土地は、昔なんだったのか？
+      <span class="brand__title">今昔</span><span class="brand__tag">この土地は、昔なんだったのか？</span>
     </a>
+    <details class="menu">
+      <summary class="menu__btn" aria-label="メニュー">
+        <span class="menu__bars" aria-hidden="true"></span>
+      </summary>
+      <nav class="menu__panel" aria-label="サイトの案内">
+        <a class="menu__item" href="./about.html">このサイトについて</a>
+        <a class="menu__item" href="./privacy.html">プライバシーポリシー</a>
+        <a class="menu__item" href="./terms.html">利用規約</a>
+      </nav>
+    </details>
   </header>
 
 <main class="recv" id="recv">
@@ -62,3 +72,4 @@
 <script src="./esc.js"></script>
 <script src="./saved.js"></script>
 <script src="./take.js"></script>
+<script src="./menu.js"></script>
