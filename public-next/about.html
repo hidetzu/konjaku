@@ -1,0 +1,124 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex">
+<meta name="color-scheme" content="light dark">
+<title>このサイトについて — 今昔 v0.1.0</title>
+<link rel="stylesheet" href="./theme.css">
+<link rel="stylesheet" href="./brand.css">
+<link rel="stylesheet" href="./about.css">
+
+<!-- このサイトについて。名乗りの帯の右端から来る。
+     読み物なので地図も控えも持たない。JavaScript も要らない。
+
+     字は HTML に直接書く（JS から差し込むと、落ちたとき説明だけ消える）。
+     β 版の privacy.mjs が同じ理由で「HTML に直書き」を求めている。
+
+     合言葉の期限の分数は、ここに書かない。画面は ttl_sec から文を作る決まりで
+     （docs/sync-api.md）、ここに数字を持つと 2 か所になる。 -->
+<header class="brand">
+  <a class="brand__name" href="./">
+    <img class="brand__mark" src="./favicon.svg" alt="" width="20" height="20">
+    今昔　この土地は、昔なんだったのか？
+  </a>
+</header>
+
+<main class="about">
+  <h1 class="about__h">このサイトについて</h1>
+  <p class="about__lead">
+    その土地が昔なんだったのかを、国土地理院が公開している地図と写真を読んで答えます。
+    調べた場所は、気に入ったものだけ手元に残せます。
+  </p>
+
+  <section class="about__sec">
+    <h2 class="about__h2">何を読んでいるか</h2>
+    <dl class="about__rows">
+      <div class="about__row">
+        <dt class="about__k">いまの地形</dt>
+        <dd class="about__v">国土地理院の地形分類。足元がどんな成り立ちの土地かを言います。</dd>
+      </div>
+      <div class="about__row">
+        <dt class="about__k">明治期の地図</dt>
+        <dd class="about__v">明治期の低湿地データ。その頃そこが水だったかを読みます。</dd>
+      </div>
+      <div class="about__row">
+        <dt class="about__k">空中写真</dt>
+        <dd class="about__v">年代を切りかえて、同じ場所の写真を見くらべます。</dd>
+      </div>
+      <div class="about__row">
+        <dt class="about__k">この周辺</dt>
+        <dd class="about__v">対応した地域では、周辺の公開されている記録も添えます。</dd>
+      </div>
+    </dl>
+    <p class="about__note">
+      出典 <a href="https://maps.gsi.go.jp/development/ichiran.html"
+      target="_blank" rel="noopener">国土地理院</a>。
+      読める範囲は、対応した場所から順に増やしています。
+    </p>
+  </section>
+
+  <section class="about__sec">
+    <h2 class="about__h2">保存した場所は、この端末の中だけに残ります</h2>
+    <p class="about__p">
+      「☆ 保存」で残したものは、お使いのブラウザの中に置かれます。こちらのサーバには置きません。
+      ブラウザの保存領域を消すと、一緒に消えます。
+    </p>
+  </section>
+
+  <section class="about__sec">
+    <h2 class="about__h2">別の端末へ渡すとき</h2>
+    <p class="about__p">
+      「PC やタブレットでも見る」を押したときだけ、保存した場所をこちらで預かります。
+      押さなければ、何も送りません。
+    </p>
+    <dl class="about__rows">
+      <div class="about__row">
+        <dt class="about__k">預けるもの</dt>
+        <dd class="about__v">保存した場所の、緯度・経度・町名・足元の区分・保存した時刻。
+          保存した件数のぶん、全部です。</dd>
+      </div>
+      <div class="about__row">
+        <dt class="about__k">預かるあいだ</dt>
+        <dd class="about__v">期限が来るまで、こちらの保管庫に置かれます。
+          中身は開かずに、そのまま返します。</dd>
+      </div>
+      <div class="about__row">
+        <dt class="about__k">合言葉</dt>
+        <dd class="about__v">合言葉そのものは預かりません。合言葉から作った、元に戻せない字だけを持ちます。</dd>
+      </div>
+      <div class="about__row">
+        <dt class="about__k">期限</dt>
+        <dd class="about__v">期限を過ぎると、その合言葉は使えなくなります。
+          残り時間は、合言葉を出したときに画面に出ます。</dd>
+      </div>
+      <div class="about__row">
+        <dt class="about__k">受け取ったあと</dt>
+        <dd class="about__v">受け取っても、期限までは預かったままです。何度でも受け取れます。</dd>
+      </div>
+    </dl>
+    <p class="about__note">
+      期限を過ぎたものを、決まった時刻にまとめて消す仕組みは、まだ置いていません。
+      だから、ここでは「消えます」とは書きません。
+    </p>
+  </section>
+
+  <section class="about__sec">
+    <h2 class="about__h2">通信のこと</h2>
+    <p class="about__p">
+      地図と空中写真、住所の検索、町名の取得は、国土地理院へ問い合わせます。
+      見ている場所は、そこへ届きます。
+    </p>
+    <p class="about__p">
+      通信そのものには、接続元の IP と端末の種類が伴います。これは配信元に届きます。
+    </p>
+  </section>
+
+  <section class="about__sec">
+    <h2 class="about__h2">数えていないこと</h2>
+    <p class="about__p">
+      この版は、誰がどこを見たかの記録を取っていません。
+    </p>
+  </section>
+
+  <p class="about__ver">今昔 v0.1.0（作りかけ）</p>
+</main>

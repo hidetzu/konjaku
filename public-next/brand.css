@@ -28,5 +28,29 @@ a.brand__name:hover{color:var(--action)}
 .brand__name:focus-visible{outline:2px solid var(--action); outline-offset:2px}
 .brand[hidden]{display:none}
 .brand__mark{width:1.25rem; height:1.25rem; border-radius:.25rem; flex:none; display:block}
-/* 右端は空けてある。「このサイトについて」を置く場所だが、中身がまだ無い。
-   中身の無いものを置くと、押しても何も起きない導線になる。 */
+/* 右端。「このサイトについて」への道（2026-08-31 に中身を置いた）。
+   押せるものなので 44 を割らない。名乗りが長い画面では、名乗り側が先に詰まる
+   （.brand__name は min-width:0 と ellipsis を持っている）。 */
+.brand__about{
+  margin-left:auto; flex:none;
+  display:flex; align-items:center;
+  min-height:var(--tap); padding:0 var(--pad-sm);
+  font-size:.8125rem; color:var(--ink-3); text-decoration:none; white-space:nowrap;
+}
+a.brand__about:hover{color:var(--action)}
+.brand__about:focus-visible{outline:2px solid var(--action); outline-offset:2px}
+/* 狭い幅では記号だけにする。字を並べると、名乗りのほうが切れる
+   （実測 2026-08-31・375px: 字だと「昔なんだったのか？」が入らない）。
+   DOM は 1 つのまま。読み上げは aria-label が持つので、どちらでも同じ字が出る。 */
+.brand__about__mark{
+  display:flex; align-items:center; justify-content:center;
+  width:var(--tap); height:var(--tap);
+  border:1px solid var(--line-strong); border-radius:50%;
+  font-size:.9375rem; font-weight:700; color:var(--ink-2);
+}
+.brand__about__text{display:none}
+a.brand__about:hover .brand__about__mark{border-color:var(--action); color:var(--action)}
+@media (min-width:700px){
+  .brand__about__mark{display:none}
+  .brand__about__text{display:inline}
+}
