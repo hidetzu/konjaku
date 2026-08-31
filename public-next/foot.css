@@ -1,0 +1,37 @@
+/* ページの下の案内。広い幅の読み物・一覧の画面だけが持つ。
+   狭い幅では出さない（画面の下は、行き先の帯が使うため）。
+
+   ここに置くのは案内だけ。地図・保存の導線は置かない。それは上の帯が持つ。
+   広い幅では、名乗りの帯のメニューを畳んで、この並びが案内を引き受ける
+   （同じ道を、同じ画面に 2 つ出さない）。
+
+   地図の画面は、この並びを持たない。画面いっぱいが地図で、ページの下が無い。
+   あちらでは案内を帯のメニューが持ち続ける（brand.css の .brand--app）。 */
+.foot{display:none}
+
+@media (min-width:700px){
+  /* 中身が短い画面でも、案内が途中に浮かないよう下端へ寄せる。
+     保存が 0 件のときの一覧は本文が 1 枚しかなく、案内が画面の 1/3 の高さで止まる。
+     この帯を出すまでは、下端に固定した行き先の帯がその位置を埋めていた。
+     ここを読むのは、この並びを持つ画面だけ（地図の画面は読まない）。 */
+  body{min-height:100dvh; display:flex; flex-direction:column}
+  .foot{display:block; margin-top:auto; padding:0 0 3rem}
+  /* 幅は本文の柱と同じ。字の頭がそろう。 */
+  .foot__nav{
+    width:min(100% - var(--pad-md) * 2, 38rem); margin-inline:auto;
+    padding-top:var(--gap-block); border-top:1px solid var(--line);
+    display:flex; flex-wrap:wrap; align-items:center; gap:0 var(--gap-block);
+  }
+  .foot__link{
+    /* 押せるものは 44×44 を割らない。短い字（GitHub）は横が 43px しかなく、
+       高さだけ足しても足りなかった（実測 2026-08-31: 43x44 で検査が落ちた）。
+       内側の余白ではなく最小の幅で足す。余白で足すと、字の頭が本文からずれる。 */
+    display:inline-flex; align-items:center;
+    min-height:var(--tap); min-width:var(--tap);
+    color:var(--ink-3); text-decoration:none; font-size:.8125rem;
+  }
+  .foot__link:hover{color:var(--action)}
+  .foot__link:focus-visible{outline:2px solid var(--action); outline-offset:2px}
+  /* いま開いている画面は、行き先ではなく現在地として見せる。 */
+  .foot__link[aria-current="page"]{text-decoration:underline}
+}

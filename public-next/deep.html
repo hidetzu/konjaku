@@ -6,6 +6,7 @@
 <title>この場所を深掘りする — 今昔 v0.1.0</title>
 <link rel="stylesheet" href="./theme.css">
 <link rel="stylesheet" href="./brand.css">
+<link rel="stylesheet" href="./foot.css">
 <link rel="stylesheet" href="./deep.css">
 
 <!-- 帰宅後に、保存した 1 地点を読む画面。
@@ -15,21 +16,27 @@
      上から順に「いつ → まわり → なぜ」で読み下す。タブを並べない。 -->
   <!-- 名乗り。アプリのトップへ行く道。どの入口から来ても、ここから / へ行ける。 -->
   <header class="brand">
-    <a class="brand__name" href="./">
-      <img class="brand__mark" src="./favicon.svg" alt="" width="20" height="20">
-      <span class="brand__title">今昔</span><span class="brand__tag">この土地は、昔なんだったのか？</span>
-    </a>
-    <details class="menu">
-      <summary class="menu__btn" aria-label="メニュー">
-        <span class="menu__bars" aria-hidden="true"></span>
-      </summary>
-      <nav class="menu__panel" aria-label="サイトの案内">
-        <a class="menu__item" href="./about.html">このサイトについて</a>
-        <a class="menu__item" href="./privacy.html">プライバシーポリシー</a>
-        <a class="menu__item" href="./terms.html">利用規約</a>
-        <a class="menu__item" href="https://github.com/hidetzu/konjaku/issues/new?template=feedback.yml" target="_blank" rel="noopener">ご意見・不具合報告（GitHub で公開）</a>
+    <div class="brand__inner">
+      <a class="brand__name" href="./">
+        <img class="brand__mark" src="./favicon.svg" alt="" width="20" height="20">
+        <span class="brand__title">今昔</span><span class="brand__tag">この土地は、昔なんだったのか？</span>
+      </a>
+      <nav class="brand__nav" aria-label="主な行き先">
+        <a class="brand__link" href="./">地図で調べる</a>
+        <a class="brand__link" href="./saved.html">保存した場所</a>
       </nav>
-    </details>
+      <details class="menu">
+        <summary class="menu__btn" aria-label="メニュー">
+          <span class="menu__bars" aria-hidden="true"></span>
+        </summary>
+        <nav class="menu__panel" aria-label="サイトの案内">
+          <a class="menu__item" href="./about.html">このサイトについて</a>
+          <a class="menu__item" href="./privacy.html">プライバシーポリシー</a>
+          <a class="menu__item" href="./terms.html">利用規約</a>
+          <a class="menu__item" href="https://github.com/hidetzu/konjaku/issues/new?template=feedback.yml" target="_blank" rel="noopener">ご意見・不具合報告（GitHub で公開）</a>
+        </nav>
+      </details>
+    </div>
   </header>
 
 <article id="doc">
@@ -81,6 +88,19 @@
 
   <p class="cite" id="cite"></p>
 </article>
+<!-- ページの下の案内。広い幅だけが持つ（狭い幅の下は、行き先の帯が使う）。
+     持つのは名乗りのメニューと同じ 4 つ。広い幅ではメニューを畳むので、
+     ここが欠けると案内へ行けなくなる。
+     地図・保存の導線はここに置かない。それは上の帯が持つ。 -->
+<footer class="foot">
+  <nav class="foot__nav" aria-label="サイトの案内">
+    <a class="foot__link" href="./about.html">このサイトについて</a>
+    <a class="foot__link" href="./privacy.html">プライバシーポリシー</a>
+    <a class="foot__link" href="./terms.html">利用規約</a>
+    <a class="foot__link" href="https://github.com/hidetzu/konjaku/issues/new?template=feedback.yml"
+       target="_blank" rel="noopener">ご意見・不具合報告（GitHub で公開）</a>
+  </nav>
+</footer>
 
 <script src="./esc.js"></script>
 <script src="./place-arg.js"></script>
