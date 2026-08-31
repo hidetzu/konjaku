@@ -30,6 +30,12 @@ body{
 .place{margin:0; font-size:.8125rem; color:var(--ink-3)}
 /* 答えは主。区分名は出典の言葉として添える（散歩中の画面と同じ決め方）。 */
 .ans{margin:var(--gap-sub) 0 0; font-size:1.75rem; line-height:1.4; color:var(--ink); font-weight:700}
+/* 答えの出典と、いまの地形。散歩中の画面と同じ並びにする。 */
+.ans__src{margin:var(--gap-sub) 0 0; font-size:.6875rem; letter-spacing:.06em;
+          line-height:1.5; color:var(--ink-3)}
+.ans__src[hidden]{display:none}
+.ans__sub{margin:var(--gap-sub) 0 0; font-size:.9375rem; line-height:1.6; color:var(--ink-2)}
+.ans__sub[hidden]{display:none}
 .term{margin:var(--gap-sub) 0 0; font-size:.8125rem; color:var(--ink-3)}
 .term[hidden]{display:none}
 

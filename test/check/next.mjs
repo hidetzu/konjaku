@@ -565,6 +565,23 @@ else {
         if (TOP.includes(字)) fails.push(`top.js が answer.js の字を書き写している: ${字}`);
       for (const none of 状態)
         if (!TOP.includes(`"${none}"`)) fails.push(`top.js が ${none} の状態を作っていない`);
+      // ⚠ **深掘り画面も、⚠ 同じ規則で見出しを決める**（2026-08-31。Owner 指示）。
+      //   ⚠ **同じ場所で、⚠ トップは「ここは 田 でした」、⚠ 深掘りは「ここは、川や海が…」だった。**
+      //   ⚠ **2 つの画面が、⚠ 別の答えを見出しにしていた。**
+      const DEEP = readFileSync(join(NEXT, "deep.js"), "utf8");
+      if (!/KonjakuAnswer\.lines\(/.test(DEEP))
+        fails.push("deep.js が answer.js の規則を通っていない（⚠ トップと別の見出しになる）");
+      if (!/glossSrcEl\.textContent\s*=\s*label/.test(DEEP))
+        fails.push("deep.js が出典ラベルを描いていない");
+      // ⚠ **「言えないとき」の字を、⚠ 自前で持たない。**
+      //   ⚠ **2026-08-31 に踏んだ**: ⚠ **トップだけ言い直したら、⚠ deep.js が古い字のまま残った。**
+      for (const 字 of Object.values(A.MEIJI_NONE))
+        if (DEEP.includes(字)) fails.push(`deep.js が answer.js の字を書き写している: ${字}`);
+      if (/この地域では、この資料が作られていません|この場所には区分がありません/.test(DEEP))
+        fails.push("deep.js が「言えないとき」の字を自前で持っている（⚠ 片方だけ古くなる）");
+      if (!readFileSync(join(NEXT, "deep.html"), "utf8").includes('id="glossSrc"'))
+        fails.push("deep.html に出典ラベルの置き場が無い");
+
       // ⚠ **ラベルを画面へ出しているか**（⚠ 返しても描かなければ、⚠ 何も変わらない）。
       //   ⚠ **語の有無で見てはいけない**（2026-08-31 に踏んだ）。⚠ **`glossSrcEl` は
       //     宣言と後始末にも出るので、⚠ 描く行だけ消しても素通りした。**
@@ -580,6 +597,53 @@ else {
             + `（⚠ 明治期 → 昔を名指す ${A.PAST_IN_TERRAIN.length} 区分 → 無い理由 ${状態.length} 通り。`
             + `⚠ 字とラベルは answer.js の 1 か所）`);
     }
+  }
+
+  // ---- ⚠ ⑭ 利用者からの窓口が、⚠ 押して行き止まりにならないか ----
+  //
+  // ⚠ **問い合わせフォームは自前で持たない**（2026-08-31。Owner 指示）。
+  //   ⚠ **GitHub の Issue Form を窓口にする。**⚠ **公開されることが字で伝わること。**
+  // ⚠ **「お問い合わせ」と言わない**（⚠ 非公開のやり取りに読まれる）。
+  // ⚠ **押しても何も起きない導線を置かない**（ADR 0026）。⚠ **形が在ることを見る。**
+  {
+    const 窓口 = join(ROOT, ".github/ISSUE_TEMPLATE/feedback.yml");
+    const 欠け = [];
+    if (!existsSync(窓口)) {
+      欠け.push("利用者向けの Issue Form（.github/ISSUE_TEMPLATE/feedback.yml）が無い");
+    } else {
+      // ⚠ **コメントを先に落とす**（`CLAUDE.md` §5）。⚠ **落とさないと、
+      //   ⚠ 検査を説明するコメントに書いた字面を、⚠ 検査自身が拾う**（⚠ 2026-08-31 に踏んだ。
+      //   ⚠ 「ready-for-ai を付けない」と書いた注意書きを、⚠ 付けている証拠として数えた）。
+      const y = readFileSync(窓口, "utf8").replace(/^\s*#.*$/gm, "");
+      // ⚠ **開発自動化のラベルを、⚠ 自動で付けない**（⚠ 付けるのは人だけ）。
+      //   ⚠ **見るのは `labels:` の行**（⚠ ファイルのどこかに語が在るか、ではない）。
+      const ラベル = y.match(/^labels:\s*(.*)$/m)?.[1]?.trim() ?? "（labels が無い）";
+      if (/ready-for-ai/.test(ラベル))
+        欠け.push(`利用者向けの窓口が ready-for-ai を自動で付けている: labels: ${ラベル}`);
+      // ⚠ **必須と任意が、⚠ 意図どおりか**
+      if (!/id:\s*detail[\s\S]*?required:\s*true/.test(y)) 欠け.push("「内容」が必須になっていない");
+      if (!/id:\s*kind[\s\S]*?required:\s*true/.test(y)) 欠け.push("「種類」が必須になっていない");
+      // ⚠ **公開されること・個人情報を書かないことを、⚠ 字で言っているか**
+      if (!/公開/.test(y)) 欠け.push("公開されることを言っていない");
+      if (!/メールアドレス|個人情報/.test(y)) 欠け.push("個人情報を書かない注意が無い");
+    }
+    // ⚠ **画面からの導線。**⚠ **メニューが割れていないかは ⑫ が見る**ので、⚠ ここは行き先と字だけ。
+    const 画面 = readdirSync(NEXT).filter((f) => f.endsWith(".html"));
+    const 導線 = 画面.filter((f) =>
+      /template=feedback\.yml/.test(readFileSync(join(NEXT, f), "utf8").replace(/<!--[\s\S]*?-->/g, "")));
+    if (導線.length !== 画面.length)
+      欠け.push(`窓口への導線が ${導線.length} / ${画面.length} 画面にしか無い`);
+    // ⚠ **「お問い合わせ」と言わない。**⚠ **公開されることが、⚠ 導線の字から分かること。**
+    for (const f of 導線) {
+      const 字 = readFileSync(join(NEXT, f), "utf8")
+        .match(/template=feedback\.yml"[^>]*>([^<]+)</)?.[1] ?? "";
+      if (/お問い合わせ/.test(字)) 欠け.push(`${f}: 導線が「お問い合わせ」と言っている（⚠ 非公開に読まれる）`);
+      if (!/GitHub|公開/.test(字)) 欠け.push(`${f}: 公開の投稿になることが、⚠ 導線の字から分からない: ${字}`);
+    }
+    欠け.length
+      ? bad(`利用者からの窓口が整っていない: ${欠け.join(" ／ ")}`)
+      : ok(`利用者からの窓口は Issue Form 1 つ（⚠ 種類と内容が必須・⚠ 公開と個人情報の注意あり・`
+          + `⚠ ${導線.length} 画面から行ける・⚠ 開発自動化のラベルは付けない）`);
   }
 
 }

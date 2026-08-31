@@ -27,6 +27,7 @@
         <a class="menu__item" href="./about.html">このサイトについて</a>
         <a class="menu__item" href="./privacy.html">プライバシーポリシー</a>
         <a class="menu__item" href="./terms.html">利用規約</a>
+        <a class="menu__item" href="https://github.com/hidetzu/konjaku/issues/new?template=feedback.yml" target="_blank" rel="noopener">ご意見・不具合報告（GitHub で公開）</a>
       </nav>
     </details>
   </header>
@@ -38,7 +39,12 @@
          直接ひらいた人には、行き先を言う字にする（deep.js が決める）。 -->
     <a class="back" id="back" href="./">この場所を地図で見る</a>
     <p class="place" id="place">　</p>
+    <!-- 答えの出典。散歩中の画面と同じ形にする。
+         前は、同じ場所でトップが「ここは 田 でした」、こちらが
+         「ここは、川や海が…」で、2 つの画面が別の答えを見出しにしていた。 -->
+    <p class="ans__src" id="glossSrc" hidden></p>
     <h1 class="ans" id="gloss">　</h1>
+    <p class="ans__sub" id="glossSub" hidden></p>
     <p class="term" id="term"></p>
   </header>
 
@@ -80,6 +86,7 @@
 <script src="./place-arg.js"></script>
 <script src="./saved.js"></script>
 <script src="./words.js"></script>
+<script src="./answer.js"></script>
 <script src="./swale.js"></script>
 <script src="./verify.js"></script>
 <script src="./land.js"></script>
