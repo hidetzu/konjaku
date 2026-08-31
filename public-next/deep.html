@@ -61,6 +61,16 @@
     <div class="why" id="why"></div>
   </section>
 
+  <!-- 近くに残る災害の記録。散歩中の画面には出さない。
+       伝承碑は全国にあるが、現在地の近くに出せるほど密ではなかった
+       （実測: 半径 1km で 15 地点中 0 件）。帰宅後に読む画面でだけ扱う。 -->
+  <section class="sec" id="monSec" hidden>
+    <h2>この近くに残る災害の記録</h2>
+    <p class="mon__lead" id="monLead"></p>
+    <ol class="mon" id="mon"></ol>
+    <p class="mon__cite" id="monCite" hidden></p>
+  </section>
+
   <section class="sec" id="nearSec" hidden>
     <h2>この一帯は、どうだったか</h2>
     <div class="around" id="around" hidden>
@@ -87,6 +97,7 @@
 <script src="./saved.js"></script>
 <script src="./words.js"></script>
 <script src="./answer.js"></script>
+<script src="./monument.js"></script>
 <script src="./swale.js"></script>
 <script src="./verify.js"></script>
 <script src="./land.js"></script>

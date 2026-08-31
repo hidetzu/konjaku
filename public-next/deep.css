@@ -137,3 +137,17 @@ body{
   font-size:.75rem; color:var(--ink-3); line-height:1.7;
 }
 .cite a{color:var(--ink-2)}
+
+/* 近くに残る災害の記録。出典の字をそのまま出すので、行が長くなる。 */
+.mon__lead{margin:0 0 var(--gap-row); font-size:.9375rem; line-height:1.6; color:var(--ink-2)}
+.mon{margin:0; padding:0; list-style:none; display:flex; flex-direction:column; gap:var(--gap-block)}
+.mon[hidden]{display:none}
+.mon__item{margin:0; padding-top:var(--gap-row); border-top:1px solid var(--line)}
+.mon__item:first-child{padding-top:0; border-top:0}
+.mon__where{margin:0; font-size:.6875rem; letter-spacing:.06em; color:var(--ink-3)}
+.mon__name{margin:var(--gap-sub) 0 0; font-size:1.0625rem; font-weight:700; line-height:1.5; color:var(--ink)}
+.mon__what{margin:var(--gap-sub) 0 0; font-size:.9375rem; line-height:1.6; color:var(--ink-2)}
+.mon__built{margin:var(--gap-sub) 0 0; font-size:.8125rem; color:var(--ink-3)}
+.mon__info{margin:var(--gap-row) 0 0; font-size:.875rem; line-height:1.75; color:var(--ink-2)}
+.mon__cite{margin:var(--gap-block) 0 0; font-size:.8125rem; color:var(--ink-3)}
+.mon__cite[hidden]{display:none}
