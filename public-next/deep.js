@@ -13,6 +13,7 @@
   const { esc } = window.KonjakuEsc ?? { esc: (s) => s };
   const backEl = $("back"), placeEl = $("place"), glossEl = $("gloss"), termEl = $("term");
   const glossSrcEl = $("glossSrc"), glossSubEl = $("glossSub");
+  const monSec = $("monSec"), monLead = $("monLead"), monEl = $("mon"), monCite = $("monCite");
   const whySec = $("whySec"), whyEl = $("why"), citeEl = $("cite");
   const nearSec = $("nearSec"), nearLead = $("nearLead"), yearsEl = $("years");
   const nearNote = $("nearNote"), nearFrom = $("nearFrom");
@@ -119,6 +120,58 @@
     drawAround(lon, lat);
     drawNear(lon, lat);
     drawRead(lon, lat, t);
+    drawMonuments(lon, lat);
+  }
+
+  // 近くに残る災害の記録（自然災害伝承碑）。
+  //   散歩中の画面には出さない（2026-08-31。Owner 判断）。
+  //   全国に存在するが、現在地に対して提示できるほど高密度ではなかった。
+  //   実測（分母 15 地点）: 半径 1000m で 0 件、2000m で 3 件、5000m で 8 件。
+  //   だから PC / Deep の「周辺に残る歴史資料」として扱う。
+  //
+  //   碑があることと、この場所が被災したことは別。
+  //   言えるのは「この近くに、その災害を伝える碑が残っている」まで。
+  //   だから断りを必ず添える。碑が 1 つも無いときも黙らない（掟 §1）。
+  //
+  //   災害の名と種別は、出典の字をそのまま出す。要約も言い換えもしない。
+  //   年を 1 つに丸めない（「(1884、他)」「(不明)」もある）。
+  //   取り出した年（derived）は検索・並び替え用で、ここには出さない。
+  async function drawMonuments(lon, lat) {
+    monSec.hidden = true;
+    monEl.innerHTML = ""; monCite.hidden = true;
+    const 取る = (p) => fetch(p).then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))));
+    const r = await KonjakuMonument.nearby(lon, lat, 取る).catch(() => ({ state: "unreachable", items: [] }));
+    monSec.hidden = false;
+    const km = (m) => (m < 1000 ? `${Math.round(m / 10) * 10}m` : `${(m / 1000).toFixed(1)}km`);
+    if (r.state === "unreachable") {
+      // 取れなかった。黙ると、碑が無い場所と見分けられない
+      monLead.textContent = "いま読み込めませんでした。この近くに碑が在るかどうかは分かっていません";
+      return;
+    }
+    if (!r.items.length) {
+      monLead.textContent =
+        `${km(KonjakuMonument.半径M)}以内に、この資料の碑はありません`;
+      monCite.hidden = false;
+      monCite.textContent = "出典 国土地理院「自然災害伝承碑」";
+      return;
+    }
+    monLead.textContent =
+      `${km(KonjakuMonument.半径M)}以内に残っている碑です。`
+      + "碑があることと、この場所が被災したことは別です。";
+    for (const it of r.items) {
+      const li = document.createElement("li");
+      li.className = "mon__item";
+      const 行 = (cls, t) => { const e = document.createElement("p"); e.className = cls; e.textContent = t; li.append(e); };
+      行("mon__where", `現在地から ${km(it.distM)}`);
+      行("mon__name", it.name);
+      // 出典の字。<br> は改行として出す（消すと 2 つの文がつながる）
+      行("mon__what", `${it.disasterName.replace(/<br>/g, " ")}　［${it.disasterKind}］`);
+      // 碑の建立年。災害の年ではない（混同させない）
+      if (it.builtYear) 行("mon__built", `碑が建てられたのは ${it.builtYear} 年`);
+      monEl.append(li);
+    }
+    monCite.hidden = false;
+    monCite.textContent = "出典 国土地理院「自然災害伝承碑」";
   }
 
   // 標高。散歩中は出さないと決めてある（docs/adr/0059）。

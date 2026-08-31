@@ -11,8 +11,7 @@
 
 import { readFileSync, existsSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
-import { ROOT, ok, bad, warn, head, HEAD_COMMENT, BLOCK_COMMENT,
-         parseColor, contrast } from "./lib.mjs";
+import { ROOT, ok, bad, warn, head, HEAD_COMMENT, BLOCK_COMMENT, parseColor, contrast } from "./lib.mjs";
 
 head("v0.1.0 の器");
 
@@ -644,6 +643,93 @@ else {
       ? bad(`利用者からの窓口が整っていない: ${欠け.join(" ／ ")}`)
       : ok(`利用者からの窓口は Issue Form 1 つ（⚠ 種類と内容が必須・⚠ 公開と個人情報の注意あり・`
           + `⚠ ${導線.length} 画面から行ける・⚠ 開発自動化のラベルは付けない）`);
+  }
+
+  // ---- ⚠ ⑮ 近くに残る災害の記録が、⚠ 言えないことを言っていないか ----
+  //
+  // ⚠ **決めたこと**（2026-08-31。Owner 判断）: ⚠ **自然災害伝承碑は全国に存在するが、
+  //   ⚠ 散歩中の現在地点に対して提示できるほど高密度ではなかった。**
+  //   ⚠ **だからスマホの 1 画面目には載せず、⚠ PC / Deep の「周辺に残る歴史資料」として扱う。**
+  //   ⚠ **実測（分母 15 地点。⚠ 全国の話ではない）**: ⚠ 半径 1000m で **0 / 15**、2000m で 3 / 15。
+  //
+  // ⚠ **碑があることと、⚠ その地点が被災したことは別。**⚠ **混ぜたら落とす。**
+  {
+    // ⚠ **コメントを先に落とす**（`CLAUDE.md` §5）。⚠ **落とさないと、⚠ 説明コメントに書いた
+    //   ⚠ 字面を検査自身が拾う。**⚠ **2026-08-31 に踏んだ**: ⚠ **出典の字を消しても、
+    //   ⚠ コメントに「自然災害伝承碑」と書いてあるだけで素通りした。**
+    const 素 = (f) => readFileSync(join(NEXT, f), "utf8")
+      .replace(BLOCK_COMMENT, " ").replace(HEAD_COMMENT, " ");
+    const 欠け = [];
+    const D = join(NEXT, "data", "monument");
+    const 表パス = join(D, "tiles.json");
+    if (!existsSync(表パス)) {
+      欠け.push("配るタイルの表（data/monument/tiles.json）が無い");
+    } else {
+      const 表 = JSON.parse(readFileSync(表パス, "utf8"));
+      // ⚠ **表に在るタイルは、⚠ 実ファイルとして在ること。**
+      //   ⚠ **表に在るのに引けないと、⚠ 「取れなかった」に落ちて、⚠ 碑が黙って消える。**
+      const 無い = (表.tiles ?? []).filter((k) => {
+        const [x, y] = k.split("/");
+        return !existsSync(join(D, String(表.z), x, `${y}.json`))
+            || !existsSync(join(D, String(表.z), x, `${y}.detail.json`));
+      });
+      if (無い.length) 欠け.push(`表に在るのに配っていないタイルが ${無い.length} 枚: ${無い.slice(0, 3).join(" ")}`);
+      // ⚠ **配っているのに表に無いと、⚠ 「その範囲に碑は無い」と読まれる。**
+      const 表に無い = [];
+      for (const x of readdirSync(join(D, String(表.z)))) {
+        for (const f of readdirSync(join(D, String(表.z), x))) {
+          if (!f.endsWith(".json") || f.endsWith(".detail.json")) continue;
+          const k = `${x}/${f.replace(/\.json$/, "")}`;
+          if (!(表.tiles ?? []).includes(k)) 表に無い.push(k);
+        }
+      }
+      if (表に無い.length) 欠け.push(`配っているのに表に無いタイルが ${表に無い.length} 枚: ${表に無い.slice(0, 3).join(" ")}`);
+
+      // ⚠ **重さの上限。**⚠ **散歩中には配らないが、⚠ 深掘りで 1 枚引く。**
+      //   ⚠ **実測（2026-08-31）**: ⚠ 索引 いちばん重い 1 枚 gz 7KB ／ 詳しく 27KB。
+      const { gzipSync } = await import("node:zlib");
+      const 上限 = { 索引: 24 * 1024, 詳しく: 64 * 1024 };
+      let 重 = { 索引: 0, 詳しく: 0, 索引名: "", 詳しく名: "" };
+      for (const x of readdirSync(join(D, String(表.z)))) {
+        for (const f of readdirSync(join(D, String(表.z), x))) {
+          const gz = gzipSync(readFileSync(join(D, String(表.z), x, f))).length;
+          const k = f.endsWith(".detail.json") ? "詳しく" : "索引";
+          if (gz > 重[k]) { 重[k] = gz; 重[`${k}名`] = `${x}/${f}`; }
+        }
+      }
+      for (const k of ["索引", "詳しく"])
+        if (重[k] > 上限[k])
+          欠け.push(`${k}のタイルが重すぎる: ${重[`${k}名`]} が gz ${Math.round(重[k] / 1024)}KB（上限 ${上限[k] / 1024}KB）`);
+    }
+
+    // ⚠ **散歩中の画面に出していないこと**（⚠ Owner 判断。⚠ ADR 0063「1 画面目は答えと写真だけ」）。
+    const TOP = 素("top.js");
+    if (/KonjakuMonument/.test(TOP))
+      欠け.push("散歩中の画面（top.js）が伝承碑を引いている（⚠ 深掘りだけと決めてある）");
+    if (readFileSync(join(NEXT, "index.html"), "utf8").includes("monument.js"))
+      欠け.push("散歩中の画面が monument.js を読み込んでいる（⚠ 深掘りだけと決めてある）");
+
+    // ⚠ **碑があること ≠ 被災したこと。**⚠ **断りを、⚠ 画面が必ず言うこと。**
+    const DEEP = 素("deep.js");
+    if (!/被災したことは別/.test(DEEP))
+      欠け.push("「碑があることと、この場所が被災したことは別」を言っていない");
+    // ⚠ **この場所が被災した、と読める言い方をしていないか**（⚠ 掟 §1）。
+    for (const 悪 of ["この場所は被災", "ここで被害", "この地点が浸水"])
+      if (DEEP.includes(悪)) 欠け.push(`碑を被災の証拠として扱っている: ${悪}`);
+    // ⚠ **取り出した年（derived）を画面に出していないこと**（⚠ 検索・並び替え用）。
+    if (/derived\.years/.test(DEEP))
+      欠け.push("取り出した年（derived.years）を画面に出している（⚠ 検索・並び替え用と決めてある）");
+    // ⚠ **出典を名乗ること**（⚠ 地理院の資料を出す条件）。
+    if (!/自然災害伝承碑/.test(DEEP)) 欠け.push("出典を名乗っていない");
+    // ⚠ **3 状態を言い分けること**（`docs/adr/0056`）。
+    const MON = 素("monument.js");
+    for (const st of ['"ok"', '"absent"', '"unreachable"'])
+      if (!MON.includes(st)) 欠け.push(`monument.js が ${st} を返していない（⚠ 無いと取れないを混ぜている）`);
+
+    欠け.length
+      ? bad(`近くに残る災害の記録が整っていない: ${欠け.join(" ／ ")}`)
+      : ok("近くに残る災害の記録は、⚠ 深掘りだけ・⚠ 出典つき・⚠ 「碑 ≠ 被災」を言う"
+          + "（⚠ 表と実ファイルが一致・⚠ 重さは上限内・⚠ 3 状態を言い分ける）");
   }
 
 }

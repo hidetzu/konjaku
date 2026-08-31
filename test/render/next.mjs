@@ -2029,6 +2029,58 @@ for (const [名, ll, 数, subが残る] of [
   });
 }
 
+// ⚠ **近くに残る災害の記録**（2026-08-31。Owner 判断）。
+//   ⚠ **自然災害伝承碑は全国に存在するが、⚠ 散歩中の現在地点に対して提示できるほど
+//     ⚠ 高密度ではなかった。**⚠ **だからスマホの 1 画面目には載せず、⚠ 深掘りで扱う。**
+//   ⚠ **実測（分母 15 地点。⚠ 全国の話ではない）**: ⚠ 半径 1000m で **0 / 15**。
+//
+// ⚠ **相手先の答えに寄りかからない**（`CLAUDE.md` §9）。⚠ **配っている静的 JSON だけを読む。**
+//   ⚠ **3 地点は、⚠ 3 つの状態を代表する**（⚠ 近い ／ 遠い ／ 5km 以内に無い）。
+for (const [名, ll, 出る] of [
+  ["春日部", KASUKABE, true],                  // ⚠ 1.1km
+  ["軽井沢", "ll=36.3418,138.6353", true],     // ⚠ 4.8km（⚠ 5km にぎりぎり入る）
+  ["関宿",   "ll=34.8556,136.3960", false],    // ⚠ 24.7km（⚠ 5km 以内に無い）
+]) {
+  CASES.push({
+    name: `深掘りの${名}で、近くに残る災害の記録を出す`,
+    path: `/deep.html?${ll}`, origin: NEXT_BASE, viewport: PC,
+    async check(page) {
+      // ⚠ **器ではなく、⚠ 落ち着いたこと（前置きの字）を待つ**（`CLAUDE.md` §9）
+      await 待つ(page, () => {
+        const s = document.getElementById("monSec");
+        return s && !s.hidden && (document.getElementById("monLead")?.textContent ?? "").trim().length > 0;
+      }, "近くに残る災害の記録");
+      const r = await page.evaluate(() => ({
+        前置き: document.getElementById("monLead").textContent.trim(),
+        件数: document.querySelectorAll(".mon__item").length,
+        字: [...document.querySelectorAll(".mon__item")].map((e) => e.textContent.replace(/\s+/g, " ").trim()),
+        出典: document.getElementById("monCite")?.hidden ? null
+            : document.getElementById("monCite").textContent.trim(),
+        横あふれ: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      }));
+      // ⚠ **黙らない**（掟 §1）。⚠ **碑が無い場所でも、⚠ 節ごと消さない。**
+      must(r.前置き.length > 0, "近くに残る災害の記録の節が、黙っている");
+      must(r.出典 !== null && /国土地理院/.test(r.出典), `出典を名乗っていない: ${r.出典}`);
+      must(r.横あふれ === 0, `横にあふれている（${r.横あふれ}px）`);
+      if (出る) {
+        must(r.件数 > 0, `碑が在るはずなのに 0 件: ${r.前置き}`);
+        // ⚠ **碑があること ≠ その地点が被災したこと。**⚠ **断りを必ず言う。**
+        must(/被災したことは別/.test(r.前置き), `「碑 ≠ 被災」を言っていない: ${r.前置き}`);
+        // ⚠ **距離を必ず言う**（⚠ 4.8km を「この近く」と読ませない）
+        must(r.字.every((t) => /現在地から \d/.test(t)), `距離を言っていない: ${r.字[0]}`);
+        // ⚠ **碑の建立年を、⚠ 災害の年と混ぜない**
+        must(r.字.some((t) => /碑が建てられたのは \d{4} 年/.test(t)),
+          `碑の建立年を、そうと分かる形で言っていない: ${r.字[0]}`);
+      } else {
+        must(r.件数 === 0, `5km 以内に碑が無いはずなのに ${r.件数} 件`);
+        // ⚠ **「無い」と言い切る**（⚠ ここは実際に読めて 0 件。⚠ 取れなかったのではない）
+        must(/ありません/.test(r.前置き), `碑が無いことを言えていない: ${r.前置き}`);
+      }
+      return `${r.前置き.slice(0, 40)}… ／ ${r.件数} 件 ／ ${r.出典}`;
+    },
+  });
+}
+
 // ⚠ **トップに名乗りを足した**（2026-08-30。⚠ Owner が絵で決めた）。
 //   ⚠ **何のサイトかを、⚠ 画面のどこにも書いていなかった**（⚠ 9 幅で数えて 0 件）。
 //   ⚠ **利用者役**: 「地図の部品を貼り付けたページに見える」。
