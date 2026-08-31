@@ -24,7 +24,7 @@
   const map = $("map"), q = $("q"), hits = $("hits");
   const kickText = $("kickText"), nameEl = $("name"), glossEl = $("gloss"), legendEl = $("legend");
   const moreBtn = $("more"), sheet = $("sheet"), sheetList = $("sheetList"), sheetState = $("sheetState");
-  const subEl = $("sub"), whyEl = $("why");
+  const subEl = $("sub"), whyEl = $("why"), glossSrcEl = $("glossSrc");
   const erasLabel = $("erasLabel"), erasLabelText = $("erasLabelText");
   const meijiEl = $("meiji"), meijiRow = $("meijiRow");
   const photoEl = $("photo"), photoRow = $("photoRow");
@@ -366,6 +366,7 @@
     drawShare();           // 同上。開いた人が何も読めない URL を配らせない
     setEra(null);          // 場所が変わったら、前の場所の写真を残さない
     subEl.textContent = ""; subEl.hidden = true;
+    glossSrcEl.textContent = ""; glossSrcEl.hidden = true;
     erasLabel.hidden = true;
     erasEl.hidden = true; erasEl.innerHTML = "";
     if (!v || v.state === Konjaku.STATE.UNREACHABLE) {
@@ -405,7 +406,9 @@
   const 答え = { terrain: null, meiji: undefined };
   function drawAnswer() {
     if (!答え.terrain || 答え.meiji === undefined) return;
-    const { head, sub } = KonjakuAnswer.lines(答え);
+    const { label, head, sub } = KonjakuAnswer.lines(答え);
+    glossSrcEl.textContent = label;
+    glossSrcEl.hidden = !label;
     glossEl.textContent = head;
     subEl.textContent = sub;
     subEl.hidden = !sub;
