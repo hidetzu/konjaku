@@ -44,7 +44,7 @@ const waitEras = (page) => 待つ(page,
 // ⚠ **見出しは「問いへの近さ」順**（2026-08-31。Owner 判断。`public-next/answer.js`）。
 //   ⚠ **前は「確実性の高い順」**で、⚠ **どの土地でも「ここは、…」で始まっていた**（`docs/adr/0030`）。
 //   ⚠ **いまは 3 通りある**:
-//     明治期に区分がある      明治期、ここは 田 でした
+//     明治期に区分がある      ここは 田 でした（⚠ 上のラベルが「明治期の地図」と名乗る）
 //     地形分類が昔を名指す    ここは、かつて水面で、その後陸地にされた土地
 //     どちらも無い            なぜ無いかを、⚠ 状態ごとに言い分ける（`docs/adr/0056`）
 // ⚠ **字を書き写さない。**⚠ **製品（`KonjakuAnswer`）から借りる。**
@@ -53,7 +53,7 @@ const 見出しの形 = (page) => page.evaluate(() => {
   const s = (document.getElementById("gloss")?.textContent ?? "").trim();
   const A = window.KonjakuAnswer;
   if (!A) return { s, 形: null, 理由: "KonjakuAnswer が読み込まれていない（この検査が何も見ていない）" };
-  if (/^明治期、ここは .+ でした$/.test(s)) return { s, 形: "明治期" };
+  if (/^ここは .+ でした$/.test(s)) return { s, 形: "明治期" };
   if (/^ここは、.+/.test(s)) return { s, 形: "地形" };
   const none = Object.keys(A.MEIJI_NONE).find((k) => A.MEIJI_NONE[k] === s);
   return none ? { s, 形: none } : { s, 形: null, 理由: "どの形にも当てはまらない" };
@@ -322,12 +322,20 @@ CASES.push(
           明治期: 見える("meiji") ? document.getElementById("meiji").textContent.trim() : null,
           周辺: 見える("area") ? document.getElementById("area").textContent.trim() : null,
           まとめ: document.getElementById("sub").textContent.trim(),
+          NONE: window.KonjakuAnswer ? window.KonjakuAnswer.MEIJI_NONE : null,
         };
       });
       await 答えが出ている(page, "足元");
       must(r.明治期 !== null, "明治期の行ごと消えている（⚠ 資料が作られていないことを言えていない）");
-      must(/作られていません/.test(r.明治期),
-        `資料が作られていない地域なのに、そう言っていない: ${r.明治期}`);
+      // ⚠ **字を書き写さない。**⚠ **製品（`KonjakuAnswer`）から借りる**（`.claude/rules/domain.md`）。
+      //   ⚠ **2026-08-31 に踏んだ**: ⚠ **ここが `/作られていません/` を書き写しており、
+      //     ⚠ 言い直したら製品ではなく検査が落ちた。**
+      must(r.NONE !== null, "KonjakuAnswer が読み込まれていない（⚠ この検査が何も見ていない）");
+      must(r.明治期 === r.NONE.absent,
+        `資料が作られていない地域なのに、その状態の字を出していない: ${r.明治期}`);
+      // ⚠ **3 つの状態が、⚠ 互いに違う字であること**（`docs/adr/0056`。⚠ これが主張の本体）
+      must(r.NONE.absent !== r.NONE.noClass && r.NONE.absent !== r.NONE.unreachable,
+        `「資料が無い」が、他の状態と同じ字になっている: ${JSON.stringify(r.NONE)}`);
       // ⚠ **「無い」と言っていないこと。**⚠ **言い換えの取りこぼしを見る。**
       must(!/ありません$|無いです|存在しません/.test(r.明治期),
         `資料の話を「無い」と言っている: ${r.明治期}`);
@@ -1861,8 +1869,11 @@ for (const [名, ll] of [["豊洲", TOYOSU], ["春日部", KASUKABE], ["軽井�
         const A = window.KonjakuAnswer;
         const t = (s) => (document.querySelector(s)?.textContent ?? "").trim();
         const 明治期の字 = t("#meiji");
+        const src = document.getElementById("glossSrc");
         return {
           A: !!A,
+          出典ラベル: src && !src.hidden && src.checkVisibility() ? t("#glossSrc") : null,
+          SOURCE: A ? A.SOURCE : {},
           見出し: t("#gloss"),
           二行目: t("#sub"),
           区分: t("#name"),
@@ -1876,10 +1887,19 @@ for (const [名, ll] of [["豊洲", TOYOSU], ["春日部", KASUKABE], ["軽井�
       must(r.A, "KonjakuAnswer が画面に読み込まれていない（⚠ この検査が何も見ていない）");
       must(r.見出し.length > 2, `見出しが出ていない: ${JSON.stringify(r.見出し)}`);
 
+      // ⚠ **見出しは、⚠ どの資料の話かを名乗る**（2026-08-31。Owner 指示）。
+      //   ⚠ **名乗らないと、⚠ 見出しと 2 行目が繰り返しに読まれた**（⚠ 利用者役 5 名中 3 名）。
+      must(r.出典ラベル !== null && r.出典ラベル.length > 0,
+        `出典のラベルが画面に出ていない: ${JSON.stringify(r.出典ラベル)}`);
+      must(!r.見出し.includes(r.出典ラベル),
+        `見出しが出典名を抱えている（⚠ ラベルと二重）: 「${r.出典ラベル}」／「${r.見出し}」`);
+
       if (r.明治期の区分) {
         // ⚠ **明治期が答えを返した土地。**⚠ **その答えが見出しに来ていること。**
-        must(r.見出し === `明治期、ここは ${r.明治期の区分} でした`,
+        must(r.見出し === `ここは ${r.明治期の区分} でした`,
           `明治期は「${r.明治期の区分}」なのに、見出しが違う: ${r.見出し}`);
+        must(r.出典ラベル === r.SOURCE.meiji,
+          `明治期の答えなのに、ラベルが違う: ${r.出典ラベル}`);
         // ⚠ **地形分類の言い方へ戻っていないこと**（⚠ これが起きると、⚠ 残 3 に逆戻りする）
         must(!r.見出し.startsWith("ここは、"),
           `明治期があるのに、⚠ 地形分類の言い方のまま: ${r.見出し}`);
@@ -1894,7 +1914,7 @@ for (const [名, ll] of [["豊洲", TOYOSU], ["春日部", KASUKABE], ["軽井�
           `見出しと「なぜそう言える？」の中で、⚠ 字が違う（${r.無い理由}）: `
           + `見出し「${r.見出し}」／ 中「${r.明治期の字}」`);
       }
-      return `見出し「${r.見出し}」／ 2 行目「${r.二行目 || "（無し）"}」／ 区分 ${r.区分}`;
+      return `${r.出典ラベル}｜「${r.見出し}」／ 2 行目「${r.二行目 || "（無し）"}」／ 区分 ${r.区分}`;
     },
   });
 }

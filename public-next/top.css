@@ -229,6 +229,12 @@ body{
    実測（375x667・豊洲・2026-08-29）: 答えの 1 文が 93px、根拠が 187px だった。
    根拠のほうが 2 倍あり、前提（長い文章はその場では読まれない）と逆になっていた。
    根拠を「なぜそう言える？」1 つへ送り、板 388px → 211px・地図 279px → 456px。 */
+/* 答えの出典。「なぜそう言える？」の行の見出しと同じ語を使う（言葉は 1 か所から借りる）。
+   小さく、弱く。主役は下の答えのほう。 */
+.ans__src{margin:0 0 var(--gap-sub); font-size:.6875rem; letter-spacing:.06em;
+          line-height:1.5; color:var(--ink-3)}
+.ans__src[hidden]{display:none}
+
 .ans{margin:0; font-size:1.375rem; font-weight:700; line-height:1.35; letter-spacing:-.01em; color:var(--ink)}
 
 /* 明治期と写真の有無を 1 行で言う。詳しくは「なぜそう言える？」の中。
