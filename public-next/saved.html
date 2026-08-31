@@ -7,6 +7,7 @@
 <link rel="stylesheet" href="./theme.css">
 <link rel="stylesheet" href="./brand.css">
 <link rel="stylesheet" href="./saved.css">
+<link rel="stylesheet" href="./tabs.css">
 
 <!-- 保存した場所の一覧。深掘りの入口。
      板（地図の上）と違って URL を持つので、/deep から戻ってこられる。
@@ -14,7 +15,7 @@
 <header class="brand">
   <a class="brand__name" href="./">
     <img class="brand__mark" src="./favicon.svg" alt="" width="20" height="20">
-    今昔　この土地は、昔なんだったのか？
+    <span class="brand__title">今昔</span><span class="brand__tag">この土地は、昔なんだったのか？</span>
   </a>
   <details class="menu">
     <summary class="menu__btn" aria-label="メニュー">
@@ -23,6 +24,7 @@
     <nav class="menu__panel" aria-label="サイトの案内">
       <a class="menu__item" href="./about.html">このサイトについて</a>
       <a class="menu__item" href="./privacy.html">プライバシーポリシー</a>
+      <a class="menu__item" href="./terms.html">利用規約</a>
     </nav>
   </details>
 </header>
@@ -44,6 +46,26 @@
 
   <p class="list__note" id="listNote" hidden>この端末の中だけに残ります。どこにも送りません。</p>
 </main>
+<!-- 下の帯。主な行き先は 2 つだけ（地図と保存した場所）。
+     深掘りは場所を選んでから決まるので、ここには置けない（行き先が定まらない）。
+     案内（このサイトについて・プライバシー・利用規約）は名乗りのメニューが持つ。 -->
+<nav class="tabs" aria-label="主な行き先">
+  <div class="tabs__inner">
+  <a class="tabs__item" href="./">
+    <svg class="tabs__icon" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">
+      <path d="M12 2a7 7 0 0 0-7 7c0 5.2 7 13 7 13s7-7.8 7-13a7 7 0 0 0-7-7Zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5Z"/>
+    </svg>
+    <span>地図</span>
+  </a>
+  <a class="tabs__item" href="./saved.html" aria-current="page">
+    <svg class="tabs__icon" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">
+      <path d="m12 17.3-5.8 3.3 1.5-6.6L2.6 9.5l6.7-.6L12 2.7l2.7 6.2 6.7.6-5.1 4.5 1.5 6.6z"/>
+    </svg>
+    <span>保存した場所</span>
+  </a>
+  </div>
+</nav>
+
 
 <script src="./esc.js"></script>
 <script src="./saved.js"></script>

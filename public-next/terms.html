@@ -1,0 +1,158 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex">
+<meta name="color-scheme" content="light dark">
+<title>利用規約 — 今昔 v0.1.0</title>
+<link rel="stylesheet" href="./theme.css">
+<link rel="stylesheet" href="./brand.css">
+<link rel="stylesheet" href="./about.css">
+
+<!-- 利用規約。Owner が書いた原文（tmp/今昔 利用規約.md）を、そのまま画面に置いた。
+     言い回しは変えていない。決めごとなので、こちらで書き直さない。
+
+     ⚠ 埋まっていないところが 2 つある（運営者名・連絡先）。
+     ここが [ ] のまま出ることのないよう、埋めるまで配らない。
+
+     この画面は JavaScript を持たない（メニューの開閉だけ menu.js が助ける）。 -->
+<header class="brand">
+  <a class="brand__name" href="./">
+    <img class="brand__mark" src="./favicon.svg" alt="" width="20" height="20">
+    <span class="brand__title">今昔</span><span class="brand__tag">この土地は、昔なんだったのか？</span>
+  </a>
+  <details class="menu">
+    <summary class="menu__btn" aria-label="メニュー">
+      <span class="menu__bars" aria-hidden="true"></span>
+    </summary>
+    <nav class="menu__panel" aria-label="サイトの案内">
+      <a class="menu__item" href="./about.html">このサイトについて</a>
+      <a class="menu__item" href="./privacy.html">プライバシーポリシー</a>
+      <a class="menu__item" href="./terms.html" aria-current="page">利用規約</a>
+    </nav>
+  </details>
+</header>
+
+<main class="about">
+  <h1 class="about__h">利用規約</h1>
+  <p class="about__ver">制定日：2026年8月31日</p>
+
+  <p class="about__p">この利用規約（以下「本規約」といいます。）は、[運営者名]（以下「運営者」といいます。）が提供するWebサービス「今昔」（以下「本サービス」といいます。）の利用条件を定めるものです。</p>
+  <p class="about__p">本サービスを利用する方（以下「利用者」といいます。）は、本規約に同意した上で本サービスを利用するものとします。</p>
+
+  <section class="about__sec">
+    <h2 class="about__h2">第1条　本サービスについて</h2>
+    <p class="about__p">本サービスは、公開資料、オープンデータ、地図、空中写真その他の情報をもとに、利用者が指定した場所について「この土地は昔なんだったのか」を知るための手がかりを提供するサービスです。</p>
+    <p class="about__p">本サービスが表示する内容は、歴史的事実、土地の用途、土地の境界、所有関係その他の事項を公的に証明するものではありません。</p>
+  </section>
+
+  <section class="about__sec">
+    <h2 class="about__h2">第2条　表示する情報について</h2>
+    <ol class="about__ol">
+      <li>本サービスでは、国・地方公共団体・研究機関・民間事業者その他の第三者が公開しているデータや資料を利用することがあります。</li>
+      <li>表示する情報の年代、精度、対象範囲および分類方法は、使用する資料やデータによって異なります。</li>
+      <li>資料から過去の土地の状態を確認できない場合、本サービスは、その場所について過去の状態を特定できない旨を表示することがあります。</li>
+      <li>本サービス上で情報が表示されないことは、その土地に歴史的事実や過去の利用実態が存在しなかったことを意味するものではありません。</li>
+      <li>運営者は、本サービスに表示される情報について、完全性、正確性、最新性、特定の目的への適合性を保証するものではありません。</li>
+    </ol>
+  </section>
+
+  <section class="about__sec">
+    <h2 class="about__h2">第3条　位置情報について</h2>
+    <p class="about__p">本サービスでは、利用者が場所を指定するため、端末の位置情報を利用する機能を提供することがあります。</p>
+    <p class="about__p">位置情報その他の利用者に関する情報の取扱いについては、別途定める<a href="./privacy.html">プライバシーポリシー</a>に従います。</p>
+    <p class="about__p">利用者は、端末またはブラウザの設定により、位置情報の利用を許可しないことができます。</p>
+  </section>
+
+  <section class="about__sec">
+    <h2 class="about__h2">第4条　保存機能等について</h2>
+    <ol class="about__ol">
+      <li>本サービスは、利用者が気になった場所などを保存する機能を提供することがあります。</li>
+      <li>保存された情報は、機能によって、利用者の端末または運営者が管理するシステム等に保存される場合があります。</li>
+      <li>運営者は、保存された情報が恒久的に保持されることを保証しません。サービスの変更、終了、端末の変更、ブラウザデータの削除その他の理由により、保存した情報を利用できなくなる場合があります。</li>
+      <li>本サービスが共有用URLその他の共有機能を提供する場合、利用者は、共有した情報を第三者が閲覧できる可能性があることを理解した上で利用するものとします。</li>
+    </ol>
+  </section>
+
+  <section class="about__sec">
+    <h2 class="about__h2">第5条　外部サービスについて</h2>
+    <p class="about__p">本サービスでは、地図、認証、データ取得その他の目的で、第三者が提供するサービスを利用する場合があります。</p>
+    <p class="about__p">これらの外部サービスについては、それぞれの提供者が定める利用規約、ライセンスその他の条件が適用される場合があります。</p>
+    <p class="about__p">外部サービスの停止、仕様変更その他の事情により、本サービスの全部または一部が利用できなくなることがあります。</p>
+  </section>
+
+  <section class="about__sec">
+    <h2 class="about__h2">第6条　知的財産権等</h2>
+    <ol class="about__ol">
+      <li>本サービスを構成するプログラム、デザイン、文章その他のコンテンツに関する権利は、運営者または正当な権利を有する第三者に帰属します。ただし、別途オープンソースライセンス等が適用されるものを除きます。</li>
+      <li>本サービスで利用する地図、空中写真、オープンデータその他の第三者提供データに関する権利は、それぞれの提供者に帰属します。</li>
+      <li>第三者提供データを本サービス外で利用する場合、利用者は各データに適用されるライセンスや利用条件を確認するものとします。</li>
+    </ol>
+  </section>
+
+  <section class="about__sec">
+    <h2 class="about__h2">第7条　禁止事項</h2>
+    <p class="about__p">利用者は、本サービスの利用にあたり、次の行為を行ってはなりません。</p>
+    <ul class="about__ul">
+      <li>法令または公序良俗に反する行為</li>
+      <li>他者の権利または利益を侵害する行為</li>
+      <li>本サービスまたは関連するシステムに不正にアクセスする行為</li>
+      <li>本サービスの運営を妨害する行為</li>
+      <li>通常の利用を著しく超える大量または自動的なアクセスにより、本サービスまたは外部のデータ提供者等に過度な負荷を与える行為</li>
+      <li>本サービスを利用して第三者に誤解を与えたり、違法な目的に利用したりする行為</li>
+      <li>その他、運営者が本サービスの提供上不適切と合理的に判断する行為</li>
+    </ul>
+  </section>
+
+  <section class="about__sec">
+    <h2 class="about__h2">第8条　本サービスの利用上の注意</h2>
+    <p class="about__p">本サービスが提供する情報は、街歩き、地域への興味、歴史を調べる入口などとして利用することを想定しています。</p>
+    <p class="about__p">土地・建物の売買その他の不動産取引、土地境界の確定、測量、登記、法的判断、防災上の判断、現在地の安全確認、ナビゲーションその他、高い正確性または公的な証明を必要とする用途については、必ず公的資料その他の適切な情報源を確認してください。</p>
+    <p class="about__p">本サービスの表示のみを根拠としてこれらの判断を行うことは推奨していません。</p>
+  </section>
+
+  <section class="about__sec">
+    <h2 class="about__h2">第9条　本サービスの変更・停止・終了</h2>
+    <p class="about__p">運営者は、必要に応じて、本サービスの内容を変更し、機能を追加もしくは削除し、または本サービスの全部もしくは一部を停止・終了することがあります。</p>
+    <p class="about__p">重大な変更またはサービス終了については、可能な範囲で事前に本サービス上その他適切な方法で案内します。</p>
+  </section>
+
+  <section class="about__sec">
+    <h2 class="about__h2">第10条　免責および責任</h2>
+    <ol class="about__ol">
+      <li>運営者は、本サービスが常に利用可能であること、エラーや障害が発生しないこと、または利用者の期待する結果が得られることを保証しません。</li>
+      <li>データ提供元の資料の誤り、欠落、更新、提供停止その他運営者が管理できない事情により、表示内容が実際の状況と異なる場合があります。</li>
+      <li>運営者が本サービスに関して利用者に対して損害賠償責任を負う場合、その責任は、法令により認められる範囲で、通常かつ直接の損害に限られるものとします。</li>
+      <li>前項その他本規約における責任の制限は、運営者の故意または重大な過失による場合その他、法令上責任を制限することが認められない場合には適用しません。</li>
+    </ol>
+  </section>
+
+  <section class="about__sec">
+    <h2 class="about__h2">第11条　本規約の変更</h2>
+    <p class="about__p">運営者は、本サービスの内容変更、法令の変更その他必要がある場合、本規約を変更することがあります。</p>
+    <p class="about__p">重要な変更を行う場合には、変更内容および適用時期を本サービス上その他適切な方法で案内します。</p>
+  </section>
+
+  <section class="about__sec">
+    <h2 class="about__h2">第12条　準拠法および管轄</h2>
+    <p class="about__p">本規約および本サービスには日本法を適用します。</p>
+    <p class="about__p">本サービスに関して紛争が生じた場合には、当事者間で誠実に協議するものとし、解決しない場合には、法令により認められる範囲で、運営者の所在地を管轄する地方裁判所を第一審の合意管轄裁判所とします。</p>
+  </section>
+
+  <section class="about__sec">
+    <h2 class="about__h2">第13条　お問い合わせ</h2>
+    <p class="about__p">本サービスおよび本規約に関するお問い合わせは、以下までお願いします。</p>
+    <dl class="about__rows">
+      <div class="about__row">
+        <dt class="about__k">運営者</dt>
+        <dd class="about__v">[運営者名]</dd>
+      </div>
+      <div class="about__row">
+        <dt class="about__k">連絡先</dt>
+        <dd class="about__v">[メールアドレスまたはお問い合わせ先]</dd>
+      </div>
+    </dl>
+  </section>
+
+  <p class="about__ver">今昔 v0.1.0（作りかけ）</p>
+</main>
+<script src="./menu.js"></script>

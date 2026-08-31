@@ -1,4 +1,4 @@
-/* このサイトについて。読み物なので、行の長さと段の間だけを決める。
+/* 読み物の画面（about / privacy / terms）。行の長さと段の間だけを決める。
    色・44px・余白の段は theme.css / brand.css から借りる。ここで持ち直さない。 */
 .about{max-width:38rem; margin:0 auto;
   padding:calc(2.75rem + env(safe-area-inset-top) + 1.5rem) var(--pad-md) 6rem}
@@ -34,3 +34,10 @@
 .about__note a{color:var(--action)}
 
 .about__ver{margin:var(--gap-block) 0 0; font-size:.8125rem; color:var(--ink-3)}
+
+/* 条文の並び。番号は意味を持つ（第2条の 3 は「第2条3」として引かれる）ので消さない。 */
+.about__ol, .about__ul{margin:0; padding-left:1.5rem}
+.about__ol li, .about__ul li{
+  font-size:.9375rem; color:var(--ink-2); line-height:1.8; margin-bottom:var(--gap-sub);
+}
+.about__ol li:last-child, .about__ul li:last-child{margin-bottom:0}
