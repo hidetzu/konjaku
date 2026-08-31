@@ -469,4 +469,117 @@ else {
       : ok("v0.1.0 の画面に、⚠ 埋まっていない差し込みは無い");
   }
 
+  // ---- ⚠ ⑨ 見出しは「問いへの近さ」順で決まっているか ----
+  // ⚠ **2026-08-31。Owner 判断。**⚠ **前は「確実性の高い順」だった**（`docs/adr/0030`）。
+  //   ⚠ **常に取れる地形分類が見出しで、⚠ 明治期はその下の小さい行**だった。
+  //   ⚠ **実測（2026-08-30・利用者役 5 名中 3 名。⚠ 実在の利用者ではない）**:
+  //     ⚠ **春日部と軽井沢で「これは昔の答えではない」と読まれた。**
+  //     ⚠ **春日部は「明治期は 田」を既に出していた。**⚠ **見出しでなかっただけ。**
+  //
+  // ⚠ **ブラウザを立てずに見る**（`public-next/answer.js` は DOM も地図も持たない）。
+  //   ⚠ **実描画は「画面にそう出ているか」を見る。**⚠ **ここは「規則そのもの」を見る。**
+  {
+    const win = {};
+    for (const f of ["words.js", "answer.js"]) {
+      if (!existsSync(join(NEXT, f))) { bad(`v0.1.0 に ${f} が無い（⚠ この検査が何も見ていない）`); break; }
+      new Function("window", "module", readFileSync(join(NEXT, f), "utf8"))(win, undefined);
+    }
+    const A = win.KonjakuAnswer, W = win.KonjakuWords;
+    if (!A?.lines || !W?.groundGloss) {
+      bad("KonjakuAnswer.lines か KonjakuWords.groundGloss を読めていない（⚠ この検査が何も見ていない）");
+    } else {
+      const fails = [];
+
+      // ⚠ **① 明治期に区分があれば、⚠ それが見出し。**
+      //   ⚠ **ここが残 3 の本体。**⚠ **春日部は答えを持っていたのに、⚠ 見出しでなかった。**
+      const 春日部 = A.lines({ terrain: "氾濫平野・海岸平野", meiji: { value: "田" } });
+      if (!/^ここは 田 でした$/.test(春日部.head))
+        fails.push(`明治期の区分が見出しになっていない: ${春日部.head}`);
+      if (春日部.head.startsWith("ここは、"))
+        fails.push("明治期があるのに、⚠ 地形分類の言い方に戻っている（⚠ 確実性の順に逆戻り）");
+      if (!春日部.sub.includes(W.groundGloss("氾濫平野・海岸平野")))
+        fails.push(`成り立ちが 2 行目に降りていない: ${春日部.sub}`);
+
+      // ⚠ **①-2 見出しは、⚠ どの出典の話かを名乗る**（2026-08-31。Owner 指示）。
+      //   ⚠ **名乗らないと、⚠ 見出しと 2 行目が「同じことの繰り返し」に読まれた**
+      //     （⚠ 利用者役 5 名中 3 名。⚠ 実在の利用者ではない）。
+      //   ⚠ **2 つの資料が独立に同じことを言っているのが価値**（`docs/adr/0004`）。
+      //   ⚠ **ラベルの語は「なぜそう言える？」の行の見出しと同じ**（⚠ 言葉は 1 か所から借りる）。
+      if (春日部.label !== A.SOURCE.meiji)
+        fails.push(`明治期の答えなのに、出典を名乗っていない: ${JSON.stringify(春日部.label)}`);
+      if (春日部.head.includes(A.SOURCE.meiji))
+        fails.push(`見出しが出典名を抱えている（⚠ ラベルと二重）: ${春日部.head}`);
+      // ⚠ **2 行目は、⚠ 自分の出典を字の中に持つ**（⚠ だからラベルを付けない）
+      if (!春日部.sub.startsWith(A.SOURCE.terrain))
+        fails.push(`2 行目が出典を名乗っていない: ${春日部.sub}`);
+
+      // ⚠ **② 明治期が無くても、⚠ 地形分類が昔を名指すなら、⚠ それを見出しに使う。**
+      //   ⚠ **2 行目に同じことを重ねない。**⚠ **ラベルは地形分類のほうを名乗る。**
+      for (const 区分 of A.PAST_IN_TERRAIN) {
+        const r = A.lines({ terrain: 区分, meiji: { none: "absent" } });
+        if (r.head !== `ここは、${W.groundGloss(区分)}`)
+          fails.push(`${区分}: 地形分類が昔を名指しているのに、見出しに使っていない: ${r.head}`);
+        if (r.sub !== "") fails.push(`${区分}: 見出しと同じことを 2 行目でも言っている: ${r.sub}`);
+        if (r.label !== A.SOURCE.terrain)
+          fails.push(`${区分}: 見出しは地形分類なのに、⚠ 明治期の出典を名乗っている: ${r.label}`);
+      }
+
+      // ⚠ **③ 昔の根拠が無いときは、⚠ なぜ無いかを状態ごとに言い分ける**（`docs/adr/0056`）。
+      //   ⚠ **1 文にまとめない**（2026-08-31。Owner 判断）。⚠ 「取れなかった」と「無い」は別のこと。
+      const 状態 = ["absent", "noClass", "unreachable"];
+      const 出た = 状態.map((none) => A.lines({ terrain: "低地", meiji: { none } }).head);
+      for (const [i, none] of 状態.entries()) {
+        if (出た[i] !== A.MEIJI_NONE[none])
+          fails.push(`${none}: MEIJI_NONE の字を使っていない: ${出た[i]}`);
+        if (!出た[i]) fails.push(`${none}: 見出しが空（⚠ 何も言わないと、⚠ 何も起きていないように見える）`);
+      }
+      if (new Set(出た).size !== 状態.length)
+        fails.push(`3 つの状態が同じ字になっている: ${出た.join(" ／ ")}`);
+      // ⚠ **無いときも、⚠ 出典を名乗る。**⚠ **主語はラベルが引き受ける**ので、
+      //   ⚠ 字の中で「明治期の」を繰り返さない（2026-08-31。Owner 指示）。
+      for (const none of 状態) {
+        const r = A.lines({ terrain: "低地", meiji: { none } });
+        if (r.label !== A.SOURCE.meiji)
+          fails.push(`${none}: 何の資料の話か名乗っていない: ${JSON.stringify(r.label)}`);
+        if (r.head.includes(A.SOURCE.meiji))
+          fails.push(`${none}: 見出しが出典名を抱えている（⚠ ラベルと二重）: ${r.head}`);
+        // ⚠ **無いことも、⚠ 分かることを消さない**（`CLAUDE.md` §4-1）。⚠ 2 行目が引き受ける。
+        if (!r.sub) fails.push(`${none}: 無いと言うだけで、⚠ 分かることを出していない`);
+      }
+      // ⚠ **否定された動作で言わない**（2026-08-31。Owner 指示）。
+      //   ⚠ **「作られていません」は「まだ作っていない」「壊れている」に読まれた**
+      //     （⚠ 利用者役 5 名中 2 名が「アプリが壊れているか、自分の通信のせいかと思った」）。
+      //   ⚠ **限界は消していない。**⚠ 資料が どこを対象にしているか の事実として言う。
+      if (/作られていません|ありません$/.test(A.MEIJI_NONE.absent))
+        fails.push(`資料そのものが無いことを、⚠ 否定された動作で言っている: ${A.MEIJI_NONE.absent}`);
+
+      // ⚠ **④ 昔を名指す区分の綴りが、⚠ 原典とずれていないか。**
+      //   ⚠ **ずれると、⚠ 黙って ② が効かなくなる**（⚠ 一致しないだけなので、⚠ 誰も落ちない）。
+      const 原典 = JSON.parse(readFileSync(join(NEXT, "data/landform.json"), "utf8")).classes ?? {};
+      const 無い = A.PAST_IN_TERRAIN.filter((n) => !(n in 原典));
+      if (無い.length) fails.push(`landform.json に無い区分名を見ている: ${無い.join("、")}`);
+
+      // ⚠ **⑤ `top.js` が字を書いていないこと。**⚠ **3 状態すべてを `answer.js` から引く。**
+      const TOP = readFileSync(join(NEXT, "top.js"), "utf8");
+      for (const 字 of [...Object.values(A.MEIJI_NONE), ...Object.values(A.SOURCE)])
+        if (TOP.includes(字)) fails.push(`top.js が answer.js の字を書き写している: ${字}`);
+      for (const none of 状態)
+        if (!TOP.includes(`"${none}"`)) fails.push(`top.js が ${none} の状態を作っていない`);
+      // ⚠ **ラベルを画面へ出しているか**（⚠ 返しても描かなければ、⚠ 何も変わらない）。
+      //   ⚠ **語の有無で見てはいけない**（2026-08-31 に踏んだ）。⚠ **`glossSrcEl` は
+      //     宣言と後始末にも出るので、⚠ 描く行だけ消しても素通りした。**
+      //   ⚠ **代入そのものを見る。**⚠ **画面に出ているかは実描画が見る**（⚠ ここは配線だけ）。
+      if (!/glossSrcEl\.textContent\s*=\s*label/.test(TOP))
+        fails.push("top.js が、answer.js の返す label を出典ラベルへ入れていない");
+      if (!readFileSync(join(NEXT, "index.html"), "utf8").includes('id="glossSrc"'))
+        fails.push("index.html に出典ラベルの置き場が無い");
+
+      fails.length
+        ? bad(`見出しが「問いへの近さ」順になっていない: ${fails.join(" ／ ")}`)
+        : ok(`見出しは「問いへの近さ」順で、⚠ 出典を名乗る`
+            + `（⚠ 明治期 → 昔を名指す ${A.PAST_IN_TERRAIN.length} 区分 → 無い理由 ${状態.length} 通り。`
+            + `⚠ 字とラベルは answer.js の 1 か所）`);
+    }
+  }
+
 }
