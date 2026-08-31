@@ -107,52 +107,11 @@
     </details>
     <ul id="legend" aria-label="この画面に映っている土地"></ul>
     <button id="more" type="button" hidden></button>
-    <!-- 帰宅後の入口。1 件も保存していないうちは出さない（押しても空になる）。 -->
-    <button class="saved-open" id="savedOpen" type="button" hidden>
-      <span>保存した場所を見る</span><span class="saved-open__n" id="savedCount"></span>
-    </button>
   </section>
 
   </div>
 
-  <section class="column saved" id="savedSheet" hidden aria-label="保存した場所">
-    <header>
-      <h2>保存した場所</h2>
-      <button class="close" type="button" id="savedClose" aria-label="閉じる">✕</button>
-    </header>
-    <ul id="savedList"></ul>
-    <p class="saved__note" id="savedNote" hidden></p>
-    <!-- 別の端末で続きを見る入口。押すと合言葉を出す。 -->
-    <button class="saved__hand" id="crossDev" type="button" hidden>
-      <span aria-hidden="true">⇱</span><span id="crossDevText">PC やタブレットでも見る</span>
-    </button>
-  </section>
 
-  <!-- 合言葉。スマホが出して、PC で打つ。引換券であって本人確認ではない。 -->
-  <section class="column code" id="code" hidden aria-label="別の端末で開く">
-    <h2>PC やタブレットで開く</h2>
-    <div id="codeBody">
-      <p class="code__label">この住所を開いて</p>
-      <p class="code__url" id="codeUrl">　</p>
-      <p class="code__label">この合言葉を入れる</p>
-      <p class="code__word" id="codeWord">　</p>
-    </div>
-    <p class="code__note" id="codeNote"></p>
-    <!-- サーバを通さない道。消さずに畳んで残す。 -->
-    <details class="code__alt" id="codeAlt">
-      <summary>サーバを通さずに渡す</summary>
-      <p>この端末とリンクだけで渡します。合言葉より長いリンクを、自分あてに送る形になります。</p>
-      <button class="code__link" id="handOut" type="button">
-        <span aria-hidden="true">⇱</span><span id="handOutText">リンクを作って送る</span>
-      </button>
-      <!-- 写す口を分ける。共有シートの「コピー」は題と説明と URL をつなげて写すので、
-           貼っても開けない。ここは URL だけを写す。 -->
-      <button class="code__link" id="handCopy" type="button">
-        <span aria-hidden="true">⧉</span><span id="handCopyText">リンクだけを写す</span>
-      </button>
-    </details>
-    <button class="code__close" id="codeClose" type="button">閉じる</button>
-  </section>
 
   <section class="column" id="sheet" hidden aria-label="この画面に映っている土地">
     <header>

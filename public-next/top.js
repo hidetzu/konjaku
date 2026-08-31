@@ -21,7 +21,7 @@
   const $ = (id) => document.getElementById(id);
   // 外から来た字を画面に出す前に通す。地名も区分名も、こちらが中身を保証できない。
   const { esc } = window.KonjakuEsc ?? { esc: (s) => s };
-  const map = $("map"), q = $("q"), hits = $("hits");
+  const map = $("map"), q = $("q"), hits = $("hits"), card = $("card");
   const kickText = $("kickText"), nameEl = $("name"), glossEl = $("gloss"), legendEl = $("legend");
   const moreBtn = $("more"), sheet = $("sheet"), sheetList = $("sheetList"), sheetState = $("sheetState");
   const subEl = $("sub"), whyEl = $("why"), glossSrcEl = $("glossSrc");
@@ -32,13 +32,6 @@
   const erasEl = $("eras"), eraNote = $("eraNote"), eraBack = $("eraBack");
   const saveBtn = $("save"), saveMark = $("saveMark"), saveText = $("saveText");
   const shareBtn = $("share"), shareText = $("shareText"), deepLink = $("deepLink");
-  const savedOpen = $("savedOpen"), savedCount = $("savedCount");
-  const savedSheet = $("savedSheet"), savedList = $("savedList"), savedNote = $("savedNote");
-  const crossDev = $("crossDev"), crossDevText = $("crossDevText");
-  const handOut = $("handOut"), handOutText = $("handOutText");
-  const handCopy = $("handCopy"), handCopyText = $("handCopyText");
-  const codeEl = $("code"), codeUrl = $("codeUrl"), codeWord = $("codeWord");
-  const codeNote = $("codeNote"), codeAlt = $("codeAlt"), codeBody = $("codeBody");
 
   // ⚠ **地図はタイルを並べて作る**（⚠ β 版の `/peel` は MapLibre だが、⚠ 運んでいない）。
   //   ⚠ **この縦切りでは、⚠ 動かせる地図が要る。**⚠ 依存を足す前に、⚠ まず素で作る
@@ -89,7 +82,9 @@
 
   const me = document.createElement("div");
   me.className = "me";
-  me.style.cssText = "position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);pointer-events:none";
+  // 判定している点は、画面の縦中央ではなく「答えの板の 24px 上」に置く（layoutAim）。
+  //   板の高さは土地で変わるので、そのつど測って --aim-y に入れる。
+  me.style.cssText = "position:absolute;left:50%;top:var(--aim-y);transform:translate(-50%,-50%);pointer-events:none";
   map.appendChild(me);
   // 色と位置だけで「ここ」を示さない。字でも言う。
   const meLabel = document.createElement("div");
@@ -103,9 +98,33 @@
   const HUE = {};   // ⚠ 名前 → 色。⚠ 下で `landform.json` を読んで作る
   const paint = (name) => HUE[name] ?? "#00000000";
 
+  // 判定している点を、地図の中のどこに置くか。
+  //   前は縦の中央（h/2）だった。答えの板が高いと、印が板の裏へ入る。
+  //   実測 2026-09-01: 帯を常設すると 375×667 で 45px 裏、320×640 で 156px 裏
+  //   （320×640 は帯が無くても 100px 裏だった。帯以前からの不具合）。
+  //   板の 24px 上に置くと、どの幅でも印が板の上に出る（下に 36px）。
+  //   印だけ動かしても足りない。地図の描画も同じだけずらす（下の draw）。
+  const AIM_GAP = 24;      // 板の上端から、印の下端までの隙間
+  const AIM_H = 24;        // 印（.me）の高さ。1.125rem + 3px の縁が上下
+  let aimY = 0;            // #map の中での y。layoutAim が入れる
+  function layoutAim() {
+    const c = card.getBoundingClientRect(), m = map.getBoundingClientRect();
+    // 板が無い／読めないときは、いままでどおり縦の中央
+    const 上限 = m.height / 2;
+    const y = c.height > 0 ? (c.top - m.top) - AIM_GAP - AIM_H / 2 : 上限;
+    // 名乗りの裏へ入らない下限も置く（狭くて板が高いとき）
+    aimY = Math.round(Math.min(上限, Math.max(AIM_H, y)));
+    map.style.setProperty("--aim-y", `${aimY}px`);
+  }
+
+  // 板の高さは、場所ごと・年代のチップの有無で変わる。変わるたびに測り直す。
+  //   ResizeObserver は「変わったとき」だけ来るので、毎フレーム測らない。
+  new ResizeObserver(() => { layoutAim(); draw(); }).observe(card);
+  addEventListener("resize", () => { layoutAim(); draw(); });
+
   function draw() {
     const w = map.clientWidth, h = map.clientHeight;
-    const left = cx - w / 2, top = cy - h / 2;
+    const left = cx - w / 2, top = cy - aimY;
     const x0 = Math.floor(left / TILE), x1 = Math.floor((left + w) / TILE);
     const y0 = Math.floor(top / TILE), y1 = Math.floor((top + h) / TILE);
     for (const layer of layers) {
@@ -717,13 +736,6 @@
     // 「保存した」ではなく「保存ずみ」。過去形だと、もう一度押せることが伝わらない
     //   （利用者役 1 名が「もう一度押すと消えるのか迷う」と言った）。
     saveText.textContent = hit ? "保存ずみ" : "保存";
-    drawSavedOpen();
-  }
-
-  function drawSavedOpen() {
-    savedOpen.hidden = saved.length === 0;
-    savedCount.textContent = `${saved.length} 件 ›`;
-    crossDev.hidden = saved.length === 0;
   }
 
   saveBtn.addEventListener("click", async () => {
@@ -738,209 +750,14 @@
       saved = KonjakuSaved.add(saved, rec);
       const nm = await askName(lon, lat);
       // 待っているあいだに外されていることがある。いま在るものだけ書き換える
-      if (nm && saved.includes(rec)) { rec.name = nm; KonjakuSaved.save(store, saved); drawSavedList(); }
+      if (nm && saved.includes(rec)) { rec.name = nm; KonjakuSaved.save(store, saved); KonjakuSaved.save(store, saved); }
     }
     if (store && !KonjakuSaved.save(store, saved)) storeOk = false;
     drawSave();
-    drawSavedList();
   });
 
-  // 一覧。押すとその地点へ戻る。
-  function drawSavedList() {
-    savedList.innerHTML = saved.map((r, i) =>
-      `<li><button type="button" data-i="${i}">`
-      + `<span class="saved__row"><span>${esc(r.name ?? "地図から選んだ場所")}</span>`
-      + `<span class="saved__when">${esc(whenText(r.at))}</span></span>`
-      + `<span class="saved__gloss">${esc(r.gloss ?? "")}</span>`
-      + `</button></li>`).join("");
-    for (const b of savedList.querySelectorAll("button"))
-      b.addEventListener("click", () => {
-        const r = saved[Number(b.dataset.i)];
-        if (!r) return;
-        savedSheet.hidden = true;
-        setEra(null);
-        cx = lon2px(r.lon); cy = lat2px(r.lat);
-        draw();
-        ask();
-      });
-    // 置き場が読めないことと、1 件も無いことは違う。読めないときだけ断る。
-    savedNote.hidden = storeOk;
-    if (!storeOk) savedNote.textContent =
-      "この端末では、保存した場所を覚えておけません（ブラウザの設定によります）";
-  }
 
-  // ---- 別の端末へ手渡す ----
-  //
-  // サーバに置かない（docs/adr/0048）。URL に載せて渡す。
-  //   要るものが何も無く、言えなくなることが 1 つも無い。そこが 5 段目（同期）との違い。
-  // 詰め方と混ぜ方は saved.js の 1 か所。ここは口を呼ぶだけ。
-  //
-  // 圧縮はブラウザの CompressionStream。無い環境では生で渡す（件数は減るが渡せる）。
-  //   実測（2026-08-29・test/check/saved.mjs）: 名前つき 50 件で 生 5521 文字 → 圧縮 941 文字。
-  //   字への直し方（base64url）は saved.js が持つ。ここで書き直さない。
-  //     渡す側と受け取る側で食い違うと、例外にならず「読めない」だけが返る。
-  const 圧縮 = async (text) => {
-    if (!globalThis.CompressionStream) throw new Error("圧縮できない");
-    const s = new Blob([text]).stream().pipeThrough(new CompressionStream("gzip"));
-    return KonjakuSaved.bytes2b64(new Uint8Array(await new Response(s).arrayBuffer()));
-  };
-  const 解凍 = async (text) => {
-    const s = new Blob([KonjakuSaved.b642bytes(text)]).stream()
-      .pipeThrough(new DecompressionStream("gzip"));
-    return await new Response(s).text();
-  };
-
-  // 受け取るのは /take（2026-08-30）。地図の上では受けない。
-  //   前は location.pathname に戻していたので、トップで受けていた。
-  //
-  // 荷物は # に載せる。? だと配信元へ届く（2026-08-30 に直した）。
-  //   クエリは HTTP のリクエスト行に載るので、開いた瞬間に保存した場所ぜんぶが
-  //   配信元（Cloudflare）へ届いていた。画面は「サーバを通さずに渡す」と言っている。
-  //   フラグメントはリクエストに含まれない。ブラウザの中だけに残る。
-  //   これで、画面の字が字義どおりになる（ADR 0069 の意図）。
-  async function handUrl() {
-    const t = await KonjakuSaved.toText(saved, globalThis.CompressionStream ? 圧縮 : null);
-    return `${location.origin}/take#${t}`;
-  }
-
-  // 渡せる長さの上限。実測で決めている（2026-08-29・Chromium・tmp/measure-urllen.mjs）。
-  //   50 件 1168 文字 / 100 件 2033 / 500 件 9172 / 700 件 12829 まで開けた。
-  //   1000 件 18172 文字で 431（配信側のヘッダ上限。16KB）。
-  //   ⚠ 以前は 2000 文字で止めていた。実測の 6 分の 1 で、100 件の手前で止まっていた。
-  //     止めていたのは受け取る側ではなく、こちらの自主規制だった。
-  //   ⚠ 12000 にするのは、配信の 16KB より手前で止めるため。
-  //     受け取る側（LINE やメール）が折り返すかどうかは測っていない。だから余白を残す。
-  const 渡せる長さ = 12000;
-
-  // ---- 合言葉（引換券）----
-  //
-  // スマホが出して、PC で打つ（docs/adr/0072）。本人確認ではない。荷物の引換券。
-  //   預けるのは saved.js が詰めた 1 本の字。サーバは中を読まない（docs/sync-api.md）。
-  //
-  // 残り時間の文は、サーバが返す ttl_sec から作る。ここに分数を直書きしない。
-  //   直書きすると、設定を変えたとき画面だけ前の数字のまま残る。
-  const 分で言う = (sec) => {
-    const m = Math.round(sec / 60);
-    return m >= 1 ? `${m} 分` : `${Math.max(1, Math.round(sec))} 秒`;
-  };
-
-  function 板を出す({ url, word, note, リンクを開く }) {
-    codeUrl.textContent = url ?? "";
-    codeWord.textContent = word ?? "";
-    codeBody.hidden = !word;          // 合言葉が無いときは、住所も出さない
-    codeNote.textContent = note ?? "";
-    codeAlt.open = !!リンクを開く;
-    codeEl.hidden = false;
-  }
-
-  crossDev.addEventListener("click", async () => {
-    if (!saved.length) return;
-    crossDevText.textContent = "用意しています";
-    let 結果 = null;
-    try {
-      const payload = await KonjakuSaved.toText(saved,
-        globalThis.CompressionStream ? 圧縮 : null);
-      const res = await fetch("/api/handoff", {
-        method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ payload }),
-      });
-      if (res.ok) 結果 = await res.json();
-      else 結果 = { だめ: res.status };
-    } catch { 結果 = { だめ: "通信" }; }
-    crossDevText.textContent = "PC やタブレットでも見る";
-
-    if (結果?.code) {
-      // 受け取り口の住所。打ち写すものなので、scheme は出さない
-      板を出す({
-        url: `${location.host}/take`,
-        word: 結果.code,
-        note: `${分で言う(結果.ttl_sec ?? 300)}で使えなくなります。`
-          + "そのあとは、もう一度押すと新しく出ます。",
-        リンクを開く: false,
-      });
-      return;
-    }
-    // 合言葉を出せなかった。できることから言う（CLAUDE.md §4-1）。
-    //   代わりの道（リンク）は畳んである。ここでは開いて見せる。
-    //   ⚠ 「取得できませんでした」と書かない。利用者の回線の話に読める。
-    板を出す({
-      url: null, word: null,
-      note: 結果?.だめ === "通信"
-        ? "いまは合言葉を出せませんでした。下のリンクなら、通信が戻らなくても渡せます。"
-        : "いまは合言葉を出せませんでした。下のリンクで渡せます。"
-          + "この端末に保存した場所は、そのままです。",
-      リンクを開く: true,
-    });
-  });
-
-  $("codeClose").addEventListener("click", () => {
-    codeEl.hidden = true;
-    crossDev.focus();
-  });
-
-  let handTimer = null;
-  handOut.addEventListener("click", async () => {
-    const url = await handUrl();
-    if (url.length > 渡せる長さ) {
-      // 何件なら渡せるかは言えない（1 件あたりの長さは名前の長さで変わる）。
-      //   だから「減らす」とだけ言う。数を出すと、その数で必ず渡せるように読める。
-      handOutText.textContent = "件数が多くて渡せません";
-      clearTimeout(handTimer);
-      handTimer = setTimeout(() => { handOutText.textContent = "リンクを作って送る"; }, 3000);
-      return;
-    }
-    const 言う = (t) => {
-      handOutText.textContent = t;
-      clearTimeout(handTimer);
-      handTimer = setTimeout(() => { handOutText.textContent = "リンクを作って送る"; }, 2600);
-    };
-    // 送る口。⚠ URL だけを渡す。題も説明も付けない（2026-08-31 に外した）。
-    //   付けていたときは、共有シートの先で題・説明・URL がつながり、
-    //   貼っても開けなかった（Owner が実機で 2 度踏んだ。2 度目は URL の末尾に字が付いていた）。
-    //   つなぎ方は受け取ったアプリが決めるので、こちらでは前にも後ろにも置けない。
-    //   このリンクは自分あてに送るもの（画面がそう言っている）。説明する相手がいない。
-    //   場所を送る口（#share）も、前から URL だけを渡している。そちらに揃えた。
-    if (navigator.share) {
-      try { await navigator.share({ url }); return; }
-      catch (e) { if (e?.name === "AbortError") return; }
-    }
-    // 共有シートが無い端末（PC の多く）。ここは写すしかない。
-    try { await navigator.clipboard.writeText(url); 言う("リンクを写しました"); }
-    catch { 言う("この端末では写せません"); }
-  });
-
-  // 写す口。⚠ URL だけを写す。題も説明も付けない。
-  //   共有シートの「コピー」で貼っても開けない、という報告から分けた（2026-08-30）。
-  let copyTimer = null;
-  handCopy.addEventListener("click", async () => {
-    const url = await handUrl();
-    const 言う = (t) => {
-      handCopyText.textContent = t;
-      clearTimeout(copyTimer);
-      copyTimer = setTimeout(() => { handCopyText.textContent = "リンクだけを写す"; }, 2600);
-    };
-    if (url.length > 渡せる長さ) { 言う("件数が多くて渡せません"); return; }
-    try { await navigator.clipboard.writeText(url); 言う("写しました"); }
-    catch { 言う("この端末では写せません"); }
-  });
-
-  // 受け取るのは /take だけ（2026-08-30。Owner 判断）。
-  //   前はここにも板があり、リンクで来た人を地図の上で受けていた。
-  //   同じ問いに答える画面が 2 つあると、片方だけ直る。実際にそうなった
-  //   （URL の掃除が「いまはしない」にしか無かった）。
-  //   だから手渡しのリンクも /take へ向ける（下の handUrl）。
-
-
-  savedOpen.addEventListener("click", () => {
-    drawSavedList();
-    savedSheet.hidden = false;
-    $("savedClose").focus();
-  });
-  $("savedClose").addEventListener("click", () => { savedSheet.hidden = true; savedOpen.focus(); });
-  addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && !savedSheet.hidden) { savedSheet.hidden = true; savedOpen.focus(); }
-  });
-  drawSavedOpen();
+  layoutAim();   // 最初の 1 回。ResizeObserver は非同期で来るので、ここで先に測る
 
   // ---- 動かす ----
   let idle = null;
