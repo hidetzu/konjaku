@@ -13,22 +13,28 @@
   <div id="map" role="application" aria-label="地図"></div>
   <!-- 名乗り。何のサイトかを、画面のどこにも書いていなかった。
        同じ問題を β 版が実測で踏んで、同じ形で解いている。 -->
-  <header class="brand" id="brand">
-    <a class="brand__name" href="./">
-      <img class="brand__mark" src="./favicon.svg" alt="" width="20" height="20">
-      <span class="brand__title">今昔</span><span class="brand__tag">この土地は、昔なんだったのか？</span>
-    </a>
-    <details class="menu">
-      <summary class="menu__btn" aria-label="メニュー">
-        <span class="menu__bars" aria-hidden="true"></span>
-      </summary>
-      <nav class="menu__panel" aria-label="サイトの案内">
-        <a class="menu__item" href="./about.html">このサイトについて</a>
-        <a class="menu__item" href="./privacy.html">プライバシーポリシー</a>
-        <a class="menu__item" href="./terms.html">利用規約</a>
-        <a class="menu__item" href="https://github.com/hidetzu/konjaku/issues/new?template=feedback.yml" target="_blank" rel="noopener">ご意見・不具合報告（GitHub で公開）</a>
+  <header class="brand brand--app">
+    <div class="brand__inner">
+      <a class="brand__name" href="./">
+        <img class="brand__mark" src="./favicon.svg" alt="" width="20" height="20">
+        <span class="brand__title">今昔</span><span class="brand__tag">この土地は、昔なんだったのか？</span>
+      </a>
+      <nav class="brand__nav" aria-label="主な行き先">
+        <a class="brand__link" href="./" aria-current="page">地図で調べる</a>
+        <a class="brand__link" href="./saved.html">保存した場所</a>
       </nav>
-    </details>
+      <details class="menu">
+        <summary class="menu__btn" aria-label="メニュー">
+          <span class="menu__bars" aria-hidden="true"></span>
+        </summary>
+        <nav class="menu__panel" aria-label="サイトの案内">
+          <a class="menu__item" href="./about.html">このサイトについて</a>
+          <a class="menu__item" href="./privacy.html">プライバシーポリシー</a>
+          <a class="menu__item" href="./terms.html">利用規約</a>
+          <a class="menu__item" href="https://github.com/hidetzu/konjaku/issues/new?template=feedback.yml" target="_blank" rel="noopener">ご意見・不具合報告（GitHub で公開）</a>
+        </nav>
+      </details>
+    </div>
   </header>
   <div class="column" id="bar">
     <form id="find" role="search">

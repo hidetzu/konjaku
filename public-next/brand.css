@@ -8,10 +8,18 @@
 .brand{
   position:absolute; left:0; right:0;
   top:0; height:calc(2.75rem + env(safe-area-inset-top));
-  padding:env(safe-area-inset-top) var(--pad-md) 0;
-  display:flex; align-items:center; gap:var(--gap-row);
+  padding:env(safe-area-inset-top) 0 0;
   background:var(--surface); border-bottom:1px solid var(--line);
   z-index:60;
+}
+/* 地は画面いっぱい。中身は本文の柱と同じ幅に収めて、真ん中に置く。
+   端まで広げると、名乗りとメニューが遠く離れて 1 つのまとまりに見えない
+   （実測 2026-08-31・1920px: 名乗りの右端とメニューの左端が 1614px 離れていた）。
+   幅は本文の柱と同じ 38rem。数がそろっていることは実描画が突き合わせる
+   （帯の内側と、板の幅を、同じ画面で測って比べる）。 */
+.brand__inner{
+  width:min(100% - var(--pad-md) * 2, 38rem); margin-inline:auto; height:100%;
+  display:flex; align-items:center; gap:var(--gap-row);
 }
 /* 名乗りは、アプリのトップへ行く道でもある。
    /take と /deep は、リンクで直接ひらかれる。その端末ではトップを一度も見ていないので、
@@ -37,6 +45,21 @@ a.brand__name:hover{color:var(--action)}
 .brand[hidden]{display:none}
 .brand__mark{width:1.125rem; height:1.125rem; border-radius:.25rem;
   flex:none; display:block; align-self:center}
+/* 広い幅の行き先。狭い幅では画面の下の帯（tabs.css）が持つので、ここには出さない。
+   同じ道を、同じ画面に 2 つ出さない。
+   狭い幅の帯と字が違うのは、置ける幅が違うから（帯は絵と 2〜3 字ぶんしかない）。 */
+.brand__nav{display:none}
+.brand__link{
+  display:flex; align-items:center; min-height:var(--tap);
+  padding:0 var(--pad-sm); border-radius:.375rem;
+  color:var(--ink-2); text-decoration:none;
+  font-size:.8125rem; font-weight:700; white-space:nowrap;
+}
+.brand__link:hover{color:var(--action)}
+.brand__link:focus-visible{outline:2px solid var(--action); outline-offset:-2px}
+/* いまいる画面は、行き先ではなく現在地として見せる。 */
+.brand__link[aria-current="page"]{color:var(--action)}
+
 /* 右端のメニュー。押すと、サイトの案内が縦に並ぶ。
    1 つずつ帯に並べると、狭い幅で名乗りが切れる
    （実測 2026-08-31・375px: 字を 1 つ置いただけで「昔なんだったのか？」が入らない）。
@@ -85,3 +108,17 @@ a.brand__name:hover{color:var(--action)}
 /* いま開いている画面は、行き先ではなく現在地として見せる。 */
 .menu__item[aria-current="page"]{color:var(--ink-3); background:var(--surface-2)}
 
+
+/* ---- 広い幅 ---- */
+/* 押すものの置き場が、狭い幅と入れかわる。
+     狭い幅  行き先＝画面の下の帯   ／ サイトの案内＝この帯のメニュー
+     広い幅  行き先＝この帯のナビ   ／ サイトの案内＝ページの下（foot.css）
+   地図の画面（.brand--app）だけは、ページの下を持てない（画面いっぱいが地図）。
+   そこでは、案内をこの帯のメニューが持ち続ける。 */
+@media (min-width:700px){
+  .brand__nav{display:flex; align-items:center; gap:var(--gap-sub); margin-left:auto}
+  /* 右へ寄せるのはナビのほう。メニューの margin-left:auto を残すと、
+     余りが 2 つの auto で分けられて、ナビが真ん中へ流れる。 */
+  .menu{margin-left:var(--gap-sub)}
+  .brand:not(.brand--app) .menu{display:none}
+}

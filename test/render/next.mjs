@@ -2243,9 +2243,14 @@ for (const [名, viewport] of [
       const r = await page.evaluate(() => {
         // ⚠ **画面の上に重ねる面を、⚠ 全部集める**（⚠ 隠れているものも開いて測る）。
         //   ⚠ **地図（`#map`）は柱ではない。**⚠ **名乗りの帯も柱ではない**（⚠ 画面いっぱいが意図）。
-        const 除く = new Set(["map", "brand"]);
+        // ⚠ **帯は `id` ではなく `.brand` で外す**（2026-08-31）。
+        //   ⚠ **前は `id="brand"` で外していたが、⚠ その `id` はどこからも参照されておらず、
+        //     ⚠ 消したとたんに帯が柱に数えられて落ちた。**
+        //   ⚠ **外す側を class で見るのは安全な向き**（⚠ 付け忘れれば、⚠ 帯が数えられて落ちる）。
+        //   ⚠ **数える側は class で絞らない**（⚠ 下の注記のとおり、⚠ 付け忘れた板を見逃す）。
+        const 除く = (e) => e.id === "map" || e.matches(".brand");
         const 面 = [...document.getElementById("app").children]
-          .filter((e) => !除く.has(e.id) && getComputedStyle(e).position === "absolute");
+          .filter((e) => !除く(e) && getComputedStyle(e).position === "absolute");
         const out = [];
         for (const e of 面) {
           const 元 = e.hidden;
@@ -2614,5 +2619,219 @@ CASES.push({
     must(!/deep/.test(後.道), `押しても行き止まりのまま（いま ${後.道}）`);
     must(後.場所, `地図へ場所を渡していない（${後.道} ／ ll=${後.場所}）`);
     return `戻れない → ${後.道}?ll=${後.場所}`;
+  },
+});
+
+// ⚠ **広い幅では、⚠ 行き先と案内の置き場が入れかわる**（2026-08-31。⚠ Owner 指示）。
+//
+//     ⚠ 狭い幅  行き先＝画面の下の帯（`.tabs`）   ／ ⚠ 案内＝帯のメニュー（`.menu`）
+//     ⚠ 広い幅  行き先＝帯のナビ（`.brand__nav`） ／ ⚠ 案内＝ページの下（`.foot`）
+//
+// ⚠ **字の有無で見ない。**⚠ **DOM は両方とも在る**（⚠ CSS が出し分けている）。
+//   ⚠ **`checkVisibility()` で見る。**⚠ **属性で見ると、⚠ 両方「在る」で素通りする。**
+// ⚠ **消えたことに気づけるのは実描画だけ**（`CLAUDE.md` §9: ⚠ **PC で 0×0 を 2 回踏んでいる**）。
+const PCな幅 = { width: 1440, height: 950 };
+const スマホな幅 = { width: 393, height: 830 };   // ⚠ **下の帯が出る高さ**（`tabs.css`）
+
+for (const [名, viewport, 出るもの, 出ないもの, 下が出る] of [
+  ["広い幅", PCな幅, ".brand__nav", ".tabs", true],
+  ["狭い幅", スマホな幅, ".tabs", ".brand__nav", false],
+]) {
+  CASES.push({
+    name: `${名}では、主な行き先が 1 か所にだけ出る`,
+    path: "/saved.html", origin: NEXT_BASE, viewport,
+    async check(page) {
+      await page.waitForTimeout(1500);
+      const r = await page.evaluate(([出る, 出ない]) => {
+        const 見る = (sel) => {
+          const e = document.querySelector(sel);
+          if (!e) return { 無い: true };
+          const q = e.getBoundingClientRect();
+          const 押せる = [...e.querySelectorAll("a")].map((a) => {
+            const b = a.getBoundingClientRect();
+            const t = document.elementFromPoint(Math.round(b.x + b.width / 2),
+                                                Math.round(b.y + b.height / 2));
+            return { 字: a.textContent.trim(), href: a.getAttribute("href"),
+                     w: Math.round(b.width), h: Math.round(b.height),
+                     覆われている: !(t && a.contains(t)) };
+          });
+          return { 見える: e.checkVisibility(), w: Math.round(q.width), h: Math.round(q.height), 押せる };
+        };
+        const foot = document.querySelector(".foot");
+        return { 出る: 見る(出る), 出ない: 見る(出ない),
+                 下: !!foot && foot.checkVisibility() };
+      }, [出るもの, 出ないもの]);
+
+      must(!r.出る.無い, `${出るもの} が DOM に無い`);
+      must(!r.出ない.無い, `${出ないもの} が DOM に無い（⚠ 消さずに、⚠ 幅で出し分ける）`);
+      must(r.出る.見える, `${名}なのに ${出るもの} が出ていない（${r.出る.w}x${r.出る.h}）`);
+      must(!r.出ない.見える,
+        `${名}で ${出ないもの} も出ている（⚠ 同じ道が 2 か所。${r.出ない.w}x${r.出ない.h}）`);
+      // ⚠ **ページの下の案内も、⚠ 同じ幅で入れかわる**（⚠ 狭い幅では出さない）。
+      //   ⚠ **`foot.css` を読み込み忘れると、⚠ 素のまま狭い幅にも出る**
+      //     （⚠ 既定の `display:block` に戻るため）。⚠ **ここで捕まる。**
+      must(r.下 === 下が出る,
+        `${名}で、ページの下の案内が ${r.下 ? "出ている" : "出ていない"}`
+        + `（⚠ 期待は ${下が出る ? "出る" : "出さない"}）`);
+      // ⚠ **行き先は 2 つ。**⚠ **どちらの幅でも同じ 2 つへ行ける**（⚠ URL は分けない）
+      const 先 = r.出る.押せる.map((a) => a.href).sort();
+      must(先.length === 2, `行き先が 2 つでない: ${先.join(" ")}`);
+      must(先.join(" ") === "./ ./saved.html", `行き先が違う: ${先.join(" ")}`);
+      // ⚠ **押せるものは 44 を割らない**（⚠ 出ているだけでは足りない）
+      for (const a of r.出る.押せる) {
+        must(a.h >= 44, `「${a.字}」が 44 を割っている（${a.w}x${a.h}）`);
+        must(!a.覆われている, `「${a.字}」が何かに覆われて押せない`);
+      }
+      return `${出るもの} が ${r.出る.押せる.map((a) => `${a.字}(${a.w}x${a.h})`).join(" ")}`
+           + ` ／ ${出ないもの} は出ていない`;
+    },
+  });
+}
+
+// ⚠ **帯の中身は、⚠ 本文の柱と同じ幅・同じ位置**（2026-08-31。⚠ Owner 指示）。
+//
+// ⚠ **実測（2026-08-31・変える前）**: ⚠ **名乗りの右端とメニューの左端が、
+//   ⚠ 1440px で 1134px、⚠ 1920px で 1614px 離れていた。**⚠ **1 つのまとまりに見えない。**
+//
+// ⚠ **数を検査に書き写さない**（⚠ 柱の幅は変わりうる）。⚠ **同じ画面で測って突き合わせる。**
+//   ⚠ **書き写すと、⚠ 柱を広げたときに製品ではなく検査が落ちる。**
+// ⚠ **地そのものは画面いっぱいのまま**（⚠ 別の検査が見ている）。⚠ **中身だけを見る。**
+for (const [名, viewport] of [
+  ["PC", PCな幅],
+  ["広い PC", { width: 1920, height: 1080 }],
+]) {
+  CASES.push({
+    name: `${名}では、帯の中身が柱と同じ幅に収まっている`,
+    path: `/?${TOYOSU}`, origin: NEXT_BASE, viewport,
+    async check(page) {
+      await waitAnswer(page);
+      await page.waitForTimeout(1000);
+      const r = await page.evaluate(() => {
+        const box = (sel) => {
+          const e = document.querySelector(sel);
+          if (!e) return null;
+          const q = e.getBoundingClientRect();
+          return { x: Math.round(q.x), w: Math.round(q.width), right: Math.round(q.right) };
+        };
+        const 名乗り = box(".brand__name"), メニュー = box(".menu__btn");
+        return {
+          帯: box(".brand"), 中身: box(".brand__inner"), 柱: box("#card"),
+          離れ: メニュー && 名乗り ? メニュー.x - 名乗り.right : null,
+          画面: innerWidth,
+        };
+      });
+      must(r.中身, ".brand__inner が無い（⚠ 帯の中身を入れる器）");
+      must(r.柱, "#card が無い（⚠ 比べる相手の柱）");
+      // ⚠ **地は画面いっぱいでよい。**⚠ **中身だけを絞る**
+      must(r.帯.w === r.画面, `帯の地が画面の幅いっぱいでない（${r.帯.w} / ${r.画面}）`);
+      must(r.中身.w === r.柱.w,
+        `帯の中身と柱の幅が違う（帯 ${r.中身.w} / 柱 ${r.柱.w}）`);
+      must(r.中身.x === r.柱.x,
+        `帯の中身と柱の左端がそろっていない（帯 ${r.中身.x} / 柱 ${r.柱.x}）`);
+      // ⚠ **画面を広げても、⚠ 中身は広がらない**（⚠ これが元の不具合）
+      must(r.中身.w < r.画面 * 0.7,
+        `帯の中身が画面（${r.画面}px）いっぱいに広がっている（${r.中身.w}px）`);
+      return `帯の中身 ${r.中身.x},${r.中身.w} ＝ 柱 ${r.柱.x},${r.柱.w}`
+           + `（画面 ${r.画面}px ／ 名乗りとメニューの間 ${r.離れ}px）`;
+    },
+  });
+}
+
+// ⚠ **広い幅では、⚠ サイトの案内をページの下が引き受ける**（2026-08-31。⚠ Owner 指示）。
+//
+// ⚠ **帯のメニューを畳む**ので、⚠ **ページの下が欠けると、⚠ 広い幅で案内へ行けなくなる。**
+//   ⚠ **狭い幅では行けるので、⚠ 狭い幅だけ見ていると気づけない。**
+// ⚠ **行き先で見る。**⚠ **字だけ見ると、⚠ 押せない飾りでも通る。**
+CASES.push({
+  name: "広い幅の読み物は、ページの下から案内へ行ける",
+  path: "/about.html", origin: NEXT_BASE, viewport: PCな幅,
+  async check(page) {
+    await page.waitForTimeout(1200);
+    const r = await page.evaluate(() => {
+      const nav = document.querySelector(".foot__nav");
+      const 本文 = document.querySelector(".about");
+      const menu = document.querySelector(".menu__btn");
+      if (!nav || !本文) return { 無い: true };
+      const q = nav.getBoundingClientRect();
+      const 本 = 本文.getBoundingClientRect();
+      const cs = getComputedStyle(本文);
+      return {
+        見える: nav.checkVisibility(),
+        x: Math.round(q.x), w: Math.round(q.width),
+        // ⚠ **本文の「字が始まる位置」と比べる**（⚠ 内側の余白を差し引く）
+        本文x: Math.round(本.x + parseFloat(cs.paddingLeft)),
+        本文w: Math.round(本.width - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight)),
+        メニューが出ている: !!menu && menu.checkVisibility(),
+        道: [...nav.querySelectorAll("a")].map((a) => {
+          const b = a.getBoundingClientRect();
+          const t = document.elementFromPoint(Math.round(b.x + b.width / 2),
+                                              Math.round(b.y + b.height / 2));
+          return { 字: a.textContent.trim(), href: a.getAttribute("href"),
+                   w: Math.round(b.width), h: Math.round(b.height),
+                   覆われている: !(t && a.contains(t)) };
+        }),
+      };
+    });
+    must(!r.無い, "ページの下の案内が無い");
+    must(r.見える, "広い幅なのに、ページの下の案内が出ていない");
+    // ⚠ **メニューを畳んでいること**（⚠ 畳まないと、⚠ 同じ道が同じ画面に 2 つ出る）
+    must(!r.メニューが出ている,
+      "広い幅で、⚠ 帯のメニューとページの下の両方が案内を出している（⚠ 同じ道が 2 か所）");
+    // ⚠ **案内の 3 つ（このサイトについて・プライバシー・利用規約）へ行けること**
+    const 中の道 = r.道.filter((a) => !/^https?:/.test(a.href)).map((a) => a.href).sort();
+    must(中の道.join(" ") === "./about.html ./privacy.html ./terms.html",
+      `サイトの案内が 3 つそろっていない: ${中の道.join(" ")}`);
+    // ⚠ **外へ出る道**（⚠ 問い合わせ先。⚠ 利用規約が名乗っているものと同じ場所）
+    const 外の道 = r.道.filter((a) => /^https?:/.test(a.href));
+    must(外の道.length >= 1, "外への問い合わせ先が無い");
+    for (const a of r.道) {
+      // ⚠ **横も見る**（⚠ 実際に踏んだ: ⚠ 「GitHub」は字が短く 43x44 だった）
+      must(a.h >= 44 && a.w >= 44, `「${a.字}」が 44 を割っている（${a.w}x${a.h}）`);
+      must(!a.覆われている, `「${a.字}」が何かに覆われて押せない`);
+    }
+    // ⚠ **字の頭が本文とそろっている**（⚠ 別の柱に見えない）
+    must(r.x === r.本文x, `ページの下と本文の左端がそろっていない（下 ${r.x} / 本文 ${r.本文x}）`);
+    must(r.w === r.本文w, `ページの下と本文の幅が違う（下 ${r.w} / 本文 ${r.本文w}）`);
+    return `${r.道.length} 本（${r.道.map((a) => a.字).join(" ")}）・${r.x},${r.w} ＝ 本文`;
+  },
+});
+
+// ⚠ **地図の画面だけは、⚠ 広い幅でも案内をメニューが持つ**（2026-08-31。⚠ Owner 判断）。
+//
+// ⚠ **画面いっぱいが地図で、⚠ 「ページの下」を置く場所が無い**（⚠ 置くと地図を覆う）。
+// ⚠ **他の 6 枚と同じ形にそろえたくなるが、⚠ そろえると案内がどこにも無くなる。**
+//   ⚠ **メニューを畳む規則を全部に当てると、⚠ ここだけ静かに行き止まりになる。**
+CASES.push({
+  name: "広い幅の地図の画面は、案内をメニューが持ち続ける",
+  path: `/?${TOYOSU}`, origin: NEXT_BASE, viewport: PCな幅,
+  async check(page) {
+    await waitAnswer(page);
+    const 前 = await page.evaluate(() => {
+      const btn = document.querySelector(".menu__btn");
+      const q = btn?.getBoundingClientRect();
+      return {
+        下がある: !!document.querySelector(".foot"),
+        ボタン: !!btn && btn.checkVisibility(),
+        w: q ? Math.round(q.width) : 0, h: q ? Math.round(q.height) : 0,
+      };
+    });
+    must(!前.下がある, "地図の画面がページの下を持っている（⚠ 地図を覆う）");
+    must(前.ボタン, "地図の画面で、⚠ 案内のメニューまで畳んでいる（⚠ 案内へ行けない）");
+    must(前.w >= 44 && 前.h >= 44, `メニューが 44 を割っている（${前.w}x${前.h}）`);
+    // ⚠ **開いて、⚠ 中身が出ることまで見る**（⚠ ボタンが在るだけでは行けたことにならない）
+    await page.locator(".menu__btn").click();
+    await page.waitForTimeout(400);
+    const 後 = await page.evaluate(() => [...document.querySelectorAll(".menu__item")]
+      .filter((a) => a.checkVisibility())
+      .map((a) => a.getAttribute("href")).sort());
+    // ⚠ **行き先を書き写さない**（⚠ 実際に踏んだ: ⚠ 窓口が足されたとき、
+    //   ⚠ 製品ではなく検査が落ちた）。⚠ **ページの下と同じ形で見る。**
+    //   ⚠ **メニューとページの下が同じ 4 つであることは、⚠ 静的検査が突き合わせている。**
+    const 中の道 = 後.filter((h) => !/^https?:/.test(h));
+    const 外の道 = 後.filter((h) => /^https?:/.test(h));
+    must(中の道.join(" ") === "./about.html ./privacy.html ./terms.html",
+      `メニューを開いてもサイトの案内が 3 つ出ない: ${後.join(" ")}`);
+    must(外の道.length >= 1, `メニューに外への窓口が無い: ${後.join(" ")}`);
+    return `ページの下は無し ／ メニュー ${前.w}x${前.h} → ${後.length} 本（${中の道.join(" ")} ＋ 外 ${外の道.length}）`;
   },
 });

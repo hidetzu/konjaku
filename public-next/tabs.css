@@ -1,9 +1,10 @@
 /* 画面の下に置く、主な行き先の並び。地図と保存した場所の 2 つだけ。
-   背の低い画面では出さない（判定している点の印が、答えの板の裏へ入るため）。
+   狭い幅のときだけ出す。広い幅では、同じ 2 つを上の帯（brand.css）が持つ。
+   背の低い画面でも出さない（判定している点の印が、答えの板の裏へ入るため）。
    なぜそうしたか・実測は public-next/README.md「下の帯」に置く。 */
 :root{ --tabs-h:0px }
 .tabs{ display:none }
-@media (min-height:700px){
+@media (min-height:700px) and (max-width:699.98px){
   :root{ --tabs-h:3.5rem }
   .tabs{ display:flex }
 }
@@ -14,7 +15,7 @@
   padding-bottom:env(safe-area-inset-bottom);
   background:var(--surface); border-top:1px solid var(--line);
 }
-/* 広い幅でも、押すものは柱の中にまとめる。
+/* 柱より広い画面（608〜699px）でも、押すものは柱の中にまとめる。
    端まで広げると、押すものの散らばりが柱（608px）を超える
    （実測 2026-08-31: 720px。検査「押すものがスマホと同じところにまとまっている」が落ちた）。 */
 .tabs__inner{
