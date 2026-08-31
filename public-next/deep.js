@@ -12,6 +12,7 @@
   const $ = (id) => document.getElementById(id);
   const { esc } = window.KonjakuEsc ?? { esc: (s) => s };
   const backEl = $("back"), placeEl = $("place"), glossEl = $("gloss"), termEl = $("term");
+  const glossSrcEl = $("glossSrc"), glossSubEl = $("glossSub");
   const whySec = $("whySec"), whyEl = $("why"), citeEl = $("cite");
   const nearSec = $("nearSec"), nearLead = $("nearLead"), yearsEl = $("years");
   const nearNote = $("nearNote"), nearFrom = $("nearFrom");
@@ -87,6 +88,10 @@
     const 名 = nameOf(lon, lat);
     placeEl.textContent = 名 ?? "地図から選んだ場所";
 
+    // 見出しは「問いへの近さ」順（docs/adr/0075）。散歩中の画面と同じ規則を使う。
+    //   同じ場所で、トップは「ここは 田 でした」、ここは「ここは、川や海が…」だった。
+    //   land.js が覚えているので、取りに行く回数は増えない。
+    const 明治期の約束 = KonjakuLand.meijiPoint(lon, lat).catch(() => null);
     const t = await KonjakuLand.terrain(lon, lat).catch(() => null);
     if (!t || t.state === Konjaku.STATE.UNREACHABLE) {
       glossEl.textContent = "いま、この場所を調べられません";
@@ -98,8 +103,15 @@
       whySec.hidden = true;
       return;
     }
-    // 言葉は words.js から借りる。ここで書かない（domain.md）
-    glossEl.textContent = `ここは、${KonjakuWords.groundGloss(t.value)}`;
+    // 言葉は answer.js / words.js から借りる。ここで書かない（domain.md）
+    const m = await 明治期の約束;
+    const meiji = (!m || m.state === Konjaku.STATE.UNREACHABLE) ? { none: "unreachable" }
+                : m.state === Konjaku.STATE.ABSENT ? { none: "absent" }
+                : !m.value ? { none: "noClass" } : { value: m.value };
+    const { label, head, sub } = KonjakuAnswer.lines({ terrain: t.value, meiji });
+    glossSrcEl.textContent = label; glossSrcEl.hidden = !label;
+    glossEl.textContent = head;
+    glossSubEl.textContent = sub; glossSubEl.hidden = !sub;
     termEl.textContent = `国土地理院の区分：${t.value}`;
     drawTime(lon, lat);
     drawWhy(t);
@@ -193,7 +205,9 @@
     if (!a.classifiedPixels) {
       aroundEl.hidden = false;
       nearSec.hidden = false;
-      aroundLead.innerHTML = `<span class="why__none">この地域では、この資料が作られていません</span>`;
+      // 字は answer.js の 1 か所から借りる。ここで書かない。
+      //   2026-08-31 に踏んだ: トップだけ言い直したら、ここが古い字のまま残った。
+      aroundLead.innerHTML = `<span class="why__none">${esc(KonjakuAnswer.MEIJI_NONE.absent)}</span>`;
       sharesEl.innerHTML = ""; aroundNote.textContent = "";
       return;
     }
@@ -306,9 +320,10 @@
       const base = m.evidence.tile.replace(/\/\d+\/\d+\/\d+\.\w+$/, "");
       const z = Number(m.evidence.tile.match(/\/(\d+)\/\d+\/\d+\.\w+$/)?.[1] ?? 16);
       枠.push({ 絵: 窓(base, z, px[0], px[1], px[2], px[3], "png"),
-                年: "明治期", 説: m.value ? `${m.value} でした` : "この場所には区分がありません" });
+                年: "明治期",
+                説: m.value ? `${m.value} でした` : KonjakuAnswer.MEIJI_NONE.noClass });
     } else if (m?.state === Konjaku.STATE.ABSENT) {
-      枠.push({ 絵: null, 年: "明治期", 説: "この地域では、この資料が作られていません" });
+      枠.push({ 絵: null, 年: "明治期", 説: KonjakuAnswer.MEIJI_NONE.absent });
     }
 
     // ② 空中写真。残っている年代だけ。古い順は verify.js が並べ替えている

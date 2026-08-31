@@ -806,10 +806,9 @@ CASES.push(
         戻る先: document.getElementById("back").getAttribute("href"),
         横あふれ: document.documentElement.scrollWidth > document.documentElement.clientWidth,
       }));
-      // ⚠ **深掘り画面（`/deep`）は、⚠ いままでどおり**（`docs/adr/0030`）。
-      //   ⚠ **見出しを入れ替えたのはトップだけ**（2026-08-31。Owner 判断。`docs/adr/0075`）。
-      //   ⚠ **範囲を広げない**（`CLAUDE.md` §7）。
-      must(r.答え.startsWith("ここは、"), `深掘りで答えが出ていない: ${r.答え}`);
+      // ⚠ **深掘り画面も、⚠ トップと同じ規則**（2026-08-31。Owner 指示。`docs/adr/0075`）。
+      //   ⚠ **前は、⚠ 同じ場所で 2 つの画面が別の答えを見出しにしていた。**
+      await 答えが出ている(page, "深掘り");
       must(/旧水部/.test(r.区分), `区分名を名乗っていない: ${r.区分}`);
       must(r.節.length >= 2, `成り立ちと起こりうることが出ていない: ${r.節.join(" / ")}`);
       // ⚠ **原典の字がそのまま出ていること**（⚠ 要約していないこと）
@@ -880,8 +879,8 @@ CASES.push(
         答え: document.getElementById("gloss").textContent.trim(),
         節: document.querySelectorAll(".why__k").length,
       }));
-      // ⚠ **深掘り画面はいままでどおり**（上と同じ。`docs/adr/0075` はトップだけ）。
-      must(先.答え.startsWith("ここは、"), `深掘り画面で答えが出ない: ${先.答え}`);
+      // ⚠ **深掘り画面も、⚠ トップと同じ規則**（上と同じ）。
+      await 答えが出ている(page, "深掘り画面");
       must(先.節 >= 2, `深掘り画面で成り立ちが出ない（${先.節} 節）`);
       return `「${r.字}」${r.w}x${r.h} → ${先.節} 節`;
     },
@@ -962,9 +961,18 @@ CASES.push(
           ? "出ない" : document.getElementById("aroundLead").textContent.trim(),
         割合: document.querySelectorAll("#shares li").length,
         年表: document.querySelectorAll("#years li").length,
+        NONE: window.KonjakuAnswer ? window.KonjakuAnswer.MEIJI_NONE : null,
       }));
       must(!r.節, "資料が作られていない地域で、まわりの節ごと黙っている");
-      must(/作られていません/.test(r.一帯), `作られていないことを言っていない: ${r.一帯}`);
+      // ⚠ **字を書き写さない。**⚠ **製品（`KonjakuAnswer`）から借りる**（`.claude/rules/domain.md`）。
+      //   ⚠ **2026-08-31 に踏んだ**: ⚠ **ここが `/作られていません/` を書き写しており、
+      //     ⚠ 言い直したら製品ではなく検査が落ちた。**
+      //   ⚠ **主張の本体は「資料そのものが無い、と言えていること」**であって、字面ではない。
+      must(r.NONE !== null, "KonjakuAnswer が読み込まれていない（⚠ この検査が何も見ていない）");
+      must(r.一帯 === r.NONE.absent,
+        `資料そのものが無い、と言えていない: ${r.一帯}`);
+      must(r.NONE.absent !== r.NONE.noClass && r.NONE.absent !== r.NONE.unreachable,
+        `「資料が無い」が、他の状態と同じ字になっている: ${JSON.stringify(r.NONE)}`);
       must(!/ありません$|無いです|存在しません/.test(r.一帯), `「無い」と言っている: ${r.一帯}`);
       must(r.割合 === 0, `資料が無いのに割合が出ている（${r.割合} 行）`);
       must(r.年表 === 0, `この地域の記録が無いのに年表が出ている（${r.年表} 件）`);
@@ -1897,31 +1905,35 @@ for (const [名, path, viewport] of [
 // ⚠ **相手先が何を返すかは主張しない**（`CLAUDE.md` §9）。
 //   ⚠ **返ってきた明治期の値を控えてから、⚠ 見出しがそれと合っているかを見る。**
 //   ⚠ **規則そのものは `test/check/next.mjs` ⑨ がブラウザ抜きで見る。**⚠ **ここは画面を見る。**
-for (const [名, ll] of [["豊洲", TOYOSU], ["春日部", KASUKABE], ["軽井沢", "ll=36.3418,138.6353"]]) {
+// ⚠ **トップと深掘りを、⚠ 同じ主張で見る**（2026-08-31。Owner 指示）。
+//   ⚠ **同じ場所で、⚠ 2 つの画面が別の答えを見出しにしていた。**
+for (const [名, ll] of [["豊洲", TOYOSU], ["春日部", KASUKABE], ["軽井沢", "ll=36.3418,138.6353"]])
+for (const [画面, path] of [["トップ", `/?${ll}`], ["深掘り", `/deep.html?${ll}`]]) {
   CASES.push({
-    name: `${名}で、見出しが「昔なんだったか」に答えている`,
-    path: `/?${ll}`, origin: NEXT_BASE, viewport: SP,
+    name: `${画面}の${名}で、見出しが「昔なんだったか」に答えている`,
+    path, origin: NEXT_BASE, viewport: SP,
     async check(page) {
       await waitAnswer(page);
-      // ⚠ **器ではなく、⚠ 落ち着いたこと（明治期の行の字）を待つ**（`CLAUDE.md` §9）。
-      await 待つ(page, () => (document.getElementById("meiji")?.textContent ?? "").trim().length > 0,
-        "明治期の行");
+      // ⚠ **器ではなく、⚠ 落ち着いたこと（出典ラベルの字）を待つ**（`CLAUDE.md` §9）。
+      //   ⚠ **ラベルは明治期が返ってきてはじめて入る**ので、⚠ 両方の画面でこれが使える。
+      await 待つ(page, () => {
+        const e = document.getElementById("glossSrc");
+        return e && !e.hidden && (e.textContent ?? "").trim().length > 0;
+      }, "出典のラベル");
       const r = await page.evaluate(() => {
         const A = window.KonjakuAnswer;
         const t = (s) => (document.querySelector(s)?.textContent ?? "").trim();
         const 明治期の字 = t("#meiji");
         const src = document.getElementById("glossSrc");
+        // ⚠ **器の名前が画面ごとに違う。**⚠ トップは `#sub`／`#name`、⚠ 深掘りは `#glossSub`／`#term`。
+        const 二行目 = document.getElementById("sub") ? t("#sub") : t("#glossSub");
+        const 区分 = document.getElementById("name") ? t("#name") : t("#term");
         return {
           A: !!A,
           出典ラベル: src && !src.hidden && src.checkVisibility() ? t("#glossSrc") : null,
           SOURCE: A ? A.SOURCE : {},
           見出し: t("#gloss"),
-          二行目: t("#sub"),
-          区分: t("#name"),
-          明治期の区分: document.querySelector("#meiji b")?.textContent.trim() ?? null,
-          明治期の字,
-          無い理由: A ? (Object.keys(A.MEIJI_NONE).find((k) => A.MEIJI_NONE[k] === 明治期の字) ?? null) : null,
-          昔を名指す区分: A ? A.PAST_IN_TERRAIN : [],
+          二行目, 区分,
           NONE: A ? A.MEIJI_NONE : {},
         };
       });
@@ -1935,25 +1947,25 @@ for (const [名, ll] of [["豊洲", TOYOSU], ["春日部", KASUKABE], ["軽井�
       must(!r.見出し.includes(r.出典ラベル),
         `見出しが出典名を抱えている（⚠ ラベルと二重）: 「${r.出典ラベル}」／「${r.見出し}」`);
 
-      if (r.明治期の区分) {
+      const 無い理由 = Object.keys(r.NONE).find((k) => r.NONE[k] === r.見出し) ?? null;
+      if (無い理由 === null) {
         // ⚠ **明治期が答えを返した土地。**⚠ **その答えが見出しに来ていること。**
-        must(r.見出し === `ここは ${r.明治期の区分} でした`,
-          `明治期は「${r.明治期の区分}」なのに、見出しが違う: ${r.見出し}`);
+        must(/^ここは .+ でした$/.test(r.見出し),
+          `明治期の答えでも「無い理由」でもない見出し: ${r.見出し}`);
         must(r.出典ラベル === r.SOURCE.meiji,
           `明治期の答えなのに、ラベルが違う: ${r.出典ラベル}`);
         // ⚠ **地形分類の言い方へ戻っていないこと**（⚠ これが起きると、⚠ 残 3 に逆戻りする）
         must(!r.見出し.startsWith("ここは、"),
           `明治期があるのに、⚠ 地形分類の言い方のまま: ${r.見出し}`);
-        must(r.二行目.startsWith("いまの地形は、"),
+        must(r.二行目.startsWith(r.SOURCE.terrain),
           `成り立ちが 2 行目に降りていない: ${JSON.stringify(r.二行目)}`);
       } else {
         // ⚠ **明治期が答えを返さなかった土地。**⚠ **なぜ返らなかったかを、⚠ 見出しが言うこと。**
         //   ⚠ **黙らない**（2026-08-29。Owner 判断）。⚠ 黙ると、何も起きなかったように見える。
-        must(r.無い理由 !== null,
-          `明治期が無い理由を、⚠ answer.js の字で言っていない: ${JSON.stringify(r.明治期の字)}`);
-        must(r.見出し === r.NONE[r.無い理由],
-          `見出しと「なぜそう言える？」の中で、⚠ 字が違う（${r.無い理由}）: `
-          + `見出し「${r.見出し}」／ 中「${r.明治期の字}」`);
+        must(r.出典ラベル === r.SOURCE.meiji,
+          `無い理由を言うのに、ラベルが違う: ${r.出典ラベル}`);
+        must(r.二行目.startsWith(r.SOURCE.terrain),
+          `無いと言うだけで、⚠ 分かることを出していない: ${JSON.stringify(r.二行目)}`);
       }
       return `${r.出典ラベル}｜「${r.見出し}」／ 2 行目「${r.二行目 || "（無し）"}」／ 区分 ${r.区分}`;
     },
