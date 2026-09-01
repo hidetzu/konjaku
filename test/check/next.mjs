@@ -919,18 +919,34 @@ else {
   {
     const 欠け = [];
     const 画面 = readdirSync(NEXT).filter((f) => f.endsWith(".html"));
-    const 素 = (f) => readFileSync(join(NEXT, f), "utf8").replace(/<!--[\s\S]*?-->/g, " ");
+    // ⚠ **`_headers` は配信されない**（⚠ Cloudflare の設定）。⚠ **それでも同じ語を置かない。**
+    //   ⚠ **1 か所でも残ると、⚠ 次に触る人が「まだ作りかけなんだ」と読む。**
+    //   ⚠ **`data/` は取り込んだ JSON**（⚠ 出典の字がそのまま入る）。⚠ **ここでは見ない。**
+    const 配るもの = [];
+    const 集める = (d) => { for (const e of readdirSync(d)) {
+      if (e === "data") continue;
+      const q = join(d, e);
+      statSync(q).isDirectory() ? 集める(q) : 配るもの.push(q); } };
+    集める(NEXT);
 
-    // ⚠ **利用者に見える字だけを見る。**⚠ **コメントとファイルの中の覚え書きは対象外。**
-    //   ⚠ **落とさないと、⚠ この決めごとを説明したコメントを、⚠ 検査自身が拾う**（`CLAUDE.md` §5）。
-    const 出している = [];
-    for (const f of 画面) {
-      const t = 素(f);
-      if (/作りかけ/.test(t)) 欠け.push(`${f} が「作りかけ」と言っている（⚠ 答えの信用を下げる）`);
-      // ⚠ **本文とタブの字の両方**（⚠ `<title>` も利用者が読む）。
-      const 本文 = t.replace(/<title>[\s\S]*?<\/title>/, (m) => m);
-      for (const m of 本文.matchAll(/v\d+\.\d+\.\d+/g)) 出している.push(`${f}:${m[0]}`);
+    // ⚠ **「作りかけ」は、⚠ 配るもの全部から探す**（2026-09-01。⚠ Owner の指摘で直した）。
+    //   ⚠ **前は `*.html` だけを、⚠ コメントを落としてから見ていた。**⚠ **2 つ漏れていた。**
+    //     ⚠ **`robots.txt`** — ⚠ **配信される。**⚠ **誰でも取得できる。**
+    //     ⚠ **`about.html` の HTML コメント** — ⚠ **コメントも配信物。**
+    //       ⚠ **この決めごとを説明する字が、⚠ 消したはずの語を配っていた。**
+    //   ⚠ **だからここではコメントを落とさない。**⚠ **落とすと、⚠ 同じ穴がもう一度開く。**
+    //   ⚠ **経緯は配信物に書かない**（⚠ `docs/adr/0079`）。⚠ **書くとこの検査が落ちる。**
+    for (const f of 配るもの) {
+      if (/作りかけ/.test(readFileSync(f, "utf8")))
+        欠け.push(`${relative(NEXT, f)} が「作りかけ」と言っている（⚠ 答えの信用を下げる）`);
     }
+
+    // ⚠ **版の数は、⚠ 利用者に見える字だけを見る。**⚠ **ここはコメントを落とす。**
+    //   ⚠ **落とさないと、⚠ 上のコメントに書いた `v0.1.0` を、⚠ 検査自身が拾う**（`CLAUDE.md` §5）。
+    const 素 = (f) => readFileSync(join(NEXT, f), "utf8").replace(/<!--[\s\S]*?-->/g, " ");
+    const 出している = [];
+    for (const f of 画面)
+      for (const m of 素(f).matchAll(/v\d+\.\d+\.\d+/g)) 出している.push(`${f}:${m[0]}`);
     if (出している.length !== 1)
       欠け.push(`バージョンを出している画面が ${出している.length} か所ある: ${出している.join(" ")}`
         + "（⚠ 1 か所に寄せると決めてある）");
