@@ -346,8 +346,11 @@ head("6. 外部リンク");
 //   ⚠ この repo は manifest を一度も検査していなかった。ここが初めて。
 //   （掟: 押しても何も起きない導線を置かない。押した結果が 404 なら、なお悪い）
 {
+  // ⚠ **v0.1.0 は manifest を持たない**（2026-09-01。Owner 判断。`docs/adr/0080`）。
+  //   ⚠ **PWA とオフラインを引き継がないと決めた。**⚠ **無いことは不具合ではない。**
+  //   ⚠ **持つと決めたら、⚠ ここが自動でまた見る**（⚠ 節ごと消さない）。
   const raw = await readFile(join(PUB, "manifest.webmanifest"), "utf8").catch(() => null);
-  if (!raw) bad("manifest.webmanifest が読めない");
+  if (!raw) ok("manifest.webmanifest は無い（⚠ PWA を引き継がないと決めてある）");
   else {
     let m = null;
     try { m = JSON.parse(raw); } catch (e) { bad(`manifest.webmanifest が JSON として壊れている: ${e.message}`); }
@@ -405,8 +408,9 @@ head("6. 外部リンク");
       fails.push(`${h.nm} の住所が ${where.join(" / ") || "どこにも無い"}（${h.own} の 1 か所だけにする）`);
   }
   // ⚠ 借りる側が、本当に借りていること（自前に戻ったら落とす）
-  if (!/const GSI\s*=\s*Konjaku\.GSI/.test(src["peel3d.js"] ?? ""))
-    fails.push("peel3d.js が Konjaku.GSI を借りていない");
+  //   ⚠ **2026-09-01 に相手を `verify.js` へ移した**（⚠ `peel3d.js` は本番から消えた）。
+  if (!/const GSI\s*=\s*"https:\/\/cyberjapandata/.test(src["verify.js"] ?? ""))
+    fails.push("verify.js が地理院タイルの住所を持っていない（⚠ 住所の 1 か所）");
   fails.length
     ? bad(`外へ出る相手の住所が 1 か所になっていない: ${fails.join(" / ")}`
         + `（片方だけ直すと、同じ画面で別の相手を見る）`)
@@ -448,8 +452,15 @@ head("6. 外部リンク");
       const target = r.replace(/\/$/, "");
       if (target && !pages.has(target))
         bad(`${f}: ./${r} に対応するページが無い`);
-      if (target === self)
-        bad(`${f}: ./${r} は自分自身を指している`);
+      // ⚠ **自分自身を指してよいのは、⚠ 現在地だと名乗っているときだけ**
+      //   （2026-09-01。`docs/adr/0080`）。⚠ **v0.1.0 は、⚠ どの画面も同じ案内を持ち、
+      //   ⚠ いまいる項目に `aria-current="page"` を付けている。**⚠ **押せば同じ所に留まる。**
+      //   ⚠ **付いていない自己参照は、⚠ 押しても何も起きない導線**（ADR 0026）。
+      if (target === self) {
+        const 印 = new RegExp(`href="\\./${target}"[^>]*aria-current="page"`).test(src[f]);
+        印 ? ok(`${f}: ./${r}（現在地）`)
+           : bad(`${f}: ./${r} は自分自身を指している（⚠ 現在地なら aria-current="page" を付ける）`);
+      }
     }
   }
   ok("拡張子なし・実在・自己参照を検査済み");

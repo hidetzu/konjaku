@@ -1,0 +1,117 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<!-- URL に地名と座標が載る。押した先へ Referer で渡さない。
+     _headers と二重にしてある。片方が効かない配信経路があっても漏らさないため。
+
+     no-referrer ではなく same-origin。外へは一切送らないのは同じだが、
+     こちらは同じサイトの中では残る。/deep が「どこから来たか」を読み、
+     「← ひとつ前へ」を出すのに要る（back.js）。
+     no-referrer にしたら、同じサイトから来ても直前へ返せなくなった。 -->
+<meta name="referrer" content="same-origin">
+<title>保存した場所を受け取る — 今昔</title>
+<meta name="description" content="別の端末で保存した場所を、合言葉で受け取ります。">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="今昔">
+<meta property="og:title" content="保存した場所を受け取る — 今昔">
+<meta property="og:description" content="別の端末で保存した場所を、合言葉で受け取ります。">
+<meta property="og:url" content="https://konjaku.hidetzu.work/take">
+<meta property="og:image" content="https://konjaku.hidetzu.work/ogp.png">
+<meta property="og:image:alt" content="この土地は、昔なんだったのか？ — 土地の成り立ちを、根拠とともに見る">
+<meta property="og:locale" content="ja_JP">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="保存した場所を受け取る — 今昔">
+<meta name="twitter:description" content="別の端末で保存した場所を、合言葉で受け取ります。">
+<meta name="twitter:image" content="https://konjaku.hidetzu.work/ogp.png">
+<link rel="icon" href="./favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="./apple-touch-icon.png">
+<link rel="stylesheet" href="./theme.css">
+<link rel="stylesheet" href="./brand.css">
+<link rel="stylesheet" href="./foot.css">
+<link rel="stylesheet" href="./top.css">
+<link rel="stylesheet" href="./take.css">
+
+<!-- 合言葉を打って、別の端末で保存した場所を受け取る画面。
+     地図には重ねない。他に押すものが無いので、専用のページのほうが迷わない。
+     受け取ったあとの見せ方は、散歩中の画面と同じ形にそろえてある。
+       見せる → 押してもらう → 足す。開いた瞬間には混ぜない。 -->
+  <!-- 名乗り。アプリのトップへ行く道でもある。
+       この画面はリンクで直接ひらかれるので、その端末ではトップを一度も見ていない。
+       だから history.back() は使えないし、「戻る」とも言えない。 -->
+  <header class="brand">
+    <div class="brand__inner">
+      <a class="brand__name" href="./">
+        <img class="brand__mark" src="./favicon.svg" alt="" width="20" height="20">
+        <span class="brand__words"><span class="brand__title">今昔</span><span class="brand__tag">この土地は、昔なんだったのか？</span></span>
+      </a>
+      <nav class="brand__nav" aria-label="主な行き先">
+        <a class="brand__link" href="./">地図で調べる</a>
+      </nav>
+      <details class="menu">
+        <summary class="menu__btn" aria-label="メニュー">
+          <span class="menu__bars" aria-hidden="true"></span>
+        </summary>
+        <nav class="menu__panel" aria-label="サイトの案内">
+          <a class="menu__item" href="./about">このサイトについて</a>
+          <a class="menu__item" href="./privacy">プライバシーポリシー</a>
+          <a class="menu__item" href="./terms">利用規約</a>
+          <a class="menu__item" href="https://github.com/hidetzu/konjaku/issues/new?template=feedback.yml" target="_blank" rel="noopener">ご意見・不具合報告（GitHub で公開）</a>
+        </nav>
+      </details>
+    </div>
+  </header>
+
+<main class="recv" id="recv">
+  <h1 class="recv__h">保存した場所を受け取る</h1>
+  <p class="recv__lead" id="recvLead">スマホの画面に出ている合言葉を入れてください。</p>
+
+  <form class="recv__form" id="recvForm">
+    <input class="recv__in" id="recvIn" type="text" inputmode="latin"
+           autocomplete="off" autocapitalize="characters" spellcheck="false"
+           aria-label="合言葉" placeholder="合言葉">
+    <button class="recv__go" id="recvGo" type="submit">受け取る</button>
+  </form>
+  <!-- 押したあとに何が起きたかを、必ず字で言う。 -->
+  <p class="recv__said" id="recvSaid" hidden></p>
+
+  <!-- 受け取れなかったとき。できることから書く。
+       1 行目と手順は、期限切れでも打ち間違いでも同じ。やることが同じだから。
+       違うのは理由の 1 行だけ。 -->
+  <section class="recv__again" id="recvAgain" hidden>
+    <p class="recv__can">スマホで出し直すと、すぐ受け取れます。</p>
+    <ol class="recv__steps">
+      <li><span class="recv__sn">1</span><span>スマホの「保存した場所」から
+        「PC やタブレットでも見る」を押す</span></li>
+      <li><span class="recv__sn">2</span><span>出てきた 8 文字を、ここに入れる</span></li>
+    </ol>
+    <p class="recv__why" id="recvWhy"></p>
+  </section>
+
+  <!-- 置けなかったとき。ここに留まる。 -->
+  <section class="recv__card" id="recvGot" hidden>
+    <h2 class="recv__got" id="gotTitle">　</h2>
+    <p class="take__body" id="gotBody"></p>
+  </section>
+
+  <p class="recv__hint" id="recvHint">合言葉は、スマホの「保存した場所」から
+    「PC やタブレットでも見る」を押すと出ます。</p>
+</main>
+<!-- ページの下の案内。広い幅だけが持つ（狭い幅の下は、行き先の帯が使う）。
+     持つのは名乗りのメニューと同じ 4 つ。広い幅ではメニューを畳むので、
+     ここが欠けると案内へ行けなくなる。
+     地図・保存の導線はここに置かない。それは上の帯が持つ。 -->
+<footer class="foot">
+  <nav class="foot__nav" aria-label="サイトの案内">
+    <a class="foot__link" href="./about">このサイトについて</a>
+    <a class="foot__link" href="./privacy">プライバシーポリシー</a>
+    <a class="foot__link" href="./terms">利用規約</a>
+    <a class="foot__link" href="https://github.com/hidetzu/konjaku/issues/new?template=feedback.yml"
+       target="_blank" rel="noopener">ご意見・不具合報告（GitHub で公開）</a>
+  </nav>
+</footer>
+
+<script src="./esc.js"></script>
+<script src="./saved.js"></script>
+<script src="./take.js"></script>
+<script src="./menu.js"></script>

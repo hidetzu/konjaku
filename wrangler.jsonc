@@ -2,14 +2,16 @@
 	"$schema": "node_modules/wrangler/config-schema.json",
 	"name": "konjaku",
 	"compatibility_date": "2026-08-11",
-	// 配信するのは public/ だけ。
+	// 配信するのは public/ だけ（⚠ **2026-09-01 から、⚠ その中身は v0.1.0**。`docs/adr/0080`）。
 	// ここを "." にすると、ビルド中に生成される node_modules まで
 	// アップロード対象になり workerd（122MiB）が 25MiB 制限に引っかかる。
 	"assets": {
 		"directory": "./public"
 	},
-	// 計測だけのための Worker。静的アセットに一致するリクエストでは起動しないので、
-	// ページの表示は従来どおり素の配信のまま（/t を叩いたときだけ動く）。
+	// ⚠ **本番の Worker は、⚠ これ 1 つだけ**（2026-09-01。`docs/adr/0080`）。
+	//   ⚠ **`worker-next.js` は畳んで `worker.js` へ入れた。**
+	// 静的アセットに一致するリクエストでは起動しないので、ページの表示は素の配信のまま
+	// （/t と /api/handoff* を叩いたときだけ動く）。
 	"main": "worker.js",
 	// 計測の貯め先。Workers Logs は保持3日しかなく、4日空けたらその期間の数字が
 	// 永久に消える（＝様子見が成立しない）ので D1 に貯める。保持は無期限。
@@ -47,5 +49,17 @@
 	//   ⚠ どちらも Cloudflare 側の設定なので、**検査では止められない**。
 	"observability": {
 		"enabled": true
+	},
+
+	// ⚠ **合言葉で荷物を手渡す口の設定**（`docs/sync-api.md` / `docs/adr/0072`）。
+	//   ⚠ **2026-09-01 に `wrangler.next.jsonc` から移した**（`docs/adr/0080`）。
+	//   ⚠ **画面に「◯分で消えます」を直書きさせない。**⚠ サーバが `ttl_sec` を返し、
+	//   ⚠ 画面はそこから文を作る。⚠ **数字を 2 か所に持たない。**
+	// ⚠ **既定値は `handoff.js` の `DEFAULTS` が持つ。**⚠ ここは上書きするためだけに在る。
+	"vars": {
+		"HANDOFF_TTL_SEC": "300",
+		"HANDOFF_MAX_PAYLOAD": "20000",
+		"HANDOFF_ATTEMPT_LIMIT": "30",
+		"HANDOFF_ATTEMPT_WINDOW_SEC": "60"
 	}
 }

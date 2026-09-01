@@ -1,0 +1,154 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<!-- URL に地名と座標が載る。押した先へ Referer で渡さない。
+     _headers と二重にしてある。片方が効かない配信経路があっても漏らさないため。
+
+     no-referrer ではなく same-origin。外へは一切送らないのは同じだが、
+     こちらは同じサイトの中では残る。/deep が「どこから来たか」を読み、
+     「← ひとつ前へ」を出すのに要る（back.js）。
+     no-referrer にしたら、同じサイトから来ても直前へ返せなくなった。 -->
+<meta name="referrer" content="same-origin">
+<title>保存した場所 — 今昔</title>
+<meta name="description" content="保存した場所の一覧です。この端末の中だけに残ります。">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="今昔">
+<meta property="og:title" content="保存した場所 — 今昔">
+<meta property="og:description" content="保存した場所の一覧です。この端末の中だけに残ります。">
+<meta property="og:url" content="https://konjaku.hidetzu.work/saved">
+<meta property="og:image" content="https://konjaku.hidetzu.work/ogp.png">
+<meta property="og:image:alt" content="この土地は、昔なんだったのか？ — 土地の成り立ちを、根拠とともに見る">
+<meta property="og:locale" content="ja_JP">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="保存した場所 — 今昔">
+<meta name="twitter:description" content="保存した場所の一覧です。この端末の中だけに残ります。">
+<meta name="twitter:image" content="https://konjaku.hidetzu.work/ogp.png">
+<link rel="icon" href="./favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="./apple-touch-icon.png">
+<link rel="stylesheet" href="./theme.css">
+<link rel="stylesheet" href="./brand.css">
+<link rel="stylesheet" href="./foot.css">
+<link rel="stylesheet" href="./saved.css">
+<link rel="stylesheet" href="./tabs.css">
+
+<!-- 保存した場所の一覧。深掘りの入口。
+     板（地図の上）と違って URL を持つので、/deep から戻ってこられる。
+     地図は持たない。ここでやることは「次に読む 1 件を選ぶ」だけ。 -->
+<header class="brand">
+  <div class="brand__inner">
+    <a class="brand__name" href="./">
+      <img class="brand__mark" src="./favicon.svg" alt="" width="20" height="20">
+      <span class="brand__words"><span class="brand__title">今昔</span><span class="brand__tag">この土地は、昔なんだったのか？</span></span>
+    </a>
+    <nav class="brand__nav" aria-label="主な行き先">
+      <a class="brand__link" href="./">地図で調べる</a>
+    </nav>
+    <details class="menu">
+      <summary class="menu__btn" aria-label="メニュー">
+        <span class="menu__bars" aria-hidden="true"></span>
+      </summary>
+      <nav class="menu__panel" aria-label="サイトの案内">
+        <a class="menu__item" href="./about">このサイトについて</a>
+        <a class="menu__item" href="./privacy">プライバシーポリシー</a>
+        <a class="menu__item" href="./terms">利用規約</a>
+        <a class="menu__item" href="https://github.com/hidetzu/konjaku/issues/new?template=feedback.yml" target="_blank" rel="noopener">ご意見・不具合報告（GitHub で公開）</a>
+      </nav>
+    </details>
+  </div>
+</header>
+
+<main class="list" id="list">
+  <!-- 地図へ戻る道。深掘りと同じ形（back.js）。
+       地図の上の板を廃止したとき、一覧から地図へ行く道が無くなった（2026-09-01）。 -->
+  <a class="back" id="back" href="./">地図で調べる</a>
+  <h1 class="list__h">保存した場所<span class="list__n" id="listN"></span></h1>
+
+  <!-- 受け取り口から来たとき、何が起きたかを言う（押したのに無言にしない）。 -->
+  <p class="list__said" id="listSaid" hidden></p>
+
+  <ol class="list__items" id="listItems"></ol>
+
+  <!-- 1 件も無いとき。空白にしない。何をすれば並ぶかを言う。 -->
+  <section class="list__empty" id="listEmpty" hidden>
+    <h2 class="list__emptyH">まだ 1 件も保存していません</h2>
+    <p class="list__emptyP">地図で場所を決めて「☆ 保存」を押すと、ここに並びます。
+      別の端末で保存したものは、合言葉で受け取れます。</p>
+  </section>
+
+  <p class="list__note" id="listNote" hidden>この端末の中だけに残ります。どこにも送りません。</p>
+
+  <!-- 別の端末で続きを見る入口。2026-09-01 に、地図の画面の板からここへ移した。
+       保存にまつわる管理は、この画面 1 か所に集める。
+       1 件も保存していないうちは出さない（渡すものが無い）。 -->
+  <button class="list__hand" id="crossDev" type="button" hidden>
+    <span aria-hidden="true">⇱</span><span id="crossDevText">PC やタブレットでも見る</span>
+  </button>
+</main>
+
+  <!-- 合言葉。スマホが出して、PC で打つ。引換券であって本人確認ではない。 -->
+<section class="column code" id="code" hidden aria-label="別の端末で開く">
+  <h2>PC やタブレットで開く</h2>
+  <div id="codeBody">
+    <p class="code__label">この住所を開いて</p>
+    <p class="code__url" id="codeUrl">　</p>
+    <p class="code__label">この合言葉を入れる</p>
+    <p class="code__word" id="codeWord">　</p>
+  </div>
+  <p class="code__note" id="codeNote"></p>
+  <!-- サーバを通さない道。消さずに畳んで残す。 -->
+  <details class="code__alt" id="codeAlt">
+    <summary>サーバを通さずに渡す</summary>
+    <p>この端末とリンクだけで渡します。合言葉より長いリンクを、自分あてに送る形になります。</p>
+    <button class="code__link" id="handOut" type="button">
+    <span aria-hidden="true">⇱</span><span id="handOutText">リンクを作って送る</span>
+    </button>
+    <!-- 写す口を分ける。共有シートの「コピー」は題と説明と URL をつなげて写すので、
+       貼っても開けない。ここは URL だけを写す。 -->
+    <button class="code__link" id="handCopy" type="button">
+    <span aria-hidden="true">⧉</span><span id="handCopyText">リンクだけを写す</span>
+    </button>
+  </details>
+  <button class="code__close" id="codeClose" type="button">閉じる</button>
+</section>
+<!-- ページの下の案内。広い幅だけが持つ（狭い幅の下は、行き先の帯が使う）。
+     持つのは名乗りのメニューと同じ 4 つ。広い幅ではメニューを畳むので、
+     ここが欠けると案内へ行けなくなる。
+     地図・保存の導線はここに置かない。それは上の帯が持つ。 -->
+<footer class="foot">
+  <nav class="foot__nav" aria-label="サイトの案内">
+    <a class="foot__link" href="./about">このサイトについて</a>
+    <a class="foot__link" href="./privacy">プライバシーポリシー</a>
+    <a class="foot__link" href="./terms">利用規約</a>
+    <a class="foot__link" href="https://github.com/hidetzu/konjaku/issues/new?template=feedback.yml"
+       target="_blank" rel="noopener">ご意見・不具合報告（GitHub で公開）</a>
+  </nav>
+</footer>
+<!-- 下の帯。主な行き先は 2 つだけ（地図と保存した場所）。
+     深掘りは場所を選んでから決まるので、ここには置けない（行き先が定まらない）。
+     案内（このサイトについて・プライバシー・利用規約）は名乗りのメニューが持つ。 -->
+<nav class="tabs" aria-label="主な行き先">
+  <div class="tabs__inner">
+  <a class="tabs__item" href="./">
+    <svg class="tabs__icon" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">
+      <path d="M12 2a7 7 0 0 0-7 7c0 5.2 7 13 7 13s7-7.8 7-13a7 7 0 0 0-7-7Zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5Z"/>
+    </svg>
+    <span>地図</span>
+  </a>
+  <a class="tabs__item" href="./saved" aria-current="page">
+    <svg class="tabs__icon" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">
+      <path d="m12 17.3-5.8 3.3 1.5-6.6L2.6 9.5l6.7-.6L12 2.7l2.7 6.2 6.7.6-5.1 4.5 1.5 6.6z"/>
+    </svg>
+    <span>保存した場所</span>
+  </a>
+  </div>
+</nav>
+
+
+<script src="./esc.js"></script>
+<script src="./saved.js"></script>
+<script src="./when.js"></script>
+<script src="./place-arg.js"></script>
+<script src="./back.js"></script>
+<script src="./saved-page.js"></script>
+<script src="./menu.js"></script>

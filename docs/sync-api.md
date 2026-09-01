@@ -48,7 +48,7 @@
 
 - MUST: ⚠ **サーバは `payload` を解釈しない。**⚠ **形が変わっても、⚠ サーバは直さない。**
 - MUST: ⚠ **`payload` の作り方・読み方は
-  [`../public-next/saved.js`](../public-next/saved.js) の `toText` / `fromText` の 1 か所**
+  [`../public/saved.js`](../public/saved.js) の `toText` / `fromText` の 1 か所**
   （⚠ 既に在る。⚠ 手渡しの URL で使っているものと同じ）。
 - MUST: ⚠ **端末は、⚠ 受け取った `payload` を `KonjakuSaved.merge` に通してから画面へ出す。**
 
@@ -72,7 +72,7 @@
 ```
 
 ⚠ **スマホの画面は `<host>/take` と出す**（⚠ 打ち写すものなので、⚠ `.html` は出さない）。
-⚠ **実体は `public-next/take.html`。**⚠ **`_headers` か Worker で通す。**
+⚠ **実体は `public/take.html`。**⚠ **`_headers` か Worker で通す。**
 - MUST: ⚠ **画面が出す住所と、⚠ 実際に開ける住所を、⚠ 食い違わせない。**
   ⚠ **食い違うと、⚠ 打った人が「見つかりません」を見る**（⚠ こちらの不具合なのに、
   ⚠ 打ち間違いに読める）。
@@ -275,11 +275,11 @@ CREATE INDEX handoff_expires ON handoff(expires_at);
 
 ```text
 サーバ側（B）                        端末側（A）
-  handoff.js                           public-next/top.js        ⚠ 合言葉を出す・預ける
-  worker-next.js（⚠ 入口だけ）
-  wrangler.next.jsonc                  public-next/index.html
-  migrations/*.sql                     public-next/top.css
-  test/check/handoff-server.mjs        public-next/take.html     ⚠ 受け取り口（新しい）
+  handoff.js                           public/top.js        ⚠ 合言葉を出す・預ける
+  worker.js（⚠ 入口だけ）
+  wrangler.next.jsonc                  public/index.html
+  migrations/*.sql                     public/top.css
+  test/check/handoff-server.mjs        public/take.html     ⚠ 受け取り口（新しい）
                                        test/render/next.mjs
 ```
 
@@ -287,7 +287,7 @@ CREATE INDEX handoff_expires ON handoff(expires_at);
 - MUST: ⚠ **`public/`（β 版）には、⚠ どちらも触らない。**
 - MUST: ⚠ **`wrangler.next.jsonc` に `main` と D1 を足すのは B。**⚠ **A は触らない。**
 - MUST: ⚠ **`saved.js` は触らない。**⚠ **`toText` / `fromText` / `merge` は既に在る。**
-- MUST: ⚠ **`worker-next.js` から、⚠ `export default` 以外を出さない**（2026-08-30 に踏んだ）。
+- MUST: ⚠ **`worker.js` から、⚠ `export default` 以外を出さない**（2026-08-30 に踏んだ）。
   ⚠ **workerd が、⚠ 入口の名前つき `export` を「入口か class」として検査して落ちる。**
   ⚠ **本番と `deploy --dry-run` は通るので、⚠ 気づけるのは `wrangler dev --local` だけ。**
   ⚠ **中身は `handoff.js` に置く。**⚠ **検査が見張っている。**

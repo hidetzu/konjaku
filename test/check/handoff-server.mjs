@@ -1,6 +1,6 @@
 // 静的検査 — ⚠ **合言葉の口（サーバ側）**（`docs/sync-api.md` §2 / `docs/adr/0072`）。
 //
-// ⚠ **本物の `worker-next.js` を、⚠ そのまま動かす**（⚠ 字面を写さない。`CLAUDE.md` §3）。
+// ⚠ **本物の `worker.js` を、⚠ そのまま動かす**（⚠ 字面を写さない。`CLAUDE.md` §3）。
 //   ⚠ **D1 だけを偽にする。**⚠ **外へは 1 本も出ない。**⚠ ブラウザも要らない。
 //
 // ⚠ **見るのは「利用者から見た契約」**（`.claude/rules/testing.md`）。
@@ -19,13 +19,13 @@ import { fakeDb } from "../handoff-fake-d1.mjs";
 
 head("合言葉の口（サーバ）");
 
-const WORKER = join(ROOT, "worker-next.js");
+const WORKER = join(ROOT, "worker.js");
 const CORE = join(ROOT, "handoff.js");
 if (!existsSync(WORKER) || !existsSync(CORE)) {
-  bad("worker-next.js か handoff.js が無い（⚠ `docs/sync-api.md` §6 が、⚠ サーバ側の置き場と決めている）");
+  bad("worker.js か handoff.js が無い（⚠ `docs/sync-api.md` §6 が、⚠ サーバ側の置き場と決めている）");
 } else {
 
-// ⚠ **中身は `handoff.js`。**⚠ **`worker-next.js` は入口だけ**（2026-08-30）。
+// ⚠ **中身は `handoff.js`。**⚠ **`worker.js` は入口だけ**（2026-08-30）。
 const W = await import("../../handoff.js");
 
 const req = (url, init = {}) => new Request(`https://example.invalid${url}`, {
@@ -54,9 +54,11 @@ const NOW = 1_756_400_000_000;
     : bad(`Worker の入口に名前つき export がある: ${名前つき.join(" / ")}`
         + "。⚠ **`wrangler dev --local` が起動しなくなる**（⚠ 本番と `--dry-run` は通るので気づけない）");
 
-  /^\s*import\s+\{\s*route\s*\}\s+from\s+"\.\/handoff\.js"/m.test(実体)
+  // ⚠ **名前は問わない**（2026-09-01。⚠ 入口が 1 つになり、⚠ `route as handoff` で借りている）。
+  //   ⚠ **見るのは「中身を `handoff.js` から借りていること」**。⚠ **入口へ書き戻していないこと。**
+  /^\s*import\s+\{[^}]*\broute\b[^}]*\}\s+from\s+"\.\/handoff\.js"/m.test(実体)
     ? ok("Worker の入口は、⚠ 中身を handoff.js から借りている")
-    : bad("Worker の入口が handoff.js を読んでいない（⚠ 中身が入口へ戻っている可能性）");
+    : bad("Worker の入口が handoff.js の route を読んでいない（⚠ 中身が入口へ戻っている可能性）");
 }
 
 // ---- ⚠ ① 合言葉の字 ----
@@ -246,13 +248,13 @@ const NOW = 1_756_400_000_000;
 }
 
 // ---- ⚠ ⑩ まだ配信につながっていないことを、⚠ 黙って進めない ----
-// ⚠ **ここを緑にしない。**⚠ **口が在っても、⚠ `wrangler.next.jsonc` が `main` と D1 を
+// ⚠ **ここを緑にしない。**⚠ **口が在っても、⚠ `wrangler.jsonc` が `main` と D1 を
 //   ⚠ 持たなければ、⚠ 本番では 1 度も動かない**（`docs/sync-api.md` §6: ⚠ 足すのは B）。
 // ⚠ **落とさない理由**: ⚠ **D1 を作るのは、⚠ アカウントに実体を作る操作。**
 //   ⚠ **できるまでのあいだ、⚠ 検査ごと赤にすると、⚠ 他の作業まで止まる。**
 // ⚠ **黙らせない理由**: ⚠ **「実装した」と「動いている」は別**（`CLAUDE.md` §1）。
 {
-  const cfg = JSON.parse(readFileSync(join(ROOT, "wrangler.next.jsonc"), "utf8")
+  const cfg = JSON.parse(readFileSync(join(ROOT, "wrangler.jsonc"), "utf8")
     .replace(HEAD_COMMENT, "").replace(/,(\s*[}\]])/g, "$1"));
   const hasMain = typeof cfg.main === "string" && cfg.main.length > 0;
   const hasDb = (cfg.d1_databases ?? []).some((d) => d.binding === "DB" && d.database_id);
@@ -261,7 +263,7 @@ const NOW = 1_756_400_000_000;
     : warn("合言葉の口は、⚠ **まだ配信につながっていない**"
         + `（main=${hasMain ? "有り" : "無し"} ／ D1=${hasDb ? "有り" : "無し"}）。`
         + "⚠ **口の振る舞いは上で確かめているが、⚠ 本番では 1 度も動かない。**"
-        + "⚠ 繋ぐには D1（konjaku-next）を作り、⚠ database_id を wrangler.next.jsonc へ書く");
+        + "⚠ 繋ぐには D1（konjaku）を作り、⚠ database_id を wrangler.jsonc へ書く");
 }
 
 }

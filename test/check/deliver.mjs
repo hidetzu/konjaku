@@ -21,9 +21,8 @@ import { readFile } from "node:fs/promises";
 import { existsSync, readFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { join } from "node:path";
-import { VERSION_RE, hashOf, readSw } from "../../scripts/sw-hash.mjs";
 import { pathToFileURL } from "node:url";
-import { ROOT, PUB, ok, bad, warn, head, src, TOP, seen, BLOCK_COMMENT, HEAD_COMMENT, LINE_COMMENT } from "./lib.mjs";
+import { ROOT, PUB, ok, bad, head, seen, BLOCK_COMMENT, HEAD_COMMENT } from "./lib.mjs";
 
 // ⚠ **`test/check.mjs` から一緒に持ってきた道具**（2026-08-25。hidetzu/konjaku#232 の 29 本目）。
 //   ⚠ **この 1 塊しか使わない。**⚠ **`../../` になった**（⚠ 1 階層深くなった）。
@@ -152,267 +151,15 @@ head("2. デプロイ設定");
       : ok(`/vendor/ は immutable の約束を守っている（${Object.keys(PINNED).length} 本の中身が変わっていない）`);
   }
 }
-// ---------- 2.5 Service Worker の版 ----------
-// ⚠ ここだけは「本番でしか壊れない」検査。
-//   VERSION はキャッシュのキーそのもので、上げないと一度来た人に古い `/` と
-//   `/share.js` が出続ける。ローカルでは初回訪問なので絶対に再現しない。
-//   流入を測り始める直前に一度踏みかけた（看板を変えたのに v4 のままだった）。
-head("2.5. Service Worker の版");
-{
-  try {
-    const sw = await readSw();
-    const want = await hashOf(sw);
-    const now = sw.match(VERSION_RE)?.[1];
-    if (now === want) ok(`konjaku-${want}（SHELL の中身と一致）`);
-    else bad(`VERSION が古い: konjaku-${now} だが中身は konjaku-${want}。`
-      + `npm run stamp で振り直す（古い画面が本番に出続ける）`);
-  } catch (e) {
-    bad(`Service Worker の版を確かめられなかった: ${e.message}`);
-  }
-}
+// ⚠ **「2.5 Service Worker の版」と「2.6 配信中の版」は落とした**（2026-09-01。`docs/adr/0080`）。
+//   ⚠ **どちらも β 版の仕組み。**
+//     ⚠ **SW の版**: ⚠ β は自前アセットとタイルを控えていた。⚠ **v0.1.0 はオフラインを持たない**
+//       （Owner 判断）。⚠ **`public/sw.js` は残っているが、⚠ あれは「自分を消すためだけの SW」。**
+//       ⚠ **`SHELL` を持たないので、⚠ 版を数える意味が無い。**
+//     ⚠ **`/version.json`**: ⚠ β の `npm run build` が書いていた。⚠ **v0.1.0 は持たない**
+//       （⚠ 出たかどうかは `scripts/check-deploy.mjs` が別の道で見る）。
+//   ⚠ **オフラインを持つと決めたら、⚠ そのとき改めて版の検査を置く。**
 
-// ============================================================
-// ⚠ SHELL に 3D 側のものが入っていないか
-// ============================================================
-// ⚠ **`test/check.mjs` から逐語で移しただけ**（2026-08-24。hidetzu/konjaku#232 の 13 本目）。
-//   ⚠ **1 文字も変えていない。**⚠ **主張を強くも弱くもしていない。**
-// ⚠ **ここが「2.5 Service Worker の版」の続きである理由**: ⚠ **SHELL の中身が、⚠ そのまま版。**
-//   ⚠ 入れると、⚠ 3D を 1 行直すたびに ⚠ **全利用者のキャッシュが飛ぶ。**
-// ⚠ 3D のコードを SHELL に入れない。
-//   SHELL の中身がそのまま版（ハッシュ）なので、入れると 3D を1行直すたびに
-//   **全利用者のキャッシュが丸ごと飛ぶ**。MapLibre 1,032KB を SHELL から外した
-//   判断（初回 250KB → 1,646KB になっていた）と同じ理由。
-// ⚠ **コメントを先に落とす。** これを忘れると、SHELL の中のコメントに書いた
-//   「maplibre を SHELL に入れない理由」という字面を、この検査自身が拾って落ちる。
-//   実際に踏んだ（2026-08-15。MapLibre の実サイズをコメントに書いたとき）。
-//   CLAUDE.md §5 が「検査が文書やコメントを読むときはコメントを先に落とす」と
-//   書いているのは、これで3回目だから。
-{
-  const shell = /const SHELL\s*=\s*\[([\s\S]*?)\]/.exec(src["sw.js"] ?? "");
-  if (!shell) bad("sw.js の SHELL が読めない");
-  else {
-    // ⚠ **`//` は、⚠ `https://` を巻き込まない形で落とす**（2026-08-24）。
-    //   ⚠ **いまは SHELL に URL が 0 本なので実害は無い**（⚠ 実測: 差 0 文字）。
-    //   ⚠ **URL を 1 行足された瞬間に、⚠ その行の残りが検査の目から消える。**
-    const body = shell[1].replace(BLOCK_COMMENT, " ").replace(LINE_COMMENT, "$1");
-    const hit = ["peel3d", "maplibre"].filter((w) => body.includes(w));
-    hit.length
-      ? bad(`SHELL に 3D 側のものが入っている（${hit.join("・")}）。`
-          + "触るたび全利用者のキャッシュが飛ぶ")
-      : ok("SHELL に 3D 側のものは入っていない");
-  }
-}
-// ============================================================
-// ⚠ SW が「古いものを返し続ける」経路を作っていないか
-// ============================================================
-// ⚠ **`test/check.mjs` の「5. OGP」から逐語で移しただけ**（2026-08-24。hidetzu/konjaku#232 の 14 本目）。
-//   ⚠ **1 文字も変えていない。**⚠ **主張を強くも弱くもしていない。**
-//   ⚠ **元の節名は「OGP」だったが、⚠ 中身は OGP ではなかった**
-//     （⚠ 実測 2026-08-24: ⚠ **471 行のうち OGP は 41 行**）。
-// ⚠ **ここが「2.5 Service Worker の版」の仲間である理由**: ⚠ **版が変わらないまま中身が変わるか。**
-//   ⚠ 上の 2 件（版・SHELL の中身）と、⚠ 同じ「古い画面が出続けない」を守っている。
-// ⚠ **SW が「古いものを返し続ける」経路を作らない。**
-//   ⚠ Cache API は HTTP キャッシュの鮮度を自動では見ない。`must-revalidate` を付けても、
-//   Cache API から返せば**そのまま古いものが出る**。ヘッダでは守られない。
-//
-//   ⚠ **見るのは「must-revalidate かどうか」ではない**（最初そう書いていて、理屈が粗かった）。
-//   本当の条件は **版（VERSION）が変わらないまま、中身が変わりうるか**。
-//
-//     /data/**    毎回確認させる ＋ **版の材料に入っていない**（取り込みで書き換わる）
-//                 → SW が持ってはいけない
-//     /vendor/*   毎回確認させる ＋ **版の材料に入れてある**（scripts/sw-hash.mjs）
-//                 → 中身が変われば版も変わり、activate で消える。持ってよい
-//
-//   ⚠ とくに /data/bl/ は、索引と本体が更新時に食い違うと**誤判定につながる**。
-//   実際に食い違っていた（建物タイルが版のキャッシュに入り、版ごとに捨てて取り直していた）。
-{
-  const swSrc = await readFile(join(PUB, "sw.js"), "utf8");
-  const hdr = await readFile(join(PUB, "_headers"), "utf8");
-  // _headers から「毎回確認させる」と言っているパスを拾う
-  // ⚠ **コメント（#）と空行を先に落とす。** 落とさないと、コメントを挟んだ次のブロックの
-  //   Cache-Control を手前のパスのものとして拾う（実際に踏んだ: /vendor/* が
-  //   immutable なのに must-revalidate と読めた。⚠ 検査が誤った警告を出していた）。
-  const strict = [];
-  let cur = null;
-  for (const raw of hdr.split("\n")) {
-    const line = raw.replace(/\s+$/, "");
-    if (!line.trim() || line.trim().startsWith("#")) continue;
-    if (/^\//.test(line)) { cur = line.trim(); continue; }
-    // ⚠ no-store も同じ側に入れる（＝持たせない。must-revalidate より強い約束）。
-    //   /version.json がこれ。SW が持つと、古い版が「いまの本番」として読まれる。
-    if (cur && /Cache-Control/i.test(line) && /must-revalidate|no-store/i.test(line)) strict.push(cur);
-  }
-  if (!strict.length) bad("_headers から must-revalidate / no-store のパスを読めない（この検査が何も見ていない）");
-  else {
-    // sw.js の判定を実際に動かす。**書いてある字面ではなく、動きで見る。**
-    const { runInNewContext } = await import("node:vm");
-    const sandbox = { self: { addEventListener() {} }, location: { origin: "" } };
-    let fns = null;
-    try { fns = runInNewContext(`${swSrc}\n;({ cacheable, SHELL })`, sandbox, { timeout: 3000 }); }
-    catch (e) { bad(`public/sw.js を動かせない: ${String(e.message).slice(0, 80)}`); }
-    if (fns) {
-      // ⚠ **本当の条件は「版が変わらないまま中身が変わりうるか」。**
-      //   最初は「must-revalidate なら SW に持たせない」と書いたが、**理屈が粗かった**
-      //   （2026-08-16）。/vendor/ は must-revalidate だが、**版（VERSION）の材料に
-      //   入れてある**ので、中身が変われば版も変わり、古いものは activate で消える。
-      //   ⚠ 危ないのは「must-revalidate なのに、版の材料に入っていないもの」。
-      //     /data/ がそれ（取り込みで書き換わるが、版は動かない）。
-      // ⚠ **ソースから名前を拾わない。実際に材料になっている一覧をもらう。**
-      //   以前はディレクトリ名で前方一致していたので、**/vendor/other.js を足すと
-      //   材料に入っていないのに「版の材料」と判定していた**（2026-08-16 の指摘）。
-      // ⚠ **`../../` になった**（2026-08-24。⚠ `test/check.mjs` から 1 階層深くなった）。
-      const { extraFiles } = await import("../../scripts/sw-hash.mjs");
-      const extra = (await extraFiles()).map((p) => "/" + p);
-      const versioned = (u) => (fns.SHELL ?? []).includes(u) || extra.includes(u);
-      // ⚠ 代表ファイルは**実在するもの**にする。/vendor/index.json のような
-      //   存在しない名前で試すと、実態と違う判定になる。
-      const { readdir } = await import("node:fs/promises");
-      const samples = [];
-      for (const pat of strict) {
-        if (!pat.endsWith("*")) { samples.push(pat); continue; }
-        const dir = pat.slice(1, -1);                     // "/vendor/*" → "vendor/"
-        const names = await readdir(join(PUB, dir)).catch(() => []);
-        // ⚠ そのディレクトリの**全ファイル**で試す。1つだけでは、後から足した分を見逃す。
-        for (const n of names) samples.push(`/${dir}${n}`);
-        if (!names.length) samples.push(pat.slice(0, -1) + "index.json");
-      }
-      const held = samples.filter((u) => fns.cacheable(u) && !versioned(u));
-      held.length
-        ? bad(`版の材料に入っていないのに、SW が版のキャッシュに入れる: ${held.join("、")}`
-            + `（_headers は古いものを返さないと言っている。Cache API はヘッダの鮮度を見ないので、`
-            + `版が動かないまま中身が変わると古いものが出続ける）`)
-        : ok(`古いものを返さないと言っているもの（実ファイル ${samples.length} 本）のうち、`
-            + `SW が持つのは版の材料に入っているものだけ（版の材料: ${extra.length} 本）`);
-      // ⚠ 許可リストが**何も通さない**空振りになっていないこと
-      fns.cacheable("/vendor/maplibre-gl.js")
-        ? ok("版のキャッシュに入るものはある（/vendor/ が通る）")
-        : bad("許可リストが何も通していない（この検査が何も見ていない）");
-      // ⚠ **「/data/ は1つも版のキャッシュに入らない」と言ってはいけない。**
-      //   /data/landform.json は SHELL に入っており、**同じ VERSION のキャッシュに入る**
-      //   （install の addAll）。2026-08-16 に指摘されるまで、
-      //   **検査が事実でないことを「確認済み」として表示していた**。
-      //   ⚠ **動的に足す分（0 件）と、SHELL の例外（明示した分）を分けて言う。**
-      const probes = ["/data/bl/index.json", "/data/ev/index.json", "/data/assets.json",
-                      "/data/landform.json", "/data/quick-places.json"];
-      const dyn = probes.filter((u) => fns.cacheable(u));
-      dyn.length
-        ? bad(`/data/ が版のキャッシュに**動的に**入る: ${dyn.join("、")}（取り込みで書き換わる。持たない）`)
-        : ok("/data/ は、網からは1つも版のキャッシュに入らない（動的追加 0 件）");
-      // SHELL 経由で入る /data/ は、**数えて名前で出す**。黙って 0 と言わない。
-      const shellData = (fns.SHELL ?? []).filter((u) => u.startsWith("/data/"));
-      // ⚠ SHELL に入れてよいのは「取り込みで書き換わらないもの」だけ。
-      //   _headers が must-revalidate と言っているものが SHELL にあれば、それは矛盾。
-      const shellStrict = shellData.filter((u) => strict.some((pat) =>
-        pat.endsWith("*") ? u.startsWith(pat.slice(0, -1)) : u === pat));
-      shellStrict.length
-        ? bad(`SHELL に、毎回確認させるはずの /data/ がある: ${shellStrict.join("、")}`
-            + `（版と一緒に配られるので、取り込みで書き換わるものを入れてはいけない）`)
-        : ok(`SHELL 経由で版のキャッシュに入る /data/ は ${shellData.length} 件`
-            + `（${shellData.join("、") || "無し"}。いずれも取り込みで書き換わらないもの）`);
-    }
-  }
-}
-// ---------- 2.6 配信中の版 ----------
-// ⚠ ここも「本番でしか完結しない」検査。version.json は生成物で Git に入らないので、
-//   ここで見られるのは**仕組みが繋がっているか**まで。
-//   本番に出ている版が main の HEAD と一致することは、デプロイ後に
-//   `curl -s https://konjaku.hidetzu.work/version.json` と照合して確かめる。
-head("2.6. 配信中の版（/version.json）");
-{
-  // ⚠ 版の正しさの定義は scripts/version.mjs に1つだけ置いてある。
-  //   ここで字面を写すと、片方だけ直したときに検査が通ってしまう。
-  // ⚠ **`../../` になった**（2026-08-24。⚠ `test/check.mjs` から 1 階層深くなった）。
-  //   ⚠ **相対 import は、⚠ ファイルを動かすと黙って壊れる**（⚠ 実際にここで落ちた）。
-  const { versionJson } = await import("../../scripts/version.mjs");
-  const SHA = "0123456789abcdef0123456789abcdef01234567";
-
-  try {
-    const v = versionJson(SHA, "main");
-    (Object.keys(v).join(",") === "commit,branch" && v.commit === SHA && v.branch === "main")
-      ? ok(`正常な commit と branch から版を作れる（${JSON.stringify(v)}）`)
-      : bad(`版の形が仕様と違う: ${JSON.stringify(v)}（commit と branch の2つ）`);
-  } catch (e) {
-    bad(`正常な commit と branch で版を作れない: ${e.message}`);
-  }
-
-  // ⚠ **通ってはいけない値で、本当に落ちること。**
-  //   短縮 SHA を通すと「GitHub の HEAD と一致するか」を機械で照合できなくなる。
-  const nope = [
-    ["短縮 SHA", "0123456", "main"],
-    ["大文字混じり", SHA.toUpperCase(), "main"],
-    ["16進でない", "z".repeat(40), "main"],
-    ["空の commit", "", "main"],
-    ["commit が無い", undefined, "main"],
-    ["空の branch", SHA, ""],
-    ["branch が無い", SHA, undefined],
-  ];
-  const through = nope.filter(([, c, b]) => {
-    try { versionJson(c, b); return true; } catch { return false; }
-  });
-  through.length
-    ? bad(`版の検査を素通りする値がある: ${through.map(([n]) => n).join("、")}`
-        + "（不正な版のまま build が通り、本番が嘘の commit を名乗る）")
-    : ok(`通してはいけない値 ${nope.length} 通りで、版を作れない`);
-
-  // 仕組みの結線。⚠ Workers Builds は build に `npm run build`、
-  //   deploy に `npx wrangler deploy` を設定してある（そこは Cloudflare 側の設定で、
-  //   ここからは見えない。⚠ **この検査では確かめられない**）。
-  const pkg = JSON.parse(await readFile(join(ROOT, "package.json"), "utf8"));
-  /version\.mjs/.test(pkg.scripts?.build ?? "")
-    ? ok(`npm run build が版を作る（${pkg.scripts.build}）`)
-    : bad(`npm run build が scripts/version.mjs を呼んでいない: ${JSON.stringify(pkg.scripts?.build)}`);
-
-  const ignored = (await readFile(join(ROOT, ".gitignore"), "utf8"))
-    .split("\n").some((l) => l.trim() === "public/version.json");
-  ignored ? ok(".gitignore が public/version.json を外している")
-          : bad(".gitignore に public/version.json が無い（手元の版を commit すると、配信物の版として名乗られる）");
-
-  // ⚠ 書いてあるだけでなく、**実際に追跡されていない**こと
-  try {
-    const tracked = execFileSync("git", ["ls-files", "--", "public/version.json"],
-      { cwd: ROOT, encoding: "utf8" }).trim();
-    tracked ? bad(`public/version.json が Git に入っている（生成物。配信物と食い違う版を名乗る）`)
-            : ok("public/version.json は Git に入っていない");
-  } catch (e) {
-    warn(`Git の追跡状況を確かめられなかった: ${String(e.message).split("\n")[0]}`);
-  }
-
-  // ⚠ no-store。古い版を「いまの本番」と読むと、照合そのものが嘘になる。
-  const hdr = await readFile(join(PUB, "_headers"), "utf8");
-  const noStore = (() => {
-    let cur = null;
-    for (const raw of hdr.split("\n")) {
-      const line = raw.replace(/\s+$/, "");
-      if (!line.trim() || line.trim().startsWith("#")) continue;   // ⚠ コメントを先に落とす
-      if (/^\//.test(line)) { cur = line.trim(); continue; }
-      if (cur === "/version.json" && /^\s*Cache-Control:/i.test(line)) return /no-store/i.test(line);
-    }
-    return false;
-  })();
-  noStore ? ok("_headers が /version.json を no-store にしている")
-          : bad("_headers の /version.json に Cache-Control: no-store が無い（古い版が「いまの本番」として読まれる）");
-
-  // 手元に生成物があるときは、中身も見る（CI には無い。**無いことを緑と呼ばない**）
-  const raw = await readFile(join(PUB, "version.json"), "utf8").catch(() => null);
-  if (raw === null) ok("public/version.json は手元に無い（生成物。ここでは中身を見ていない）");
-  else {
-    try {
-      const v = JSON.parse(raw);
-      versionJson(v.commit, v.branch);
-      Object.keys(v).join(",") === "commit,branch"
-        ? ok(`手元の public/version.json は仕様どおり（${v.commit.slice(0, 7)} / ${v.branch}）`)
-        : bad(`public/version.json の鍵が commit,branch ではない: ${Object.keys(v).join(",")}`);
-    } catch (e) {
-      bad(`public/version.json が仕様を満たしていない: ${e.message}`);
-    }
-  }
-}
-
-// ⚠ GitHub Actions は **SHA で固定する**。タグは動かせるので、`@v4` のままだと
-//   タグの指す先が変わった時点で、こちらの差分なしに中身が入れ替わる。
-//   public にすると fork からの PR も走りうるので、ここは締めておく。
-//   ⚠ Playwright も同じ。メジャーだけ書くと 1.x の最新に動くので、
-//     ある日ブラウザの挙動が変わって検査が落ちる（原因が自分の変更に見える）。
 head("8. CI の固定");
 {
   const wf = await readFile(join(ROOT, ".github/workflows/check.yml"), "utf8").catch(() => "");
@@ -562,21 +309,23 @@ head("8. CI の固定");
     : bad("push のトリガに develop が居ない"
         + "（⚠ **落ちるのではなく、⚠ 取り込んだあとの検査も、⚠ 出す段も、⚠ 黙って何も走らない**）");
 
-  const dep = jobs.find((j) => j.id === "deploy-next");
+  // ⚠ **2026-09-01 に `deploy-next` → `deploy` へ**（`docs/adr/0080`）。
+  //   ⚠ **器が 1 つになったので、⚠ 出す先も 1 つ。**
+  const dep = jobs.find((j) => j.id === "deploy");
   if (!dep) {
-    bad("v0.1.0 を出すジョブ（jobs.deploy-next）が居ない（⚠ この検査が何も見ていない）");
+    bad("本番を出すジョブ（jobs.deploy）が居ない（⚠ この検査が何も見ていない）");
   } else {
-    // ⚠ ① **出す先。**⚠ `-c wrangler.next.jsonc` を渡している wrangler の呼び出しだけであること
+    // ⚠ ① **出す先。**⚠ **設定は `wrangler.jsonc` の 1 つだけ。**
+    //   ⚠ **`-c` で別の設定を渡していないこと**（⚠ 渡す相手がもう無い。⚠ 渡していたら消し忘れ）。
     const calls = [...dep.body.matchAll(/^\s*run:\s*(.*wrangler.*)$/gm)].map((m) => m[1]);
     if (!calls.length) {
       bad("出すジョブに wrangler の呼び出しが無い（⚠ この検査が何も見ていない）");
     } else {
-      const loose = calls.filter((c) => !/-c\s+wrangler\.next\.jsonc\b/.test(c));
+      const loose = calls.filter((c) => /\s-c\s/.test(c));
       loose.length
-        ? bad(`出すジョブが、β 版を出しうる: ${loose.join(" ／ ")}`
-            + "（⚠ **`-c wrangler.next.jsonc` が無いと、⚠ 既定の `wrangler.jsonc`＝β 版が出る。**"
-            + "⚠ **落ちない。**⚠ **成功して、⚠ 利用者のいる側が入れ替わる**）")
-        : ok(`出すのは konjaku-next だけ（wrangler の呼び出し ${calls.length} 箇所とも -c wrangler.next.jsonc）`);
+        ? bad(`出すジョブが、別の設定を渡している: ${loose.join(" ／ ")}`
+            + "（⚠ **本番の設定は `wrangler.jsonc` の 1 つだけ。**⚠ **渡す相手はもう無い**）")
+        : ok(`出すのは本番（konjaku）だけ（wrangler の呼び出し ${calls.length} 箇所）`);
       // ⚠ **版は env の 1 か所**（⚠ Playwright と同じ。⚠ `npx wrangler` だと、その日の最新が降る）
       const pinned = calls.every((c) => /wrangler@\$\{\{\s*env\.WRANGLER_VERSION\s*\}\}/.test(c));
       const ver = /WRANGLER_VERSION:\s*"?(\d+\.\d+\.\d+)"?/.exec(cleaned)?.[1];
@@ -609,7 +358,7 @@ head("8. CI の固定");
 
     // ⚠ **出しっぱなしにしない。**⚠ 「デプロイが成功した」は「出ている」ではない（`CLAUDE.md` §1）
     // ⚠ **判定は走者が 1 か所で持つ**（⚠ 下でその `judge()` を直に呼んでいる）
-    /scripts\/check-next-deploy\.mjs/.test(dep.body)
+    /scripts\/check-deploy\.mjs/.test(dep.body)
       ? ok("出したあと、配った実体を取り直して手元と突き合わせている")
       : bad("出したあと、⚠ 配った実体を確かめていない"
           + "（⚠ **「デプロイが成功した」は、⚠ 「出ている」ではない**）");
@@ -631,7 +380,7 @@ head("8. CI の固定");
 // ⚠ **走者の `judge()` を直に呼ぶ**（⚠ 字面を写さない。`CLAUDE.md` §3）。
 //   ⚠ **読み込んでも外へは出ない**（⚠ 走者は「自分が起動されたときだけ」動く形にしてある）。
 {
-  const { judge, NOT_SERVED, PREPENDED } = await import("../../scripts/check-next-deploy.mjs");
+  const { judge, NOT_SERVED, PREPENDED } = await import("../../scripts/check-deploy.mjs");
 
   // ⚠ **配られないものを、⚠ 「届いていない」と読まない**（⚠ `_headers` は 404 になる）
   NOT_SERVED.has("_headers")
@@ -675,7 +424,8 @@ head("8. CI の固定");
     { encoding: "utf8" }).trim().split(/\s+/).pop());
   const bad3 = [];
   let seen = 0;
-  for (const [suite, group] of [["top", "core"], ["top", "search"], ["peel", "core"]]) {
+  // ⚠ **2026-09-01: β の suite を落とした**（`docs/adr/0080`）。⚠ 残るのは v0.1.0 だけ。
+  for (const [suite, group] of [["next", "core"], ["next", "search"]]) {
     const whole = count([`--suite=${suite}`, `--group=${group}`]);
     seen += whole;
     for (const n of [2, 3]) {
@@ -690,9 +440,8 @@ head("8. CI の固定");
   //   ⚠ わざと 1 件落としてみたら、⚠ **この検査は緑のままだった。**
   // ⚠ **だから、⚠ ケースの一覧そのものと突き合わせる**（⚠ 走者を通さない道）。
   //   ⚠ **掟 §3 は「2 つ持つなら機械で突き合わせろ」。**⚠ これがその突き合わせ。
-  const { CASES: TOP } = await import(pathToFileURL(join(ROOT, "test/render/top.mjs")).href);
-  const { CASES: PEEL } = await import(pathToFileURL(join(ROOT, "test/render/peel.mjs")).href);
-  const declared = TOP.length + PEEL.length;
+  const { CASES: NEXT } = await import(pathToFileURL(join(ROOT, "test/render/next.mjs")).href);
+  const declared = NEXT.length;
   if (seen !== declared) {
     bad3.push(`走者が回すのは ${seen} 件だが、⚠ 書いてあるのは ${declared} 件`);
   }
@@ -702,51 +451,13 @@ head("8. CI の固定");
     bad(`分けて回すと件数が合わない（${bad3.length} 件）: ${bad3.join(" ／ ")}`
       + "（⚠ **落ちるのではなく、⚠ 静かに減る。**⚠ 減ったぶんは誰も検査しない）");
   } else {
-    ok(`分けて回しても 1 件も落ちない（3 つの群 × 2 分割・3 分割 ／ 書いてある ${declared} 件と一致）`);
+    ok(`分けて回しても 1 件も落ちない（${seen} 件 × 2 分割・3 分割 ／ 書いてある ${declared} 件と一致）`);
   }
 }
 
-// ── 「この画面だけが読む」は、⚠ 本当か ──────────────────────────
-// ⚠ **2026-08-22 に足した**（hidetzu/konjaku#190）。
-// ⚠ **`test/render-scope.mjs` は「このファイルは top だけ／peel だけ」と決めている。**
-//   ⚠ **間違えると、⚠ 落ちるのではなく、⚠ 検査が走らないまま緑になる。**
-// ⚠ **だから、⚠ 実物の HTML と突き合わせる。**⚠ **憶測で足せないようにする。**
-{
-  const scope = await readFile(join(ROOT, "test/render-scope.mjs"), "utf8");
-  const html = {
-    top: await readFile(join(ROOT, "public/index.html"), "utf8"),
-    peel: await readFile(join(ROOT, "public/peel.html"), "utf8"),
-  };
-  // `[/^public\/prov\.js$/,  "peel"],` の並びから拾う
-  const rows = [...scope.matchAll(/\[\/\^public\\\/([^/]+?)\\?\/?\$?\/,\s*"(top|peel)"\]/g)]
-    .map((m) => ({ file: m[1].replace(/\\/g, ""), suite: m[2] }));
-  const wrong = [];
-  let seen = 0;
-  for (const { file, suite } of rows) {
-    // ⚠ HTML そのものは、⚠ 自分を読み込まない
-    if (/\.html$/.test(file)) continue;
-    const other = suite === "top" ? "peel" : "top";
-    // ⚠ **本当に読み込んでいる所だけを見る**（`<script src=…>` / `<link href=…>`）。
-    //   ⚠ **名前で探すと、⚠ コメントの中の言及まで拾う**（2026-08-22 に踏んだ）。
-    //   ⚠ 実際に `peel3d.js` と `places.js` の 2 件を、⚠ **誤って落とした**
-    //     （どちらも「読まない」と書いてあるコメントだった）。
-    const name = file.split("/").pop().replaceAll(".", "\\.");
-    const loads = (h) => new RegExp(`(src|href)=["'][^"']*${name}["']`).test(h);
-    const inOwn = loads(html[suite]);
-    const inOther = loads(html[other]);
-    seen++;
-    if (!inOwn) wrong.push(`${file}: ${suite} だけと書いてあるが、${suite} の画面が読んでいない`);
-    else if (inOther) wrong.push(`${file}: ${suite} だけと書いてあるが、${other} の画面も読んでいる`);
-  }
-  if (!seen) {
-    bad("「この画面だけが読む」ものが 1 つも無い（⚠ この検査が何も見ていない）");
-  } else if (wrong.length) {
-    bad(`実描画を回す先の決め方が、実物と食い違う（${wrong.length} 件）: ${wrong.join(" ／ ")}`
-      + "（⚠ **落ちるのではなく、⚠ 検査が走らないまま緑になる**）");
-  } else {
-    ok(`「この画面だけが読む」が、実物の HTML と合っている（${seen} 件を突き合わせた）`);
-  }
-}
+// ⚠ **「この画面だけが読む」の節は落とした**（2026-09-01。`docs/adr/0080`）。
+//   ⚠ **suite が `next` の 1 つになり、⚠ 割り当てを間違えようが無い。**
+//   ⚠ **2 つ目の suite を足したら、⚠ この検査も戻す**（⚠ 間違えると、⚠ 走らないまま緑になる）。
 
 // ── 控えが、⚠ 返ってきたものをそのまま返すか ─────────────────────
 // ⚠ **2026-08-22 に足した**（hidetzu/konjaku#191）。
@@ -962,11 +673,12 @@ head("8. CI の固定");
       wrongQ.push(`日本語名の文書だけを変えたのに「${docsOnly.slice(0, 60)}」と答える`);
     }
     // ⚠ **空を返すだけの口になっていないか。**⚠ 画面に届く変更では、⚠ 実際に回ること
-    put("public/peel3d.js", "// b\n");
+    // ⚠ **2026-09-01 に相手を変えた**（⚠ `peel3d.js` は本番から消えた。`docs/adr/0080`）。
+    put("public/top.js", "// b\n");
     git("add", "-A"); git("commit", "-qm", "chore: 3");
     const withCode = runQ("HEAD~1...HEAD");
-    if (!withCode.includes('"suite":"peel"')) {
-      wrongQ.push(`画面に届く変更なのに peel を回さない（「${withCode.slice(0, 60)}」）`);
+    if (!withCode.includes('"suite":"next"')) {
+      wrongQ.push(`画面に届く変更なのに next を回さない（「${withCode.slice(0, 60)}」）`);
     }
   } catch (e) {
     const why = String(e.stderr ?? "").split("\n").filter(Boolean)[0] ?? String(e.message).split("\n")[0];
@@ -981,132 +693,13 @@ head("8. CI の固定");
         + "（⚠ 本物の git ／ ⚠ `core.quotepath=true` を押しつけて確認）");
 }
 
-// ============================================================
-// ⚠ Service Worker が、⚠ 判定に必要なものを取りこぼしていないか
-// ============================================================
-// ⚠ **`test/check.mjs` の「1. スクリプトの構文」から逐語で移しただけ**
-//   （2026-08-25。hidetzu/konjaku#232 の 29 本目）。
-//   ⚠ **1 文字も変えていない。**⚠ **主張を強くも弱くもしていない。**
-//   ⚠ **その節は「構文」と名乗っていたが、⚠ 構文は 31 行しかなかった。**
-// ⚠ **ここが「届け方」の仲間である理由**: ⚠ **`SHELL` の中身が、⚠ そのまま配るもの。**
-//   ⚠ `addAll` は 1 件でも 404 すると install ごと reject する。
-// ⚠ Service Worker が、判定に必要なものを取りこぼしていないか。
-//   addAll は1件でも 404 すると install ごと reject するので、SHELL の中身は実在必須。
-//   data/landform.json を足したとき SHELL に入れ忘れ、しばらく気づかなかった。
-{
-  const sw = src["sw.js"];
-  if (!sw) { bad("sw.js が読めない"); }
-  else {
-    // ⚠ sw.js 全体から "/…" を拾ってはいけない。SHELL 以外のパス（タイルの判定など）まで
-    //   SHELL の中身とみなして落ちる。**SHELL の配列だけ**を読む。
-    const block = /const SHELL\s*=\s*\[([\s\S]*?)\]/.exec(sw)?.[1] ?? "";
-    if (!block) bad("sw.js の SHELL 配列が読めない");
-    const shell = [...block.matchAll(/"(\/[^"]*)"/g)].map((m) => m[1]);
-    // 判定が動くために要るもの。ここに足したら SHELL にも足すこと。
-    // ⚠ esc.js は両ページがトップレベルで `const {esc}=KonjakuEsc` を読む。
-    //   来ないと ReferenceError でページのスクリプトが丸ごと止まる（判定も検索も出ない）。
-    //   esc.js を SHELL に足したとき、ここに足し忘れていた。
-    //   実測（2026-08-15）: SHELL から "/esc.js" を消しても `npm run check` は
-    //   「判定の依存が揃っている（10 件）」と緑で通った。
-    const must = ["/", "/esc.js", "/verify.js", "/places.js", "/data/landform.json"];
-    const miss = must.filter((m) => !shell.includes(m));
-    miss.length ? bad(`sw.js の SHELL に入っていない: ${miss.join(", ")}`)
-                : ok(`sw.js の SHELL に判定の依存が揃っている（${shell.length} 件）`);
-    // SHELL に書いたものが本当に配信されるか（addAll が死ぬ条件）
-    const gone = shell.filter((u) => {
-      if (u === "/") return false;
-      const rel = u.replace(/^\//, "");
-      return !existsSync(join(PUB, rel)) && !existsSync(join(PUB, `${rel}.html`));
-    });
-    gone.length ? bad(`sw.js の SHELL に、配信されないものがある: ${gone.join(", ")}（addAll ごと死ぬ）`)
-                : ok("sw.js の SHELL は全件が配信物にある");
-  }
-}
+// ⚠ **`SHELL` と `TILE_HOSTS` の節は落とした**（2026-09-01。`docs/adr/0080`）。
+//   ⚠ **どちらも β 版の Service Worker のもの。**⚠ **v0.1.0 はオフラインを持たない**
+//     （Owner 判断）。⚠ **`public/sw.js` は残っているが、⚠ あれは自分を消すためだけの SW。**
+//   ⚠ **控える一覧（`SHELL`）も、⚠ 控えるタイルの相手（`TILE_HOSTS`）も持たない。**
+//   ⚠ **移行用の SW が本当に自分を消すことは、⚠ `next.mjs` が別に見ている。**
+//   ⚠ **オフラインを持つと決めたら、⚠ そのとき改めてここを戻す。**
 
-// ============================================================
-// ⚠ 判定文の根拠が、⚠ 棚（キャッシュ）の対象に入っているか
-// ============================================================
-// ⚠ **`test/check.mjs` の「1. スクリプトの構文」から逐語で移しただけ**
-//   （2026-08-25。hidetzu/konjaku#232 の 29 本目）。
-//   ⚠ **1 文字も変えていない。**⚠ **主張を強くも弱くもしていない。**
-//   ⚠ **その節は「構文」と名乗っていたが、⚠ 構文は 31 行しかなかった。**
-// ⚠ **ここが「届け方」の仲間である理由**: ⚠ **何を棚に置くかは、⚠ 届け方の判断。**
-//   ⚠ **棚の対象は `public/sw.js` の `TILE_HOSTS` 1 か所だけ**が定義する。
-// ⚠ **判定文の根拠が、棚の対象に入っていること。**
-//   「この場所は 旧水部 です」と言い切っている、その出どころ（地形分類）だけが
-//   棚から漏れていた。漏れると**同じものを毎回取りに行く**（地理院タイルは
-//   Cache-Control も Expires も返さない）。
-//   ⚠ **`sw.js` の表を目で読んで確かめない。** verify.js が実際に使っているホストを
-//     読んで突き合わせる。表に何が書いてあっても、**使っている側が入っていなければ意味がない**。
-//   ⚠ 棚の対象は `public/sw.js` の TILE_HOSTS **1 か所だけ**が定義（cost.mjs はそこを読む）。
-{
-  const swSrc = await readFile(join(PUB, "sw.js"), "utf8");
-  // ⚠ コメントを先に落とす。落とさないと、この決まりを説明したコメントの字面を拾う
-  //   （CLAUDE.md「検査が文書やコメントを読むとき、コメントを先に落とす」）。
-  // ⚠ **`//` を素朴に落とすと URL を食う。** `https://…` の `//` をコメント開始と読んで
-  //   行末まで消してしまい、`const LFC = "https://maps.gsi.go.jp/xyz"` が空になった
-  //   （2026-08-15 に実際に踏んだ。検査は「読めない」と言って落ちたので気づけた）。
-  //   ⚠ **直前が `:` のときは落とさない。**
-  const bare = (s) => s.replace(BLOCK_COMMENT, " ").replace(LINE_COMMENT, "$1");
-  const m = /TILE_HOSTS\s*=\s*\[([^\]]*)\]/.exec(bare(swSrc));
-  const shelf = m ? [...m[1].matchAll(/["']([^"']+)["']/g)].map((x) => x[1]) : null;
-  const vf = bare(await readFile(join(PUB, "verify.js"), "utf8"));
-  const lfc = /LFC\s*=\s*["']https:\/\/([^/"']+)/.exec(vf)?.[1];
-  if (!shelf?.length) bad("public/sw.js の TILE_HOSTS を読めない（この検査が何も見ていない）");
-  else if (!lfc) bad("verify.js から地形分類のホストを読めない（この検査が何も見ていない）");
-  else if (!shelf.includes(lfc))
-    bad(`判定文の根拠（${lfc}）が棚に入らない。verify.js はここから地形分類を取っている`
-      + `（「旧水部です」と言い切っている、その出どころだけが毎回取り直しになる）`);
-  else ok(`判定文の根拠（${lfc}）が棚に入る（棚の対象 ${shelf.length} ホスト）`);
-
-  // ⚠ **表を見るだけでは足りない。isTile() を実際に動かす。**
-  //   配列に載っていても、`isTile` の中を壊せば棚に入らない（ホストの見方でも、
-  //   パスの前置きでも）。**表だけ見る検査は、壊れた実装の上でも緑になる。**
-  // ⚠ 代表 URL は思いつきで書かない。**verify.js が実際に組み立てる形**から作る。
-  //   でないと「検査だけが通る URL」を相手にすることになる。
-  if (shelf?.length && lfc) {
-    const layer = /LFC_NAT\s*=\s*["']([^"']+)/.exec(vf)?.[1];
-    const shape = /\$\{LFC\}\/\$\{layer\}\/\$\{z\}\/\$\{t\.x\}\/\$\{t\.y\}\.geojson/.test(vf);
-    if (!layer) bad("verify.js から地形分類の層の名前を読めない（この検査が何も見ていない）");
-    else if (!shape) bad("verify.js の地形分類 URL の組み立てが変わった（代表 URL を作り直すこと）");
-    else {
-      const { runInNewContext } = await import("node:vm");
-      // sw.js は最上位で self.addEventListener を呼ぶ。動かすためだけの器を渡す。
-      const sandbox = { self: { addEventListener() {} }, location: { origin: "" } };
-      let fns = null;
-      try { fns = runInNewContext(`${swSrc}\n;({ isTile, tileTtl })`, sandbox, { timeout: 3000 }); }
-      catch (e) { bad(`public/sw.js を動かせない: ${String(e.message).slice(0, 80)}`); }
-      if (fns) {
-        const real = new URL(`https://${lfc}/xyz/${layer}/16/58205/25807.geojson`);
-        const cases = [
-          [real, true, "判定文の根拠（地形分類）"],
-          [new URL(`https://${lfc}/development/ichiran.html`), false, "同じホストだが /xyz/ でないもの"],
-          // ⚠ **口を書き写さない**（2026-08-22。hidetzu/konjaku#181）。⚠ 本番の口から借りる
-          [new URL(gsiSearchUrl("x")), false, "住所検索"],
-          [new URL("https://cyberjapandata.gsi.go.jp/xyz/seamlessphoto/16/1/1.jpg"), true, "空中写真"],
-        ];
-        const wrong = cases.filter(([u, want]) => fns.isTile(u) !== want)
-          .map(([, want, name]) => `${name}は${want ? "入るはず" : "入らないはず"}`);
-        wrong.length
-          ? bad(`sw.js の isTile() の判定が違う: ${wrong.join("、")}`
-              + `（表に載っていても、isTile の中を壊せば棚に入らない）`)
-          : ok(`sw.js の isTile() を実際に動かして確かめた（${cases.length} 通り）`);
-        // 寿命も動かして見る。地形分類は 30 日（実測で 1 年以上更新が無い）
-        const D = 24 * 60 * 60 * 1000;
-        fns.tileTtl(real) === 30 * D
-          ? ok("地形分類の寿命は 30 日")
-          : bad(`地形分類の寿命が 30 日でない: ${fns.tileTtl(real) / D} 日`);
-      }
-    }
-  }
-
-  // ⚠ **cost.mjs が表を写していないこと。** 写すと、片方だけ足したときに
-  //   「棚に入れるもの」と「数えるもの」がずれる（実際にずれていた）。
-  const costSrc = bare(await readFile(join(ROOT, "scripts/cost.mjs"), "utf8"));
-  /TILE_HOSTS\s*=\s*\[/.test(costSrc)
-    ? bad("scripts/cost.mjs が TILE_HOSTS を写している（public/sw.js から読むこと。写すとずれる）")
-    : ok("棚の対象の定義は public/sw.js の1か所だけ（cost.mjs はそこを読む）");
-}
 
 // ⚠ **問いごとに割った実描画のケースが、⚠ 1 つ残らず走者に届いているか**
 //   （2026-08-26。hidetzu/konjaku#277 の 1 本目）。

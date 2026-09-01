@@ -1,16 +1,14 @@
 // 実描画を走らせる（2026-08-22 に suite へ割った。hidetzu/konjaku#187）。
 //
 //   node scripts/render.mjs                     ⚠ 全部
-//   node scripts/render.mjs --suite=peel        ⚠ 深掘りの画面だけ
-//   node scripts/render.mjs --suite=top --group=core
+//   node scripts/render.mjs --suite=next        ⚠ v0.1.0 の画面だけ（⚠ いまは これしかない）
 //
 // ⚠ **ケースはここに書かない**（⚠ 問いごとの `render/top-*.mjs` / `render/peel-*.mjs`。
 //   ⚠ **`render/top.mjs` / `render/peel.mjs` はそれを束ねるだけ**）。
 // ⚠ **道具もここに書かない**（`render/lib.mjs`）。
 // ⚠ **走った suite と件数は、⚠ 出力の1行目で名乗る**（⚠ 黙って絞らない）。
 
-import { CASES as TOP_CASES } from "./render/top.mjs";
-import { CASES as PEEL_CASES } from "./render/peel.mjs";
+// ⚠ **2026-09-01 に、⚠ β 版の suite（top / peel）を落とした**（`docs/adr/0080`）。
 import { CASES as NEXT_CASES } from "./render/next.mjs";
 import {
   PORT, BASE, NEXT_PORT, NEXT_BASE, OUT, waited, kindOfRequest,
@@ -20,13 +18,13 @@ import { spawn } from "node:child_process";
 import { mkdir, readFile } from "node:fs/promises";
 
 // ⚠ **知らない suite を黙って無視しない**（⚠ 無視すると 0 件で緑になる）。
-const SUITES = { top: TOP_CASES, peel: PEEL_CASES, next: NEXT_CASES };
+const SUITES = { next: NEXT_CASES };
 const SUITE = (process.argv.find((a) => a.startsWith("--suite=")) ?? "").split("=")[1] || null;
 if (SUITE && !SUITES[SUITE]) {
   console.log(`\x1b[31m--suite=${SUITE} は無い（ある: ${Object.keys(SUITES).join(" / ")}）\x1b[0m`);
   process.exit(1);
 }
-const CASES = SUITE ? SUITES[SUITE] : [...TOP_CASES, ...PEEL_CASES, ...NEXT_CASES];
+const CASES = SUITE ? SUITES[SUITE] : [...NEXT_CASES];
 
 // ⚠ **1件だけ回せるようにする。**
 //   79 件を全部回すと 5 分近くかかる。検査を1つ足すたび、あるいは
@@ -80,49 +78,27 @@ if (process.argv.includes("--count")) {
   process.exit(0);
 }
 // ---- ローカルサーバ ----
-const server = spawn(process.execPath, ["scripts/serve.mjs"], {
-  env: { ...process.env, PORT: String(PORT) }, stdio: "ignore",
-});
-// ⚠ **v0.1.0 は別の Worker なので、⚠ 別のサーバに立てる**（2026-08-29）。
-//   ⚠ **回すケースが 1 件も無いときは立てない**（⚠ 要らないポートを取らない）。
+// ⚠ **2026-09-01 に 1 本へまとめた**（`docs/adr/0080`）。
+//   ⚠ **前は 2 本立てていた**（⚠ β の `public/` と、⚠ v0.1.0 の `public-next/`）。
+//   ⚠ **器が 1 つになったので、⚠ 立てるのも 1 つ。**
+//   ⚠ **`NEXT_PORT` / `NEXT_BASE` はケースが使うので残す**（⚠ 名前だけ据え置き）。
 const wantNext = RUN.some((c) => c.origin === NEXT_BASE);
 const nextServer = wantNext ? spawn(process.execPath, ["scripts/serve.mjs"], {
-  env: { ...process.env, PORT: String(NEXT_PORT), SERVE_ROOT: "public-next" }, stdio: "ignore",
+  env: { ...process.env, PORT: String(NEXT_PORT), SERVE_ROOT: "public" }, stdio: "ignore",
 }) : null;
-const stop = () => { server.kill(); nextServer?.kill(); };
+const stop = () => { nextServer?.kill(); };
 process.on("exit", stop);
 
 await new Promise((r) => setTimeout(r, 1200));
 
-// ⚠ **自分が立てたサーバに当たっているかを、測る前に確かめる。**
-//   ⚠ ポートを他人に取られていると、⚠ **相手の画面を黙って測ることになる**（上の PORT の注記）。
-//   ⚠ 突き合わせるのは `public/sw.js` の VERSION。⚠ **この枝の中身から作られる値**なので、
-//     ⚠ 別のワークツリーが配っていれば必ず食い違う。
-{
-  const local = await readFile(new URL("../public/sw.js", import.meta.url), "utf8");
-  const want = /const VERSION\s*=\s*"([^"]+)"/.exec(local)?.[1] ?? "";
-  let got = null, err = null;
-  try {
-    const r = await fetch(`${BASE}/sw.js`, { signal: AbortSignal.timeout(5000) });
-    got = /const VERSION\s*=\s*"([^"]+)"/.exec(await r.text())?.[1] ?? "";
-  } catch (e) { err = e.name; }
-  if (!want) {
-    console.log("\x1b[31m✗ public/sw.js の VERSION を読めない（測る相手を確かめられない）\x1b[0m");
-    process.exit(1);
-  }
-  if (got !== want) {
-    console.log(`\x1b[31m✗ ポート ${PORT} に居るのは、このワークツリーのサーバではない\x1b[0m`);
-    console.log(`\x1b[31m  配られている VERSION 「${got ?? err}」／ここの public/sw.js 「${want}」\x1b[0m`);
-    console.log(`\x1b[31m  ⚠ 別のワークツリーが実描画を回している可能性がある。\x1b[0m`);
-    console.log(`\x1b[31m  ⚠ KONJAKU_RENDER_PORT=8199 npm run render のように、ポートをずらして回す。\x1b[0m`);
-    process.exit(1);
-  }
-}
-// ⚠ **v0.1.0 側も、⚠ 自分が立てたサーバに当たっているかを確かめる。**
-//   ⚠ **`public-next/` に `sw.js` は無い**ので、⚠ **配られた `index.html` を手元と突き合わせる**
+// ⚠ **自分が立てたサーバに当たっているかを、⚠ 測る前に確かめる。**
+//   ⚠ **ポートを他人に取られていると、⚠ 相手の画面を黙って測ることになる。**
+//   ⚠ **配られた `index.html` を手元と突き合わせる**
 //     （⚠ **1 バイトでも違えば、⚠ 別のワークツリーが配っている**）。
+//   ⚠ **2026-09-01 に、⚠ β の `sw.js` の `VERSION` で見分けるのをやめた**（`docs/adr/0080`）。
+//     ⚠ **移行用の `sw.js` は `VERSION` を持たない**（⚠ 控えないので、⚠ 版を数える意味が無い）。
 if (wantNext) {
-  const local = await readFile(new URL("../public-next/index.html", import.meta.url), "utf8");
+  const local = await readFile(new URL("../public/index.html", import.meta.url), "utf8");
   let got = null, err = null;
   try {
     const r = await fetch(`${NEXT_BASE}/index.html`, { signal: AbortSignal.timeout(5000) });

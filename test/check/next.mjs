@@ -1,181 +1,34 @@
-// 今昔 — ⚠ **v0.1.0 の器が、⚠ β 版と混ざっていないことを見る**（`docs/adr/0050`）。
+// 今昔 — ⚠ **本番（`public/`）が配っているものを見る。**
 //
-// ⚠ **見るのは境界だけ。**⚠ **中身の作りは見ない**（⚠ まだ何も決まっていない）。
+// ⚠ **2026-09-01 に、⚠ v0.1.0 を本番へ上げた**（`docs/adr/0080`）。
+//   ⚠ **それまでは `public/` を見ていた**（⚠ β 版と混ざっていないことを見る検査だった）。
+//   ⚠ **β 版が消え、⚠ 器が 1 つになったので、⚠ 境界を見る節は落とした**:
+//     ⚠ ① 別の Worker として立っているか      ← ⚠ Worker は 1 つになった
+//     ⚠ ② β 版のファイルを引き込んでいないか  ← ⚠ 引き込む相手が無い
+//     ⚠ ③ 中身が無いとき β 版へ戻れるか        ← ⚠ 戻る先が無い
+//     ⚠ ⑤ 運んだファイルが β 版とずれていないか ← ⚠ 突き合わせる相手が無い
+//   ⚠ **番号は詰めない。**⚠ **落とした番号を再利用しない**（⚠ 過去の記録が別のものを指す）。
 //
-// ⚠ **なぜ要るか**: ⚠ **`public-next/` は静的検査の外にある。**
-//   ⚠ **`public/` を見ている検査は 98 か所あるが、⚠ そのどれも `public-next/` を見ない。**
-//   ⚠ **混ざっても、⚠ 誰も落とさない。**
-//
-// ⚠ **`docs/v0.1.0-何を解決するか.md` の決め事**: v0.1.0 は β 版の画面・機能・データ構成を前提にしない。
-//   ⚠ **「引き継がない」は Owner 判断**（2026-08-28）。⚠ **運ぶなら、⚠ そのつど決める。**
+// ⚠ **ここが見るのは、⚠ 利用者に届くもの。**⚠ **作りの好みは見ない。**
 
 import { readFileSync, existsSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
-import { ROOT, ok, bad, warn, head, HEAD_COMMENT, BLOCK_COMMENT, parseColor, contrast } from "./lib.mjs";
+import { ROOT, ok, bad, head, HEAD_COMMENT, BLOCK_COMMENT, parseColor, contrast } from "./lib.mjs";
 
-head("v0.1.0 の器");
+head("本番が配っているもの");
 
-const NEXT = join(ROOT, "public-next");
-if (!existsSync(NEXT)) bad("public-next/ が無い（ADR 0050 の器）");
+const NEXT = join(ROOT, "public");
+if (!existsSync(NEXT)) bad("public/ が無い（⚠ 本番が配る先）");
 else {
 
-  // ---- ⚠ ① 別の Worker として立っているか ----
-  const CFG = join(ROOT, "wrangler.next.jsonc");
-  if (!existsSync(CFG)) bad("wrangler.next.jsonc が無い（ADR 0050）");
-  else {
-  const raw = readFileSync(CFG, "utf8");
-  // ⚠ **コメントを先に落とす**（`CLAUDE.md` §5。⚠ 落とさないと、⚠ 注記の字面を拾う）
-  const cfg = JSON.parse(raw.replace(HEAD_COMMENT, "").replace(/,(\s*[}\]])/g, "$1"));
-  const base = JSON.parse(readFileSync(join(ROOT, "wrangler.jsonc"), "utf8")
-    .replace(HEAD_COMMENT, "").replace(/,(\s*[}\]])/g, "$1"));
-
-  cfg.name && cfg.name !== base.name
-    ? ok(`v0.1.0 は別の Worker（${cfg.name} ／ β は ${base.name}）`)
-    : bad(`v0.1.0 の Worker 名が β と同じ（${cfg.name}）。⚠ 同じ名前だと β を上書きする`);
-
-  cfg.assets?.directory === "./public-next"
-    ? ok("v0.1.0 が配るのは public-next/ だけ")
-    : bad(`v0.1.0 の配信元が public-next/ ではない（${cfg.assets?.directory}）`);
-
-  // ⚠ **β と同じ D1 を使う**（2026-08-29。Owner 判断。`docs/adr/0073`）。
-  //
-  // ⚠ **前はここで「別の DB であること」を見ていた**（`docs/adr/0050` の「D1 を繋がない」）。
-  //   ⚠ **その主張は、⚠ Owner 判断で取り下げた。**⚠ **取り下げた理由は ADR 0073。**
-  //
-  // ⚠ **見張りを外しっぱなしにしない**（`CLAUDE.md` §9: ⚠ **検査は守るべきことを固定する**）。
-  //   ⚠ **同じ DB になっても、⚠ まだ守れるものが在る。**⚠ **そちらへ主張を移した。**
-  //
-  // ⚠ **行は混ざらないので、⚠ 計測への影響は無い**（2026-08-29。Owner 判断。⚠ 表が別）。
-  //   ⚠ **検査で止められないのは枠のほうだけ**（⚠ 10万行/日・5GB は DB 単位）。
-  //   ⚠ **いまは効かない**（⚠ 利用者がいない）。⚠ **ADR 0073 の「戻すとき」を回す合図にする。**
-  const sameDb = (cfg.d1_databases ?? []).some((d) =>
-    (base.d1_databases ?? []).some((b) => b.database_id === d.database_id));
-  sameDb
-    ? ok("v0.1.0 は β と同じ D1 を使う（⚠ Owner 判断。⚠ `docs/adr/0073`。⚠ 枠を共有する）")
-    : ok("v0.1.0 は β と別の D1 を使う");
-
-  // ⚠ **同じ DB を共有する以上、⚠ 「βの表に触らない」だけは機械で見る。**
-  //   ⚠ **ここが破れると、⚠ 計測そのものが書き換わる**（⚠ 分母が壊れるどころではない）。
-  const βの表 = ["tick", "health"];
-  {
-    const worker = join(ROOT, "worker-next.js");
-    const mig = join(ROOT, "migrations");
-    const 読む先 = [
-      ...(existsSync(worker) ? [worker] : []),
-      ...(existsSync(mig)
-        ? readdirSync(mig).filter((f) => f.endsWith(".sql") && f !== "0001_tick.sql")
-            .map((f) => join(mig, f))
-        : []),
-    ];
-    if (!読む先.length) {
-      warn("v0.1.0 側に、⚠ D1 を触るコードがまだ無い（⚠ この検査は何も見ていない）");
-    } else {
-      // ⚠ **コメントを先に落とす**（`CLAUDE.md` §5。⚠ 落とさないと注記の字面を拾う）
-      const 触れている = [];
-      for (const f of 読む先) {
-        const body = readFileSync(f, "utf8")
-          .replace(HEAD_COMMENT, "").replace(/^\s*--.*$/gm, "");
-        for (const t of βの表) {
-          if (new RegExp(`\\b(FROM|INTO|UPDATE|TABLE|JOIN)\\s+${t}\\b`, "i").test(body)) {
-            触れている.push(`${relative(ROOT, f)} → ${t}`);
-          }
-        }
-      }
-      触れている.length
-        ? bad(`v0.1.0 が βの表を触っている: ${触れている.join(" ／ ")}`
-            + "（⚠ **同じ DB を共有しているので、⚠ 計測そのものが書き換わる**）")
-        : ok(`v0.1.0 は βの表（${βの表.join(" / ")}）を触っていない（⚠ ${読む先.length} ファイルを見た）`);
-    }
-  }
-
-  // ---- ⚠ ② β 版のファイルを引き込んでいないか ----
-  // ⚠ **「引き継がない」が Owner 判断。**⚠ **運ぶと決めたなら、⚠ ここの一覧に理由と一緒に書く。**
-  const 運んでよいもの = [
-    // ⚠ **足すときは「なぜ運ぶか」を必ず書く。**⚠ **惰性で増やさない。**
-    //
-    // ⚠ **区分の言い換え（GROUND_GLOSS・36 区分）**（2026-08-29。Owner 判断）。
-    //   ⚠ **利用者役 4 名の実測から作られている**（2026-08-21。⚠ 初見の 1 名が
-    //     「旧水部の意味が分からない」と言ったことが出発点）。
-    //   ⚠ **36 / 36 の取りこぼし無しを、⚠ 検査が保っている**（⚠ 例外を作らないと決めてある）。
-    //   ⚠ **原典（landform.json の why）との関係も決まっている**（⚠ 置き換えではない）。
-    //   ⚠ **同じ問いに答えるものを 2 つ持たない**（`CLAUDE.md` §3）。⚠ 作り直すと 2 つになる。
-    "words.js",
-
-    // ⚠ **`favicon.svg`**（2026-08-30。Owner 判断。⚠ 絵を見て決めた）。
-    //   ⚠ **同じ道具の、⚠ 同じマーク。**⚠ **作り直すと 2 つになる**（`CLAUDE.md` §3）。
-    //   ⚠ **中身は `public/favicon.svg` と 1 バイトも違わない**（⚠ 検査が突き合わせている）。
-    //   ⚠ **これは「β 版の画面を前提にする」ではない。**⚠ **道具の名乗りは 1 つ。**
-    "favicon.svg",
-
-    // ⚠ **最初の縦切りで運ぶもの**（2026-08-29。Owner 指示。`docs/adr/0059` の実装フェーズ）。
-    //   ⚠ **住所検索／現在地 → 地図 → 足元の地形分類 → 区分名と説明文、まで。**
-    //   ⚠ **ピン・凡例・保存・PC 連携・D1 は入れない。**
-    //
-    // ⚠ **`verify.js`** ── ⚠ 地形分類を取り、⚠ 3 状態（ok / absent / unreachable）で返す。
-    //   ⚠ **`docs/adr/0058` が決めた「取れなかった ≠ 無い」を、⚠ 既に実装している。**
-    //   ⚠ **タイルの URL・ズームの落とし方（詳細版 z16 → 広域版 z13）も持つ**
-    //     （⚠ `docs/adr/0057` で確かめた構造そのもの）。⚠ **作り直すと 2 つになる。**
-    "verify.js",
-    //
-    // ⚠ **`land.js`** ── ⚠ 同じ土地の取得済みを控える。⚠ **同じ座標を 2 回取りに行かない。**
-    //   ⚠ **β 版が実測で見つけた無駄を、⚠ 既に潰してある**（⚠ 遷移のたびに取り直していた）。
-    "land.js",
-    //
-    // ⚠ **`gsi-address-search.js`** ── ⚠ 住所検索の口。⚠ **叩く場所は 1 か所と決めてある**
-    //   （⚠ 静的検査が見張っている）。⚠ **作り直すと、⚠ その見張りの外に 2 つ目ができる。**
-    "gsi-address-search.js",
-    //
-    // ⚠ **`esc.js`** ── ⚠ 外から来た字を画面に出す前に通す。⚠ **地名は地理院の応答。**
-    //   ⚠ **こちらが中身を保証できないものを描く**ので、⚠ 必ず通す。
-    "esc.js",
-    //
-    // ⚠ **`swale.js`** ── ⚠ **`verify.js` が要る**（⚠ 明治期の低湿地の画素を読む）。
-    //   ⚠ **この縦切りでは、⚠ 低湿地はまだ画面に出さない。**⚠ **それでも要る。**
-    //   ⚠ **依存を見落として、⚠ 実機で `KonjakuSwale is not defined` で止まった**
-    //     （2026-08-29。⚠ **動かして初めて分かった**）。
-    //   ⚠ **verify.js を分割して減らす手もあるが、⚠ それは「作り直す」ことになる。**
-    //     ⚠ **同じ問いに答えるものを 2 つ持たない**（掟 §3）ほうを採る。
-    "swale.js",
-    //
-    // ⚠ **`place-arg.js`** ── ⚠ URL の `?ll=` を読む。⚠ **判断は 1 か所と決めてある。**
-    //   ⚠ **`ok` / `none` / `bad` の 3 つを分ける**（⚠ 「指定が無い」と「読めない」は別）。
-    //   ⚠ **座標の桁も、⚠ ここ 1 か所が持つ**（⚠ 以前は 4 か所に散っていた）。
-    //   ⚠ **実機で確かめるのに、⚠ その場所を開く手段が要る**
-    //     （2026-08-29。⚠ **口が無くて、⚠ 6 か所を測ったつもりが全部豊洲だった**）。
-    "place-arg.js",
-    //
-    // ⚠ **`data/landform.json`** ── ⚠ 区分の図式コード表。⚠ **`verify.js` が読む。**
-    //   ⚠ **国土地理院の記述をそのまま写したもの**（⚠ こちらで書き換えない）。
-    "data/landform.json",
-  ];
+  // ⚠ **配っているものを、⚠ 1 本ずつ数える。**⚠ **拡張子で絞らない**（⚠ `_headers` も配信物）。
+  //   ⚠ **前は「β 版のファイルを引き込んでいないか」の節が作っていた。**
+  //   ⚠ **その節は落としたが、⚠ この一覧は下の節が使う。**
   const files = [];
   const walk = (d) => { for (const e of readdirSync(d)) {
-    const p = join(d, e);
-    statSync(p).isDirectory() ? walk(p) : files.push(p); } };
+    const q = join(d, e);
+    statSync(q).isDirectory() ? walk(q) : files.push(q); } };
   walk(NEXT);
-
-  const 引き込み = [];
-  for (const f of files) {
-    if (!/\.(html|js|css)$/.test(f)) continue;
-    const src = readFileSync(f, "utf8");
-    // ⚠ **`public/` の中を指す参照**（⚠ `../public/…` と、⚠ β の直下の js を名指しするもの）
-    for (const m of src.matchAll(/(?:src|href)\s*=\s*["']([^"']+)["']/g)) {
-      const v = m[1];
-      if (/^\.\.\/public\//.test(v) || /\/public\//.test(v)) 引き込み.push(`${relative(ROOT, f)} → ${v}`);
-    }
-    for (const m of src.matchAll(/from\s+["']([^"']+)["']/g))
-      if (/\.\.\/public\//.test(m[1])) 引き込み.push(`${relative(ROOT, f)} → ${m[1]}`);
-  }
-  const 未申告 = 引き込み.filter((x) => !運んでよいもの.some((a) => x.includes(a)));
-  // ⚠ **「引き込んでいない」と言い切らない。**⚠ **許したものは引き込んでいる。**
-  //   ⚠ **数えた字が、⚠ 実際に見たものと食い違ってはいけない**（`CLAUDE.md` §1）。
-  const 許して引き込んだ = 引き込み.filter((x) => 運んでよいもの.some((a) => x.includes(a)));
-  未申告.length
-    ? bad(`v0.1.0 が β 版のファイルを引き込んでいる: ${未申告.join(" ／ ")}（⚠ 運ぶなら test/check/next.mjs の一覧に理由と一緒に書く）`)
-    : ok(許して引き込んだ.length
-        ? `v0.1.0 が引き込んでいる β 版のファイルは、⚠ 一覧に書いたものだけ（${許して引き込んだ.length} 件 ／ ⚠ ${files.length} ファイルを見た）`
-        : `v0.1.0 は β 版のファイルを引き込んでいない（⚠ ${files.length} ファイルを見た）`);
-
 
   // ---- ⚠ ④ 配信物に、⚠ こちらの作業メモを載せていないか ----
   // ⚠ **2026-08-28 に実際に出した。**⚠ **HTML のコメントは、⚠ そのまま配信される。**
@@ -183,7 +36,7 @@ else {
   //   ⚠ 中で何を迷っているかが、⚠ 誰でも読める状態だった。**
   // ⚠ **ADR 自体は公開リポジトリにあるので秘密ではない。**
   //   ⚠ **問題は、⚠ 配信物にこちらの作業メモを載せていること**（`CLAUDE.md` §8-1 の筋）。
-  // ⚠ **なぜそう書いたかは、⚠ `public-next/README.md` か ADR に置く。**
+  // ⚠ **なぜそう書いたかは、⚠ `public/README.md` か ADR に置く。**
   const 作業メモの印 = /docs\/adr\/|Owner 判断|⚠ \*\*まだ何も決まっていない|CLAUDE\.md|\.claude\//;
   const 漏れ = [];
   for (const f of files) {
@@ -196,27 +49,9 @@ else {
       if (作業メモの印.test(m[1])) 漏れ.push(`${relative(ROOT, f)}（ブロックコメント）`);
   }
   [...new Set(漏れ)].length
-    ? bad(`v0.1.0 の配信物に、こちらの作業メモが載っている: ${[...new Set(漏れ)].join(" ／ ")}（⚠ 理由は public-next/README.md か ADR に置く）`)
+    ? bad(`v0.1.0 の配信物に、こちらの作業メモが載っている: ${[...new Set(漏れ)].join(" ／ ")}（⚠ 理由は public/README.md か ADR に置く）`)
     : ok("v0.1.0 の配信物に、こちらの作業メモが載っていない");
 
-
-  // ---- ⚠ ⑤ 運んだファイルが、⚠ β 版とずれていないか ----
-  // ⚠ **別 Worker なので、⚠ 複製せずに運ぶ手が無い**（`docs/adr/0050`）。
-  //   ⚠ **掟 §3 は「やむを得ず持つときは、⚠ 機械で突き合わせる」と言っている。**⚠ **これがそれ。**
-  // ⚠ **ずれたら落ちる。**⚠ **どちらかを直したら、⚠ もう片方も直す。**
-  //   ⚠ **v0.1.0 の都合で変えたくなったら、⚠ **一覧から外して「作り直した」と書く**。**
-  //   ⚠ **黙って別物にしない**（⚠ 片方だけ古くなるのが、⚠ いちばん危ない）。
-  const ずれ = [];
-  for (const 名 of 運んでよいもの) {
-    const a = join(ROOT, "public", 名), b = join(NEXT, 名);
-    if (!existsSync(b)) continue;              // ⚠ まだ運んでいないものは見ない
-    if (!existsSync(a)) { ずれ.push(`${名}（⚠ β 版に無い）`); continue; }
-    if (readFileSync(a, "utf8") !== readFileSync(b, "utf8")) ずれ.push(名);
-  }
-  const 運んだ数 = 運んでよいもの.filter((n) => existsSync(join(NEXT, n))).length;
-  ずれ.length
-    ? bad(`運んだファイルが β 版とずれている: ${ずれ.join(" ／ ")}（⚠ どちらかを直したら、⚠ もう片方も直す。⚠ 別物にするなら test/check/next.mjs の一覧から外す）`)
-    : ok(`運んだ ${運んだ数} 本は、⚠ β 版と 1 バイトも違わない`);
 
   // ---- ⚠ ⑥ 出典明示が、⚠ 配信物に在るか ----
   // ⚠ **地理院タイルは、⚠ 出典明示が利用の条件**（`public/peel.html` にも同じことが書いてある）。
@@ -280,29 +115,9 @@ else {
       : ok("v0.1.0 の JavaScript は、⚠ 幅を見ていない（⚠ 見せ方は CSS の 1 か所）");
   }
 
-  // ---- ⚠ ③ 中身が無いとき、⚠ β 版へ戻る道が在るか ----
-  // ⚠ **空の器を見せられた人が行き先を失わないように、⚠ β 版への道を求めていた**
-  //   （`CLAUDE.md` §4-1: ⚠ **できないことを言うなら、⚠ 代わりにできることを添える**）。
-  //
-  // ⚠ **中身が入ったら、⚠ 求めない**（2026-08-29）。
-  //   ⚠ **利用者役 3 名が全員、⚠ 「作りかけです。今昔（β）もあります」を問題にした**:
-  //     ⚠ 「今出ている判定も当てにならないのかな、と疑った」
-  //     ⚠ **「断言するなら作りかけと言わないでほしいし、⚠ 作りかけなら断言しないでほしい」**
-  //     ⚠ 「押す前に気持ちが引ける」
-  //   ⚠ **代わりにできることを添えるつもりが、⚠ 出している答えの信用を下げていた。**
-  //   ⚠ **行き先が要るのは「見せるものが無いとき」だけ。**
-  const 中身 = files.some((f) => /^(top|app|main)\.js$/.test(f.split("/").pop()));
-  const 本文 = files.filter((f) => f.endsWith(".html")).map((f) => readFileSync(f, "utf8")).join("\n");
-  中身
-    ? ok("v0.1.0 に中身がある（⚠ β 版への行き先は求めない）")
-    : /konjaku\.hidetzu\.work/.test(本文)
-      ? ok("v0.1.0 は空の器だが、β 版へ戻れる")
-      : warn("v0.1.0 が空の器なのに、β 版への行き先が無い（⚠ 見せられた人の行き場が無い）");
-  }
-
   // ---- ⚠ ⑩ 色は 1 か所か。⚠ どの色みでも読めるか ----
   //
-  // ⚠ **2026-08-30 に集めた**（⚠ `public-next/theme.css`）。⚠ **それまでは誰も測っていなかった。**
+  // ⚠ **2026-08-30 に集めた**（⚠ `public/theme.css`）。⚠ **それまでは誰も測っていなかった。**
   //   ⚠ **`test/check/color.mjs` は `public/css/theme.css` しか読まない。**
   //   ⚠ **v0.1.0 の色は、⚠ コントラストの検査を 1 つも受けていなかった。**
   //   ⚠ **集めた結果、⚠ 3 つが下限を割っていた**（⚠ `--ink-3` 明 3.95 ／ `--line-strong` 明暗 2.1 台）。
@@ -310,7 +125,7 @@ else {
   // ⚠ **色の計算は `lib.mjs` が持つ。**⚠ **ここで持ち直さない。**
   {
     const THEME = join(NEXT, "theme.css");
-    if (!existsSync(THEME)) bad("public-next/theme.css が無い（⚠ 色を 1 か所に集める先）");
+    if (!existsSync(THEME)) bad("public/theme.css が無い（⚠ 色を 1 か所に集める先）");
     else {
       const css = readFileSync(THEME, "utf8").replace(BLOCK_COMMENT, " ");
 
@@ -537,7 +352,7 @@ else {
   //     ⚠ **春日部と軽井沢で「これは昔の答えではない」と読まれた。**
   //     ⚠ **春日部は「明治期は 田」を既に出していた。**⚠ **見出しでなかっただけ。**
   //
-  // ⚠ **ブラウザを立てずに見る**（`public-next/answer.js` は DOM も地図も持たない）。
+  // ⚠ **ブラウザを立てずに見る**（`public/answer.js` は DOM も地図も持たない）。
   //   ⚠ **実描画は「画面にそう出ているか」を見る。**⚠ **ここは「規則そのもの」を見る。**
   {
     const win = {};
@@ -1029,6 +844,100 @@ else {
       ? bad(`プライバシーポリシーが要点を先に渡していない: ${欠け.join(" ／ ")}`)
       : ok("プライバシーポリシーは、⚠ 4 点の要約を先に置き、⚠ 硬い言い方を使わず、"
           + "⚠ 「ここに書いていないことは、していません」と、⚠ 言えないことを残している");
+  }
+
+
+
+  // ---- ⚠ ⑳ 読み込みの順が、⚠ 依存より後になっていないか ----
+  //   ⚠ **2026-09-01 に実際に踏んだ**（`docs/adr/0080`）。
+  //   ⚠ **`places.js` を `gsi-address-search.js` より先に置いた。**
+  //   ⚠ **`places.js` は読み込んだ時点で `TIMEOUT_MS` を読む**ので、⚠ `undefined` になり、
+  //     ⚠ **ページのスクリプトが丸ごと止まった**（⚠ 実描画 83 件中 46 件が同じ 1 行で落ちた）。
+  //   ⚠ **静的検査は緑のままだった。**⚠ **順は、⚠ 誰も見ていなかった。**
+  //
+  // ⚠ **字面では見分けられない**（⚠ 一度そう書いて、⚠ わざと壊しても素通りした）。
+  //   ⚠ **依存を読む行は関数の中にあり、⚠ 呼ぶのが最上位**だった。
+  //   ⚠ **字下げで「最上位か」を判定しても当たらない。**
+  // ⚠ **だから、⚠ 実際に順に読み込んで、⚠ 落ちるかを見る**（⚠ ブラウザは要らない）。
+  //   ⚠ **DOM は当たり障りのない作りもので埋める**（⚠ 見たいのは読み込みの順だけ）。
+  {
+    const 欠け = [];
+    const 画面 = readdirSync(NEXT).filter((f) => f.endsWith(".html"));
+    const 素 = (f) => readFileSync(join(NEXT, f), "utf8")
+      .replace(BLOCK_COMMENT, " ").replace(HEAD_COMMENT, " ");
+
+    // ⚠ **触られたら、⚠ 何にでも化ける作りもの**（⚠ DOM も地図も、⚠ ここでは中身に興味が無い）。
+    // ⚠ **文字にも数にも化ける**（⚠ `${…}` に入れられても落ちない）。
+    //   ⚠ **`then` は undefined**（⚠ 返さないと await で永久に待つ）。
+    //   ⚠ **`Symbol.unscopables` も undefined**（⚠ `with` が名前を外へ逃がす）。
+    const 何でも = () => new Proxy(function () {}, {
+      get: (t, k) => {
+        if (k === "then" || k === Symbol.unscopables) return undefined;
+        if (k === Symbol.toPrimitive) return () => "";
+        if (k === "length") return 0;
+        if (k === "toString" || k === "valueOf") return () => "";
+        return 何でも();
+      },
+      set: () => true,
+      apply: () => 何でも(),
+      construct: () => 何でも(),
+    });
+
+    // ⚠ **裸の名前も、⚠ この入れ物から引かせる**（⚠ `with`）。
+    //   ⚠ **`verify.js` は `KonjakuSwale` を裸で読む**（⚠ `window.` を付けない）。
+    //   ⚠ **`with` を使わないと、⚠ 本物の globalThis を見に行って、⚠ 順に関係なく落ちる。**
+    // ⚠ **入っていない名前だけ作りものを返す**（⚠ 入っているものは、⚠ そのまま返す）。
+    //   ⚠ **`has` は常に true**（⚠ そうしないと `with` が外へ抜ける）。
+    const 入れ物 = () => {
+      const 中身 = {};
+      // ⚠ **`window` / `globalThis` / `self` は、⚠ 入れ物そのものを指す。**
+      //   ⚠ **どのファイルも `(function(global){…})(window)` の形で名前を置く。**
+      //   ⚠ **ここを作りものにすると、⚠ 置いた名前がどこにも残らない**
+      //     （⚠ 実際にそうなって、⚠ 順が正しいのに落ちた）。
+      const 自分 = new Proxy(中身, {
+        has: () => true,
+        // ⚠ **`Konjaku*` は埋めない。**⚠ **まだ置かれていなければ undefined を返す。**
+        //   ⚠ **ここを作りもので埋めると、⚠ 捕まえたい不具合をこの検査自身が隠す**
+        //     （⚠ 実際にそう書いて、⚠ わざと壊しても素通りした）。
+        //   ⚠ **埋めてよいのは、⚠ ブラウザが最初から持っているもの**（⚠ DOM・fetch など）。
+        get: (t, k) => (k in t ? t[k]
+          : k === Symbol.unscopables ? undefined
+          : (typeof k === "string" && k.startsWith("Konjaku")) ? undefined
+          : (k === "window" || k === "globalThis" || k === "self") ? 自分
+          // ⚠ **`fetch` だけは本物の Promise を返す。**⚠ **作りものだと `.then` が無い。**
+          //   ⚠ **手元（Node 25）では通り、⚠ CI（Node 22）で落ちた**（2026-09-01。⚠ 実際に踏んだ）。
+          //   ⚠ **`fetch(…).then(…)` を最上位で書いている画面がある。**
+          //   ⚠ **外へは出ない**（⚠ 返すのは作りもの。⚠ 通信はしない）。
+          : k === "fetch" ? (() => Promise.resolve(何でも()))
+          : 何でも()),
+        set: (t, k, v) => { t[k] = v; return true; },
+      });
+      return 自分;
+    };
+
+    for (const h of 画面) {
+      const 順 = [...素(h).matchAll(/<script[^>]+src="\.\/([\w.-]+\.js)"/g)].map((m) => m[1]);
+      if (!順.length) continue;
+      // ⚠ **画面ごとに、⚠ まっさらな入れ物から始める**（⚠ 前の画面の名前を引き継がない）。
+      const win = 入れ物();
+      let 落ちた = null;
+      for (const f of 順) {
+        try {
+          new Function("__win", `with (__win) { ${readFileSync(join(NEXT, f), "utf8")}\n }`)(win);
+        } catch (e) {
+          落ちた = `${f} が読み込みで落ちた: ${String(e.message).slice(0, 90)}`;
+          break;
+        }
+      }
+      if (落ちた) 欠け.push(`${h}: ${落ちた}（⚠ 読み込みの順を見直す）`);
+    }
+
+    // ⚠ **1 枚も読めていないなら、⚠ この検査は何も見ていない。**
+    画面.length === 0 && 欠け.push("画面が 1 枚も無い（⚠ この検査が何も見ていない）");
+
+    欠け.length
+      ? bad(`読み込みの順が、依存より後になっている: ${欠け.join(" ／ ")}`)
+      : ok(`読み込みの順は、⚠ 依存より後になっていない（⚠ ${画面.length} 画面を、⚠ 実際に順に読んだ）`);
   }
 
 }

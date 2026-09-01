@@ -1,6 +1,6 @@
 // 静的検査 — 保存した場所の控え（⚠ **何を保存し、⚠ どこに置き、⚠ 何を送らないか**）
 //
-// ⚠ **`public-next/saved.js` は DOM も地図も持たない**（`.claude/rules/javascript.md`）。
+// ⚠ **`public/saved.js` は DOM も地図も持たない**（`.claude/rules/javascript.md`）。
 //   ⚠ **だからここで、⚠ ブラウザ抜きで実際に動かして確かめられる。**
 //   ⚠ **字面を見るだけの検査にしない**（⚠ 字面は、⚠ 中身を消しても残る）。
 //
@@ -16,7 +16,7 @@ import { ROOT, ok, bad, head } from "./lib.mjs";
 
 head("保存した場所");
 
-const NEXT = join(ROOT, "public-next");
+const NEXT = join(ROOT, "public");
 const src = readFileSync(join(NEXT, "saved.js"), "utf8");
 
 // ⚠ **実際に動かす。**⚠ **classic script なので、⚠ 別の器を作って評価する。**

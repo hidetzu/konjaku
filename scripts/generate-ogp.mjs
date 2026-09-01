@@ -20,6 +20,10 @@ const FONT = "assets/ogp/NotoSansCJKjp-Bold.subset.otf";
 const MANIFEST = "assets/ogp/manifest.json";
 
 export const OGP_PAGES = [
+  // ⚠ **v0.1.0 は 1 枚だけ**（2026-09-01。`docs/adr/0080`）。
+  //   ⚠ **β 版は 2 枚だった**（⚠ `/` と `/peel`）。⚠ **`/peel` は本番から消えた。**
+  //   ⚠ **`/deep` には作らない。**⚠ **あれは場所ごとに中身が変わる画面**で、
+  //     ⚠ 見出しも実行時に決まる。⚠ **静止した 1 枚では、⚠ その場所の話にならない。**
   {
     id: "index",
     html: "public/index.html",
@@ -31,18 +35,6 @@ export const OGP_PAGES = [
     lines: ["この土地は、", "昔なんだったのか？"],
     subtitle: "土地の成り立ちを、根拠とともに見る",
     kind: "index",
-  },
-  {
-    id: "peel",
-    html: "public/peel.html",
-    svg: "assets/ogp/peel.svg",
-    png: "public/ogp-peel.png",
-    imageUrl: `${SITE}/ogp-peel.png`,
-    title: "この場所を深掘り — いまの街と、明治期の地面",
-    headline: "この場所を深掘り",
-    lines: ["この場所を深掘り"],
-    subtitle: "いまの街と、明治期の地面",
-    kind: "peel",
   },
 ];
 
@@ -184,7 +176,7 @@ function check() {
       throw new Error(`${page.png} が ${WIDTH}x${HEIGHT} ではありません`);
     checkHtml(page);
   }
-  console.log("OGP 2枚は生成元・PNG・ページの title / og:title / h1 と一致");
+  console.log(`OGP ${OGP_PAGES.length}枚は生成元・PNG・ページの title / og:title / h1 と一致`);
 }
 
 function generate() {

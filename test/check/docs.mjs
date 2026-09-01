@@ -26,7 +26,6 @@
 
 import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
-import { unpack as blUnpack } from "../../scripts/bl-format.mjs";
 import { ROOT, PUB, ok, bad, warn, head, src , BLOCK_COMMENT, HTML_COMMENT, HEAD_COMMENT, LINE_COMMENT, dropComment } from "./lib.mjs";
 
 // ⚠ **SPEC の「静的 N件」が、本当に N 件か。**
@@ -188,77 +187,9 @@ import { ROOT, PUB, ok, bad, warn, head, src , BLOCK_COMMENT, HTML_COMMENT, HEAD
   }
 }
 
-// ⚠ **配っているデータの数を、⚠ `docs/SPEC.md` と突き合わせる**（2026-08-22。Owner 判断）。
-//   ⚠ **検査の件数とは事情が違う。**⚠ 検査の件数は ⚠ **毎 PR で変わる**ので書く場所を無くした
-//     （hidetzu/konjaku#184）。⚠ **配っているデータの数は、取り込み直したときしか変わらない**ので、
-//     ⚠ **競合しない。**⚠ 起きるのは「黙って古くなる」ほう。
-//   ⚠ **実際に踏んだ（2026-08-22）**: SPEC は 403,397件・生17.0MB と書いていたが、
-//     ⚠ **配っていたのは 499,656件・生25.8MB（1.24 倍）。**⚠ **誰も気づかなかった。**
-//   ⚠ **掟 §6 は「数字は必ず主張範囲の分母で書く」**と言うので、⚠ **SPEC から数字を消せない。**
-//     ⚠ だから ⚠ **書いたうえで、機械で突き合わせる**（`CLAUDE.md` §3）。
-//   ⚠ **数えるのは配っている現物**（`public/data/bl`）。⚠ **取り込みのログではない。**
-{
-  const dir = join(ROOT, "public", "data", "bl");
-  const files = [];
-  const walk = async (d) => {
-    for (const e of await readdir(d, { withFileTypes: true })) {
-      const p = join(d, e.name);
-      if (e.isDirectory()) await walk(p);
-      // ⚠ 索引（`index.json`）はタイルではない。⚠ 数に入れると 1 枚多くなる
-      else if (/[\\/]\d+[\\/]\d+[\\/]\d+\.json$/.test(p)) files.push(p);
-    }
-  };
-  await walk(dir).catch(() => {});
-  if (!files.length) {
-    bad("配っている建物タイルを 1 枚も読めない（⚠ この検査が何も見ていない）");
-  } else {
-    let total = 0, def = 0, dated = 0, named = 0, rawBytes = 0;
-    for (const f of files) {
-      const buf = await readFile(f);
-      rawBytes += buf.length;
-      for (const ft of blUnpack(JSON.parse(buf.toString("utf8"))).features) {
-        total++;
-        if (ft.properties.heightSource === "default") def++;
-        if (ft.properties.startDate) dated++;
-        if (ft.properties.name) named++;
-      }
-    }
-    const pct = (a) => ((a / total) * 100).toFixed(2);
-    const mb  = (rawBytes / 1e6).toFixed(1);
-    const spec = await readFile(join(ROOT, "docs", "SPEC.md"), "utf8").catch(() => "");
-    const num = (t) => Number(String(t).replace(/,/g, ""));
-    // ⚠ **周りの語で位置を決める。**⚠ 数字だけを見ると、別の主張の数字を拾う
-    const claims = [
-      ["配っている総数",   /配っている ([\d,]+)件/,                          () => total],
-      ["既定値の件数",     /\*\*([\d,]+)件（[\d.]+%）が既定値\*\*/,        () => def],
-      ["既定値の割合",     /\*\*[\d,]+件（([\d.]+)%）が既定値\*\*/,        () => pct(def)],
-      ["建設年の分母",     /([\d,]+)件中 \*\*[\d,]+件（[\d.]+%）\*\*/,     () => total],
-      ["建設年の件数",     /[\d,]+件中 \*\*([\d,]+)件（[\d.]+%）\*\*/,     () => dated],
-      ["建設年の割合",     /[\d,]+件中 \*\*[\d,]+件（([\d.]+)%）\*\*/,     () => pct(dated)],
-      ["流れの図の件数",   /\(([\d,]+)件 \/ 生[\d.]+MB/,                    () => total],
-      ["流れの図の重さ",   /\([\d,]+件 \/ 生([\d.]+)MB/,                    () => mb],
-    ];
-    const wrong = [];
-    let found = 0;
-    for (const [name, re, want] of claims) {
-      const m = re.exec(spec);
-      if (!m) { wrong.push(`${name}: ⚠ SPEC に見つからない`); continue; }
-      found++;
-      const w = String(want()), got = m[1];
-      if (num(w) !== num(got)) wrong.push(`${name}: SPEC ${got} ／ ⚠ 実物 ${w}`);
-    }
-    wrong.length
-      ? bad(`docs/SPEC.md の数字が、配っている現物と違う（${wrong.length} か所）: ${wrong.join(" ／ ")}`
-          + "。⚠ **取り込み直したら SPEC も直す。**⚠ 数えたのは public/data/bl の現物")
-      : ok(`docs/SPEC.md の数字が、配っている現物と合っている（${found} か所を突き合わせた）`);
-    // ⚠ **突き合わせた数を名乗る。**⚠ 0 か所でも緑になると、⚠ 何も見ていないのに通る
-    found === claims.length
-      ? ok(`配っている建物を数えた（タイル ${files.length} 枚 ／ ${total.toLocaleString()} 件 ／ 生 ${mb}MB`
-          + ` ／ 既定値 ${pct(def)}% ／ 建設年 ${pct(dated)}% ／ 名前 ${pct(named)}%）`)
-      : bad(`SPEC の中に、突き合わせる先が ${found} / ${claims.length} か所しか無い`
-          + "（⚠ 文を書き換えたなら、⚠ この検査の探し方も直す）");
-  }
-}
+// ⚠ **建物タイルを数える節は落とした**（2026-09-01。`docs/adr/0080`）。
+//   ⚠ **数えていたのは β 版の `public/data/bl`。**⚠ **本番から消えた。**
+//   ⚠ **v0.1.0 は建物を使わない**（⚠ 使い始めたら、⚠ そのとき改めて数える）。
 
 // ============================================================
 // ⚠ ドメインモデル（docs/DOMAIN.md）が、実物とつながっているか
@@ -279,19 +210,16 @@ import { ROOT, PUB, ok, bad, warn, head, src , BLOCK_COMMENT, HTML_COMMENT, HEAD
   if (!dom) fails.push("docs/DOMAIN.md を読めない");
   else {
     // ① 持ち主として名指ししたものが実在すること
-    const OWNERS = [["public/prov.js", "KonjakuProv"], ["public/swale.js", "SWALE"],
-                    ["public/verify.js", "ERAS"]];
+    // ⚠ **2026-09-01 に v0.1.0 の持ち主へ書き直した**（`docs/adr/0080`）。
+    //   ⚠ **`prov.js` は β 版のもの。**⚠ **本番から消えた。**
+    const OWNERS = [["public/answer.js", "MEIJI_NONE"], ["public/words.js", "GROUND_GLOSS"],
+                    ["public/swale.js", "SWALE"], ["public/verify.js", "ERAS"],
+                    ["public/monument.js", "nearby"], ["public/saved.js", "merge"]];
     for (const [f, sym] of OWNERS) {
       if (!dom.includes(f)) fails.push(`DOMAIN.md が ${f} を名指ししていない`);
       const src2 = f.startsWith("public/") ? src[f.slice(7)] : null;
       if (src2 == null) fails.push(`${f} を読めない`);
       else if (!src2.includes(sym)) fails.push(`${f} に ${sym} が無い（持ち主が変わった）`);
-    }
-    // ⚠ **トップの JS は `top.js`**（2026-08-24）。⚠ TOPWORD の持ち主が移った
-    for (const [f, sym] of [["WORD", "peel3d.js"], ["TOPWORD", "top.js"]]) {
-      if (!dom.includes(f)) fails.push(`DOMAIN.md が ${f} を名指ししていない`);
-      if (!(src[sym] ?? "").includes(`const ${f} = {`) && !(src[sym] ?? "").includes(`const ${f} = {`))
-        fails.push(`${sym} に ${f} が無い（持ち主が変わった）`);
     }
     // ② ⚠ 画面に出さないと決めた語が、**利用者に見えるところ**に出ていないこと。
     //   ⚠ コメントは先に落とす（検査が自分の説明を拾う。3 回踏んでいる）。
@@ -302,7 +230,7 @@ import { ROOT, PUB, ok, bad, warn, head, src , BLOCK_COMMENT, HTML_COMMENT, HEAD
     const BAN = [
       { w: "この場所は", why: "場所の指し方は「この土地は」に統一（DOMAIN §2-1）" },
     ];
-    for (const f of ["index.html", "peel3d.js", "peel.html"])
+    for (const f of ["index.html", "top.js", "deep.js"])
       for (const g of BAN) {
         const n = [...strip(src[f]).matchAll(new RegExp(g.w, "g"))].length;
         if (n) fails.push(`${f} に「${g.w}」が ${n} 箇所（${g.why}）`);
