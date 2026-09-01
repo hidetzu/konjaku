@@ -1,0 +1,37 @@
+{
+  "generatedBy": "npm run about-hero",
+  "source": "https://konjaku.hidetzu.work/?ll=35.6300,139.7750",
+  "place": "東京・お台場",
+  "ll": "35.6300,139.7750",
+  "viewport": "800x500@2x",
+  "outputWidth": 720,
+  "browser": "chromium 1.62.1",
+  "encoder": "ffmpeg version n8.1 Copyright (c) 2000-2026 the FFmpeg developers",
+  "tiles": "国土地理院 地理院タイル（1936–42 の空中写真 ort_riku10 ／ 淡色地図 pale ／ 地形分類 実験）",
+  "shots": [
+    {
+      "id": "mukashi",
+      "output": "public/about-1936.webp",
+      "sha256": "4e13bcc5e1a77b540ad01868da8873b2baf82dc1b07f4adc67bc63781dd3b676",
+      "bytes": 59612,
+      "width": 720,
+      "height": 450,
+      "label": "1936–42 の空中写真",
+      "note": "一面が水面",
+      "alt": "1936〜42年の空中写真。お台場のあたりは一面が水面",
+      "era": "ort_riku10"
+    },
+    {
+      "id": "ima",
+      "output": "public/about-ima.webp",
+      "sha256": "e11997ef23a6a7dfca892be7eb5ee449c06151f86920ae66d082f0b5916334ac",
+      "bytes": 48076,
+      "width": 720,
+      "height": 450,
+      "label": "いまの画面",
+      "note": "台場の街",
+      "alt": "いまの今昔の画面。お台場の街と、地形分類の色",
+      "era": "（年代を選んでいない＝いまの画面）"
+    }
+  ]
+}

@@ -3227,6 +3227,57 @@ CASES.push({
   },
 });
 
+// ⚠ **/about の冒頭に置いた、⚠ 今昔の実画面 2 枚**（2026-09-02。Owner 判断。`docs/adr/0084`）。
+//
+// ⚠ **静的検査は、⚠ 字と、⚠ ファイルが在ることしか見ない。**
+//   ⚠ **本当に絵が出たか（`naturalWidth`）と、⚠ 外へ出ていないかは、⚠ ここでしか出ない。**
+// ⚠ **読み物から、⚠ 読者の接続元を配信元へ出さないと決めた。**⚠ **だから 0 本を主張する。**
+for (const [名, viewport] of [["PC", PCな幅], ["スマホ", SP], ["いちばん狭い幅", { width: 320, height: 640 }]]) {
+  CASES.push({
+    name: `${名}の /about は、実画面 2 枚を出し、外へ 1 本も出さない`,
+    path: "/about", origin: NEXT_BASE, viewport,
+    async check(page, reqs) {
+      await 待つ(page,
+        () => [...document.querySelectorAll(".about__heroImg")].every((i) => i.complete),
+        "冒頭の 2 枚");
+      const r = await page.evaluate(() => {
+        const 絵 = [...document.querySelectorAll(".about__heroImg")];
+        const 断り = document.querySelector(".about__figSrc");
+        const 節 = [...document.querySelectorAll(".about__h2")]
+          .find((e) => e.textContent.includes("言えないこと"));
+        return {
+          枚: 絵.length,
+          // ⚠ **`complete` だけでは足りない**（⚠ 404 でも true になる）。⚠ **中身の幅を見る。**
+          読めた: 絵.map((i) => i.naturalWidth),
+          寸法: 絵.map((i) => {
+            const q = i.getBoundingClientRect();
+            return { w: Math.round(q.width), h: Math.round(q.height) };
+          }),
+          // ⚠ **2 枚は横に並ぶ**（⚠ 縦に積むと「昔 → いま」に読めない）
+          横並び: 絵.length === 2
+            && Math.abs(絵[0].getBoundingClientRect().top - 絵[1].getBoundingClientRect().top) < 2,
+          断りが見える: !!断り && 断り.checkVisibility(),
+          言えないことがある: !!節,
+          高さ: document.documentElement.scrollHeight,
+          横あふれ: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+        };
+      });
+      must(r.枚 === 2, `冒頭の絵が 2 枚ではない（${r.枚} 枚）`);
+      for (const [i, w] of r.読めた.entries())
+        must(w > 0, `冒頭の ${i + 1} 枚目が読めていない（naturalWidth=${w}）`);
+      must(r.横並び, "冒頭の 2 枚が横に並んでいない（⚠ 「昔 → いま」に読めない）");
+      must(r.断りが見える, "出典と加工の断りが見えていない");
+      must(r.言えないことがある, "「言えないこと」の節が消えている");
+      must(!r.横あふれ, "/about が横にあふれている");
+      // ⚠ **読み物のまま。**⚠ **外へ 1 本も出さない**（⚠ これが作り置きにした理由）。
+      const 外 = reqs.filter((u) => !u.startsWith(NEXT_BASE));
+      must(外.length === 0,
+        `/about が外へ ${外.length} 本出している: ${外.slice(0, 2).join(" ／ ")}`);
+      return `${r.寸法.map((q) => `${q.w}x${q.h}`).join(" ")} ／ 高さ ${r.高さ}px ／ 外 0 本`;
+    },
+  });
+}
+
 // ⚠ **読み物の出口。**⚠ **押して、⚠ 本当にトップへ着くところまで見る**
 //   （⚠ 字と href だけなら静的検査が見ている。⚠ ここは着くかを見る）。
 for (const [名, viewport] of [["PC", PCな幅], ["スマホ", SP]]) {

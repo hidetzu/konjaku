@@ -51,3 +51,8 @@ artifacts/
 # ⚠ commit すると、**手元の版が配信物の版として名乗られる**。
 #   「本番がどの commit から出たか」を確かめるための仕組みが、そこで嘘になる。
 public/version.json
+
+# ⚠ /about の冒頭の 2 枚を作るときの、途中の PNG（1 枚 1.5MB）。
+#   ⚠ 配るのは WebP のほう（public/about-*.webp）。
+#   ⚠ 作り方は assets/about/hero.json が持つ（npm run about-hero）。
+assets/about/*.png

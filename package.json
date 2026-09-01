@@ -25,6 +25,7 @@
     "export:places": "node scripts/export-places.mjs",
     "pack:bld": "node scripts/pack-buildings.mjs",
     "db:init": "npx wrangler d1 execute konjaku --remote --file migrations/0001_tick.sql",
-    "db:handoff": "npx wrangler d1 execute konjaku --remote --file migrations/0002_handoff.sql"
+    "db:handoff": "npx wrangler d1 execute konjaku --remote --file migrations/0002_handoff.sql",
+    "about-hero": "node scripts/generate-about-hero.mjs"
   }
 }
