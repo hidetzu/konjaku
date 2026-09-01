@@ -49,36 +49,25 @@ const NO_RENDER = [/^docs\//, /^\.claude\//, /^[^/]+\.md$/, /^\.github\/ISSUE_TE
 // ⚠ **どちらの画面が読むかは、⚠ HTML を数えて決めた**（2026-08-22。hidetzu/konjaku#190）。
 //   ⚠ **憶測で足さない。**⚠ **`test/check.mjs` が、⚠ 実物と突き合わせて見張る。**
 const TO_SUITE = [
-  [/^public\/peel\.html$/,           "peel"],
-  [/^public\/peel3d\.js$/,           "peel"],
-  [/^public\/prov\.js$/,             "peel"],
-  [/^public\/components\/era-control\//, "peel"],
-  [/^test\/render\/peel\.mjs$/,      "peel"],
-  [/^public\/index\.html$/,          "top"],
-  [/^public\/events\.js$/,           "top"],
-  [/^public\/places\.js$/,           "top"],
-  [/^public\/gsi-address-search\.js$/, "top"],
-  [/^test\/render\/top\.mjs$/,       "top"],
-  // ⚠ **問いごとに割ったファイル**（2026-08-26。hidetzu/konjaku#277）。
-  //   ⚠ **1 つずつ書き足さない。**⚠ 書き足す形にすると、⚠ **足し忘れたものが黙って全部に倒れる**
-  //     （⚠ 落ちない。⚠ **多く回る向きなので CI は緑のまま**。⚠ この repo で 2 回踏んでいる）。
-  [/^test\/render\/top-[\w-]+\.mjs$/,  "top"],
-  [/^test\/render\/peel-[\w-]+\.mjs$/, "peel"],
-  // ⚠ **v0.1.0 は別の Worker**（`docs/adr/0050`）。⚠ **β の画面は 1 つも読まない。**
-  //   ⚠ **`public-next/` を触ったら `next` だけ回す**（2026-08-29）。
-  [/^public-next\//,                  "next"],
-  [/^test\/render\/next\.mjs$/,       "next"],
-  // ⚠ **v0.1.0 のサーバ**（2026-08-30）。⚠ **`next` の実描画が、⚠ 本物のまま呼んでいる。**
-  //   ⚠ **β の画面（`public/`）からは 1 行も参照されない。**
-  //   ⚠ **入れる前は、⚠ ここに無いので全部に倒れていた**（⚠ 実描画 6 本・約 10 分）。
-  //   ⚠ **落ちないので気づけない。**⚠ **多く回る向きに倒れる。**
-  [/^worker-next\.js$/,               "next"],
+  // ⚠ **2026-09-01 に、⚠ suite は `next` の 1 つになった**（`docs/adr/0080`）。
+  //   ⚠ **β 版の画面（`peel` / `top`）は本番から消えた。**
+  //   ⚠ **1 つしか無い間は、⚠ ここが効かない**（⚠ 全部に倒れても `next` だけ）。
+  //   ⚠ **2 つ目の suite を足したら、⚠ ここも足す**（⚠ 足し忘れは多く回る向きに倒れ、
+  //     ⚠ 落ちないので気づけない。⚠ この repo で 2 回踏んでいる）。
+  [/^public\//,                       "next"],
+  [/^test\/render\/next\.mjs$/,        "next"],
+  [/^worker\.js$/,                    "next"],
   [/^handoff\.js$/,                   "next"],
   [/^test\/handoff-fake-d1\.mjs$/,    "next"],
 ];
 
 // ⚠ **全部回すときの一覧。**⚠ **ここ 1 か所で持つ**（2026-08-22。hidetzu/konjaku#190）。
-const ALL = ["top core", "top search", "peel core", "next core"];
+// ⚠ **全部回すときの一覧。**⚠ **ここ 1 か所で持つ。**
+// ⚠ **2026-09-01: β 版の suite（top / peel）を落とした。**⚠ 残るのは v0.1.0 だけ。
+// ⚠ **`next` にも `search` の群がある**（⚠ 1 件。⚠ 地理院の住所検索を実際に叩く）。
+// ⚠ **落とすと、⚠ 走者が数える件数と、⚠ 書いてあるケース数が合わなくなる**
+//   （⚠ 2026-09-01 に実際に踏んだ。⚠ 82 件 vs 83 件で `deliver.mjs` が落ちた）。
+const ALL = ["next core", "next search"];
 
 // ⚠ **重い群は、⚠ 何本かに分けて同時に回す**（2026-08-22。hidetzu/konjaku#190）。
 //   ⚠ **実測（2026-08-22・PR hidetzu/konjaku#209 の CI）**: peel/core 5:12 ／ top/core 3:45 ／ top/search 1:23。
@@ -86,7 +75,9 @@ const ALL = ["top core", "top search", "peel core", "next core"];
 //     peel 2:24 / 2:48 ／ top 1:47 / 1:58 ／ search 1:23 → ⚠ **律速は 2:48。**
 //   ⚠ **3 つに割ると偏る**（peel: 1:14 / 2:31 / 1:27）。⚠ **1 本が重いままなので効かない。**
 //   ⚠ **search は割らない**（1:23 で、⚠ 割っても律速に届かない。⚠ 外へ出る口を増やさない）。
-const SHARDS = { "top core": 2, "peel core": 2 };
+// ⚠ **2026-09-01: 分割は無し。**⚠ **`next core` は実測 2 分台**（⚠ β の peel は 5 分台だった）。
+// ⚠ **重くなったら、⚠ ここに書いて分ける。**
+const SHARDS = {};
 
 // ⚠ **出し方は 2 つあるが、⚠ 決め方は 1 つ。**⚠ 形を変えるだけ。
 const emit = (lines) => {
@@ -162,10 +153,10 @@ for (const f of files) {
 // ⚠ **知らないものが 1 つでもあれば、⚠ 全部に倒す**（⚠ 絞り込みで検査漏れを作らない）。
 //   ⚠ **`next` も含める**（2026-08-29）。⚠ **ここに足し忘れると、
 //     ⚠ 知らないファイルを触ったときに v0.1.0 だけ回らない。**⚠ **落ちないので気づけない。**
-if (full) { need.add("top"); need.add("peel"); need.add("next"); }
+// ⚠ **2026-09-01: suite は `next` だけになった**（`docs/adr/0080`）。
+//   ⚠ **足すときは、⚠ ここと `ALL` の両方**（⚠ 片方だけだと、⚠ 静かに回らない）。
+if (full) need.add("next");
 
 const out = [];
-if (need.has("top")) { out.push("top core", "top search"); }
-if (need.has("peel")) out.push("peel core");   // ⚠ peel に search のケースは 0 件
-if (need.has("next")) out.push("next core");   // ⚠ v0.1.0 は外へ出るケースが 0 件
+if (need.has("next")) out.push("next core", "next search");
 emit(out);

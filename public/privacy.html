@@ -1,0 +1,176 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<!-- URL に地名と座標が載る。押した先へ Referer で渡さない。
+     _headers と二重にしてある。片方が効かない配信経路があっても漏らさないため。
+
+     no-referrer ではなく same-origin。外へは一切送らないのは同じだが、
+     こちらは同じサイトの中では残る。/deep が「どこから来たか」を読み、
+     「← ひとつ前へ」を出すのに要る（back.js）。
+     no-referrer にしたら、同じサイトから来ても直前へ返せなくなった。 -->
+<meta name="referrer" content="same-origin">
+<title>プライバシーポリシー — 今昔</title>
+<meta name="description" content="調べた場所と保存した場所を、どう扱っているかを書いています。ここに書いていないことは、していません。">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="今昔">
+<meta property="og:title" content="プライバシーポリシー — 今昔">
+<meta property="og:description" content="調べた場所と保存した場所を、どう扱っているかを書いています。ここに書いていないことは、していません。">
+<meta property="og:url" content="https://konjaku.hidetzu.work/privacy">
+<meta property="og:image" content="https://konjaku.hidetzu.work/ogp.png">
+<meta property="og:image:alt" content="この土地は、昔なんだったのか？ — 土地の成り立ちを、根拠とともに見る">
+<meta property="og:locale" content="ja_JP">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="プライバシーポリシー — 今昔">
+<meta name="twitter:description" content="調べた場所と保存した場所を、どう扱っているかを書いています。ここに書いていないことは、していません。">
+<meta name="twitter:image" content="https://konjaku.hidetzu.work/ogp.png">
+<link rel="icon" href="./favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="./apple-touch-icon.png">
+<link rel="stylesheet" href="./theme.css">
+<link rel="stylesheet" href="./brand.css">
+<link rel="stylesheet" href="./foot.css">
+<link rel="stylesheet" href="./about.css">
+
+<!-- プライバシーポリシー。何を送り、何を預け、いつ使えなくなるかを言う。
+     「このサイトについて」から割った（2026-08-31）。メニューの項目が別なら、画面も別にする。
+
+     字は HTML に直接書く（JS から差し込むと、落ちたとき説明だけ消える）。
+     β 版の privacy.mjs が同じ理由でそう求めている。この画面は JavaScript を持たない。
+
+     合言葉の期限の分数は、ここに書かない。画面は ttl_sec から文を作る決まりで
+     （docs/sync-api.md）、ここに数字を持つと 2 か所になる。 -->
+<header class="brand">
+  <div class="brand__inner">
+    <a class="brand__name" href="./">
+      <img class="brand__mark" src="./favicon.svg" alt="" width="20" height="20">
+      <span class="brand__words"><span class="brand__title">今昔</span><span class="brand__tag">この土地は、昔なんだったのか？</span></span>
+    </a>
+    <nav class="brand__nav" aria-label="主な行き先">
+      <a class="brand__link" href="./">地図で調べる</a>
+    </nav>
+    <details class="menu">
+      <summary class="menu__btn" aria-label="メニュー">
+        <span class="menu__bars" aria-hidden="true"></span>
+      </summary>
+      <nav class="menu__panel" aria-label="サイトの案内">
+        <a class="menu__item" href="./about">このサイトについて</a>
+        <a class="menu__item" href="./privacy" aria-current="page">プライバシーポリシー</a>
+        <a class="menu__item" href="./terms">利用規約</a>
+        <a class="menu__item" href="https://github.com/hidetzu/konjaku/issues/new?template=feedback.yml" target="_blank" rel="noopener">ご意見・不具合報告（GitHub で公開）</a>
+      </nav>
+    </details>
+  </div>
+</header>
+
+<main class="about">
+  <h1 class="about__h">プライバシーポリシー</h1>
+
+  <!-- 先に 4 つ、その下にくわしく。事実は減らしていない。順番と言葉を変えただけ。
+       理由は docs/adr に置く（配信物に作業メモを載せない）。 -->
+  <p class="about__lead">
+    調べた場所と保存した場所を、どう扱っているかを書きます。まず 4 つだけ。くわしくは、その下に。
+    ここに書いていないことは、していません。
+  </p>
+
+  <ul class="about__sum">
+    <li class="about__sumItem">
+      <b class="about__sumK">保存した場所は、この端末の中だけ</b>
+      こちらのサーバには置きません。
+    </li>
+    <li class="about__sumItem">
+      <b class="about__sumK">こちらのサーバへ送るのは、別の端末で見るときだけ</b>
+      あなたが自分でボタンを押したときだけです。押さなければ、何も送りません。
+    </li>
+    <li class="about__sumItem">
+      <b class="about__sumK">誰がどこを見たかは、数えていません</b>
+      閲覧の記録も、広告のための記録も取っていません。
+    </li>
+    <li class="about__sumItem">
+      <b class="about__sumK">地図と住所の検索では、見ている場所が国土地理院に届きます</b>
+      地図・空中写真・町名も同じです。これは避けられません。
+    </li>
+  </ul>
+
+  <p class="about__note">
+    以下は、上の 4 つをくわしく説明したものです。新しいことは足していません。
+  </p>
+
+  <section class="about__sec">
+    <h2 class="about__h2">1. 保存した場所は、この端末の中だけに残ります</h2>
+    <p class="about__p">
+      「☆ 保存」で残したものは、お使いのブラウザの中に置かれます。こちらのサーバには置きません。
+      ブラウザの保存領域を消すと、一緒に消えます。
+    </p>
+  </section>
+
+  <section class="about__sec">
+    <h2 class="about__h2">2. 別の端末へ渡すとき</h2>
+    <p class="about__p">
+      「PC やタブレットでも見る」を押したときだけ、保存した場所をこちらで預かります。
+      押さなければ、何も送りません。
+    </p>
+    <dl class="about__rows">
+      <div class="about__row">
+        <dt class="about__k">預けるもの</dt>
+        <dd class="about__v">保存した場所の、緯度・経度・町名・足元の区分・保存した時刻。
+          保存した件数のぶん、全部です。</dd>
+      </div>
+      <div class="about__row">
+        <dt class="about__k">預かるあいだ</dt>
+        <dd class="about__v">期限が来るまで、こちらで預かります。中身は開かずに、そのまま返します。</dd>
+      </div>
+      <div class="about__row">
+        <dt class="about__k">合言葉</dt>
+        <dd class="about__v">合言葉そのものは預かりません。合っているかを確かめるための別の字に変えて持ちます。
+          その字から、元の合言葉は分かりません。</dd>
+      </div>
+      <div class="about__row">
+        <dt class="about__k">期限</dt>
+        <dd class="about__v">期限を過ぎると、その合言葉は使えなくなります。
+          残り時間は、合言葉を出したときに画面に出ます。</dd>
+      </div>
+      <div class="about__row">
+        <dt class="about__k">受け取ったあと</dt>
+        <dd class="about__v">受け取っても、期限までは預かったままです。何度でも受け取れます。</dd>
+      </div>
+    </dl>
+    <p class="about__note">
+      期限を過ぎると、合言葉は使えなくなります。
+      ただし、預かったデータがその時点で削除されることまでは保証していません。
+    </p>
+  </section>
+
+  <section class="about__sec">
+    <h2 class="about__h2">3. 誰がどこを見たかは、数えていません</h2>
+    <p class="about__p">
+      この版は、誰がどこを見たかの記録を取っていません。
+      広告のための記録も、他のサイトを横断して追いかける仕組みも、置いていません。
+    </p>
+  </section>
+
+  <section class="about__sec">
+    <h2 class="about__h2">4. 地図と住所の検索は、国土地理院へ問い合わせます</h2>
+    <p class="about__p">
+      地図と空中写真、住所の検索、町名の取得は、国土地理院へ問い合わせます。
+      見ている場所は、そこへ届きます。
+    </p>
+    <p class="about__p">
+      通信そのものには、接続元の IP と端末の種類が伴います。これは配信元に届きます。
+    </p>
+  </section>
+
+</main>
+<!-- ページの下の案内。広い幅だけが持つ（狭い幅の下は、行き先の帯が使う）。
+     持つのは名乗りのメニューと同じ 4 つ。広い幅ではメニューを畳むので、
+     ここが欠けると案内へ行けなくなる。
+     地図・保存の導線はここに置かない。それは上の帯が持つ。 -->
+<footer class="foot">
+  <nav class="foot__nav" aria-label="サイトの案内">
+    <a class="foot__link" href="./about">このサイトについて</a>
+    <a class="foot__link" href="./privacy" aria-current="page">プライバシーポリシー</a>
+    <a class="foot__link" href="./terms">利用規約</a>
+    <a class="foot__link" href="https://github.com/hidetzu/konjaku/issues/new?template=feedback.yml"
+       target="_blank" rel="noopener">ご意見・不具合報告（GitHub で公開）</a>
+  </nav>
+</footer>
+<script src="./menu.js"></script>

@@ -405,13 +405,13 @@ layersOf(...) → { layers: [ Layer, ... ], missing: [ Missing, ... ] }
 
 | 言葉 | 持ち主 |
 |---|---|
-| 出どころの語彙（実測／未取得／欠落／未対応／推定） | `public/prov.js` |
-| `/peel` の答えと出どころ | `peel3d.js` の `WORD` |
-| トップの根拠カードと導線 | `top.js` の `TOPWORD`（⚠ 2026-08-24 に `index.html` から出した） |
-| ⚠ **写真が「いま届いたか」** | ⚠ **`public/photos.js`**（状態）＋ `public/words.js`（字） |
-| 明治期の 14 区分 | `public/swale.js` |
-| 年代の定義 | `public/verify.js` |
-| ⚠ **この地点で選べる段** | ⚠ **`public/eras.js`**（⚠ 段の集合と、⚠ 復元の種類） |
+| ⚠ **見出しと 2 行目の字** | ⚠ **`public/answer.js`**（⚠ どの資料を見出しにするか。⚠ 資料が無いときの 3 状態） |
+| 地形分類の言い換え（36 区分） | `public/words.js` の `GROUND_GLOSS` |
+| 明治期の 14 区分 | `public/swale.js` の `SWALE` |
+| 年代の定義 | `public/verify.js` の `ERAS` |
+| ⚠ **近くに残る災害の記録** | ⚠ **`public/monument.js`**（⚠ 半径・上限・3 状態。⚠ 字は出典のまま） |
+| ⚠ **保存した場所の控え** | ⚠ **`public/saved.js`**（⚠ 形・混ぜ方・詰め方） |
+| ⚠ **時刻の言い方** | ⚠ **`public/when.js`** |
 | ⚠ **同じ土地について「もう取ってあるもの」** | ⚠ **`public/land.js`** |
 
 ⚠ **ここに書き写さない。**上の 6 か所が正で、この表は**在りかの索引**。

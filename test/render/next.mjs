@@ -19,7 +19,7 @@ import { NEXT_BASE, must } from "./lib.mjs";
 //   ⚠ **静的に読む。**⚠ **動的に読むと、⚠ `render-scope` が「読んでいない」と見なし、
 //   ⚠ この 2 つを触っても実描画が回らない**（2026-08-30 に踏んだ）。
 import { fakeDb } from "../handoff-fake-d1.mjs";
-import WORKER_NEXT from "../../worker-next.js";
+import WORKER_NEXT from "../../worker.js";
 
 // ⚠ **`?ll=` は緯度,経度の順**（`place-arg.js`）。⚠ **逆に書くと、⚠ 黙って既定の場所になる。**
 const TOYOSU = "ll=35.6553,139.7967";     // ⚠ 旧水部・空中写真 7 年代
@@ -195,7 +195,7 @@ export const CASES = [
       //   ⚠ **入口が幅によって 1 本だったり 2 本だったりしたので、⚠ 帯に寄せた。**
       must(await page.evaluate(() => !document.getElementById("savedOpen")),
         "⚠ カードの中の入口（#savedOpen）が残っている（⚠ 帯の★に寄せたはず）");
-      must(await page.evaluate(() => !!document.querySelector('.tabs a[href="./saved.html"]')),
+      must(await page.evaluate(() => !!document.querySelector('.tabs a[href="./saved"]')),
         "下の帯に、保存した場所への★が無い");
 
       await page.locator("#save").click();
@@ -806,7 +806,7 @@ CASES.push(
     //   ⚠ **国土地理院の記述そのもの。**⚠ **いままで 1 文字も画面に出していなかった。**
     // ⚠ **要約しない・言い換えない。**⚠ **そのまま出す**（`CLAUDE.md` §5）。
     name: "深掘り画面は、成り立ちと起こりうることを、そのまま出す",
-    path: `/deep.html?${TOYOSU}`, origin: NEXT_BASE, viewport: PC,
+    path: `/deep?${TOYOSU}`, origin: NEXT_BASE, viewport: PC,
     async check(page) {
       await 待つ(page,
         () => (document.getElementById("gloss").textContent ?? "").trim().length > 2, "答え");
@@ -853,7 +853,7 @@ CASES.push(
     // ⚠ **場所が無いときと、⚠ 読み取れないときを分ける**（`place-arg.js` の 3 状態）。
     //   ⚠ **どちらも「その場所が存在しない」ではない。**
     name: "深掘り画面は、場所が無いときと読み取れないときを分ける",
-    path: "/deep.html", origin: NEXT_BASE, viewport: PC,
+    path: "/deep", origin: NEXT_BASE, viewport: PC,
     async check(page) {
       await page.waitForTimeout(1200);
       const 無し = await page.evaluate(() => ({
@@ -913,7 +913,7 @@ CASES.push(
     //   ⚠ **並びも違ってよい**（⚠ 散歩中は「1 件を選ぶ」話、⚠ ここは「並べて読む」話）。
     // ⚠ **この地点の記録ではないことは、⚠ どちらでも先に言う**（⚠ 1 名が年を地点のものとして読んだ）。
     name: "深掘り画面は、この一帯の記録を年表で全部出す",
-    path: `/deep.html?${TOYOSU}`, origin: NEXT_BASE, viewport: PC,
+    path: `/deep?${TOYOSU}`, origin: NEXT_BASE, viewport: PC,
     async check(page) {
       await 待つ(page, () => document.querySelectorAll("#years li").length > 0, "年表");
       await page.waitForTimeout(1000);
@@ -945,7 +945,7 @@ CASES.push(
     // ⚠ **割合には、⚠ 必ず分母を添える**（`CLAUDE.md` §6）。
     //   ⚠ **数えられなかった画素（透明）を隠さない。**⚠ **「無かった」と読ませない。**
     name: "深掘り画面は、一帯の明治期を分母つきで出す",
-    path: `/deep.html?${TOYOSU}`, origin: NEXT_BASE, viewport: PC,
+    path: `/deep?${TOYOSU}`, origin: NEXT_BASE, viewport: PC,
     async check(page) {
       await 待つ(page, () => document.querySelectorAll("#shares li").length > 0, "一帯の割合");
       await page.waitForTimeout(800);
@@ -970,7 +970,7 @@ CASES.push(
     // ⚠ **資料が作られていない地域で、⚠ 「無い」と言わない**（掟 §1）。
     //   ⚠ **軽井沢は明治期の低湿地の資料が作られていない**（⚠ 実測: タイル 9 枚とも absent）。
     name: "深掘り画面は、一帯の資料が無い地域で「無い」と言わない",
-    path: "/deep.html?ll=36.3428,138.6350", origin: NEXT_BASE, viewport: PC,   // ⚠ 軽井沢
+    path: "/deep?ll=36.3428,138.6350", origin: NEXT_BASE, viewport: PC,   // ⚠ 軽井沢
     async check(page) {
       await 待つ(page,
         () => (document.getElementById("gloss").textContent ?? "").trim().length > 2, "答え");
@@ -1007,7 +1007,7 @@ CASES.push(
     //   ⚠ **帰宅後は前提が違う**（2026-08-29。Owner 判断）。⚠ **「なぜ液状化のリスクがあるのか」に直接効く。**
     // ⚠ **1 点の値であることを、⚠ 必ず言う**（⚠ まわりの高さではない）。
     name: "深掘り画面は、標高を 1 点の値として出す",
-    path: `/deep.html?${TOYOSU}`, origin: NEXT_BASE, viewport: PC,
+    path: `/deep?${TOYOSU}`, origin: NEXT_BASE, viewport: PC,
     async check(page) {
       await 待つ(page, () => !!document.querySelector(".elev"), "標高");
       await page.waitForTimeout(500);
@@ -1036,7 +1036,7 @@ CASES.push(
     //   ⚠ **読み物としては重いので、⚠ いちばん下に置く。**
     // ⚠ **取れなかったものは、⚠ 取れなかったと書く。**⚠ **空欄にしない**（掟 §1）。
     name: "深掘り画面は、読んだタイルと画素を出す",
-    path: `/deep.html?${TOYOSU}`, origin: NEXT_BASE, viewport: PC,
+    path: `/deep?${TOYOSU}`, origin: NEXT_BASE, viewport: PC,
     async check(page) {
       await 待つ(page, () => document.querySelectorAll("#read div").length > 0, "読んだもの");
       await page.waitForTimeout(1500);
@@ -1123,7 +1123,7 @@ CASES.push({
   //     ⚠ **切り替えると、⚠ 前の絵を覚えていないと比べられない。**
   // ⚠ **絵の中身は読まない。**⚠ **「この年代に何が写っているか」はこちらでは言わない**（掟 §1）。
   name: "深掘り画面は、どう変わったかを先に見せる",
-  path: `/deep.html?${TOYOSU}`, origin: NEXT_BASE, viewport: PC,
+  path: `/deep?${TOYOSU}`, origin: NEXT_BASE, viewport: PC,
   async check(page) {
     await 待つ(page, () => document.querySelectorAll(".frame").length > 0, "並べた絵");
     await page.waitForTimeout(2000);
@@ -1663,7 +1663,7 @@ CASES.push({
   },
 });
 
-// ⚠ **合言葉の口は、⚠ 本物の `worker-next.js` を呼ぶ。**⚠ **偽なのは D1 だけ。**
+// ⚠ **合言葉の口は、⚠ 本物の `worker.js` を呼ぶ。**⚠ **偽なのは D1 だけ。**
 //
 // ⚠ **前は「契約どおり返す偽物」を手で書いていた**（2026-08-29 にやめた）。
 //   ⚠ **手で書くと、⚠ 本物が返す形を変えたときに、⚠ 画面側の検査だけ古いまま通る**
@@ -2063,7 +2063,7 @@ for (const [名, ll, 出る] of [
 ]) {
   CASES.push({
     name: `深掘りの${名}で、近くに残る災害の記録を出す`,
-    path: `/deep.html?${ll}`, origin: NEXT_BASE, viewport: PC,
+    path: `/deep?${ll}`, origin: NEXT_BASE, viewport: PC,
     async check(page) {
       // ⚠ **器ではなく、⚠ 落ち着いたこと（前置きの字）を待つ**（`CLAUDE.md` §9）
       await 待つ(page, () => {
@@ -2269,7 +2269,10 @@ for (const [名, viewport] of [
         //     ⚠ 消したとたんに帯が柱に数えられて落ちた。**
         //   ⚠ **外す側を class で見るのは安全な向き**（⚠ 付け忘れれば、⚠ 帯が数えられて落ちる）。
         //   ⚠ **数える側は class で絞らない**（⚠ 下の注記のとおり、⚠ 付け忘れた板を見逃す）。
-        const 除く = (e) => e.id === "map" || e.matches(".brand");
+        // ⚠ **読み上げ用の名乗り（`.sr-only`）も柱ではない**（2026-09-01）。
+        //   ⚠ **`position:absolute` で 1px に畳んであるので、⚠ 数えると幅がそろわない。**
+        //   ⚠ **目には出ないが、⚠ 読み上げと OGP の名乗りのために持っている。**
+        const 除く = (e) => e.id === "map" || e.matches(".brand") || e.matches(".sr-only");
         const 面 = [...document.getElementById("app").children]
           .filter((e) => !除く(e) && getComputedStyle(e).position === "absolute");
         const out = [];
@@ -2665,11 +2668,11 @@ const スマホな幅 = { width: 393, height: 830 };   // ⚠ **下の帯が出�
 //   ⚠ 受け取ると `./saved` へ進む）。⚠ **別の検査がそれを見ている。**
 for (const [名, viewport, 出るもの, 出ないもの, 下が出る, 行き先] of [
   ["広い幅", PCな幅, ".brand__nav", ".tabs", true, ["./"]],
-  ["狭い幅", スマホな幅, ".tabs", ".brand__nav", false, ["./", "./saved.html"]],
+  ["狭い幅", スマホな幅, ".tabs", ".brand__nav", false, ["./", "./saved"]],
 ]) {
   CASES.push({
     name: `${名}では、主な行き先が 1 か所にだけ出る`,
-    path: "/saved.html", origin: NEXT_BASE, viewport,
+    path: "/saved", origin: NEXT_BASE, viewport,
     async check(page) {
       await page.waitForTimeout(1500);
       const r = await page.evaluate(([出る, 出ない]) => {
@@ -2774,7 +2777,7 @@ for (const [名, viewport] of [
 // ⚠ **行き先で見る。**⚠ **字だけ見ると、⚠ 押せない飾りでも通る。**
 CASES.push({
   name: "広い幅の読み物は、ページの下から案内へ行ける",
-  path: "/about.html", origin: NEXT_BASE, viewport: PCな幅,
+  path: "/about", origin: NEXT_BASE, viewport: PCな幅,
   async check(page) {
     await page.waitForTimeout(1200);
     const r = await page.evaluate(() => {
@@ -2811,7 +2814,7 @@ CASES.push({
       "広い幅で、⚠ 帯のメニューが畳まれている（⚠ 案内は、⚠ どの画面でもメニューが持つ）");
     // ⚠ **案内の 3 つ（このサイトについて・プライバシー・利用規約）へ行けること**
     const 中の道 = r.道.filter((a) => !/^https?:/.test(a.href)).map((a) => a.href).sort();
-    must(中の道.join(" ") === "./about.html ./privacy.html ./terms.html",
+    must(中の道.join(" ") === "./about ./privacy ./terms",
       `サイトの案内が 3 つそろっていない: ${中の道.join(" ")}`);
     // ⚠ **外へ出る道**（⚠ 問い合わせ先。⚠ 利用規約が名乗っているものと同じ場所）
     const 外の道 = r.道.filter((a) => /^https?:/.test(a.href));
@@ -2861,7 +2864,7 @@ CASES.push({
     //   ⚠ **メニューとページの下が同じ 4 つであることは、⚠ 静的検査が突き合わせている。**
     const 中の道 = 後.filter((h) => !/^https?:/.test(h));
     const 外の道 = 後.filter((h) => /^https?:/.test(h));
-    must(中の道.join(" ") === "./about.html ./privacy.html ./terms.html",
+    must(中の道.join(" ") === "./about ./privacy ./terms",
       `メニューを開いてもサイトの案内が 3 つ出ない: ${後.join(" ")}`);
     must(外の道.length >= 1, `メニューに外への窓口が無い: ${後.join(" ")}`);
     return `ページの下は無し ／ メニュー ${前.w}x${前.h} → ${後.length} 本（${中の道.join(" ")} ＋ 外 ${外の道.length}）`;
@@ -2883,7 +2886,7 @@ for (const [名, viewport] of [
 ]) {
   CASES.push({
     name: `${名}の名乗りは、印と字が縦の真ん中でそろっている`,
-    path: "/about.html", origin: NEXT_BASE, viewport,
+    path: "/about", origin: NEXT_BASE, viewport,
     async check(page) {
       await page.waitForTimeout(800);
       const r = await page.evaluate(() => {

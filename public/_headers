@@ -1,64 +1,55 @@
-# 地名と座標を URL に載せているので、Referer で外へ出さない。
-# meta と二重にしてあるのは、片方が効かない配信経路があっても漏らさないため。
+# ⚠ 地名と座標を URL に載せているので、⚠ Referer で外へ出さない。
+#
+# ⚠ **β 版から引き継いだ**（2026-09-01。`docs/adr/0080`）。
+#   ⚠ **v0.1.0 は、⚠ これを 1 つも持っていなかった**（⚠ `_headers` にも `<meta>` にも無い）。
+#   ⚠ **外向きのリンクは `rel="noopener"` だけで、⚠ `noreferrer` は付いていない。**
+#   ⚠ **そのまま本番へ上げると、⚠ 国土地理院や GitHub を押した先へ、
+#     ⚠ `?ll=` の座標がそのまま届いていた。**
+#
+# ⚠ **`<meta name="referrer">` とは二重にしない。**⚠ v0.1.0 は meta を持たない。
+#   ⚠ **ここ 1 か所で決める**（⚠ 2 か所に持つと、片方だけ古くなる）。
+#
+# ⚠ **`no-referrer` ではなく `same-origin`。**⚠ **外へ一切送らないのは同じ。**
+#   ⚠ **違うのは、⚠ 同じサイトの中では残ること。**
+#   ⚠ **`/deep` が「どこから来たか」を読み、⚠ 「← ひとつ前へ」を出すのに要る**（`back.js`）。
+#   ⚠ **`no-referrer` にしたら、⚠ 同じサイトから来ても直前へ返せなくなった**（⚠ 実際に踏んだ）。
 /*
-  Referrer-Policy: no-referrer
+  Referrer-Policy: same-origin
 
-# 静的アセットは長期キャッシュ、HTML は毎回確認させる
-# ⚠ **immutable にしない。** 実ファイル名が maplibre-gl.js / .css で**固定**だから。
-#   immutable は「この URL の中身は二度と変わらない」という約束で、ブラウザは
-#   1 年間、確認すらしない。名前が変わらないまま中身を差し替えると、
-#   **一度来た人は最長 1 年、古い地図エンジンを使い続ける**。
-#   ⚠ ファイル名をハッシュ付きにできた時点で immutable へ戻す（そのとき約束が本当になる）。
+# ⚠ **`X-Robots-Tag: noindex, nofollow` は外した**（2026-09-01。Owner 判断）。
+#   ⚠ **公開ドメインで配る以上、⚠ 検索に出さないのは不自然。**
 #
-# ⚠ **max-age も置かない。** 86400 にしていたが、それだと SW の版が変わっても
-#   **HTTP キャッシュから最大 24 時間、古い MapLibre が返る**（2026-08-16 の指摘）。
-#   「古いものを確実に返さない」を採る。
-#   ⚠ 代償: 訪問ごとに 2 ファイルの確認が増える（中身が同じなら 304 で本文は流れない）。
-#   ⚠ ファイル名をハッシュ付きにできれば、この代償も消える（そのとき immutable へ）。
-/vendor/*
-  Cache-Control: public, max-age=0, must-revalidate
-# ⚠ 取り込んだ範囲の索引と束は、長く残してはいけない。
-#   実測: 索引は no-cache で必ず取り直すのに束は24時間残るため、デプロイ直後の
-#   再訪者は「新しい索引 ＋ 古い束」を見る。新しく立ったビットの区画について、
-#   その区画のデータが入っていない古い束を根拠に「記録のある変化はありません」と
-#   断定し、しかも Wikidata へ1件も出ない（通信断より静か）。
+# ⚠ **`robots.txt` は置かない**（2026-09-01。⚠ β 版と同じ形へ戻した）。
+#   ⚠ **Cloudflare の Managed robots.txt が、⚠ zone 全体に対して先に挿入される。**
+#   ⚠ **そこに AI ボット 9 種の拒否が入っている**（⚠ β 版は、これだけで出来ていた）。
+#   ⚠ **こちらが `robots.txt` を置くと、⚠ 同じ `User-agent: *` の塊に連結される**
+#     （⚠ RFC 9309。⚠ 同じ長さの一致では `Allow` が勝つので、⚠ `Disallow: /` は打ち消されうる。
+#      ⚠ 実測 2026-08-29）。⚠ **置かないほうが、⚠ 何が効いているかが 1 か所で読める。**
+#   ⚠ **検索を止めるのはやめ、⚠ AI の学習拒否は zone 側でそのまま続ける。**⚠ **分離した。**
+
+# ⚠ **取り込みで書き換わるものは、⚠ 長く残さない。**
+#   ⚠ **索引と中身が食い違うと、⚠ 「記録がありません」と嘘をつく**（⚠ β 版で実際に踏んだ）。
 #
-#   ⚠ Cloudflare の _headers は、**一致した規則を全部適用して連結する**。
-#   「より細かい規則が勝つ」ではない。/data/ev/* と /data/* を両方書いていたため、
-#   本番では実際にこうなっていた（実測 2026-08-14）:
-#     cache-control: public, max-age=86400, public, max-age=0, must-revalidate
-#   max-age が2つあり、どちらが効くかは実装依存。**上の事故を直すために入れた
-#   must-revalidate が、効いている保証が無かった。**
-#   → 規則を重ならないように分ける。/data/* は書かない。
-#   scripts/check.mjs が、同じ実ファイルに同じヘッダの規則が2つ当たっていないかを見ている。
-/data/ev/*
+# ⚠ **`_headers` は、⚠ 一致した規則を全部連結する**（⚠ 最も具体的なものが勝つ、ではない。
+#   `CLAUDE.md` §9）。⚠ **だから規則が重ならないように分ける。**⚠ **`/data/*` は書かない。**
+/data/monument/*
   Cache-Control: public, max-age=0, must-revalidate
-# 建物も、索引と本体が食い違うと同じことが起きる（索引は「見た」と言うのに
-# 中身が古い）。事物と同じ扱いにする。1画面で読むのは4枚なので、
-# 取り直しの確認が4回増えるだけ（中身が変わっていなければ 304）
-/data/bl/*
+/data/area-record.json
   Cache-Control: public, max-age=0, must-revalidate
-/data/assets.json
-  Cache-Control: public, max-age=0, must-revalidate
-/data/quick-places.json
-  Cache-Control: public, max-age=0, must-revalidate
-# 取り込みで書き換わらない、置きっぱなしのもの
-/data/areas.json
-  Cache-Control: public, max-age=86400
+
+# ⚠ 取り込みで書き換わらない、置きっぱなしの表
 /data/landform.json
   Cache-Control: public, max-age=86400
-/data/toyosu-buildings.geojson
+/data/landuse-code.json
   Cache-Control: public, max-age=86400
-/data/toyosu-water.geojson
+/data/muni.json
   Cache-Control: public, max-age=86400
-# 配信中の版（npm run build が作る。scripts/version.mjs）。
-# ⚠ **no-store**。監視や curl が古い版を「いまの本番」と読むと、
-#   「どの commit から出たか」の照合そのものが嘘になる。
-#   must-revalidate（＝持ってよいが毎回確かめる）ではなく、持たせない。
-#   ⚠ Cache API は HTTP の鮮度を見ないので、ヘッダだけでは Service Worker に効かない。
-#     sw.js が持たないことは scripts/check.mjs が見ている。
-/version.json
+
+# ⚠ **移行用の Service Worker は、⚠ 絶対に持たせない**（⚠ `sw.js` の頭を読む）。
+#   ⚠ **持たれると、⚠ 消しに来た本人が古いまま残る。**
+/sw.js
   Cache-Control: no-store
+
 /*.html
   Cache-Control: public, max-age=0, must-revalidate
 /

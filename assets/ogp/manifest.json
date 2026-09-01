@@ -9,24 +9,12 @@
       "source": "assets/ogp/index.svg",
       "sourceSha256": "5bf7c3616e3bc3589d505b1009c9ca567b2a41e0f6bf47e6a83947d69a26210c",
       "output": "public/ogp.png",
-      "outputSha256": "6c5e3a2a07fe622a89652c8ec423b11b98bf77bc4d6f15ba5a05804cccf21bb3",
+      "outputSha256": "51062fb6b3204bdeb99e615fe1f24edc4617da605908b20e04b4b6684e1c29e2",
       "width": 1200,
       "height": 630,
       "title": "この土地は、昔なんだったのか？ — 今昔",
       "headline": "この土地は、昔なんだったのか？",
       "subtitle": "土地の成り立ちを、根拠とともに見る"
-    },
-    {
-      "id": "peel",
-      "source": "assets/ogp/peel.svg",
-      "sourceSha256": "95a8ea7b0f9ff904d6bd0dff62ec34d4a9a3ef699db7860e7c69f5fb2c510545",
-      "output": "public/ogp-peel.png",
-      "outputSha256": "041e7328a639e905e070fd2fb7c44d2882c847343f689fd3e225748608f68fe3",
-      "width": 1200,
-      "height": 630,
-      "title": "この場所を深掘り — いまの街と、明治期の地面",
-      "headline": "この場所を深掘り",
-      "subtitle": "いまの街と、明治期の地面"
     }
   ]
 }

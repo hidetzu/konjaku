@@ -29,7 +29,7 @@ env:
   WRANGLER_VERSION: "4.127.1"
   # ⚠ **v0.1.0 を出す先**（`docs/adr/0050`。⚠ 名前を付けたのは Cloudflare の画面）。
   #   ⚠ **β 版（`konjaku.hidetzu.work`）ではない。**
-  NEXT_ORIGIN: "https://dev.konjaku.hidetzu.work"
+  SITE_ORIGIN: "https://konjaku.hidetzu.work"
 
 # 古い実行を止める。⚠ **PR のときだけ**キャンセルする。
 #   main への push は、そこでしか走らない検査（外部リンク・全部）を持っているので、
@@ -420,22 +420,24 @@ jobs:
           echo "実描画は全部通った"
 
 
-  # ⚠ **v0.1.0（`konjaku-next`）を出す**（2026-08-29。Owner 判断。`docs/adr/0070`）。
+  # ⚠ **本番（`konjaku`）を出す**（2026-09-01。`docs/adr/0080`）。
   #
-  # ⚠ **β 版（`konjaku` / `public/`）には触らない。**⚠ 出すのは `wrangler.next.jsonc` だけ。
-  #   ⚠ **`-c` を外すと、⚠ 既定の `wrangler.jsonc` が読まれて β 版が出る。**
-  #   ⚠ **β 版には実際の利用者がいて、⚠ その観測の上に判断が乗っている**（`docs/adr/0047`）。
-  #   ⚠ **β 版は Workers Builds が出している。**⚠ **ここは、⚠ そこへ一切関与しない。**
+  # ⚠ **2026-09-01 に、⚠ v0.1.0 を本番へ上げた。**⚠ **Worker も器も 1 つになった。**
+  #   ⚠ **前はここが `konjaku-next`（`wrangler.next.jsonc`）だけを出していた。**
+  #   ⚠ **いまは `wrangler.jsonc` を出す**（⚠ 設定は 1 つしかないので `-c` は要らない）。
   #
-  # ⚠ **なぜ Workers Builds に足さないか**（⚠ ADR 0050 の「今は足さない」を、⚠ こう覆した）:
+  # ⚠ **なぜ Workers Builds ではなく、⚠ ここから出すか**（`docs/adr/0070` の続き）:
   #   ⚠ **Cloudflare 側は、⚠ GitHub の検査の緑を待てない。**⚠ **赤のまま出る。**
   #   ⚠ **ここなら `needs:` で、⚠ 門番の後ろに置ける**（⚠ 下の 3 つが全部緑のときだけ走る）。
+  #
+  # ⚠ **Cloudflare 側の Workers Builds は、⚠ こちらからは止められない**（⚠ ダッシュボードの設定）。
+  #   ⚠ **切っていないと、⚠ 検査を待たずに出る経路が残る。**⚠ **これは人が確かめること。**
   #
   # ⚠ **`develop` への push でだけ走る。**⚠ **PR では走らない。**
   #   ⚠ **fork の PR に秘密を渡さない**（⚠ このリポジトリは public）。
   #   ⚠ `pull_request` には、⚠ そもそも secrets が渡らないが、⚠ 条件でも閉じておく。
-  deploy-next:
-    name: v0.1.0 を出す（konjaku-next）
+  deploy:
+    name: 本番を出す（konjaku）
     # ⚠ **門番 3 つの後ろ。**⚠ **`render` は `always()` の門番なので、⚠ 必ず結果を返す**
     #   （⚠ 返さない者を `needs` に置くと、⚠ ここが永久に待ちになる）。
     needs: [checks, search, render]
@@ -453,20 +455,20 @@ jobs:
       # ⚠ **版は上の env の 1 か所だけ**（⚠ `npx wrangler` だと、その日の最新が降る）。
       # ⚠ **`npm ci` を挟まない。**⚠ このリポジトリは依存ゼロで、⚠ wrangler は使い捨てで入れる
       #   （⚠ `npm ci` が通ること自体は、⚠ 上の「静的検査」のジョブが見ている）。
-      - name: 出す（konjaku-next だけ）
+      - name: 出す（konjaku）
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: npx --yes wrangler@${{ env.WRANGLER_VERSION }} deploy -c wrangler.next.jsonc
+        run: npx --yes wrangler@${{ env.WRANGLER_VERSION }} deploy
 
       # ⚠ **「デプロイが成功した」は、⚠ 「出ている」ではない**（`CLAUDE.md` §1）。
       #   ⚠ **配った実体を取り直して、⚠ 手元と突き合わせる。**
       #
-      # ⚠ **判定は `scripts/check-next-deploy.mjs` が 1 か所で持つ**（2026-08-29）。
+      # ⚠ **判定は `scripts/check-deploy.mjs` が 1 か所で持つ**（2026-08-29）。
       #   ⚠ **前はここに bash で書いていた。**⚠ **そうすると、⚠ 判定そのものを誰も確かめられない**
       #     （⚠ 「robots.txt は前に足されてよい」のような例外を、⚠ 字面でしか見られなくなる）。
       #   ⚠ **いまは静的検査が `judge()` を直に呼んで、⚠ 例外が効いていることを見ている。**
       #
       # ⚠ **`?cb=<commit>` を渡す。**⚠ 付けないと、⚠ 端の古い写しを「いまの本番」と読みうる。
       - name: 出たものが、手元と同じか（全ファイル）
-        run: node scripts/check-next-deploy.mjs --origin=${{ env.NEXT_ORIGIN }} --cb=${{ github.sha }}
+        run: node scripts/check-deploy.mjs --origin=${{ env.SITE_ORIGIN }} --cb=${{ github.sha }}

@@ -74,9 +74,28 @@ const TARGETS = new Set(["all", "landform", "meiji", "elevation", "photos",
 //   外から好きなラベルを増やせる＝この表が信用できなくなる。
 const SOURCES = new Set(["zenn", "x", "note", "qiita", "github", "hatena"]);
 
+// ⚠ **本番の入口は、⚠ ここ 1 つだけ**（2026-09-01。Owner 判断。`docs/adr/0080`）。
+//   ⚠ **前は Worker が 2 つあった**（⚠ β の `konjaku` と、⚠ v0.1.0 の `konjaku-next`）。
+//   ⚠ **v0.1.0 を本番へ上げるにあたって、⚠ `worker-next.js` を畳んでここへ入れた。**
+//
+// ⚠ **口は 2 つ。**⚠ **どちらも静的アセットに一致しないときだけ動く。**
+//
+//   /t              ⚠ 計測（⚠ 下の 計測を受ける）
+//   /api/handoff*   ⚠ 合言葉で荷物を手渡す（⚠ `handoff.js`。`docs/sync-api.md`）
+//
+// ⚠ **入口のモジュールから、⚠ `export default` 以外を出さない**（⚠ 2026-08-30 に踏んだ）。
+//   ⚠ **workerd は、⚠ 入口の名前つき `export` を「Worker の入口か Durable Object の class」
+//     として検査する。**⚠ **文字列や関数を出していると、⚠ そこで落ちる。**
+//   ⚠ **落ちるのは `wrangler dev --local`**（⚠ `deploy --dry-run` は通る）。
+//   ⚠ **つまり、⚠ 手元で本物を動かせなくなる。**⚠ **この形は検査が見張っている。**
+import { route as handoff } from "./handoff.js";
+
 export default {
   async fetch(req, env) {
     const url = new URL(req.url);
+    // ⚠ **合言葉の口は `handoff.js` が全部持つ**（⚠ 知らない `/api/` の 404 も向こう）。
+    if (url.pathname === "/api/handoff" || url.pathname.startsWith("/api/handoff/"))
+      return handoff(req, env);
     if (url.pathname !== "/t") return new Response(null, { status: 404 });
     if (req.method !== "POST") return new Response(null, { status: 405 });
 

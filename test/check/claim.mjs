@@ -23,34 +23,32 @@
 import { readFile } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 import { join } from "node:path";
-import { ROOT, PUB, SITE, ok, bad, head, src, htmlFiles, HTML_COMMENT, LINE_COMMENT } from "./lib.mjs";
+import { ROOT, PUB, SITE, ok, bad, head, src, htmlFiles, HTML_COMMENT } from "./lib.mjs";
 
 head("名乗り");
 
-// ⚠ **名乗りが、外へ出る面のあいだで割れないこと。**
-//   看板（index.html の h1）と、共有カード（share.js が canvas に描く文字）は
-//   **別ファイルにあり、片方だけ直すと気づけない**。実際に割れていた:
-//   看板は「カテゴリ名では何が起きるか分からない」として言い換えたのに、
-//   共有カードだけが旧い名乗りのまま SNS へ配られていた。
-//   ⚠ **止める検査が1つも無かった**ので、ここで突き合わせる
-//   （掟「やむを得ず2つ持つときは、機械で突き合わせる」）。
+// ⚠ **名乗りが、⚠ 外へ出る面のあいだで割れないこと。**
+//   ⚠ **2026-09-01 に相手を変えた**（`docs/adr/0080`）。
+//   ⚠ **前は `share.js` が canvas に描く共有カードと突き合わせていた。**
+//   ⚠ **v0.1.0 は共有カードを描かない。**⚠ **かわりに OGP の画像がその役をする。**
+//
+// ⚠ **突き合わせるのは 3 つ**: ⚠ 看板（`h1`）／ `<title>` ／ `og:title`。
+//   ⚠ **OGP は共有先まで届く**（`CLAUDE.md` §6）。⚠ **画面より遠くへ行く。**
+// ⚠ **`scripts/generate-ogp.mjs --check` も同じことを見ている**（⚠ 下の節）。
+//   ⚠ **こちらは「読めなかったら落ちる」ところまでを持つ。**
 {
   const idx = await readFile(join(PUB, "index.html"), "utf8");
-  const shr = await readFile(join(PUB, "share.js"), "utf8");
-  const h1 = /<h1>([^<]+)<\/h1>/.exec(idx)?.[1]?.trim();
-  // ⚠ コメントを先に落とす。落とさないと、この決まりを説明したコメントの字面を拾う。
-  //   ⚠ **`//` を素朴に落とすと URL を食う。** `https://…` の `//` をコメント開始と
-  //     読んで行末まで消すため、**同じ行で読みたい値より前に URL があると読めなくなる**
-  //     （実測 2026-08-15。`const LFC = "https://…"` を読む別の検査で実際に踏んだ）。
-  //     ⚠ いまの share.js では起きないが、正しい版と誤った版を並べて置かない。
-  //     直前が `:` のときは落とさない。
-  const banner = /BANNER\s*=\s*"([^"]+)"/.exec(shr.replace(LINE_COMMENT, "$1"))?.[1];
-  if (!h1) bad("index.html から看板（h1）を読めない（この検査が何も見ていない）");
-  else if (!banner) bad("share.js に BANNER が無い（共有カードの名乗りを追えない）");
-  else if (h1 !== banner)
-    bad(`名乗りが割れている: 看板「${h1}」/ 共有カード「${banner}」`
-      + `（カード画像は SNS で単独に流れるので、ここが看板の代わりになる）`);
-  else ok(`看板と共有カードの名乗りが揃っている（${h1}）`);
+  const h1 = /<h1[^>]*>([^<]+)<\/h1>/.exec(idx)?.[1]?.trim();
+  const title = /<title>([^<]+)<\/title>/.exec(idx)?.[1]?.trim();
+  const ogt = /property="og:title" content="([^"]+)"/.exec(idx)?.[1]?.trim();
+  if (!h1) bad("index.html から看板（h1）を読めない（⚠ この検査が何も見ていない）");
+  else if (!title || !ogt) bad("index.html の title か og:title を読めない");
+  else if (title !== ogt)
+    bad(`名乗りが割れている: title「${title}」／ og:title「${ogt}」`
+      + `（⚠ OGP は共有先まで届く。⚠ そこが看板の代わりになる）`);
+  else if (!title.includes(h1))
+    bad(`名乗りが割れている: 看板「${h1}」が title「${title}」に入っていない`);
+  else ok(`看板・title・og:title の名乗りが揃っている（${h1}）`);
 }
 
 // ⚠ 名乗りは、実装が実際にやっていることに合わせる。
@@ -67,12 +65,13 @@ head("名乗り");
     ["時間をさかのぼる", "時間を自由に動かせると約束している（支えるデータが 0.30%）"],
     ["（3D）", "利用者は誰も「2D/3D」と言わなかった（利用者役のエージェントによる検証）"],
   ];
+  // ⚠ **2026-09-01 に相手を変えた**（`docs/adr/0080`）。⚠ **`/peel` は本番から消えた。**
+  //   ⚠ **見ているものは同じ**: ⚠ **外へ届く名乗りが、⚠ 実装とずれていないか。**
+  //   ⚠ **`index.html` の頭**（⚠ title と OGP。⚠ 共有先まで届く）と、
+  //   ⚠ **`/deep` へ誘う字**（⚠ そこで何ができるかを約束する）。
   for (const [file, where] of [
-    ["public/peel.html", /<title>[\s\S]*?<\/title>|<meta[^>]*(og:|twitter:|name="description")[^>]*>/g],
-    // ⚠ **2026-08-21 に、⚠ 名乗りの場所が `{id:"peel"…}`（一覧の行）→ `peelLens()` へ移った。**
-    //   ⚠ 「この場所を深掘り」を行動一覧から判定カードの中へ移したため。
-    //   ⚠ **見ているものは同じ**（⚠ 深掘りの名乗りが、実装とずれていないか）。
-    ["public/top.js", /function peelLens\([\s\S]*?\n\}/g],
+    ["public/index.html", /<title>[\s\S]*?<\/title>|<meta[^>]*(og:|twitter:|name="description")[^>]*>/g],
+    ["public/deep.html", /<title>[\s\S]*?<\/title>|<h2>[^<]*<\/h2>/g],
   ]) {
     const hay = (rfn(file, "utf8").match(where) ?? []).join(" ");
     if (!hay) { bad(`${file}: 名乗りの箇所が読めない`); continue; }
@@ -92,19 +91,28 @@ head("名乗り");
 // ⚠ **段の名乗り（α / β / 正式版 / プロトタイプ）だけを見る。**
 //   ⚠ **README の書き方までは縛らない**（⚠ 文の形は自由）。
 {
+  // ⚠ **2026-09-01 に「段」から「版」へ変えた**（`docs/adr/0080`）。
+  //   ⚠ **前は α / β / 正式版 という段の名前を突き合わせていた。**
+  //   ⚠ **v0.1.0 を本番へ上げた時点で、⚠ 段の名前は使わないと決めた**
+  //     （⚠ 「作りかけ」を消したのと同じ理由。⚠ 答えの信用を下げる）。
+  //   ⚠ **かわりに版の番号を突き合わせる。**⚠ **主張は同じ**:
+  //     ⚠ **外へ出る 3 面が、⚠ 同じ名乗りをしていること。**
+  //
+  // ⚠ **画面の正本は `about.html` の 1 か所**（2026-09-01。⚠ 静的検査 ⑱ が 1 か所を守る）。
+  //   ⚠ **`index.html` には版を出さない**ので、⚠ ここで求めない。
   const STAGE = ["プロトタイプ", "α 版", "α版", "β 版", "β版", "正式版"];
   const norm = (set) => new Set([...set].map((w) => w.replace(/\s*版$/, "")));
-  // ⚠ **コメントを先に落とす**（⚠ 落とさないと、⚠ この決まりを説明した字面を拾う）。
   const stageOf = (text) => {
     const bare = text.replace(HTML_COMMENT, " ");
+    // ⚠ **段の名前が残っていたら、⚠ それも拾う**（⚠ 消し忘れをそのまま素通りさせない）。
     const got = new Set(STAGE.filter((w) => bare.includes(w)));
-    // ⚠ **`今昔 β` のように、⚠ 「版」を付けずに名乗ることがある。**⚠ 単独の β も拾う
     if (/[^A-Za-zα-ωΑ-Ω]β[^A-Za-zα-ωΑ-Ω]/.test(bare)) got.add("β 版");
+    for (const m of bare.matchAll(/v\d+\.\d+\.\d+/g)) got.add(m[0]);
     return norm(got);
   };
   // ⚠ **3 か所とも外へ出る**（⚠ 画面は見る人へ、⚠ README と SPEC は読む人へ）。
   const faces = [
-    ["画面", stageOf(await readFile(join(PUB, "index.html"), "utf8"))],
+    ["画面", stageOf(await readFile(join(PUB, "about.html"), "utf8"))],
     ["README", stageOf(await readFile(join(ROOT, "README.md"), "utf8"))],
     ["SPEC", stageOf(await readFile(join(ROOT, "docs", "SPEC.md"), "utf8"))],
   ];

@@ -18,8 +18,7 @@
 
 ```
 node test/render.mjs                        全部
-node test/render.mjs --suite=peel           深掘りの画面だけ
-node test/render.mjs --suite=top --group=core
+node test/render.mjs --suite=next           v0.1.0 の画面だけ（いまは これしかない）
 node test/render.mjs --count                走らせずに数だけ
 node test/render-scope.mjs origin/main...HEAD   何を回すべきか
 ```

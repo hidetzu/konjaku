@@ -30,13 +30,25 @@ import { ROOT, PUB, ok, bad, head, htmlFiles, jsFiles, src , BLOCK_COMMENT, LINE
 head("1.5 Referer の抑止");
 {
   const hdr = await readFile(join(PUB, "_headers"), "utf8").catch(() => "");
-  hdr.includes("Referrer-Policy: no-referrer")
-    ? ok("_headers に Referrer-Policy: no-referrer")
-    : bad("_headers に Referrer-Policy: no-referrer が無い");
+  // ⚠ **外へ 1 本も送らない方針であること**（2026-09-01 に字を 1 つに固定するのをやめた）。
+  //   ⚠ **`no-referrer` と `same-origin` は、⚠ どちらも外へ送らない。**
+  //   ⚠ **`same-origin` は、⚠ 同じサイトの中では残る**（⚠ `/deep` の「ひとつ前へ」に要る）。
+  //   ⚠ **これ以外は許さない**（⚠ `origin` も `strict-origin` も、⚠ 外へ出す）。
+  const 外へ出さない = ["no-referrer", "same-origin"];
+  const 方針 = /Referrer-Policy:\s*([\w-]+)/.exec(hdr)?.[1] ?? "";
+  外へ出さない.includes(方針)
+    ? ok(`_headers に Referrer-Policy: ${方針}（⚠ 外へは 1 本も送らない）`)
+    : bad(`_headers の Referrer-Policy が「${方針 || "無い"}」`
+        + `（⚠ 外へ送らないのは ${外へ出さない.join(" / ")} だけ）`);
   for (const f of htmlFiles) {
-    /<meta\s+name="referrer"\s+content="no-referrer">/.test(src[f])
-      ? ok(`${f} に meta referrer`)
-      : bad(`${f}: meta referrer が無い（URL の地名・座標が Referer で漏れる）`);
+    const m = /<meta\s+name="referrer"\s+content="([\w-]+)">/.exec(src[f])?.[1] ?? "";
+    !m
+      ? bad(`${f}: meta referrer が無い（URL の地名・座標が Referer で漏れる）`)
+      : !外へ出さない.includes(m)
+        ? bad(`${f}: meta referrer が「${m}」（⚠ 外へ送らないのは ${外へ出さない.join(" / ")} だけ）`)
+        : m !== 方針
+          ? bad(`${f}: meta referrer「${m}」が _headers「${方針}」と違う（⚠ 2 か所で割れている）`)
+          : ok(`${f} に meta referrer（${m}）`);
   }
 }
 
@@ -242,17 +254,18 @@ head("7. 外部から来た文字列");
 
   // ---- 外部の応答が最初に入る受け皿 ----
   // ⚠ ここに無い名前は見ていない。新しい外部データを描くときは、受け皿をここに足す。
+  // ⚠ **2026-09-01 に v0.1.0 の実態へ書き直した**（`docs/adr/0080`）。
+  //   ⚠ **`peel3d.js` は本番から消えた。**⚠ **かわりに `saved-page.js` が受け皿を持つ。**
+  //   ⚠ **`deep.js` はここに入れない。**⚠ **あれは `textContent` で組んでいる**
+  //     （⚠ 碑の名・災害名・種別。⚠ HTML を組み立てていないので、⚠ esc() の対象外）。
+  //     ⚠ **`innerHTML` へ移したら、⚠ ここに足すこと。**
   const DOORS = {
-    // ⚠ **トップの HTML 組み立ては `top.js`**（2026-08-24。⚠ `index.html` から逐語で出した）。
-    //   ⚠ **`peel3d.js` と対になる。**⚠ 2 画面とも、⚠ 組み立てているのは JS のファイル。
     "top.js": {
-      x:  "Wikidata の事物（名前・説明・出典URL）",
-      it: "一覧の行（地理院の地名と、利用者が打った語が入る）",
-      r:  "保存した記録（地名と、利用者のメモ）",
+      nm: "地形分類の区分名（地理院の応答）",
+      v:  "町名（地理院の逆ジオコーディングの応答）",
     },
-    "peel3d.js": {
-      p: "建物の属性（OSM の種別・建設年）",
-      x: "地名検索の候補（地理院の応答）",
+    "saved-page.js": {
+      r: "保存した記録（地名が入る。⚠ 別の端末から受け取ったものも通る）",
     },
   };
   const TAG = /<[a-zA-Z/!]/;                       // このテンプレートは HTML を組み立てている
@@ -304,8 +317,21 @@ head("7. 外部から来た文字列");
 
   // esc() は1か所にしかない（掟: 同じ問いに答える実装を2つ持たない）。
   // ⚠ 読み込み忘れは「起動時に丸ごと落ちる」形で出る。ページごとに見る。
-  for (const f of ["index.html", "peel.html"])
-    src[f]?.includes(`src="./esc.js"`) ? ok(`${f} → esc.js`) : bad(`${f}: esc.js を読み込んでいない`);
+  // ⚠ **外から来た字を描く画面だけ**（2026-09-01。`docs/adr/0080`）。
+  //   ⚠ **前は index / peel の 2 枚を名指ししていた。**⚠ **`/peel` は本番から消えた。**
+  //   ⚠ **名指しをやめ、⚠ 「esc() を呼ぶ JavaScript を読む画面」から求める**
+  //     （⚠ 名指しは、⚠ 画面が増えたときに黙って見落とす）。
+  {
+    const 要る = htmlFiles.filter((f) => {
+      const js = [...src[f].matchAll(/<script[^>]+src="\.\/([\w.-]+)"/g)].map((m) => m[1]);
+      return js.some((n) => n !== "esc.js" && /\besc\s*\(/.test(src[n] ?? ""));
+    });
+    要る.length === 0 && bad("esc() を使う画面が 1 枚も見つからない（⚠ この検査が何も見ていない）");
+    for (const f of 要る)
+      src[f].includes(`src="./esc.js"`)
+        ? ok(`${f} → esc.js`)
+        : bad(`${f}: esc() を使う JavaScript を読むのに、⚠ esc.js を読み込んでいない`);
+  }
   {
     // ⚠ 手で書いた部分的なエスケープを増やさない。
     //   peel3d.js は `replace(/"/g,"&quot;")` を持っていて、" だけを直し `<` は素通ししていた。
@@ -319,15 +345,16 @@ head("7. 外部から来た文字列");
 
   // ⚠ 外部の相手が増えたら、この節を見直させる。
   //   応答の文字列を描く相手が増えたのに、エスケープを通さずに足すのが、実際に踏んだ型だった。
+  // ⚠ **2026-09-01 に v0.1.0 の実態へ合わせた**（`docs/adr/0080`）。
+  //   ⚠ **消したのは、⚠ β 版だけが話していた相手**（⚠ Wikidata ／ Overpass ／ 検索エンジン）。
+  //   ⚠ **足したのは `mreversegeocoder.gsi.go.jp`**（⚠ 逆ジオコーディング。⚠ 町名を描く → esc）。
   const HOSTS = [
-    "cyberjapandata.gsi.go.jp",   // タイル（画素だけ。文字列は描かない）
-    "msearch.gsi.go.jp",          // 住所検索（地名を描く → esc）
-    "query.wikidata.org",         // 事物（名前・説明を描く → esc）
-    "overpass-api.de", "overpass.kumi.systems",   // OSM（種別・建設年を描く → esc）
+    "cyberjapandata.gsi.go.jp",       // タイル（画素だけ。文字列は描かない）
+    "msearch.gsi.go.jp",              // 住所検索（地名を描く → esc）
+    "mreversegeocoder.gsi.go.jp",     // 逆ジオコーディング（町名を描く → esc）
     // ↓ こちらから開くだけの相手（応答を描かない）
     "maps.gsi.go.jp", "www.gsi.go.jp", "disaportal.gsi.go.jp",
-    "www.wikidata.org", "www.openstreetmap.org", "www.google.com",
-    "docs.google.com", "github.com", "konjaku.hidetzu.work",
+    "github.com", "konjaku.hidetzu.work",
   ];
   {
     const seen = new Set();
