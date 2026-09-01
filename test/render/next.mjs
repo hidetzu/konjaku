@@ -818,7 +818,6 @@ CASES.push(
         節: [...document.querySelectorAll(".why__k")].map((e) => e.textContent.trim()),
         文: [...document.querySelectorAll(".why__v")].map((e) => e.textContent.trim()),
         出どころ: [...document.querySelectorAll(".why__from")].map((e) => e.textContent.trim()),
-        出典: document.getElementById("cite").textContent.trim(),
         読む幅: Math.round(document.getElementById("doc").getBoundingClientRect().width),
         戻る先: document.getElementById("back").getAttribute("href"),
         横あふれ: document.documentElement.scrollWidth > document.documentElement.clientWidth,
@@ -836,7 +835,11 @@ CASES.push(
       // ⚠ **誰の記述かを、⚠ 節ごとに名乗る**
       must(r.出どころ.length === r.節.length && r.出どころ.every((t) => /国土地理院/.test(t)),
         `出どころを名乗っていない節がある: ${r.出どころ.join(" / ")}`);
-      must(/国土地理院/.test(r.出典), `出典が無い: ${r.出典}`);
+      // ⚠ **節の下にあった 1 文（`#cite`）は消した**（2026-09-01。Owner 指示）。
+      //   ⚠ **「成り立ちと、起こりうることは、国土地理院の記述をそのまま出しています」。**
+      //   ⚠ **節ごとの `— 国土地理院` と同じことを、⚠ もう一度言っていた**（⚠ 責務の重複）。
+      //   ⚠ **名乗りは消えていない。**⚠ **上の `出どころ` が節ごとに見ている。**
+      //   ⚠ **「この画面が読んだ資料」の資料名も国土地理院を名乗る**（⚠ 静的検査 ⑯ が見ている）。
       // ⚠ **読む行の幅**（⚠ 読み物なので、⚠ 横いっぱいに伸ばさない）
       must(r.読む幅 < 700, `読む行が広すぎる（${r.読む幅}px）`);
       must(!r.横あふれ, "画面が横にあふれている");

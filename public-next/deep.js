@@ -14,7 +14,7 @@
   const backEl = $("back"), placeEl = $("place"), glossEl = $("gloss"), termEl = $("term");
   const glossSrcEl = $("glossSrc"), glossSubEl = $("glossSub");
   const monSec = $("monSec"), monLead = $("monLead"), monEl = $("mon"), monCite = $("monCite");
-  const whySec = $("whySec"), whyEl = $("why"), citeEl = $("cite");
+  const whySec = $("whySec"), whyEl = $("why");
   const nearSec = $("nearSec"), nearLead = $("nearLead"), yearsEl = $("years");
   const nearNote = $("nearNote"), nearFrom = $("nearFrom");
   const readSec = $("readSec"), readEl = $("read");
@@ -428,10 +428,6 @@
       段.push(`<p class="why__v why__none">この区分には、起こりうることが書かれていません</p>`);
     whySec.hidden = false;
     whyEl.innerHTML = 段.join("");
-    citeEl.innerHTML =
-      `成り立ちと、起こりうることは、`
-      + `<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" rel="noopener">`
-      + `国土地理院</a>の記述をそのまま出しています。`;
   }
 
   draw();
