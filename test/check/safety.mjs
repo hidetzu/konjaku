@@ -355,6 +355,11 @@ head("7. 外部から来た文字列");
     // ↓ こちらから開くだけの相手（応答を描かない）
     "maps.gsi.go.jp", "www.gsi.go.jp", "disaportal.gsi.go.jp",
     "github.com", "konjaku.hidetzu.work",
+    // ⚠ **配信元の資料**（2026-09-02）。⚠ **プライバシーポリシーが根拠として指している。**
+    //   ⚠ **こちらから開くだけ。**⚠ **応答は描かない。**
+    //   ⚠ **画面に差し込まれる集計の本体は `static.cloudflareinsights.com` だが、
+    //     ⚠ それは配信側が入れるもので、⚠ この repo には無い**（⚠ だから表に載らない）。
+    "developers.cloudflare.com",
   ];
   {
     const seen = new Set();

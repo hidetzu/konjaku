@@ -82,8 +82,8 @@
       あなたが自分でボタンを押したときだけです。押さなければ、何も送りません。
     </li>
     <li class="about__sumItem">
-      <b class="about__sumK">誰がどこを見たかは、数えていません</b>
-      閲覧の記録も、広告のための記録も取っていません。
+    <b class="about__sumK">どのページが見られたかは、Cloudflare が数えています</b>
+    広告のための記録も、他のサイトを横断して追いかける仕組みも、使っていません。
     </li>
     <li class="about__sumItem">
       <b class="about__sumK">地図と住所の検索では、見ている場所が国土地理院に届きます</b>
@@ -141,11 +141,44 @@
   </section>
 
   <section class="about__sec">
-    <h2 class="about__h2">3. 誰がどこを見たかは、数えていません</h2>
-    <p class="about__p">
-      この版は、誰がどこを見たかの記録を取っていません。
-      広告のための記録も、他のサイトを横断して追いかける仕組みも、置いていません。
-    </p>
+  <h2 class="about__h2">3. どのページが見られたかは、Cloudflare が数えています</h2>
+  <p class="about__p">
+    このサイトは Cloudflare で配信しています。その仕組みの一つが、
+    どのページが何回見られたかと、画面が出るまでの速さを集計しています。
+    画面を開くと、そのための小さなプログラムを Cloudflare から読みに行きます。
+  </p>
+  <dl class="about__rows">
+    <div class="about__row">
+      <dt class="about__k">集計しているもの</dt>
+      <dd class="about__v">見られたページ、参照元、国、ブラウザ、OS、端末の種類、
+        画面が出るまでの速さ。</dd>
+    </div>
+    <div class="about__row">
+      <dt class="about__k">使っていない仕組み</dt>
+      <dd class="about__v">Cookie も、この端末の保存領域も、この集計には使っていません。
+        Cloudflare は「ブラウザに何も保存せず、保存領域も読まない」と書いています。</dd>
+    </div>
+    <div class="about__row">
+      <dt class="about__k">接続元について</dt>
+      <dd class="about__v">Cloudflare は「受け取った接続元の番号は最寄りの拠点で捨て、
+        記録には残さない」と書いています。こちらでは確かめられません。</dd>
+    </div>
+    <div class="about__row">
+      <dt class="about__k">処理される場所</dt>
+      <dd class="about__v">この集計は、日本国内とは限らない場所で処理されることがあると、
+        Cloudflare は書いています。</dd>
+    </div>
+    <div class="about__row">
+      <dt class="about__k">していないこと</dt>
+      <dd class="about__v">広告のための記録も、他のサイトを横断して追いかける仕組みも、
+        置いていません。</dd>
+    </div>
+  </dl>
+  <p class="about__note">
+    ここに書いたのは、<a href="https://developers.cloudflare.com/web-analytics/"
+    target="_blank" rel="noopener">Cloudflare が公開している資料</a>の記述です。
+    こちらで中身を確かめたわけではありません。
+  </p>
   </section>
 
   <section class="about__sec">
