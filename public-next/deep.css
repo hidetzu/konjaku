@@ -146,12 +146,6 @@ body{
 .read dd{flex:1; min-width:0; margin:0; color:var(--ink-2); overflow-wrap:anywhere}
 .read a{color:var(--ink-2)}
 
-.cite{
-  margin-top:3rem; padding-top:var(--gap-block); border-top:1px solid var(--line);
-  font-size:.75rem; color:var(--ink-3); line-height:1.7;
-}
-.cite a{color:var(--ink-2)}
-
 /* 近くに残る災害の記録。出典の字をそのまま出すので、行が長くなる。 */
 .mon__lead{margin:0 0 var(--gap-row); font-size:.9375rem; line-height:1.6; color:var(--ink-2)}
 .mon{margin:0; padding:0; list-style:none; display:flex; flex-direction:column; gap:var(--gap-block)}
