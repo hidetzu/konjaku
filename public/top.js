@@ -802,28 +802,39 @@
     const s = q.value.trim();
     if (!s) return;
     hits.hidden = true;
+    // 取りに行くところだけを包む。
+    //   前は描くところまで同じ try の中にあり、こちらのコードが落ちても
+    //   「通信できません」と出ていた。押し直しても直らないのに、待てば直るように読める。
+    //   実際に踏んだ（2026-09-01）: places() の返りを取り違えただけで、
+    //   画面は「通信できません」と言った。こちらの都合を、回線の都合のように言わない。
+    let list = null;
     try {
-      const list = await finder.search(s);
-      if (!list.length) {
-        kickText.textContent = "その名前では見つかりませんでした";
-        return;
-      }
-      hits.innerHTML = list.slice(0, 8).map((r, i) => {
-        const t = r.properties?.title ?? "";
-        return `<li role="option"><button type="button" data-i="${i}">${esc(t)}</button></li>`;
-      }).join("");
-      hits._list = list;
-      hits.hidden = false;
+      list = await finder.search(s);
     } catch (err) {
-      // ⚠ **こちらの都合を、相手の都合のように言わない**（`CLAUDE.md` §4-1）
       kickText.textContent = KonjakuGsiAddressSearch.whyOf(err);
+      return;
     }
+    if (!list.length) {
+      kickText.textContent = "その名前では見つかりませんでした";
+      return;
+    }
+    // 地理院の住所検索は関連度で返さない。都道府県コードの昇順（北→南）で返る。
+    //   実測（2026-09-01）: 「新宿」は東京都新宿区が 12 番目で、先頭 8 件に入らない。
+    //   「渋谷」は 3 番目、「銀座」「梅田」は 4 番目。先頭を選ぶと必ず別の土地に着く。
+    // 並べ替えは places.js が持つ。応答の 4 フィールドだけで決める。
+    //   外へのリクエストは増やさない（1 検索 1 リクエストのまま）。
+    // places() は { rows, pick } を返す。配列ではない。
+    const 並び = KonjakuPlaces.places(list, s, 8).rows;
+    hits.innerHTML = 並び.map((r, i) =>
+      `<li role="option"><button type="button" data-i="${i}">${esc(r.title)}</button></li>`).join("");
+    hits._list = 並び;
+    hits.hidden = false;
   });
   hits.addEventListener("click", (e) => {
     const b = e.target.closest("button[data-i]");
     if (!b) return;
-    const r = hits._list?.[+b.dataset.i];
-    const c = r?.geometry?.coordinates;
+    // places.js が返す行は ll（[lon, lat]）を持つ。応答の生の形ではない。
+    const c = hits._list?.[+b.dataset.i]?.ll;
     if (!c) return;
     cx = lon2px(c[0]); cy = lat2px(c[1]);
     hits.hidden = true; q.blur(); moved();

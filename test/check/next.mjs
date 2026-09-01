@@ -846,4 +846,93 @@ else {
           + "⚠ 「ここに書いていないことは、していません」と、⚠ 言えないことを残している");
   }
 
+
+
+  // ---- ⚠ ⑳ 読み込みの順が、⚠ 依存より後になっていないか ----
+  //   ⚠ **2026-09-01 に実際に踏んだ**（`docs/adr/0080`）。
+  //   ⚠ **`places.js` を `gsi-address-search.js` より先に置いた。**
+  //   ⚠ **`places.js` は読み込んだ時点で `TIMEOUT_MS` を読む**ので、⚠ `undefined` になり、
+  //     ⚠ **ページのスクリプトが丸ごと止まった**（⚠ 実描画 83 件中 46 件が同じ 1 行で落ちた）。
+  //   ⚠ **静的検査は緑のままだった。**⚠ **順は、⚠ 誰も見ていなかった。**
+  //
+  // ⚠ **字面では見分けられない**（⚠ 一度そう書いて、⚠ わざと壊しても素通りした）。
+  //   ⚠ **依存を読む行は関数の中にあり、⚠ 呼ぶのが最上位**だった。
+  //   ⚠ **字下げで「最上位か」を判定しても当たらない。**
+  // ⚠ **だから、⚠ 実際に順に読み込んで、⚠ 落ちるかを見る**（⚠ ブラウザは要らない）。
+  //   ⚠ **DOM は当たり障りのない作りもので埋める**（⚠ 見たいのは読み込みの順だけ）。
+  {
+    const 欠け = [];
+    const 画面 = readdirSync(NEXT).filter((f) => f.endsWith(".html"));
+    const 素 = (f) => readFileSync(join(NEXT, f), "utf8")
+      .replace(BLOCK_COMMENT, " ").replace(HEAD_COMMENT, " ");
+
+    // ⚠ **触られたら、⚠ 何にでも化ける作りもの**（⚠ DOM も地図も、⚠ ここでは中身に興味が無い）。
+    // ⚠ **文字にも数にも化ける**（⚠ `${…}` に入れられても落ちない）。
+    //   ⚠ **`then` は undefined**（⚠ 返さないと await で永久に待つ）。
+    //   ⚠ **`Symbol.unscopables` も undefined**（⚠ `with` が名前を外へ逃がす）。
+    const 何でも = () => new Proxy(function () {}, {
+      get: (t, k) => {
+        if (k === "then" || k === Symbol.unscopables) return undefined;
+        if (k === Symbol.toPrimitive) return () => "";
+        if (k === "length") return 0;
+        if (k === "toString" || k === "valueOf") return () => "";
+        return 何でも();
+      },
+      set: () => true,
+      apply: () => 何でも(),
+      construct: () => 何でも(),
+    });
+
+    // ⚠ **裸の名前も、⚠ この入れ物から引かせる**（⚠ `with`）。
+    //   ⚠ **`verify.js` は `KonjakuSwale` を裸で読む**（⚠ `window.` を付けない）。
+    //   ⚠ **`with` を使わないと、⚠ 本物の globalThis を見に行って、⚠ 順に関係なく落ちる。**
+    // ⚠ **入っていない名前だけ作りものを返す**（⚠ 入っているものは、⚠ そのまま返す）。
+    //   ⚠ **`has` は常に true**（⚠ そうしないと `with` が外へ抜ける）。
+    const 入れ物 = () => {
+      const 中身 = {};
+      // ⚠ **`window` / `globalThis` / `self` は、⚠ 入れ物そのものを指す。**
+      //   ⚠ **どのファイルも `(function(global){…})(window)` の形で名前を置く。**
+      //   ⚠ **ここを作りものにすると、⚠ 置いた名前がどこにも残らない**
+      //     （⚠ 実際にそうなって、⚠ 順が正しいのに落ちた）。
+      const 自分 = new Proxy(中身, {
+        has: () => true,
+        // ⚠ **`Konjaku*` は埋めない。**⚠ **まだ置かれていなければ undefined を返す。**
+        //   ⚠ **ここを作りもので埋めると、⚠ 捕まえたい不具合をこの検査自身が隠す**
+        //     （⚠ 実際にそう書いて、⚠ わざと壊しても素通りした）。
+        //   ⚠ **埋めてよいのは、⚠ ブラウザが最初から持っているもの**（⚠ DOM・fetch など）。
+        get: (t, k) => (k in t ? t[k]
+          : k === Symbol.unscopables ? undefined
+          : (typeof k === "string" && k.startsWith("Konjaku")) ? undefined
+          : (k === "window" || k === "globalThis" || k === "self") ? 自分
+          : 何でも()),
+        set: (t, k, v) => { t[k] = v; return true; },
+      });
+      return 自分;
+    };
+
+    for (const h of 画面) {
+      const 順 = [...素(h).matchAll(/<script[^>]+src="\.\/([\w.-]+\.js)"/g)].map((m) => m[1]);
+      if (!順.length) continue;
+      // ⚠ **画面ごとに、⚠ まっさらな入れ物から始める**（⚠ 前の画面の名前を引き継がない）。
+      const win = 入れ物();
+      let 落ちた = null;
+      for (const f of 順) {
+        try {
+          new Function("__win", `with (__win) { ${readFileSync(join(NEXT, f), "utf8")}\n }`)(win);
+        } catch (e) {
+          落ちた = `${f} が読み込みで落ちた: ${String(e.message).slice(0, 90)}`;
+          break;
+        }
+      }
+      if (落ちた) 欠け.push(`${h}: ${落ちた}（⚠ 読み込みの順を見直す）`);
+    }
+
+    // ⚠ **1 枚も読めていないなら、⚠ この検査は何も見ていない。**
+    画面.length === 0 && 欠け.push("画面が 1 枚も無い（⚠ この検査が何も見ていない）");
+
+    欠け.length
+      ? bad(`読み込みの順が、依存より後になっている: ${欠け.join(" ／ ")}`)
+      : ok(`読み込みの順は、⚠ 依存より後になっていない（⚠ ${画面.length} 画面を、⚠ 実際に順に読んだ）`);
+  }
+
 }

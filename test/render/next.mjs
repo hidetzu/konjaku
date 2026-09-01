@@ -1094,6 +1094,23 @@ CASES.push({
     await page.locator("#q").fill("豊洲");
     await page.locator("#q").press("Enter");
     await 待つ(page, () => document.querySelectorAll("#hits li").length > 0, "検索の候補");
+
+    // ⚠ **候補が並べ替えられていること**（2026-09-01。`docs/adr/0080`）。
+    //   ⚠ **地理院の住所検索は関連度で返さない。**⚠ **都道府県コードの昇順（北→南）で返る。**
+    //   ⚠ **実測（2026-09-01）**: ⚠ 「豊洲」の先頭は **青森県八戸市豊洲**。
+    //     ⚠ 「新宿」は東京都新宿区が **12 番目**で、⚠ **先頭 8 件に入らない**（⚠ 画面に出ない）。
+    //   ⚠ **β 版が実測で直した不具合が、⚠ v0.1.0 で戻っていた。**
+    //
+    // ⚠ **並びの規則そのものは静的検査が見る**（`test/search-check.mjs` の 42 語）。
+    //   ⚠ **ここが見るのは、⚠ その規則が本番の画面まで届いているか。**
+    //   ⚠ **字を書き写さない。**⚠ **「打った語と同じ市区町村が、⚠ 1 番目に来ること」で見る。**
+    {
+      const 先頭 = await page.evaluate(() =>
+        document.querySelector("#hits button")?.textContent.trim() ?? "");
+      must(先頭.includes("豊洲"), `候補の 1 番目に「豊洲」が無い: ${先頭}`);
+      must(!/^青森|^北海道|^岩手|^宮城/.test(先頭),
+        `候補が並べ替えられていない（応答のまま北から出ている）: ${先頭}`);
+    }
     const r = await page.evaluate(() => {
       const hits = document.getElementById("hits");
       const 最後 = [...hits.querySelectorAll("button")].pop();

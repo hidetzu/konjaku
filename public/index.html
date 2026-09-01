@@ -178,6 +178,9 @@
 <script src="./swale.js"></script>
 <script src="./verify.js"></script>
 <script src="./land.js"></script>
+<!-- places.js は、読み込んだ時点で gsi-address-search.js の TIMEOUT_MS を読む。
+     先に置くと undefined になり、ページのスクリプトが丸ごと止まる。順を変えない。 -->
 <script src="./gsi-address-search.js"></script>
+<script src="./places.js"></script>
 <script src="./top.js"></script>
 <script src="./menu.js"></script>
