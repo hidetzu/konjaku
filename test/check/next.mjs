@@ -951,7 +951,8 @@ else {
     const 欠け = [];
     // ⚠ **HTML のコメントを先に落とす**（`CLAUDE.md` §5。⚠ 何度も踏んでいる）。
     const HTML = (f) => readFileSync(join(NEXT, f), "utf8").replace(/<!--[\s\S]*?-->/g, " ");
-    const TOP = HTML("index.html"), ABOUT = HTML("about.html");
+    const TOP_HTML = HTML("index.html"), ABOUT = HTML("about.html");
+    const TOP = TOP_HTML;
 
     // ⚠ **3 手の字は、⚠ 2 か所に出る**（⚠ トップの帯と /about の使い方）。
     //   ⚠ **同じ道具の使い方が 2 通りある形にしない。**⚠ **突き合わせる。**
@@ -1000,6 +1001,26 @@ else {
       ];
       for (const [名, 見る] of 要る)
         if (!文.some(見る)) 欠け.push(`/about の「言えないこと」に、${名} が書かれていない`);
+    }
+
+    // ⚠ 5. ⚠ **名乗りの行には、⚠ 名乗りしか書かない。**
+    //   ⚠ **名乗りは送る・保存と同じ行なので、⚠ 器が狭い**（⚠ 実測 320px で 122px）。
+    //   ⚠ **断りを同じ行に書くと、⚠ 必ず切れる**（⚠ 実際に踏んだ。⚠ 通信 28 字・現在地 33 字）。
+    //   ⚠ **代入が 1 か所であることを見る。**⚠ **増えたら、⚠ また切れる字が入る道ができる。**
+    {
+      const TOP = readFileSync(join(NEXT, "top.js"), "utf8")
+        .replace(BLOCK_COMMENT, " ").replace(HEAD_COMMENT, " ")
+        .split("\n").filter((l) => !/^\s*\/\//.test(l)).join("\n");
+      const 代入 = [...TOP.matchAll(/kickText\.textContent\s*=\s*([^;\n]+)/g)].map((m) => m[1].trim());
+      if (代入.length !== 1)
+        欠け.push(`名乗りの行への代入が ${代入.length} か所ある（⚠ 1 か所だけにする）: ${代入.join(" ／ ")}`);
+      else if (!/KonjakuAnswer\.WHERE\[/.test(代入[0]))
+        欠け.push(`名乗りの行に、⚠ 名乗り以外を書いている: ${代入[0]}`);
+      // ⚠ **断りの行が在ること**（⚠ 器が別なら、⚠ 折り返せる）。
+      if (!/id="kickNote"/.test(TOP_HTML))
+        欠け.push("断りの行（#kickNote）が無い（⚠ 断りは名乗りの行に入らない）");
+      if (!/\.kick__note\[hidden\]\{display:none\}/.test(readFileSync(join(NEXT, "top.css"), "utf8")))
+        欠け.push("断りの行に、⚠ hidden の打ち消しが無い（⚠ display を持つ規則には要る）");
     }
 
     // ⚠ 4. ⚠ **読み終えた人の出口。**⚠ **行き先まで見る**（⚠ 字だけだと、⚠ どこへも行かない）。

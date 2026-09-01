@@ -22,6 +22,11 @@
   // 外から来た字を画面に出す前に通す。地名も区分名も、こちらが中身を保証できない。
   const { esc } = window.KonjakuEsc ?? { esc: (s) => s };
   const map = $("map"), q = $("q"), hits = $("hits"), card = $("card");
+  // 断りの行。名乗りの行には、名乗りしか書かない。
+  //   名乗りは送る・保存と同じ行なので器が狭く（320px で 122px）、断りは必ず切れる。
+  //   実測（2026-09-02）: 通信の断りは 28 字、現在地の断りは 33 字。
+  //   前は同じ行に書いていて、3 幅とも切れていた。
+  const kickNote = $("kickNote");
   const kickText = $("kickText"), nameEl = $("name"), glossEl = $("gloss"), legendEl = $("legend");
   const moreBtn = $("more"), sheet = $("sheet"), sheetList = $("sheetList"), sheetState = $("sheetState");
   const subEl = $("sub"), whyEl = $("why"), glossSrcEl = $("glossSrc");
@@ -375,6 +380,8 @@
     const seq = ++askSeq;
     const lon = px2lon(cx), lat = px2lat(cy);
     kickText.textContent = KonjakuAnswer.WHERE[出どころ];
+    // 場所が変わったら、前の断りは残さない
+    kickNote.hidden = true; kickNote.textContent = "";
     // 見出しは明治期の答えを使うので、地形分類を待ってから投げると往復が 2 回直列になる。
     //   同時に投げる。待ち時間は max になり、いままでの最悪値（どちらも 8 秒で打ち切り）を超えない。
     //   実測 2026-08-31（手元・375×667）: 明治期は地形分類の 0〜30ms 後に届いた。
@@ -394,7 +401,8 @@
     if (!v || v.state === Konjaku.STATE.UNREACHABLE) {
       glossEl.textContent = "いま、この場所を調べられません";
       nameEl.textContent = "";
-      kickText.textContent = "通信が届いていません。少し待って、もう一度動かしてください";
+      kickNote.textContent = "通信が届いていません。少し待って、もう一度動かしてください";
+      kickNote.hidden = false;
       drawLegend();
       return;
     }
@@ -792,10 +800,12 @@
   // ⚠ **起動直後に求めない。**⚠ **押したときに求める**（`docs/adr/0046`）。
   $("here").addEventListener("click", () => {
     if (!navigator.geolocation) {
-      kickText.textContent = "この端末では現在地を使えません";
+      kickNote.textContent = "この端末では現在地を使えません";
+      kickNote.hidden = false;
       return;
     }
-    kickText.textContent = "いまいる場所を調べています";
+    kickNote.textContent = "いまいる場所を調べています";
+    kickNote.hidden = false;
     navigator.geolocation.getCurrentPosition(
       (p) => {
         cx = lon2px(p.coords.longitude); cy = lat2px(p.coords.latitude);
@@ -806,7 +816,8 @@
       //   前は「現在地を使えませんでした」とだけ出て、豊洲の答えが残っていた。
       //   断りだけ読むと、残っている答えが現在地のものに読める。
       () => {
-        kickText.textContent = KonjakuAnswer.whereFailed(出どころ);
+        kickNote.textContent = KonjakuAnswer.whereFailed(出どころ);
+        kickNote.hidden = false;
       },
       { enableHighAccuracy: true, timeout: 10000 });
   });
@@ -827,11 +838,13 @@
     try {
       list = await finder.search(s);
     } catch (err) {
-      kickText.textContent = KonjakuGsiAddressSearch.whyOf(err);
+      kickNote.textContent = KonjakuGsiAddressSearch.whyOf(err);
+      kickNote.hidden = false;
       return;
     }
     if (!list.length) {
-      kickText.textContent = "その名前では見つかりませんでした";
+      kickNote.textContent = "その名前では見つかりませんでした";
+      kickNote.hidden = false;
       return;
     }
     // 地理院の住所検索は関連度で返さない。都道府県コードの昇順（北→南）で返る。

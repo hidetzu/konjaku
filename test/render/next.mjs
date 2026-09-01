@@ -3031,18 +3031,19 @@ CASES.push({
     //       ⚠ **控えが冷えていると板が低くなるので、⚠ 単体では偶然地図に当たっていた。**
     //     ⚠ **「引けなかった」を「名乗りが変わらない」と読み違えていた。**
     const 引く点 = await page.evaluate(() => {
+      // ⚠ **検索欄と 3 手の帯のあいだ。**⚠ **ここが、⚠ いちばん広い地図の帯域。**
+      const 欄 = document.getElementById("bar").getBoundingClientRect();
       const 帯 = document.getElementById("steps").getBoundingClientRect();
-      const 板 = document.getElementById("card").getBoundingClientRect();
       const x = Math.round(innerWidth / 2);
-      const y = Math.round((帯.bottom + 板.top) / 2);
+      const y = Math.round((欄.bottom + 帯.top) / 2);
       const t = document.elementFromPoint(x, y);
       return { x, y, 受ける: t ? (t.id || t.className || t.tagName) : "（何も無い）",
                地図: !!(t && (t.id === "map" || t.closest?.("#map"))),
-               帯の下: Math.round(帯.bottom), 板の上: Math.round(板.top) };
+               欄の下: Math.round(欄.bottom), 帯の上: Math.round(帯.top) };
     });
     must(引く点.地図,
       `地図を引ける点が無い（${引く点.x},${引く点.y} は ${引く点.受ける} が受ける ／ `
-      + `帯の下 ${引く点.帯の下} ／ 板の上 ${引く点.板の上}）`);
+      + `検索欄の下 ${引く点.欄の下} ／ 帯の上 ${引く点.帯の上}）`);
     await page.mouse.move(引く点.x, 引く点.y);
     await page.mouse.down();
     await page.mouse.move(引く点.x - 60, 引く点.y - 40, { steps: 8 });
@@ -3072,11 +3073,17 @@ CASES.push({
       });
     });
     await page.click("#here");
+    // ⚠ **断りは、⚠ 名乗りとは別の行に出る**（⚠ 名乗りの行には入らない。⚠ 器が狭い）。
     await page.waitForFunction(
-      () => /現在地を取得できませんでした/.test(
-        document.getElementById("kickText").textContent), null, { timeout: 30000 })
+      () => {
+        const n = document.getElementById("kickNote");
+        return !n.hidden && /現在地を取得できませんでした/.test(n.textContent);
+      }, null, { timeout: 30000 })
       .catch(() => { throw new Error("現在地が取れなかったのに、断りが出ない") });
-    const 失敗時 = await 字();
+    const 失敗時 = await page.evaluate(() =>
+      document.getElementById("kickNote").textContent.trim());
+    // ⚠ **名乗りは、⚠ 断りに置き換わらない**（⚠ どこを見ているかは残る）。
+    must(await 字() === 表.map, `断りが、名乗りを消している: 「${await 字()}」`);
     const 失敗時の答え = await 答え();
     // ⚠ **答えは残っている**（Owner 判断。⚠ 消すと画面が空になる）。
     must(失敗時の答え === 答え引いたあと,
@@ -3131,6 +3138,74 @@ CASES.push({
     return `既定「${既定}」→ 引いたあと「${引いたあと}」→ 取れないとき「${失敗時}」`
          + ` → 取れたとき「${表.here}」→ 検索「${表.search}」`
          + `（引いた点 ${引く点.x},${引く点.y}）`;
+  },
+});
+
+// ⚠ **どの名乗りも、⚠ 器に入ること。**⚠ **いちばん狭い幅で見る。**
+//
+// ⚠ **実際に踏んだ（2026-09-02）**: ⚠ **既定の名乗りを 16 字にしたら、
+//   ⚠ 375 / 344 / 320 の 3 幅とも切れた**（⚠ 「まずは東京・豊洲を表示して…」）。
+//   ⚠ **名乗りは送る・保存と同じ行に置くので、⚠ 器は 375px で 177px・320px で 131px しかない。**
+// ⚠ **5 通りを 1 つずつ入れて測る。**⚠ **画面の操作では 5 通りを 1 枚で出せない。**
+//   ⚠ **見ているのは「その字が器に入るか」なので、⚠ 入れて測ってよい。**
+// ⚠ **3 手の帯が板と重ならないことも、⚠ ここで見る**（⚠ いちばん狭いと板が高くなる）。
+CASES.push({
+  name: "いちばん狭い幅でも、どの名乗りも切れず、3 手が板と重ならない",
+  path: "/", origin: NEXT_BASE, viewport: { width: 320, height: 640 },
+  async check(page) {
+    await waitAnswer(page);
+    await page.waitForTimeout(500);
+    const r = await page.evaluate(() => {
+      const k = document.getElementById("kickText");
+      const A = window.KonjakuAnswer;
+      if (!A) return { 読めない: true };
+      const 元 = k.textContent;
+      const 行 = document.querySelector(".kick");
+      // ⚠ **名乗りだけでなく、⚠ 押すものが潰れていないかも見る。**
+      //   ⚠ **実際に踏んだ（2026-09-02）**: ⚠ **名乗りが 1px あふれたとき、
+      //     ⚠ 「送る」まで一緒に「送…」になった。**⚠ **名乗りだけ見ていると気づけない。**
+      const 測る = (字) => {
+        k.textContent = 字;
+        const 押す = [...行.querySelectorAll("button span:not([aria-hidden])")]
+          .map((e) => ({ 字: e.textContent.trim(), 切れ: e.scrollWidth > e.clientWidth }));
+        return { 字, 中身: k.scrollWidth, 器: k.clientWidth, 押す };
+      };
+      const 名 = Object.values(A.WHERE).map(測る);
+      k.textContent = 元;
+      const R = (s) => document.querySelector(s).getBoundingClientRect();
+      const 帯 = R("#steps"), 板 = R("#card"), 出典 = R(".attrib a"), 欄 = R("#bar");
+      const かぶる = (a, b) =>
+        a.bottom > b.top && b.bottom > a.top && a.right > b.left && b.right > a.left;
+      return {
+        名,
+        // ⚠ **帯は、⚠ 出典・板・検索欄の 3 つと重ならないこと。**
+        //   ⚠ **実際に踏んだ（2026-09-02）**: ⚠ **上端から固定値で置いたら、
+        //     ⚠ 320x640 で出典と 35px 重なった**（⚠ 板の高さは土地と幅で変わる）。
+        //   ⚠ **板とだけ突き合わせていて、⚠ 出典を見ていなかった。**
+        出典と: かぶる(帯, 出典), 板と: かぶる(帯, 板), 検索欄と: かぶる(帯, 欄),
+        あいだ: Math.round(出典.top - 帯.bottom),
+        帯の高: Math.round(帯.height),
+        横あふれ: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+      };
+    });
+    must(!r.読めない, "KonjakuAnswer を読めていない（⚠ この検査が何も見ていない）");
+    must(r.名.length === 5, `名乗りが 5 通りない（${r.名.length}）`);
+    for (const n of r.名) {
+      // ⚠ **許容を置かない。**⚠ **器は中身に合わせて縮むので、⚠ 余りは測れない。**
+      //   ⚠ **見るのは「切れているか」そのもの。**
+      //   ⚠ **前は +1px を許していて、⚠ 120/119 を通した**（⚠ 実際は切れていた）。
+      must(n.中身 <= n.器,
+        `名乗りが器に収まっていない: 「${n.字}」（${n.中身}px 要るが、器は ${n.器}px）`);
+      for (const b of n.押す)
+        must(!b.切れ, `名乗り「${n.字}」のとき、押すもの「${b.字}」が潰れている`);
+    }
+    // ⚠ **重ならない**（⚠ 固定値で避けない。⚠ 同じ積み上げに入れる。`CLAUDE.md` §9）
+    must(!r.出典と, "3 手の帯が、出典（国土地理院）と重なっている（⚠ 出典は隠さない）");
+    must(!r.板と, "3 手の帯が、答えの板と重なっている");
+    must(!r.検索欄と, "3 手の帯が、検索欄と重なっている");
+    must(!r.横あふれ, "いちばん狭い幅で、画面が横にあふれている");
+    return `名乗り ${r.名.map((n) => `${n.中身}/${n.器}`).join(" ")}`
+         + ` ／ 帯 ${r.帯の高}px ／ 出典まで ${r.あいだ}px`;
   },
 });
 

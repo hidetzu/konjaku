@@ -69,28 +69,21 @@ body{
 #hits button:hover,#hits button:focus-visible{background:var(--bg);outline:none}
 
 /* ---- 3 手 ---- */
-/* 検索欄のすぐ下に浮かべる。#bar と同じ起点から、#bar の高さぶん下げる。
-   固定値で置かない。名乗りの帯の高さも、切り欠きも、#bar が使う値をそのまま使う。
-   ⚠ 検索の候補（#hits・z-index 30）が開いたら、その裏に入る。それでよい。
-     候補は選べば消える。3 手を消すために状態を持たない。
-   ⚠ 押せない。pointer-events を通して、地図をそのまま引けるようにする。
-     押せる見た目（塗り・枠の強調）にしないこと。 */
+/* 出典・答えの板と同じ積み上げ（#bottom）の中に置く。上端から固定値で置かない。
+   実際に踏んだ（2026-09-02）: 検索欄の下に固定で置いたら、320x640 で出典と 35px 重なった。
+   板の高さは土地と幅で変わる（実測 271〜325px）ので、固定値では避けられない。
+   ⚠ 1 つの札にまとめる。矢印ごとに札を分けると、320px で 2 行になり、
+     そのぶん背が高くなって上の検索欄に届いた。実測: 3 札 337px ／ 1 札 285px（器 296px）。
+   ⚠ 押せない。pointer-events を通して、この上から地図を引けるようにする。 */
 .steps{
-  position:absolute;
-  top:calc(2.75rem + env(safe-area-inset-top) + var(--pad-sm) * 2 + var(--tap));
-  margin:0; pointer-events:none;
-  display:flex; flex-wrap:wrap; justify-content:center;
-  align-items:center; gap:0 var(--gap-row);
-}
-/* 字は帯ではなく、字そのものに背景を敷く。折り返したとき、
-   空いた行の幅ぶんまで白が伸びない。 */
-.steps__i,.steps__sep{
-  padding:var(--gap-sub) var(--gap-row);
+  align-self:center; max-width:100%;
+  margin:0 0 var(--gap-row); padding:var(--gap-sub) var(--gap-sub);
+  pointer-events:none;
   background:var(--surface); border-radius:.5rem;
-  font-size:.75rem; line-height:1.5; color:var(--ink-2); white-space:nowrap;
+  font-size:.75rem; line-height:1.5; color:var(--ink-2); text-align:center;
   box-shadow:0 1px 6px color-mix(in srgb, var(--shadow) 10%, transparent);
 }
-.steps__sep{padding-inline:var(--gap-sub); color:var(--ink-3)}
+.steps__sep{color:var(--ink-3)}
 .steps[hidden]{display:none}
 
 /* ---- 足元のカード ---- */
@@ -165,6 +158,13 @@ body{
    見出しの行が 3 段になった（板 295px → 357px）。 */
 .kick__l{display:flex; align-items:center; gap:.375rem; min-width:0}
 .kick__l > span{overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+
+/* 断りの行。名乗りの下に置き、折り返す（切らない）。
+   ⚠ 危険の印（⚠）は使わない。あれは災害リスクに使っている。 */
+.kick__note{
+  margin:0 0 var(--gap-sub); font-size:.75rem; line-height:1.6; color:var(--ink-2);
+}
+.kick__note[hidden]{display:none}
 
 /* この場所を送る。
    URL には元から座標が入る（?ll=）。読む口は在ったが、
