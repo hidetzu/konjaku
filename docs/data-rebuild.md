@@ -1,146 +1,95 @@
-# 配信用データを0から再生成する手順
+# 配信用データを 0 から作り直す手順
 
 ## 目的
 
-この文書は、リポジトリにコミットされた配信用データを前提にせず、外部データの取り込みから
-`public/data/` の生成までをやり直すときの手順を整理したものです。
+⚠ **`public/data/` に置いてあるものを前提にせず、⚠ 外から取り込むところからやり直す手順。**
 
-現在の画面表示は、デプロイ済みの Workers Assets（`public/data/`）だけを読みます。
-実行時にローカルSQLiteやD1を読みません。ローカルSQLiteは、事物・建物の取り込みを
-再実行するときだけ作られる作業用データです。
+⚠ **2026-09-01 に書き直した**（`docs/adr/0080`）。
+⚠ **前は β 版の手順だった**（⚠ Wikidata の事物 ／ OSM の建物 ／ 水域マスク ／ 索引）。
+⚠ **v0.1.0 はそのどれも配っていない。**⚠ **道具は `scripts/` に残っているが、⚠ 使わない。**
 
-## 生成物と入力
+## ⚠ 先に読む
 
-| 生成物 | 主な入力 | SQLiteを使うか |
-|---|---|---:|
-| `data/ev/` | Wikidata、`seeds/areas.jsonl` | 使う |
-| `data/bl/` | Overpass（OSM）、国土地理院「明治期の低湿地」タイル、`seeds/areas.jsonl` | 使う |
-| `data/*-water.geojson` | 国土地理院「明治期の低湿地」タイル、スクリプト内のBBOX | 使わない |
-| `data/landform.json` | 国土地理院の`style.js` | 使わない |
-| `data/quick-places.json` | `seeds/areas.jsonl`の`quick` | 使わない |
-| `data/assets.json` | 生成済み索引と`seeds/areas.jsonl` | 使わない |
+- ⚠ **これは事前処理。**⚠ **`npm run check` からは呼ばない**（`CLAUDE.md` §9）。
+  ⚠ **相手先の答えに寄りかかるものを、⚠ 検査にしない。**
+- ⚠ **取り込みのあとはログを見る**（`CLAUDE.md` §9）。⚠ **1 区画だけ落ちても気づけない。**
+- ⚠ **配るデータを足したら [`LICENSES.md`](../LICENSES.md) の表にも足す**
+  （⚠ 静的検査が両方向で突き合わせる）。
 
-## 0からの手順
+## v0.1.0 が配っているもの
 
-### 1. 依存関係を準備する
+| 置き場所 | 何 | 作るもの |
+|---|---|---|
+| `public/data/landform.json` | 地形分類の凡例（36 区分） | `node scripts/build-landform.mjs` |
+| `public/data/monument/` | 自然災害伝承碑（z8 タイル） | `node scripts/ingest-monuments.mjs` |
+| `public/data/muni.json` | 市区町村コード → 名前 | `node scripts/build-muni.mjs` |
+| `public/data/landuse-code.json` | 土地利用種別のコード表 | ⚠ **手で写した**（⚠ 国土交通省のコード表）。⚠ `scripts/survey-landuse.mjs` が読む |
+| `public/data/area-record.json` | その地域について公式資料に書かれている記録 | ⚠ **手で写した**（⚠ 東京都港湾局／浦安市）。⚠ **作る道具は無い** |
 
-```sh
-npm ci
-```
+⚠ **手で写したものは、⚠ 原典の字をそのまま入れる。**⚠ **要約も言い換えもしない。**
 
-Node.jsから外部APIへアクセスできる環境が必要です。Wikidata、Overpass、国土地理院の
-応答が不安定な場合は、失敗した範囲を再実行します。
+## 1. 地形分類の凡例
 
-### 2. 地形分類の静的表を生成する
-
-```sh
+```bash
 node scripts/build-landform.mjs
 ```
 
-`public/data/landform.json`を生成します。
+⚠ **地理院地図の `style.js` から凡例を取り出す。**
+⚠ **成因・災害リスクの文は、⚠ 国土地理院の記述をそのまま入れる。**⚠ **こちらで書かない。**
 
-### 3. 明治期の水域GeoJSONを生成する
+## 2. 自然災害伝承碑
 
-```sh
-node scripts/build-water.mjs
+```bash
+node scripts/ingest-monuments.mjs
 ```
 
-現在のスクリプトは`toyosu`のBBOXを対象にしています。別の範囲を追加する場合は、
-スクリプトの`NAME`と`BBOX`を変更して実行します。
-⚠ **範囲索引（`public/data/areas.json`）は 2026-08-20 に廃止しました。**
-⚠ 土地を足すのは `seeds/areas.jsonl` と `npm run ingest:bld` → `npm run export:bld` の道です。
-この部分は、将来、範囲定義から一括生成できる形へ整理する余地があります。
+⚠ **`disaster_lore_all` の GeoJSON を z8 で取り込み、⚠ タイルごとに書き出す。**
 
-### 4. Wikidataの事物を取り込んで配信用タイルを生成する
+- ⚠ **災害名・種別・碑文は出典の字のまま**（⚠ 複合種別も分解しない）
+- ⚠ **年は 1 つの値へ丸めない。**⚠ **取り出した年は `derived` に分け、⚠ 画面には出さない**
+- ⚠ **1 枚でも読めなかったら、⚠ 途中で止まる**（⚠ 欠けたまま配ると「その範囲に碑は無い」に読まれる）
 
-```sh
-npm run ingest
-npm run export
+⚠ **どこまで言えるかを数える走者もある**（⚠ 検査ではない）。
+
+```bash
+node scripts/survey-monuments.mjs
 ```
 
-`npm run ingest`が`.data/konjaku.db`を作成し、事物とタイルごとのcoverageを保存します。
-`npm run export`はそのSQLiteから`public/data/ev/`を生成します。
+## 3. 市区町村の名前
 
-### 5. OSMの建物を取り込んで配信用タイルを生成する
-
-```sh
-npm run ingest:bld
-npm run export:bld
+```bash
+node scripts/build-muni.mjs
 ```
 
-`npm run ingest:bld`はOverpassから建物を取得し、各建物の重心を国土地理院「明治期の低湿地」
-タイルへ照合して、OSMの名称・高さ・建設年と明治期区分を付与したうえで、
-`.data/konjaku.db`のcoverageを更新し、`public/data/bl/14/`へタイル本体を書き出します。
-画面表示時に建物ごとの明治期ラスタ通信を発生させないため、取り込み時の判定結果を配信物に
-含めます。GSIタイルの取得に失敗した建物は取得失敗として保持し、再実行で補完します。
-`npm run export:bld`はSQLiteのcoverageから`public/data/bl/index.json`を生成します。
+⚠ **地理院地図の `muni.js` から作る。**⚠ **町名だけだと、⚠ どこの町か分からない**
+（⚠ 利用者役 3 名中 1 名が「猫実」を浦安と結び付けられなかった）。
+⚠ **重なる名前にだけ都道府県を付ける**（⚠ 府中市・伊達市 など）。⚠ **判定はここでやる。**
 
-既存タイルの圧縮形式を変更する場合だけ、必要に応じて次を実行します。
+## 4. 手で写したもの
 
-```sh
-npm run pack:bld
+⚠ **道具は無い。**⚠ **原典を見て、⚠ 字をそのまま入れる。**
+
+- `landuse-code.json` — 国土数値情報「土地利用細分メッシュ（L03-b）」のコード表
+- `area-record.json` — 東京都港湾局「東京港の歴史」／浦安市「浦安市の海面埋め立て」
+
+⚠ **`area-record.json` は、⚠ 範囲の矩形をこちらが引いている。**
+⚠ **原典に座標は書かれていない。**⚠ **その断りを、⚠ ファイルの中と画面の両方に持つ。**
+
+## 5. 出したあと
+
+```bash
+npm run check                              # 静的検査
+npm run render -- --suite=next --group=core # 実描画
 ```
 
-### 6. 候補地と共通アセット索引を生成する
+⚠ **配っているものと `LICENSES.md` の表がずれていないかは、⚠ 静的検査が見る**
+（⚠ 載せ忘れも、⚠ 消したデータの行が残ることも）。
 
-```sh
-npm run export:assets
-```
+## ⚠ β 版の道具について
 
-このコマンドは以下を生成します。
+⚠ **`scripts/` には、⚠ β 版のためのものが残っている**
+（⚠ `ingest-wikidata` `export-tiles` `ingest-buildings` `export-buildings`
+`pack-buildings` `build-water` `export-assets` `export-places` ほか）。
 
-- `public/data/quick-places.json`
-- `public/data/assets.json`
-
-`assets.json`は建物・土地・候補地の索引と配信形式をまとめる公開契約です。
-
-### 7. Service Workerの版を更新する
-
-```sh
-npm run stamp
-```
-
-静的データを変更した場合は、配信キャッシュの版も更新します。
-
-### 8. 検査する
-
-```sh
-npm run check
-npm run render
-```
-
-`check`は索引とファイルの対応、形式、サイズ、coverageを検査します。
-`render`は実際の画面で地図・水域・建物・年代表示を確認します。
-
-## 現在の注意点
-
-- リポジトリには生成済みの`public/data/`がコミットされているため、通常の開発でSQLiteを
-  作る必要はありません。
-- `.data/konjaku.db`は`.gitignore`対象で、取り込みを実行した環境にだけ存在します。
-- `db:init`はCloudflare D1の計測テーブルを初期化するコマンドであり、配信用データの生成や
-  ローカルSQLiteの初期化ではありません。
-- 水域生成は現在`scripts/build-water.mjs`のBBOXが固定で、Wikidata・建物取り込みほど一括再生成の
-  仕組みが整っていません。
-- すべての外部データを一つのSQLiteに集約する構成ではありません。SQLiteを使うのは主に
-  WikidataとOSM建物の取り込み経路です。
-
-## 将来拡張メモ: `ev`の意味
-
-`ev`は将来的に、ニュースや歴史上の出来事など「年代に紐づくイベント」を扱うレイヤーへ
-拡張する構想がある。ただし、今回は実装しない。
-
-現状の`ev`は、Wikidataから取り込んだ駅・橋・学校・病院・公園などの「年代付き事物」を
-配信するためのレイヤーであり、ニュースや出来事そのものは対象外である。将来拡張するときは、
-事物と出来事の種別、出典、位置、年代の精度を分けて設計し直す。
-
-## 公開前の関係
-
-```text
-外部API / seed
-  ├─ Wikidata・OSM → ローカルSQLite → ev / bl → public/data/
-  ├─ 国土地理院タイル → water GeoJSON → public/data/
-  └─ seed・索引 → quick-places / assets → public/data/
-
-public/data/ → Workers Assets → ブラウザ
-ブラウザの匿名イベント → Worker /t → D1（計測のみ）
-```
+⚠ **v0.1.0 はそのどれも配っていない。**⚠ **走らせても、⚠ 本番には何も届かない。**
+⚠ **消すかどうかは、⚠ まだ決めていない**（⚠ 決めたら、⚠ ここも直す）。
