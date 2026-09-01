@@ -854,4 +854,57 @@ else {
           + "⚠ 読んだ資料は資料名を押す形（⚠ 3 状態は別の字のまま）");
   }
 
+  // ---- ⚠ ⑰ PC は保存一覧への道を持たず、⚠ 受け取りの道は残っているか ----
+  //   ⚠ **2026-09-01。Owner 判断。**⚠ **「スマホだと読みにくいので、⚠ 別の端末で
+  //   読みやすくする」のが目的**なので、⚠ **PC は受け取って深掘りする側にする。**
+  //   ⚠ **一覧そのものは消していない**（⚠ URL では開ける）。⚠ **導線を出さないだけ。**
+  {
+    const 欠け = [];
+    const HTML = (f) => readFileSync(join(NEXT, f), "utf8").replace(/<!--[\s\S]*?-->/g, " ");
+    const 素 = (f) => readFileSync(join(NEXT, f), "utf8")
+      .replace(BLOCK_COMMENT, " ").replace(HEAD_COMMENT, " ");
+    const 画面 = readdirSync(NEXT).filter((f) => f.endsWith(".html"));
+
+    // ⚠ **広い幅の名乗り（.brand__nav）に、⚠ 保存一覧へのリンクを置かない。**
+    //   ⚠ **DOM から引く。**⚠ **CSS で隠す形にしない**（⚠ 読み上げには残ってしまう）。
+    for (const f of 画面) {
+      const nav = HTML(f).match(/<nav[^>]*class="[^"]*brand__nav[^"]*"[\s\S]*?<\/nav>/);
+      if (!nav) continue;
+      if (/href="\.\/saved(\.html)?"/.test(nav[0]))
+        欠け.push(`${f} の名乗りが、⚠ 保存一覧へのリンクを持っている（⚠ PC には出さないと決めてある）`);
+    }
+
+    // ⚠ **狭い幅の帯（.tabs）からは、⚠ 消さない。**⚠ **スマホの入口は 1 本だけ。**
+    //   ⚠ **両方消すと、⚠ 保存した場所へ行く道が 1 本も無くなる。**
+    for (const f of ["index.html", "saved.html"]) {
+      const tabs = HTML(f).match(/<nav[^>]*class="[^"]*tabs[^"]*"[\s\S]*?<\/nav>/);
+      if (!tabs || !/href="\.\/saved(\.html)?"/.test(tabs[0]))
+        欠け.push(`${f} の帯（スマホ）から、⚠ 保存一覧への入口が消えている`);
+    }
+
+    // ⚠ **受け取りの道は残っていること。**⚠ **合言葉が案内する住所は /take。**
+    //   ⚠ **ここが切れると、⚠ 「スマホで保存 → PC で読む」が成立しない。**
+    if (!existsSync(join(NEXT, "take.html")))
+      欠け.push("受け取り口（take.html）が無い");
+    // ⚠ **本文全体に `/take` が在るか、では見ない**（⚠ 実際に素通りした）。
+    //   ⚠ **住所を組み立てているところが 2 か所ある**（⚠ リンクで渡す道と、⚠ 合言葉で見せる住所）。
+    //   ⚠ **片方だけ壊しても、⚠ もう片方の字を拾って通ってしまった**（`CLAUDE.md` §9）。
+    //   ⚠ **組み立てているところを全部取り出して、⚠ 1 つずつ見る。**
+    const 住所 = [...素("saved-page.js").matchAll(/\$\{location\.(?:origin|host)\}(\/[\w-]*)/g)]
+      .map((m) => m[1]);
+    if (住所.length < 2)
+      欠け.push(`受け取り口の住所を組み立てているところが ${住所.length} か所しかない（⚠ リンクと合言葉で 2 か所）`);
+    for (const 道 of 住所)
+      if (道 !== "/take")
+        欠け.push(`合言葉が案内する住所が /take でない: ${道}（⚠ PC 側の受け取り口が分からなくなる）`);
+    // ⚠ **受け取ったら一覧へ進むこと**（⚠ PC はここでしか一覧へ入れない）。
+    if (!/location\.replace\(`\.\/saved/.test(素("take.js")))
+      欠け.push("受け取ったあと、⚠ 一覧へ進んでいない（⚠ PC は導線を持たないので、⚠ ここが唯一の入口）");
+
+    欠け.length
+      ? bad(`PC の入口の整理が壊れている: ${欠け.join(" ／ ")}`)
+      : ok("PC の名乗りは保存一覧への道を持たず、⚠ スマホの帯は持ち、"
+          + "⚠ 受け取りの道（/take → ./saved）は残っている");
+  }
+
 }
