@@ -904,6 +904,11 @@ else {
           : k === Symbol.unscopables ? undefined
           : (typeof k === "string" && k.startsWith("Konjaku")) ? undefined
           : (k === "window" || k === "globalThis" || k === "self") ? 自分
+          // ⚠ **`fetch` だけは本物の Promise を返す。**⚠ **作りものだと `.then` が無い。**
+          //   ⚠ **手元（Node 25）では通り、⚠ CI（Node 22）で落ちた**（2026-09-01。⚠ 実際に踏んだ）。
+          //   ⚠ **`fetch(…).then(…)` を最上位で書いている画面がある。**
+          //   ⚠ **外へは出ない**（⚠ 返すのは作りもの。⚠ 通信はしない）。
+          : k === "fetch" ? (() => Promise.resolve(何でも()))
           : 何でも()),
         set: (t, k, v) => { t[k] = v; return true; },
       });
