@@ -68,6 +68,31 @@ body{
 }
 #hits button:hover,#hits button:focus-visible{background:var(--bg);outline:none}
 
+/* ---- 3 手 ---- */
+/* 検索欄のすぐ下に浮かべる。#bar と同じ起点から、#bar の高さぶん下げる。
+   固定値で置かない。名乗りの帯の高さも、切り欠きも、#bar が使う値をそのまま使う。
+   ⚠ 検索の候補（#hits・z-index 30）が開いたら、その裏に入る。それでよい。
+     候補は選べば消える。3 手を消すために状態を持たない。
+   ⚠ 押せない。pointer-events を通して、地図をそのまま引けるようにする。
+     押せる見た目（塗り・枠の強調）にしないこと。 */
+.steps{
+  position:absolute;
+  top:calc(2.75rem + env(safe-area-inset-top) + var(--pad-sm) * 2 + var(--tap));
+  margin:0; pointer-events:none;
+  display:flex; flex-wrap:wrap; justify-content:center;
+  align-items:center; gap:0 var(--gap-row);
+}
+/* 字は帯ではなく、字そのものに背景を敷く。折り返したとき、
+   空いた行の幅ぶんまで白が伸びない。 */
+.steps__i,.steps__sep{
+  padding:var(--gap-sub) var(--gap-row);
+  background:var(--surface); border-radius:.5rem;
+  font-size:.75rem; line-height:1.5; color:var(--ink-2); white-space:nowrap;
+  box-shadow:0 1px 6px color-mix(in srgb, var(--shadow) 10%, transparent);
+}
+.steps__sep{padding-inline:var(--gap-sub); color:var(--ink-3)}
+.steps[hidden]{display:none}
+
 /* ---- 足元のカード ---- */
 /* ⚠ **出典と板は、同じ積み上げに入れる。**
    板の高さは場所ごとに変わる（実測 271〜325px）。出典を固定値で置くと重なる。

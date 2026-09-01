@@ -60,6 +60,12 @@
   let cx = lon2px(arg.state === "ok" ? arg.lon : 139.7967);
   let cy = lat2px(arg.state === "ok" ? arg.lat : 35.6553);
 
+  // ⚠ **いま出している場所が、どこから来たか。**⚠ **正本はここ 1 つ。**
+  //   前は ask() が、どの場合でも「いまいる場所」と書いていた。
+  //   ⚠ 動かす場所は 3 つだけ（地図を引く・現在地・検索）。増やすときはここも直す。
+  //   ⚠ 字は持たない。字は answer.js（KonjakuAnswer.WHERE）が持つ。
+  let 出どころ = arg.state === "ok" ? "link" : "default";
+
   // ---- 描く ----
   const layers = [];   // ⚠ 下から: 地理院の淡色地図 → 地形分類（自然）→ 地形分類（人工）
   for (const src of ["pale", "experimental_landformclassification1", "experimental_landformclassification2"]) {
@@ -368,7 +374,7 @@
   async function ask() {
     const seq = ++askSeq;
     const lon = px2lon(cx), lat = px2lat(cy);
-    kickText.textContent = "いまいる場所";
+    kickText.textContent = KonjakuAnswer.WHERE[出どころ];
     // 見出しは明治期の答えを使うので、地形分類を待ってから投げると往復が 2 回直列になる。
     //   同時に投げる。待ち時間は max になり、いままでの最悪値（どちらも 8 秒で打ち切り）を超えない。
     //   実測 2026-08-31（手元・375×667）: 明治期は地形分類の 0〜30ms 後に届いた。
@@ -777,7 +783,8 @@
     draw();
   });
   map.addEventListener("pointerup", (e) => {
-    if (!drag) return; drag = null; map.releasePointerCapture(e.pointerId); moved();
+    if (!drag) return; drag = null; map.releasePointerCapture(e.pointerId);
+    出どころ = "map"; moved();
   });
   addEventListener("resize", draw);
 
@@ -790,8 +797,17 @@
     }
     kickText.textContent = "いまいる場所を調べています";
     navigator.geolocation.getCurrentPosition(
-      (p) => { cx = lon2px(p.coords.longitude); cy = lat2px(p.coords.latitude); moved(); },
-      () => { kickText.textContent = "現在地を使えませんでした。検索するか、地図を動かしてください"; },
+      (p) => {
+        cx = lon2px(p.coords.longitude); cy = lat2px(p.coords.latitude);
+        出どころ = "here"; moved();
+      },
+      // ⚠ 出ている答えは消さない（Owner 判断）。消すと画面が空になる。
+      //   かわりに、いま出ているのがどこかを、その場で言い直す。
+      //   前は「現在地を使えませんでした」とだけ出て、豊洲の答えが残っていた。
+      //   断りだけ読むと、残っている答えが現在地のものに読める。
+      () => {
+        kickText.textContent = KonjakuAnswer.whereFailed(出どころ);
+      },
       { enableHighAccuracy: true, timeout: 10000 });
   });
 
@@ -837,6 +853,7 @@
     const c = hits._list?.[+b.dataset.i]?.ll;
     if (!c) return;
     cx = lon2px(c[0]); cy = lat2px(c[1]);
+    出どころ = "search";
     hits.hidden = true; q.blur(); moved();
   });
 
