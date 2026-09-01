@@ -433,15 +433,30 @@ jobs:
   # ⚠ **Cloudflare 側の Workers Builds は、⚠ こちらからは止められない**（⚠ ダッシュボードの設定）。
   #   ⚠ **切っていないと、⚠ 検査を待たずに出る経路が残る。**⚠ **これは人が確かめること。**
   #
-  # ⚠ **`develop` への push でだけ走る。**⚠ **PR では走らない。**
-  #   ⚠ **fork の PR に秘密を渡さない**（⚠ このリポジトリは public）。
+  # ⚠ **`main` への push でだけ走る**（2026-09-01。Owner 判断。`docs/adr/0081`）。
+  #   ⚠ **前は `develop` だった。**⚠ **取り込む操作と、⚠ 出す操作が同じだった。**
+  #   ⚠ **`develop` へ merge した瞬間に本番が入れ替わり、⚠ 確かめる場所が無かった。**
+  #
+  # ⚠ **いまの流れ**:
+  #
+  #     feature → develop   ⚠ 取り込むだけ。⚠ **出さない**
+  #     develop → main      ⚠ **これが本番**。⚠ 出たあとタグを打つ
+  #
+  # ⚠ **`main` は「いま本番にあるもの」を指す。**⚠ **戻す先が言える。**
+  #   ⚠ **前は `main` が 68 本遅れで、⚠ 何も出しておらず、⚠ 戻る基準が無かった。**
+  #
+  # ⚠ **PR では走らない。**⚠ **fork の PR に秘密を渡さない**（⚠ このリポジトリは public）。
   #   ⚠ `pull_request` には、⚠ そもそも secrets が渡らないが、⚠ 条件でも閉じておく。
   deploy:
     name: 本番を出す（konjaku）
     # ⚠ **門番 3 つの後ろ。**⚠ **`render` は `always()` の門番なので、⚠ 必ず結果を返す**
     #   （⚠ 返さない者を `needs` に置くと、⚠ ここが永久に待ちになる）。
     needs: [checks, search, render]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # ⚠ **この段だけ、⚠ 印を作れる**（⚠ 全体の既定は `contents: read`）。
+    #   ⚠ **広げるのはここ 1 つ。**⚠ **他の段は読むだけのまま。**
+    permissions:
+      contents: write
     runs-on: ubuntu-latest
     # ⚠ **既定は 360 分。**⚠ 実測（2026-08-29・手元）: 照合は 17 ファイルで数秒。
     #   ⚠ **デプロイ本体が支配的。**⚠ 取り直しを 3 回入れても収まる長さにする。
@@ -472,3 +487,28 @@ jobs:
       # ⚠ **`?cb=<commit>` を渡す。**⚠ 付けないと、⚠ 端の古い写しを「いまの本番」と読みうる。
       - name: 出たものが、手元と同じか（全ファイル）
         run: node scripts/check-deploy.mjs --origin=${{ env.SITE_ORIGIN }} --cb=${{ github.sha }}
+
+      # ⚠ **出たことを確かめてから、⚠ その commit に印を残す**（2026-09-01。`docs/adr/0081`）。
+      #   ⚠ **順を変えない。**⚠ **先に打つと、⚠ 出ていないものに「出た」の印が付く。**
+      #
+      # ⚠ **版は `public/about.html` の 1 か所から読む**（⚠ 静的検査 ⑱ が 1 か所を守っている）。
+      #   ⚠ **ここに数字を書かない。**⚠ **書くと 2 か所になる**（`CLAUDE.md` §3）。
+      #
+      # ⚠ **同じ版の印が既に在ったら、⚠ 打ち直さない。**⚠ **黙って動かさない**
+      #   （⚠ 動かすと、⚠ 前にその印で見た人と、⚠ いま見る人で中身が変わる）。
+      #   ⚠ **版を上げ忘れたことは、⚠ ここで分かる**（⚠ 出力に出る）。
+      # ⚠ **`persist-credentials: false` のまま**（⚠ 認証情報を `.git/config` に残さない）。
+      #   ⚠ **だから `git push` は使わない。**⚠ **API で印を作る。**
+      - name: 出たものに、版の印を残す
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          v=$(grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' public/about.html | head -1)
+          if [ -z "$v" ]; then echo "::error::public/about.html から版を読めない"; exit 1; fi
+          if gh api "repos/${{ github.repository }}/git/ref/tags/$v" >/dev/null 2>&1; then
+            echo "⚠ $v の印は既にある。打ち直さない（版を上げ忘れていないか見ること）"
+            exit 0
+          fi
+          gh api "repos/${{ github.repository }}/git/refs" \
+            -f ref="refs/tags/$v" -f sha="${{ github.sha }}" >/dev/null
+          echo "$v を打った"
