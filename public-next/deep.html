@@ -68,16 +68,6 @@
     <div class="why" id="why"></div>
   </section>
 
-  <!-- 近くに残る災害の記録。散歩中の画面には出さない。
-       伝承碑は全国にあるが、現在地の近くに出せるほど密ではなかった
-       （実測: 半径 1km で 15 地点中 0 件）。帰宅後に読む画面でだけ扱う。 -->
-  <section class="sec" id="monSec" hidden>
-    <h2>この近くに残る災害の記録</h2>
-    <p class="mon__lead" id="monLead"></p>
-    <ol class="mon" id="mon"></ol>
-    <p class="mon__cite" id="monCite" hidden></p>
-  </section>
-
   <section class="sec" id="nearSec" hidden>
     <h2>この一帯は、どうだったか</h2>
     <div class="around" id="around" hidden>
@@ -90,6 +80,23 @@
     <p class="near__note" id="nearNote"></p>
     <p class="near__from" id="nearFrom"></p>
   </section>
+
+  <!-- 近くに残る災害の記録。散歩中の画面には出さない。
+       伝承碑は全国にあるが、現在地の近くに出せるほど密ではなかった
+       （実測: 半径 1km で 15 地点中 0 件）。帰宅後に読む画面でだけ扱う。
+
+       この地点の履歴ではない。まわりに残っている記録なので、一段下げて分ける
+       （2026-09-01。仮想利用者 6 名のうち 2 名が「その地点そのものの履歴ではないので、
+       見た目でも分離されていた方が安心」「碑は優先度が低い」と答えた）。
+       重要な情報（答え・写真・成り立ち・一帯）より下に置く。 -->
+  <section class="sec sec--around" id="monSec" hidden>
+    <p class="sec__kind">ここから下は、この地点そのものではなく、まわりに残っている記録です</p>
+    <h2>この近くに残る災害の記録</h2>
+    <p class="mon__lead" id="monLead"></p>
+    <ol class="mon" id="mon"></ol>
+    <p class="mon__cite" id="monCite" hidden></p>
+  </section>
+
 
   <section class="sec" id="readSec" hidden>
     <h2>この画面が読んだ資料</h2>
