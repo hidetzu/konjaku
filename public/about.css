@@ -45,6 +45,19 @@
 .about__note{margin:var(--gap-row) 0 0; font-size:.8125rem; line-height:1.8; color:var(--ink-3)}
 .about__note a{color:var(--action)}
 
+/* 読み終えた人の出口。この画面で唯一、色で塗る。
+   読み物なので、押すものが 1 つしか無いことが分かる形にする。
+   ⚠ --action の上に載る字は --action-ink（地に対して測っても意味がない）。 */
+.about__go{margin:var(--gap-block) 0 0}
+.about__goLink{
+  display:inline-flex; align-items:center; min-height:var(--tap);
+  padding:0 var(--gap-block);
+  background:var(--action); color:var(--action-ink);
+  border-radius:.75rem; font-size:.9375rem; font-weight:700; text-decoration:none;
+}
+.about__goLink:hover{opacity:.9}
+.about__goLink:focus-visible{outline:2px solid var(--action); outline-offset:2px}
+
 .about__ver{margin:var(--gap-block) 0 0; font-size:.8125rem; color:var(--ink-3)}
 
 /* 条文の並び。番号は意味を持つ（第2条の 3 は「第2条3」として引かれる）ので消さない。 */
