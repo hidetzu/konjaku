@@ -11,6 +11,7 @@
 //
 // ⚠ **ここが見るのは、⚠ 利用者に届くもの。**⚠ **作りの好みは見ない。**
 
+import { execFileSync } from "node:child_process";
 import { readFileSync, existsSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { ROOT, ok, bad, head, HEAD_COMMENT, BLOCK_COMMENT, parseColor, contrast } from "./lib.mjs";
@@ -1031,10 +1032,70 @@ else {
       if (!/さあ、はじめる/.test(出口[2])) 欠け.push(`/about の出口の字が決めた形ではない: ${出口[2]}`);
     }
 
+    // ⚠ 6. ⚠ **冒頭の 1 組。**⚠ **今昔の実画面から作った、⚠ 作り置きの画像**
+    //   （2026-09-02。Owner 判断。`docs/adr/0084`）。
+    //   ⚠ **実行時にタイルを読まない。**⚠ **読み物から、⚠ 読者の接続元を配信元へ出さないため。**
+    //     ⚠ **/about は、⚠ いま外へ 1 本も出していない**（⚠ 実描画が見ている）。
+    //   ⚠ **出典と、⚠ こちらで加工したことを、⚠ 必ず添える。**
+    {
+      const 図 = ABOUT.match(/<figure class="about__hero">([\s\S]*?)<\/figure>/);
+      if (!図) {
+        欠け.push("/about の冒頭に、今昔の実画面の 1 組（.about__hero）が無い");
+      } else {
+        const 中 = 図[1];
+        const 絵 = [...中.matchAll(/<img[^>]*class="about__heroImg"[^>]*>/g)].map((m) => m[0]);
+        // ⚠ **増やさない。**⚠ **増やすと、⚠ 下の「言えないこと」まで届く人が減る。**
+        //   ⚠ **実測（2026-09-02・375px）: 3 か所に足すと 2511 → 4469px になった。**
+        if (絵.length !== 2) 欠け.push(`冒頭の絵が 2 枚ではない（${絵.length} 枚）`);
+        for (const g of 絵) {
+          // ⚠ **寸法を属性で持つ**（⚠ 無いと、⚠ 読み込む前に行が飛ぶ）。
+          if (!/width="\d+"/.test(g) || !/height="\d+"/.test(g))
+            欠け.push(`冒頭の絵が寸法を持っていない: ${g.slice(0, 70)}`);
+          const alt = g.match(/alt="([^"]*)"/)?.[1] ?? "";
+          if (alt.length < 8) 欠け.push(`冒頭の絵の alt が短い: 「${alt}」`);
+          // ⚠ **実行時に外から読まない**（⚠ 相対の道だけ）。
+          const src = g.match(/src="([^"]*)"/)?.[1] ?? "";
+          if (!/^\.\/[\w.-]+\.webp$/.test(src))
+            欠け.push(`冒頭の絵が、⚠ 手元の画像を指していない: ${src}`);
+          else if (!existsSync(join(NEXT, src.slice(2))))
+            欠け.push(`冒頭の絵の実ファイルが無い: ${src}`);
+        }
+        // ⚠ **出典と加工の断り。**⚠ **文で切ってから、⚠ 主語と述語が結びついているかまで見る**
+        //   （⚠ 本文全体の test() は、⚠ どこかに似た語があれば通る。2026-08-23 に踏んでいる）。
+        const 断り = 中.match(/<p class="about__figSrc">([\s\S]*?)<\/p>/);
+        if (!断り) {
+          欠け.push("冒頭の 1 組に、出典と加工の断り（.about__figSrc）が無い");
+        } else {
+          const 文 = 断り[1].replace(/<[^>]+>/g, " ").split("。")
+            .map((t) => t.replace(/\s+/g, "").trim()).filter(Boolean);
+          const 要る = [
+            // ⚠ **「出典」と「国土地理院」が、⚠ 同じ文で結びついていること。**
+            //   ⚠ **国土地理院という語があるだけでは通さない**（⚠ 実際に素通りした。
+            //     ⚠ 「国土地理院が公開している地理院タイル…」という別の文が残っていた）。
+            ["出典として国土地理院を名乗る文", (t) => /出典/.test(t) && /国土地理院/.test(t)],
+            ["こちらで加工したこと", (t) => /今昔/.test(t) && /(切り取|加工|表示)/.test(t)],
+            ["原図そのままではないこと", (t) => /原図/.test(t) && /ではありません/.test(t)],
+          ];
+          for (const [名, 見る] of 要る)
+            if (!文.some(見る)) 欠け.push(`冒頭の断りに、${名}が書かれていない`);
+          if (!/maps\.gsi\.go\.jp\/development\/ichiran\.html/.test(断り[1]))
+            欠け.push("冒頭の断りに、地理院タイル一覧へのリンクが無い");
+        }
+      }
+      // ⚠ **作り方が再現できること**（`CLAUDE.md` §6）。⚠ **manifest と実ファイルを突き合わせる。**
+      //   ⚠ **ここでは撮り直さない**（⚠ 通信もブラウザも要らない口を呼ぶ）。
+      try {
+        execFileSync(process.execPath, ["scripts/generate-about-hero.mjs", "--check"],
+          { cwd: ROOT, encoding: "utf8" });
+      } catch (e) {
+        欠け.push(`冒頭の 1 組が、作り方の記録と合っていない: ${String(e.stderr || e.message).split("\n").find((l) => /Error|違い|ありません/.test(l)) ?? ""}`);
+      }
+    }
+
     欠け.length
       ? bad(`初めて開いた人への案内が欠けている: ${欠け.join(" ／ ")}`)
       : ok("トップは 3 手を 1 行で出し（⚠ 押せない）、⚠ /about は同じ 3 手と「言えないこと」を持ち、"
-          + "⚠ 「さあ、はじめる」でトップへ戻せる");
+          + "⚠ 「さあ、はじめる」でトップへ戻せる（⚠ 冒頭は今昔の実画面 2 枚・出典と加工の断りつき）");
   }
 
 }

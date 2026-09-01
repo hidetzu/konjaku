@@ -11,6 +11,31 @@
 /* 1 行目。何ができるかから書く。 */
 .about__lead{margin:0 0 var(--gap-block); font-size:1rem; line-height:1.8; color:var(--ink)}
 
+/* 冒頭の 1 組。2 枚を横に並べる。
+   8:5 のまま出す。正方形にすると、広い幅で画面を占領する
+   （実測 2026-09-02・1280x800: 640px の正方形 2 枚で、本文が 1 行も見えなかった）。
+   狭い幅でも横に並べたままにする。縦に積むと、
+   「昔 → いま」ではなく「2 つの別の絵」に見える。 */
+.about__hero{margin:0 0 var(--gap-block)}
+.about__heroPair{display:grid; grid-template-columns:1fr 1fr; gap:var(--gap-row)}
+.about__heroOne{display:block; min-width:0}
+.about__heroImg{
+  display:block; width:100%; height:auto; aspect-ratio:8/5;
+  border:1px solid var(--line); border-radius:.5rem; background:var(--surface);
+}
+.about__heroCap{
+  display:block; margin-top:var(--gap-sub);
+  font-size:.75rem; line-height:1.6; color:var(--ink-3);
+}
+.about__heroCap b{display:block; color:var(--ink-2); font-size:.8125rem}
+.about__figCap{margin:var(--gap-row) 0 0; font-size:.875rem; line-height:1.8; color:var(--ink-2)}
+/* 出典と、こちらで加工したことの断り。本文より小さく、しかし読める段に置く。 */
+.about__figSrc{margin:var(--gap-sub) 0 0; font-size:.75rem; line-height:1.7; color:var(--ink-3)}
+.about__figSrc a{color:var(--action)}
+@media (min-width:700px){
+  .about__heroPair{gap:var(--gap-block)}
+}
+
 .about__sec{margin:0 0 var(--gap-block);
   padding-top:var(--gap-block); border-top:1px solid var(--line)}
 .about__h2{margin:0 0 var(--gap-row); font-size:1rem; color:var(--ink)}

@@ -66,6 +66,41 @@
     調べた場所は、気に入ったものだけ手元に残せます。
   </p>
 
+  <!-- 冒頭の 1 組。読む前に、何をする道具かを絵で渡す。
+       今昔の実画面を撮ったもの。装飾のために描いた絵ではない。
+       作り方と、いつ撮ったかは assets/about/hero.json にある（npm run about-hero）。
+
+       お台場にしてある。豊洲では並べられない。
+         実測（2026-09-02）: 豊洲は 1936 年に既に陸（飛行場）で、写真に水が写っていない。
+         「河川・湖沼・海面」は明治期の資料が言っていることで、1936 の写真ではない。
+         並べると、写真が言っていないことを言ったことになる。
+       ⚠ 1 組だけにする。増やすと、下の「言えないこと」まで届く人が減る。
+         実測: 3 か所に足した案は、ページが 375px で 2511 → 4469px になった。
+       ⚠ 幅と高さを属性で書く。書かないと、読み込む前に行が飛ぶ。
+       ⚠ 出典と、こちらで加工したことを必ず添える（下の about__figSrc）。 -->
+  <figure class="about__hero">
+    <div class="about__heroPair">
+      <span class="about__heroOne">
+        <img class="about__heroImg" src="./about-1936.webp" width="720" height="450"
+             alt="1936〜42年の空中写真。お台場のあたりは一面が水面" decoding="async">
+        <span class="about__heroCap"><b>1936–42 の空中写真</b>一面が水面</span>
+      </span>
+      <span class="about__heroOne">
+        <img class="about__heroImg" src="./about-ima.webp" width="720" height="450"
+             alt="いまの今昔の画面。お台場の街と、地形分類の色" decoding="async">
+        <span class="about__heroCap"><b>いまの画面</b>台場の街</span>
+      </span>
+    </div>
+    <figcaption class="about__figCap">
+      東京・お台場。今昔は、この 2 つを行き来して、その土地が昔なんだったのかを読みます。
+    </figcaption>
+    <p class="about__figSrc">
+      国土地理院が公開している<a href="https://maps.gsi.go.jp/development/ichiran.html"
+      target="_blank" rel="noopener">地理院タイル</a>（1936–42 の空中写真・淡色地図・地形分類）を、
+      今昔の画面で表示し、切り取った画像です。原図そのままではありません。出典 国土地理院。
+    </p>
+  </figure>
+
   <!-- 使い方。トップの 3 手と同じ順・同じ字で始める。
        トップは 1 行しか置けないので、ここで中身を書く。
        ⚠ 字を変えるときは index.html の .steps も一緒に直す。
