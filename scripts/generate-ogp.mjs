@@ -34,6 +34,8 @@ export const OGP_PAGES = [
     headline: "この土地は、昔なんだったのか？",
     lines: ["この土地は、", "昔なんだったのか？"],
     subtitle: "土地の成り立ちを、根拠とともに見る",
+    // ⚠ **`kind` は残す**（⚠ 2 枚目を足すとき、⚠ ここで絵を選び分ける）。
+    //   ⚠ **2026-09-01 に `peelArt` を落とした**（⚠ `/peel` は本番から消えた）。
     kind: "index",
   },
 ];
@@ -71,23 +73,6 @@ const indexArt = `
     <path d="m184 187 0 69" stroke="#7ee0a5" stroke-width="2" stroke-dasharray="5 7"/>
   </g>`;
 
-const peelArt = `
-  <g transform="translate(760 78)" filter="url(#shadow)">
-    <path d="M-24 325 184 214l208 111-208 112z" fill="#0d1822" stroke="#5ba3e0" stroke-opacity=".7" stroke-width="2"/>
-    <path d="M-24 369 184 258l208 111-208 112z" fill="#5ba3e0" fill-opacity=".18" stroke="#7ee0a5" stroke-opacity=".55" stroke-width="2"/>
-    <g stroke="#eaeef3" stroke-opacity=".3" stroke-width="2">
-      <path d="m52 280 52-28 52 28-52 28z" fill="#1a2a37"/>
-      <path d="m52 280 52 28v-104l-52-28z" fill="#14222e"/>
-      <path d="m104 308 52-28V176l-52 28z" fill="#203545"/>
-      <path d="m184 238 66-35 66 35-66 35z" fill="#1a2a37"/>
-      <path d="m184 238 66 35V111l-66-35z" fill="#14222e"/>
-      <path d="m250 273 66-35V76l-66 35z" fill="#203545"/>
-      <path d="m118 345 42-22 42 22-42 23z" fill="#1a2a37"/>
-      <path d="m118 345 42 23v-70l-42-22z" fill="#14222e"/>
-      <path d="m160 368 42-23v-69l-42 22z" fill="#203545"/>
-    </g>
-    <path d="M-24 369 184 258l208 111" fill="none" stroke="#7ee0a5" stroke-width="3"/>
-  </g>`;
 
 export function renderSvg(page) {
   const lineY = page.lines.length === 1 ? [286] : [248, 326];
@@ -112,7 +97,7 @@ export function renderSvg(page) {
   ${headline}
   <text x="88" y="${page.lines.length === 1 ? 350 : 394}" class="subtitle">${esc(page.subtitle)}</text>
   <text x="88" y="528" class="url">konjaku.hidetzu.work</text>
-  ${page.kind === "index" ? indexArt : peelArt}
+  ${indexArt}
 </svg>
 `;
 }

@@ -1,4 +1,9 @@
-node_modules/
+# ⚠ **末尾の `/` を付けない**（2026-09-01。⚠ 実際に踏んだ）。
+#   ⚠ **`node_modules/` はディレクトリだけを無視する。**
+#   ⚠ **worktree で親から借りるために張った symlink は、⚠ ファイル扱いで素通りした。**
+#   ⚠ **`git add -A` が拾い、⚠ 手元の絶対パス（/home/<名前>/…）が公開リポジトリに出た**
+#     （`CLAUDE.md` §8-1）。
+node_modules
 .DS_Store
 *.log
 

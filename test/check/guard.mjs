@@ -418,5 +418,55 @@ head("計測が、作業を止めない");
     ? bad(`repo に使い捨てが混ざっている: ${混ざり.join(" ／ ")}`
         + "（⚠ **`git add -A` が巻き込む。**⚠ **公開リポジトリなので、⚠ 誰でも読める**）")
     : ok(`repo に使い捨ては混ざっていない（⚠ 追跡している ${追跡.length} 本を見た）`);
+
+  // ⚠ **symlink を追跡していないか**（2026-09-01。⚠ 実際に踏んだ）。
+  //   ⚠ **worktree で親から `node_modules` を借りるために張った symlink を、
+  //     ⚠ `git add -A` が拾い、⚠ `main` まで入れた。**
+  //   ⚠ **`.gitignore` は `node_modules/` と書いていた。**⚠ **末尾の `/` はディレクトリだけ。**
+  //     ⚠ **symlink はファイル扱いなので、⚠ 素通りした。**
+  //   ⚠ **中身は「手元の絶対パス」**（⚠ `/home/<名前>/…`）。⚠ **`CLAUDE.md` §8-1 に反する。**
+  {
+    const 印 = execFileSync("git", ["ls-files", "-s"], { cwd: ROOT, encoding: "utf8" })
+      .split("\n").filter(Boolean)
+      .filter((l) => l.startsWith("120000"))
+      .map((l) => l.split("\t").pop());
+    印.length
+      ? bad(`symlink を追跡している: ${印.join(" ／ ")}`
+          + "（⚠ **中身は行き先の文字列。**⚠ **手元の絶対パスが公開リポジトリへ出る**）")
+      : ok("symlink は 1 本も追跡していない（⚠ 手元の道筋を外へ出さない）");
+  }
+
+  // ⚠ **追跡しているものに、⚠ 手元の絶対パスが入っていないか**（`CLAUDE.md` §8-1）。
+  //   ⚠ **`.claude/` の中は `test/check/guard.mjs` の別の節が見ている**（⚠ あちらは秘密）。
+  //   ⚠ **こちらは「どこで作業しているか」。**⚠ **中身が守られていても、⚠ 道筋は読める。**
+  {
+    const { readFileSync: rfG } = await import("node:fs");
+    const 悪 = /\/(home|Users)\/[A-Za-z0-9_.-]+\//;
+    const 漏れ = [], 読めず = [];
+    for (const f of 追跡) {
+      const 実 = join(ROOT, f);
+      if (!existsSync(実)) continue;
+      // ⚠ **読めなかったことを、⚠ 黙って飲まない**（2026-09-01。⚠ 実際に踏んだ）。
+      //   ⚠ **`readFileSync` を取り込んでおらず、⚠ `catch` が全部飲んで、
+      //     ⚠ 405 本を「見た」と言いながら 1 本も読んでいなかった。**
+      //   ⚠ **読めないものが在ったら、⚠ そう言う**（⚠ 掟 §1: 取れなかった ≠ 無い）。
+      let t = null;
+      try { t = rfG(実, "utf8"); } catch { 読めず.push(f); continue; }
+      if (t.length > 2_000_000) continue;
+      const m = 悪.exec(t);
+      if (!m) continue;
+      // ⚠ **「こう書くな」と言っている行は除く**（⚠ 検査が自分の説明を拾う。`CLAUDE.md` §5）
+      const 周り = t.slice(Math.max(0, m.index - 90), m.index + 60).replace(/\n/g, " ");
+      if (/書かない|落とす|replace|正規表現|例|禁じ/.test(周り)) continue;
+      漏れ.push(f);
+    }
+    読めず.length > 追跡.length / 2 &&
+      bad(`追跡しているものの ${読めず.length} / ${追跡.length} 本を読めていない`
+        + "（⚠ **この検査が何も見ていない**）");
+    漏れ.length
+      ? bad(`追跡しているものに、手元の絶対パスが入っている: ${漏れ.join(" ／ ")}`
+          + "（⚠ **公開リポジトリ。**⚠ **どこで作業しているかが読める**。`CLAUDE.md` §8-1）")
+      : ok(`追跡しているものに、手元の絶対パスは入っていない（⚠ ${追跡.length} 本を見た）`);
+  }
 }
 
