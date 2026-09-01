@@ -385,3 +385,38 @@ head("計測が、作業を止めない");
           + `・推定の根拠が全行に付いている）`);
   }
 }
+
+// ---------- ⚠ 使い捨てを、⚠ repo に置いていないか ----------
+// ⚠ **2026-09-01 に実際に踏んだ**（`docs/adr/0082` の PR で気づいた）。
+//   ⚠ **検査の棚卸しに書いた `tmp-triage.mjs` を、⚠ `git add -A` で巻き込み、
+//     ⚠ `main` まで入れた**（⚠ 配信物ではないので利用者には届かなかった）。
+//   ⚠ **`.gitignore` は `tmp/` を無視していたが、⚠ 直下の `tmp-` は網の外だった。**
+//
+// ⚠ **`.gitignore` だけでは足りない。**⚠ **一度 `git add -f` で入ったものは、
+//   ⚠ そのあと無視の設定を足しても、⚠ 追跡されたまま残る。**
+// ⚠ **だから、⚠ 追跡しているものの側を見る**（⚠ `git ls-files`）。
+{
+  const { execFileSync } = await import("node:child_process");
+  // ⚠ **追跡しているものだけを見る**（⚠ 手元の未追跡は、⚠ ここでは対象外）。
+  const 追跡 = execFileSync("git", ["ls-files"], { cwd: ROOT, encoding: "utf8" })
+    .split("\n").filter(Boolean);
+  追跡.length === 0 && bad("git ls-files が空（⚠ この検査が何も見ていない）");
+
+  // ⚠ **使い捨ての印。**⚠ **足すときは、⚠ 何を捕まえたいのかを書く。**
+  const 使い捨て = [
+    [/(^|\/)tmp[-.]/, "tmp- で始まる（作業中の使い捨て）"],
+    [/(^|\/)scratch[-.\/]/, "scratch（作業場）"],
+    [/\.(log|bak|orig|rej|swp)$/, "編集や実行の残りかす"],
+    [/(^|\/)(untitled|hoge|foo|test123)\b/i, "名前を付けずに置いたもの"],
+  ];
+  const 混ざり = [];
+  for (const f of 追跡)
+    for (const [re, why] of 使い捨て)
+      if (re.test(f)) { 混ざり.push(`${f}（${why}）`); break; }
+
+  混ざり.length
+    ? bad(`repo に使い捨てが混ざっている: ${混ざり.join(" ／ ")}`
+        + "（⚠ **`git add -A` が巻き込む。**⚠ **公開リポジトリなので、⚠ 誰でも読める**）")
+    : ok(`repo に使い捨ては混ざっていない（⚠ 追跡している ${追跡.length} 本を見た）`);
+}
+
