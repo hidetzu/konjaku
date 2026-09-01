@@ -25,6 +25,7 @@
 // ⚠ **道具は `test/check/lib.mjs` の 1 か所**（⚠ ここで持ち直さない）。
 
 import { readFile, readdir } from "node:fs/promises";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { ROOT, PUB, ok, bad, warn, head, src , BLOCK_COMMENT, HTML_COMMENT, HEAD_COMMENT, LINE_COMMENT, dropComment } from "./lib.mjs";
 
@@ -86,7 +87,24 @@ import { ROOT, PUB, ok, bad, warn, head, src , BLOCK_COMMENT, HTML_COMMENT, HEAD
           + "。⚠ **一部だけを載せない。**⚠ 載っていないものは「採用されていない」に読める")
       : ok(`docs/adr/README.md は ADR を全部載せている（${adrFiles.length} 本）`);
     // ⚠ **本数の名乗りも合っているか。**⚠ 「27 本とも採用中」と書いたまま 28 本になる
-    const said = /全部（⚠ \*\*(\d+) 本とも採用中\*\*）|全部（⚠ (\d+) 本とも採用中）/.exec(readme);
+    //
+    // ⚠ **2026-09-01 に、⚠ 数え方の主張も見るようにした**（`docs/adr/0082`）。
+    //   ⚠ **前は本数しか見ていなかったので、⚠ 「N 本とも採用中」が嘘になっても素通りした**
+    //     （⚠ 実際に、⚠ 取り消し 1 本・置き換え 1 本を抱えたまま「とも採用中」と名乗っていた）。
+    //   ⚠ **やめた ADR は消さない**（⚠ 消すと、⚠ なぜやめたのかが辿れない）。
+    //   ⚠ **だから「全部が採用中」は、⚠ 原理的にいつか嘘になる。**⚠ **数え分ける。**
+    const やめた = adrFiles.filter((f) => {
+      const st = /^- 状態: (.+)$/m.exec(readFileSync(join(ROOT, "docs", "adr", f), "utf8"))?.[1] ?? "";
+      return /取り消した|置き換えた/.test(st);
+    });
+    やめた.length && /本とも採用中/.test(readme)
+      ? bad(`docs/adr/README.md が「とも採用中」と名乗っているが、⚠ ${やめた.length} 本は採用していない`
+          + `（${やめた.map((f) => f.slice(0, 4)).join(" / ")}）`)
+      : ok(やめた.length
+          ? `ADR の名乗りは実態と合っている（⚠ やめた ${やめた.length} 本を、⚠ 採用中と混ぜていない）`
+          : "ADR は全部が採用中（⚠ やめたものは 0 本）");
+    // ⚠ **数字は 1 つの組で拾う**（⚠ 組を並べると、⚠ 当たらなかった側が undefined になる）。
+    const said = /全部（⚠ \*\*?(\d+) 本/.exec(readme);
     const n = said ? Number(said[1] ?? said[2]) : null;
     n === adrFiles.length
       ? ok(`docs/adr/README.md の本数の名乗りが合っている（${n} 本）`)
