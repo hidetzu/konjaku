@@ -29,6 +29,18 @@
   .about__k{flex:none}
 }
 
+/* 冒頭の要約。読み物の先頭で、要点だけを先に渡す（privacy）。
+   本文より大きくしない。ここは目次ではなく、これだけ読んでも足りる形にする。
+   点は付けない（並びは 4 つで、順番に意味が無い）。 */
+.about__sum{margin:0 0 var(--gap-block); padding:0; list-style:none}
+.about__sumItem{
+  margin:0 0 var(--gap-row); padding-top:var(--gap-row);
+  border-top:1px solid var(--line);
+  font-size:.9375rem; line-height:1.8; color:var(--ink-2);
+}
+.about__sumItem:last-child{margin-bottom:0}
+.about__sumK{display:block; color:var(--ink); font-weight:700}
+
 /* 添え書き。言えないことは、ここで理由と一緒に書く。 */
 .about__note{margin:var(--gap-row) 0 0; font-size:.8125rem; line-height:1.8; color:var(--ink-3)}
 .about__note a{color:var(--action)}
