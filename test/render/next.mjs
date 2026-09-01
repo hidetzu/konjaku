@@ -2812,12 +2812,20 @@ CASES.push({
         本文x: Math.round(本.x + parseFloat(cs.paddingLeft)),
         本文w: Math.round(本.width - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight)),
         メニューが出ている: !!menu && menu.checkVisibility(),
+        // ⚠ **1 本ずつ画面に入れてから測る。**⚠ **読む人はそこまで送ってから押す。**
+        //   ⚠ **入れずに測ると、⚠ 「画面の外」が「覆われている」に化ける**
+        //     （⚠ 2026-09-02 に実際に踏んだ。⚠ /about が長くなっただけで落ちた。
+        //      ⚠ 案内は y=1623・画面は 950 だった。⚠ 覆っていたものは無い）。
+        //   ⚠ **この検査が見たいのは、⚠ 何かが上に乗っていないか。**
+        //     ⚠ **ページが短いことではない。**
         道: [...nav.querySelectorAll("a")].map((a) => {
+          a.scrollIntoView({ block: "center" });
           const b = a.getBoundingClientRect();
           const t = document.elementFromPoint(Math.round(b.x + b.width / 2),
                                               Math.round(b.y + b.height / 2));
           return { 字: a.textContent.trim(), href: a.getAttribute("href"),
                    w: Math.round(b.width), h: Math.round(b.height),
+                   覆い: t ? (t.className || t.tagName) : "（画面の外）",
                    覆われている: !(t && a.contains(t)) };
         }),
       };
@@ -2839,7 +2847,7 @@ CASES.push({
     for (const a of r.道) {
       // ⚠ **横も見る**（⚠ 実際に踏んだ: ⚠ 「GitHub」は字が短く 43x44 だった）
       must(a.h >= 44 && a.w >= 44, `「${a.字}」が 44 を割っている（${a.w}x${a.h}）`);
-      must(!a.覆われている, `「${a.字}」が何かに覆われて押せない`);
+      must(!a.覆われている, `「${a.字}」が何かに覆われて押せない（覆い=${a.覆い}）`);
     }
     // ⚠ **字の頭が本文とそろっている**（⚠ 別の柱に見えない）
     must(r.x === r.本文x, `ページの下と本文の左端がそろっていない（下 ${r.x} / 本文 ${r.本文x}）`);
@@ -2935,6 +2943,332 @@ for (const [名, viewport] of [
         `印と名前の間が、名前と添え書きの間より狭くない（${印から題}px / ${題から添}px）`);
       return `ずれ ${ずれ}px（印 ${r.印.中心} 今昔 ${r.題.中心} 添 ${r.添.中心}）`
            + ` ／ 間 ${印から題}px → ${題から添}px`;
+    },
+  });
+}
+
+// ⚠ **初めて開いた人への案内**（2026-09-02。Owner 判断）。
+//
+// ⚠ **実測（2026-09-02・375×667・本番）で、⚠ 次の 2 つが出た**:
+//     ⚠ **最初の画面に押せるものが 14 個。**⚠ **色で塗られていたのは 2 個だけ**
+//       （⚠ 現在地と、⚠ **出典**。⚠ **出典が主な操作と同じ強さで塗られていた**）
+//     ⚠ **板の 1 行目が、⚠ 初回・共有リンク・地図を動かしたあとの 3 通りとも
+//       「いまいる場所」と出ていた。**⚠ **位置情報は 1 度も求めていない。**
+//
+// ⚠ **静的検査（㉑）は字と構造しか見ない。**⚠ **見えているか・触れるか・
+//   出どころごとに変わるかは、⚠ ここでしか出ない。**
+CASES.push({
+  name: "トップの 3 手が、初めての画面に出ていて、地図の邪魔をしない",
+  path: "/", origin: NEXT_BASE, viewport: SP,
+  async check(page) {
+    await waitAnswer(page);
+    const r = await page.evaluate(() => {
+      const 帯 = document.getElementById("steps");
+      if (!帯) return { 無い: true };
+      const q = 帯.getBoundingClientRect();
+      const 中 = document.elementFromPoint(q.x + q.width / 2, q.y + q.height / 2);
+      const 板 = document.getElementById("card").getBoundingClientRect();
+      const 検索 = document.getElementById("bar").getBoundingClientRect();
+      return {
+        // ⚠ **`checkVisibility()` で見る**（⚠ `getBoundingClientRect()` は
+        //   ⚠ 隠れていても直前の寸法を返すことがある。`CLAUDE.md` §9）。
+        見えている: 帯.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true }),
+        札: [...帯.querySelectorAll(".steps__i")].map((e) => e.textContent.trim()),
+        上: Math.round(q.y), 下: Math.round(q.bottom), 高: Math.round(q.height),
+        // ⚠ **帯の真ん中を触ったとき、⚠ 何が受け取るか。**⚠ **地図でなければ引けない。**
+        触ると: 中 ? (中.id || 中.className || 中.tagName) : "（何も無い）",
+        地図が受ける: !!(中 && (中.id === "map" || 中.closest?.("#map"))),
+        検索の下: Math.round(q.y) >= Math.round(検索.bottom) - 1,
+        板と重なる: q.bottom > 板.top,
+        横あふれ: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+        // ⚠ **押せる見た目にしない**（⚠ 押しても何も起きない導線を置かない）。
+        押せる数: 帯.querySelectorAll("a,button,[role=button]").length,
+      };
+    });
+    must(!r.無い, "3 手の帯（#steps）が無い");
+    must(r.見えている, "3 手の帯が見えていない");
+    must(r.札.join(" / ") === "① 場所を選ぶ / ② 昔を知る / ③ 写真で見くらべる",
+      `3 手の字が違う: ${r.札.join(" / ")}`);
+    must(r.検索の下, `3 手の帯が検索欄より上にある（帯 ${r.上}px）`);
+    must(!r.板と重なる, `3 手の帯が、答えの板と重なっている（帯の下 ${r.下}px）`);
+    must(!r.横あふれ, "3 手の帯を置いたら、画面が横にあふれた");
+    must(r.押せる数 === 0, `3 手の帯に押せるものが ${r.押せる数} 個ある`);
+    // ⚠ **帯の上から地図を引けること**（⚠ 押しどまりを作らない。2026-08-29 に踏んでいる）。
+    must(r.地図が受ける, `3 手の帯が地図の操作を止めている（触ると ${r.触ると} が受ける）`);
+    return `帯 y${r.上}–${r.下}（高 ${r.高}px）／ 触ると ${r.触ると} ／ 押せる ${r.押せる数} 個`;
+  },
+});
+
+// ⚠ **名乗りは、⚠ 出どころごとに別の字になること。**
+//   ⚠ **字を書き写さない。**⚠ **製品（`KonjakuAnswer.WHERE`）から借りる**
+//     （⚠ 書き写すと、⚠ 言い直したときに製品ではなく検査が落ちる）。
+//   ⚠ **1 枚の中で、⚠ 既定 → 地図を動かす → 現在地が取れない、⚠ の 3 つを通す。**
+CASES.push({
+  name: "板の名乗りが、いま出している場所の出どころを言う",
+  path: "/", origin: NEXT_BASE, viewport: SP,
+  async check(page) {
+    const 字 = () => page.evaluate(() =>
+      document.getElementById("kickText").textContent.trim());
+    const 答え = () => page.evaluate(() =>
+      (document.getElementById("gloss").textContent ?? "").trim());
+    const 表 = await page.evaluate(() => window.KonjakuAnswer?.WHERE ?? null);
+    must(表 && Object.keys(表).length === 5,
+      "KonjakuAnswer.WHERE を読めていない（⚠ この検査が何も見ていない）");
+    // ⚠ **5 通りが別の字であること**（⚠ 揃えて 1 つに潰さない）。
+    must(new Set(Object.values(表)).size === 5,
+      `名乗りの 5 通りに同じ字がある: ${Object.values(表).join(" / ")}`);
+
+    // ⚠ 1. ⚠ **初めて開いたとき。**⚠ **位置情報は 1 度も求めていない。**
+    await waitAnswer(page);
+    const 既定 = await 字();
+    must(既定 === 表.default, `初めて開いたときの名乗りが違う: 「${既定}」`);
+    must(既定 !== 表.here, "初めて開いたのに、いる場所だと名乗っている");
+
+    // ⚠ 2. ⚠ **地図を引いたあと。**
+    //   ⚠ **引く場所を決め打ちしない。**⚠ **地図が受ける点を、⚠ その場で測って選ぶ。**
+    //     ⚠ **実際に踏んだ（2026-09-02）**: ⚠ **(187,300) を決め打ちしたら、⚠ 単体では緑・
+    //       ⚠ 全件で赤になった。**⚠ **豊洲は年代が 7 つあって板が高く、⚠ その点は板の上だった。**
+    //       ⚠ **控えが冷えていると板が低くなるので、⚠ 単体では偶然地図に当たっていた。**
+    //     ⚠ **「引けなかった」を「名乗りが変わらない」と読み違えていた。**
+    const 引く点 = await page.evaluate(() => {
+      // ⚠ **検索欄と 3 手の帯のあいだ。**⚠ **ここが、⚠ いちばん広い地図の帯域。**
+      const 欄 = document.getElementById("bar").getBoundingClientRect();
+      const 帯 = document.getElementById("steps").getBoundingClientRect();
+      const x = Math.round(innerWidth / 2);
+      const y = Math.round((欄.bottom + 帯.top) / 2);
+      const t = document.elementFromPoint(x, y);
+      return { x, y, 受ける: t ? (t.id || t.className || t.tagName) : "（何も無い）",
+               地図: !!(t && (t.id === "map" || t.closest?.("#map"))),
+               欄の下: Math.round(欄.bottom), 帯の上: Math.round(帯.top) };
+    });
+    must(引く点.地図,
+      `地図を引ける点が無い（${引く点.x},${引く点.y} は ${引く点.受ける} が受ける ／ `
+      + `検索欄の下 ${引く点.欄の下} ／ 帯の上 ${引く点.帯の上}）`);
+    await page.mouse.move(引く点.x, 引く点.y);
+    await page.mouse.down();
+    await page.mouse.move(引く点.x - 60, 引く点.y - 40, { steps: 8 });
+    await page.mouse.up();
+    await page.waitForFunction(
+      (w) => document.getElementById("kickText").textContent.trim() === w,
+      表.map, { timeout: 30000 })
+      .catch(async (e) => {
+        const いま = await page.evaluate(() => ({
+          字: document.getElementById("kickText").textContent.trim(),
+          答: document.getElementById("gloss").textContent.trim(),
+        }));
+        throw new Error(`地図を引いても名乗りが変わらない: 待った「${表.map}」`
+          + ` ／ いま「${いま.字}」／ 答え「${いま.答}」／ ${e.message.slice(0, 60)}`);
+      });
+    const 引いたあと = await 字();
+    const 答え引いたあと = await 答え();
+    must(答え引いたあと.length > 2, "地図を引いたら答えが消えた");
+
+    // ⚠ 3. ⚠ **現在地が取れないとき。**⚠ **出ている答えは消さない。**
+    //   ⚠ **端末の位置情報そのものは呼ばない**（⚠ 相手の答えに依存する検査にしない）。
+    //   ⚠ **「取れなかった」側だけを、⚠ こちらで作る。**
+    await page.evaluate(() => {
+      Object.defineProperty(navigator, "geolocation", {
+        configurable: true,
+        value: { getCurrentPosition: (_ok, ng) => ng({ code: 1, message: "denied" }) },
+      });
+    });
+    await page.click("#here");
+    // ⚠ **断りは、⚠ 名乗りとは別の行に出る**（⚠ 名乗りの行には入らない。⚠ 器が狭い）。
+    await page.waitForFunction(
+      () => {
+        const n = document.getElementById("kickNote");
+        return !n.hidden && /現在地を取得できませんでした/.test(n.textContent);
+      }, null, { timeout: 30000 })
+      .catch(() => { throw new Error("現在地が取れなかったのに、断りが出ない") });
+    const 失敗時 = await page.evaluate(() =>
+      document.getElementById("kickNote").textContent.trim());
+    // ⚠ **名乗りは、⚠ 断りに置き換わらない**（⚠ どこを見ているかは残る）。
+    must(await 字() === 表.map, `断りが、名乗りを消している: 「${await 字()}」`);
+    const 失敗時の答え = await 答え();
+    // ⚠ **答えは残っている**（Owner 判断。⚠ 消すと画面が空になる）。
+    must(失敗時の答え === 答え引いたあと,
+      `現在地が取れなかったら、答えが変わった: 「${答え引いたあと}」→「${失敗時の答え}」`);
+    // ⚠ **ただし、⚠ 残っているものが何かを言い直している**（⚠ 断りだけだと嘘になる）。
+    const 続き = await page.evaluate((f) => window.KonjakuAnswer.WHERE_STILL[f], "map");
+    must(失敗時.includes(続き),
+      `断りが、いま出ているものを言っていない: 「${失敗時}」（⚠ 「${続き}」が要る）`);
+    must(!失敗時.includes("東京・豊洲"),
+      `渋谷を見ている人に「東京・豊洲」と言っている: 「${失敗時}」`);
+
+    // ⚠ 4. ⚠ **現在地が取れたとき。**⚠ **ここだけが、⚠ 本当にいる場所。**
+    //   ⚠ **端末の位置情報は呼ばない**（⚠ 相手の答えに依存する検査にしない）。
+    //     ⚠ **「取れた」側を、⚠ こちらで作る。**⚠ 座標は春日部。
+    await page.evaluate(() => {
+      Object.defineProperty(navigator, "geolocation", {
+        configurable: true,
+        value: { getCurrentPosition: (ok) =>
+          ok({ coords: { longitude: 139.7523, latitude: 35.9756 } }) },
+      });
+    });
+    await page.click("#here");
+    await page.waitForFunction(
+      (w) => document.getElementById("kickText").textContent.trim() === w,
+      表.here, { timeout: 30000 })
+      .catch((e) => { throw new Error(
+        `現在地が取れたのに、いる場所だと名乗らない: ${e.message.slice(0, 120)}`); });
+
+    // ⚠ 5. ⚠ **検索で選んだとき。**⚠ **住所検索の答えは、⚠ こちらで作る**
+    //   （⚠ 外の相手がいま何を返すかを、⚠ この検査は主張しない。`CLAUDE.md` §9）。
+    //   ⚠ **通るのは製品の道**（⚠ 送信 → 並べ替え → 候補を押す）。⚠ **中の変数は触らない。**
+    await page.route("**/address-search/AddressSearch**", (route) => route.fulfill({
+      status: 200, contentType: "application/json",
+      body: JSON.stringify([{
+        geometry: { type: "Point", coordinates: [139.7016, 35.6580] },
+        properties: { title: "東京都渋谷区渋谷", dataSource: "1", addressCode: "13113" },
+      }]),
+    }));
+    await page.fill("#q", "渋谷");
+    await page.press("#q", "Enter");
+    await page.waitForFunction(
+      () => document.querySelectorAll("#hits button").length > 0,
+      null, { timeout: 30000 })
+      .catch(() => { throw new Error("検索の候補が出ない") });
+    await page.click("#hits button");
+    await page.waitForFunction(
+      (w) => document.getElementById("kickText").textContent.trim() === w,
+      表.search, { timeout: 30000 })
+      .catch((e) => { throw new Error(
+        `検索で選んだのに、そう名乗らない: ${e.message.slice(0, 120)}`); });
+
+    return `既定「${既定}」→ 引いたあと「${引いたあと}」→ 取れないとき「${失敗時}」`
+         + ` → 取れたとき「${表.here}」→ 検索「${表.search}」`
+         + `（引いた点 ${引く点.x},${引く点.y}）`;
+  },
+});
+
+// ⚠ **どの名乗りも、⚠ 器に入ること。**⚠ **いちばん狭い幅で見る。**
+//
+// ⚠ **実際に踏んだ（2026-09-02）**: ⚠ **既定の名乗りを 16 字にしたら、
+//   ⚠ 375 / 344 / 320 の 3 幅とも切れた**（⚠ 「まずは東京・豊洲を表示して…」）。
+//   ⚠ **名乗りは送る・保存と同じ行に置くので、⚠ 器は 375px で 177px・320px で 131px しかない。**
+// ⚠ **5 通りを 1 つずつ入れて測る。**⚠ **画面の操作では 5 通りを 1 枚で出せない。**
+//   ⚠ **見ているのは「その字が器に入るか」なので、⚠ 入れて測ってよい。**
+// ⚠ **3 手の帯が板と重ならないことも、⚠ ここで見る**（⚠ いちばん狭いと板が高くなる）。
+CASES.push({
+  name: "いちばん狭い幅でも、どの名乗りも切れず、3 手が板と重ならない",
+  path: "/", origin: NEXT_BASE, viewport: { width: 320, height: 640 },
+  async check(page) {
+    await waitAnswer(page);
+    await page.waitForTimeout(500);
+    const r = await page.evaluate(() => {
+      const k = document.getElementById("kickText");
+      const A = window.KonjakuAnswer;
+      if (!A) return { 読めない: true };
+      const 元 = k.textContent;
+      const 行 = document.querySelector(".kick");
+      // ⚠ **名乗りだけでなく、⚠ 押すものが潰れていないかも見る。**
+      //   ⚠ **実際に踏んだ（2026-09-02）**: ⚠ **名乗りが 1px あふれたとき、
+      //     ⚠ 「送る」まで一緒に「送…」になった。**⚠ **名乗りだけ見ていると気づけない。**
+      const 測る = (字) => {
+        k.textContent = 字;
+        const 押す = [...行.querySelectorAll("button span:not([aria-hidden])")]
+          .map((e) => ({ 字: e.textContent.trim(), 切れ: e.scrollWidth > e.clientWidth }));
+        return { 字, 中身: k.scrollWidth, 器: k.clientWidth, 押す };
+      };
+      const 名 = Object.values(A.WHERE).map(測る);
+      k.textContent = 元;
+      const R = (s) => document.querySelector(s).getBoundingClientRect();
+      const 帯 = R("#steps"), 板 = R("#card"), 出典 = R(".attrib a"), 欄 = R("#bar");
+      const かぶる = (a, b) =>
+        a.bottom > b.top && b.bottom > a.top && a.right > b.left && b.right > a.left;
+      return {
+        名,
+        // ⚠ **帯は、⚠ 出典・板・検索欄の 3 つと重ならないこと。**
+        //   ⚠ **実際に踏んだ（2026-09-02）**: ⚠ **上端から固定値で置いたら、
+        //     ⚠ 320x640 で出典と 35px 重なった**（⚠ 板の高さは土地と幅で変わる）。
+        //   ⚠ **板とだけ突き合わせていて、⚠ 出典を見ていなかった。**
+        出典と: かぶる(帯, 出典), 板と: かぶる(帯, 板), 検索欄と: かぶる(帯, 欄),
+        あいだ: Math.round(出典.top - 帯.bottom),
+        帯の高: Math.round(帯.height),
+        横あふれ: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+      };
+    });
+    must(!r.読めない, "KonjakuAnswer を読めていない（⚠ この検査が何も見ていない）");
+    must(r.名.length === 5, `名乗りが 5 通りない（${r.名.length}）`);
+    for (const n of r.名) {
+      // ⚠ **許容を置かない。**⚠ **器は中身に合わせて縮むので、⚠ 余りは測れない。**
+      //   ⚠ **見るのは「切れているか」そのもの。**
+      //   ⚠ **前は +1px を許していて、⚠ 120/119 を通した**（⚠ 実際は切れていた）。
+      must(n.中身 <= n.器,
+        `名乗りが器に収まっていない: 「${n.字}」（${n.中身}px 要るが、器は ${n.器}px）`);
+      for (const b of n.押す)
+        must(!b.切れ, `名乗り「${n.字}」のとき、押すもの「${b.字}」が潰れている`);
+    }
+    // ⚠ **重ならない**（⚠ 固定値で避けない。⚠ 同じ積み上げに入れる。`CLAUDE.md` §9）
+    must(!r.出典と, "3 手の帯が、出典（国土地理院）と重なっている（⚠ 出典は隠さない）");
+    must(!r.板と, "3 手の帯が、答えの板と重なっている");
+    must(!r.検索欄と, "3 手の帯が、検索欄と重なっている");
+    must(!r.横あふれ, "いちばん狭い幅で、画面が横にあふれている");
+    return `名乗り ${r.名.map((n) => `${n.中身}/${n.器}`).join(" ")}`
+         + ` ／ 帯 ${r.帯の高}px ／ 出典まで ${r.あいだ}px`;
+  },
+});
+
+// ⚠ **共有リンクで開いた人は、⚠ 別の名乗りになること。**
+CASES.push({
+  name: "共有リンクで開いたら、いる場所だとは名乗らない",
+  path: `/?${TOYOSU}`, origin: NEXT_BASE, viewport: SP,
+  async check(page) {
+    await waitAnswer(page);
+    const r = await page.evaluate(() => ({
+      字: document.getElementById("kickText").textContent.trim(),
+      表: window.KonjakuAnswer?.WHERE ?? null,
+    }));
+    must(r.表, "KonjakuAnswer.WHERE を読めていない（⚠ この検査が何も見ていない）");
+    must(r.字 === r.表.link, `共有リンクの名乗りが違う: 「${r.字}」`);
+    must(r.字 !== r.表.here, "共有リンクで開いたのに、いる場所だと名乗っている");
+    must(r.字 !== r.表.default, "共有リンクで開いたのに、既定の場所だと名乗っている");
+    return `「${r.字}」`;
+  },
+});
+
+// ⚠ **読み物の出口。**⚠ **押して、⚠ 本当にトップへ着くところまで見る**
+//   （⚠ 字と href だけなら静的検査が見ている。⚠ ここは着くかを見る）。
+for (const [名, viewport] of [["PC", PCな幅], ["スマホ", SP]]) {
+  CASES.push({
+    name: `${名}の /about は、読み終えた人をトップへ返す`,
+    path: "/about", origin: NEXT_BASE, viewport,
+    async check(page) {
+      const r = await page.evaluate(() => {
+        const a = document.querySelector(".about__goLink");
+        if (!a) return { 無い: true };
+        const q = a.getBoundingClientRect();
+        const 節 = [...document.querySelectorAll(".about__h2")].map((e) => e.textContent.trim());
+        return {
+          字: a.textContent.trim(), 高: Math.round(q.height), 幅: Math.round(q.width),
+          見えている: a.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true }),
+          // ⚠ **この画面で色が塗られているものは、⚠ 出口だけ**（⚠ 主な操作は 1 つ）。
+          地: getComputedStyle(a).backgroundColor,
+          節,
+          // ⚠ **出口は、⚠ 版の名乗りより前**（⚠ 読み終えた位置にある）。
+          版より上: q.top < document.querySelector(".about__ver").getBoundingClientRect().top,
+          横あふれ: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+        };
+      });
+      must(!r.無い, "/about に出口（.about__goLink）が無い");
+      must(r.見えている, "/about の出口が見えていない");
+      // ⚠ **押せるものは 44×44 を割らない**（`ui-ux-review` §3）。
+      must(r.高 >= 44, `/about の出口が低い（${r.高}px）`);
+      must(!/rgba\(0, 0, 0, 0\)|transparent/.test(r.地),
+        `/about の出口が塗られていない（${r.地}）`);
+      must(r.節.includes("使い方"), `/about に使い方の節が無い: ${r.節.join(" / ")}`);
+      must(r.節.includes("言えないこと"), `/about に「言えないこと」の節が無い: ${r.節.join(" / ")}`);
+      must(r.版より上, "/about の出口が、版の名乗りより下にある");
+      must(!r.横あふれ, "/about が横にあふれている");
+      // ⚠ **押して、⚠ 着くところまで見る。**
+      await Promise.all([
+        page.waitForNavigation({ waitUntil: "domcontentloaded", timeout: 30000 }),
+        page.click(".about__goLink"),
+      ]);
+      const 着いた = new URL(page.url()).pathname;
+      must(着いた === "/", `出口を押したのにトップへ着かない: ${着いた}`);
+      await waitAnswer(page);
+      return `「${r.字}」${r.幅}×${r.高}px ／ 節 ${r.節.length} 個 ／ 着いた ${着いた}`;
     },
   });
 }

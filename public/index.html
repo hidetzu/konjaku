@@ -73,10 +73,27 @@
   </div>
   <ul class="column" id="hits" role="listbox" aria-label="検索の候補" hidden></ul>
 
+
   <!-- ⚠ **出典明示は、地理院タイルの利用の条件。**⚠ **隠さない・覆わない。**
        ⚠ **板と同じ積み上げに入れる。**⚠ 固定値で位置を決めると、
        ⚠ **板の高さが場所ごとに変わる（271〜325px）ので重なる。** -->
   <div class="column" id="bottom">
+    <!-- 3 手。初めて開いた人が、説明を読まずに何をすればよいか分かるように置く。
+         実測（2026-09-02・375x667・本番）: 最初の画面に押せるものが 14 個あり、
+         色で塗られているのは 2 個（現在地と出典）だけだった。答えは出ているのに、
+         次に何をすればよいかを言う字がどこにも無かった。
+         常時出す。閉じる操作も、2 回目から隠す仕掛けも持たない。
+           邪魔だという観測が出てから隠す。先に隠す仕掛けを作らない。
+         ⚠ 出典・答えの板と同じ積み上げに入れる。上から置くと重なる。
+           実際に踏んだ（2026-09-02）: 検索欄の下に固定で置いたら、320x640 で
+           出典と 35px 重なった。板の高さは土地と幅で変わるので、避けようがない。
+         ⚠ 押せない。触ると地図が動く（pointer-events を通す）。
+           押せる見た目にしないこと。押しても何も起きない導線を置かない。
+         ⚠ 矢印は読み上げから外す。順を表す記号で、読む字ではない。 -->
+    <p class="steps" id="steps"><span class="steps__i">① 場所を選ぶ</span><span
+       class="steps__sep" aria-hidden="true"> → </span><span class="steps__i">② 昔を知る</span><span
+       class="steps__sep" aria-hidden="true"> → </span><span class="steps__i">③ 写真で見くらべる</span></p>
+
     <p class="attrib"><a href="https://maps.gsi.go.jp/development/ichiran.html"
        target="_blank" rel="noopener">出典 国土地理院</a></p>
 
@@ -90,6 +107,13 @@
         <span aria-hidden="true" id="saveMark">☆</span><span id="saveText">保存</span>
       </button>
     </p>
+    <!-- 現在地が取れなかったときの断り。名乗りの行には入らない。
+         名乗りは送る・保存と同じ行なので、器が 375px で 177px・320px で 131px しかなく、
+         そこへ断りを入れると切れる。実測（2026-09-02）: 断りは 33 字で 396px 要る。
+         元の字（28 字）も、同じ理由で切れていた。
+         こちらは自分の行を持つので、折り返して 2 行まで伸ばせる。 -->
+    <p class="kick__note" id="kickNote" hidden></p>
+
     <!-- 答えの出典。見出しの上に小さく置く。2 つの資料が独立に同じことを言っているのが
          価値なのに、出典を名乗らないと繰り返しに読まれた（利用者役 5 名中 3 名）。 -->
     <p class="ans__src" id="glossSrc" hidden></p>

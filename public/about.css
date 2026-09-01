@@ -22,7 +22,9 @@
 .about__row{display:flex; gap:var(--gap-row);
   padding:var(--pad-sm) 0; border-bottom:1px solid var(--line)}
 .about__row:last-child{border-bottom:0}
-.about__k{flex:0 0 6.5rem; margin:0; font-size:.8125rem; color:var(--ink-3); line-height:1.8}
+/* 見出し列。6.5rem では「③ 写真で見くらべる」「どこまで細かい話か」が
+   375px で 2 行に折り返した（2026-09-02）。字が長い見出しを足したので広げる。 */
+.about__k{flex:0 0 7.5rem; margin:0; font-size:.8125rem; color:var(--ink-3); line-height:1.8}
 .about__v{flex:1 1 auto; margin:0; font-size:.9375rem; color:var(--ink-2); line-height:1.8}
 @media (max-width:23rem){
   .about__row{flex-direction:column; gap:0}
@@ -44,6 +46,19 @@
 /* 添え書き。言えないことは、ここで理由と一緒に書く。 */
 .about__note{margin:var(--gap-row) 0 0; font-size:.8125rem; line-height:1.8; color:var(--ink-3)}
 .about__note a{color:var(--action)}
+
+/* 読み終えた人の出口。この画面で唯一、色で塗る。
+   読み物なので、押すものが 1 つしか無いことが分かる形にする。
+   ⚠ --action の上に載る字は --action-ink（地に対して測っても意味がない）。 */
+.about__go{margin:var(--gap-block) 0 0}
+.about__goLink{
+  display:inline-flex; align-items:center; min-height:var(--tap);
+  padding:0 var(--gap-block);
+  background:var(--action); color:var(--action-ink);
+  border-radius:.75rem; font-size:.9375rem; font-weight:700; text-decoration:none;
+}
+.about__goLink:hover{opacity:.9}
+.about__goLink:focus-visible{outline:2px solid var(--action); outline-offset:2px}
 
 .about__ver{margin:var(--gap-block) 0 0; font-size:.8125rem; color:var(--ink-3)}
 
