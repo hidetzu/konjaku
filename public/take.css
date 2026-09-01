@@ -1,0 +1,66 @@
+/* 受け取り口。読み物ではなく「1 つのことをする画面」なので、
+   置くのは入力欄と、その結果だけ。地図も年代も出さない。
+   色と 44px は top.css から借りる。ここで持ち直さない。 */
+/* 名乗りの帯のぶん下げる。帯は position:absolute なので、場所を取らない。 */
+.recv{max-width:38rem; margin:0 auto;
+  padding:calc(2.75rem + env(safe-area-inset-top) + 1.5rem) var(--pad-md) 6rem}
+@media (min-width:700px){
+  .recv{padding:calc(2.75rem + env(safe-area-inset-top) + 2.5rem) var(--pad-md) 8rem}
+}
+
+.recv__h{margin:0 0 var(--gap-sub); font-size:1.375rem; color:var(--ink)}
+.recv__lead{margin:0 0 var(--gap-block); font-size:.9375rem; color:var(--ink-2); line-height:1.7}
+
+.recv__form{display:flex; gap:var(--gap-row); align-items:stretch}
+/* 合言葉は等幅で、大きく。打ち写すものなので、字の形が紛れないほうがよい。 */
+.recv__in{
+  flex:1; min-width:0; min-height:var(--tap); padding:0 var(--pad-sm);
+  background:var(--bg); color:var(--ink);
+  border:1px solid var(--line-strong); border-radius:.5rem;
+  font-family:ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size:1.25rem; font-weight:700; letter-spacing:.1em; text-align:center;
+}
+.recv__in:focus-visible{outline:2px solid var(--action); outline-offset:2px}
+.recv__go{
+  flex:none; min-height:var(--tap); padding:0 var(--pad-md);
+  border:1px solid var(--action); border-radius:.5rem;
+  background:var(--action); color:var(--action-ink);
+  font:inherit; font-size:.875rem; font-weight:700; cursor:pointer;
+}
+.recv__go:focus-visible{outline:2px solid var(--action); outline-offset:2px}
+.recv__go[disabled]{opacity:.6; cursor:default}
+
+/* 押したあとに何が起きたかを言う 1 行。 */
+.recv__said{margin:var(--gap-row) 0 0; font-size:.875rem; color:var(--ink-2); line-height:1.7}
+.recv__said[hidden]{display:none}
+/* 受け取り終わったら、入力の口を畳む。1 つのことをする画面なので、
+   終わったあとに「まだ何か入れるのか」と読ませない。 */
+.recv__form[hidden]{display:none}
+
+/* 受け取れなかったとき。できることを先に、大きく。理由はそのあと。 */
+.recv__again[hidden]{display:none}
+.recv__can{margin:var(--gap-block) 0 0; font-size:1rem; font-weight:700; color:var(--ink)}
+.recv__steps{margin:var(--gap-sub) 0 0; padding:0; list-style:none}
+.recv__steps li{
+  display:flex; gap:var(--gap-row); padding:var(--gap-sub) 0;
+  font-size:.875rem; color:var(--ink-2); line-height:1.7;
+}
+.recv__sn{
+  flex:none; width:1.5rem; height:1.5rem; border-radius:50%; margin-top:.15rem;
+  display:flex; align-items:center; justify-content:center;
+  background:var(--surface-2, var(--surface)); color:var(--ink-2);
+  font-size:.75rem; font-weight:700;
+}
+.recv__why{
+  margin:var(--gap-row) 0 0; font-size:.875rem; color:var(--ink-2); line-height:1.7;
+  border-left:3px solid var(--line-strong); padding-left:var(--pad-sm);
+}
+
+/* 受け取れたとき。散歩中の画面の受け取り板と同じ形にそろえる。 */
+.recv__card{
+  margin-top:var(--gap-block); padding:var(--pad-md);
+  background:var(--surface); border:1px solid var(--line-strong); border-radius:.875rem;
+}
+.recv__card[hidden]{display:none}
+.recv__got{margin:0; font-size:1rem; color:var(--ink)}
+.recv__hint{margin:var(--gap-block) 0 0; font-size:.75rem; color:var(--ink-3); line-height:1.6}

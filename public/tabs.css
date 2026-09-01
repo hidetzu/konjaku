@@ -1,0 +1,41 @@
+/* 画面の下に置く、主な行き先の並び。地図と保存した場所の 2 つだけ。
+   狭い幅のときだけ出す。広い幅では、同じ 2 つを上の帯（brand.css）が持つ。
+
+   高さでは出し分けない（2026-09-01 に決めた）。
+   前は min-height:700px を付けていた。背の低い画面では、帯を足すと答えの板が
+   持ち上がり、判定している点の印が板の裏へ入るため。
+   実測 2026-09-01: 375×667 で 45px 裏、320×640 で 156px 裏。
+   ただし 320×640 は、帯が無くても既に 100px 裏に入っていた（帯以前の不具合）。
+   帯を消すのではなく、印と地図の描画のほうを「答えの板の 24px 上」に追随させた
+   （top.js の layoutAim）。これで両方の幅とも、印が板の上に出る。
+   保存一覧への入口を、どの端末でも 1 本にするため。 */
+:root{ --tabs-h:0px }
+.tabs{ display:none }
+@media (max-width:699.98px){
+  :root{ --tabs-h:3.5rem }
+  .tabs{ display:flex }
+}
+.tabs{
+  /* display は上の @media が決める。ここでは触らない（後ろに書くと打ち消してしまう）。 */
+  position:fixed; left:0; right:0; bottom:0; z-index:70;
+  height:calc(var(--tabs-h) + env(safe-area-inset-bottom));
+  padding-bottom:env(safe-area-inset-bottom);
+  background:var(--surface); border-top:1px solid var(--line);
+}
+/* 柱より広い画面（608〜699px）でも、押すものは柱の中にまとめる。
+   端まで広げると、押すものの散らばりが柱（608px）を超える
+   （実測 2026-08-31: 720px。検査「押すものがスマホと同じところにまとまっている」が落ちた）。 */
+.tabs__inner{
+  display:flex; width:100%; max-width:38rem; margin:0 auto;
+}
+.tabs__item{
+  flex:1 1 0; min-width:0;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  gap:.125rem; min-height:var(--tap);
+  color:var(--ink-3); text-decoration:none; font-size:.6875rem; line-height:1.4;
+}
+.tabs__item:hover{color:var(--action)}
+.tabs__item:focus-visible{outline:2px solid var(--action); outline-offset:-2px}
+/* いまいる画面は、行き先ではなく現在地として見せる。 */
+.tabs__item[aria-current="page"]{color:var(--action); font-weight:700}
+.tabs__icon{width:1.25rem; height:1.25rem; display:block; flex:none}

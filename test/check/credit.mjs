@@ -24,15 +24,33 @@ import { ROOT, PUB, ok, bad, head, src, htmlFiles } from "./lib.mjs";
 
 head("出典");
 
-for (const f of htmlFiles) {
-  const s = src[f];
-  const gsi = s.includes("国土地理院");
-  // OSM 建物を使うページだけ ODbL 表記が要る
-  const usesOsm = s.includes("overpass") || s.includes("data/bl") || s.includes("-buildings");
-  const osm = s.includes("OpenStreetMap");
-  if (!gsi) bad(`${f}: 地理院タイルの出典表記が無い`);
-  else if (usesOsm && !osm) bad(`${f}: OSM を使っているのに ODbL 表記が無い`);
-  else ok(`${f}${usesOsm ? "（地理院＋OSM）" : "（地理院）"}`);
+// ⚠ **求めるのは、⚠ 地理院タイルを読む画面だけ**（2026-09-01。`docs/adr/0080`）。
+//   ⚠ **前は「全部の HTML が名乗ること」だった。**⚠ **β 版は 2 枚とも地図を出していた。**
+//   ⚠ **v0.1.0 は 7 枚あり、⚠ 規約・保存一覧・受け取り口は地図を出さない。**
+//   ⚠ **出典明示は「使ったから要る」ので、⚠ 使っていない画面にまで求めない。**
+//
+// ⚠ **読み込んでいる JavaScript まで辿る。**⚠ **タイルを引くのは `land.js` / `verify.js`**
+//   （⚠ HTML 自身には URL が無い）。⚠ **辿らないと、⚠ 地図の画面まで「使っていない」に見える。**
+{
+  const 引く = new Set();
+  for (const f of htmlFiles) {
+    const s = src[f];
+    const js = [...s.matchAll(/<script[^>]+src="\.\/([\w.-]+)"/g)].map((m) => m[1]);
+    const 中身 = js.map((n) => src[n] ?? "").join("\n");
+    if (/cyberjapandata\.gsi\.go\.jp|maps\.gsi\.go\.jp/.test(s + 中身)) 引く.add(f);
+  }
+  引く.size === 0 && bad("地理院タイルを読む画面が 1 枚も見つからない（⚠ この検査が何も見ていない）");
+  for (const f of htmlFiles) {
+    const s = src[f];
+    // ⚠ **実行時に差し込む画面もある**（⚠ `/deep` は読んだ資料を JS で並べる）。
+    //   ⚠ **だから読み込んでいる JavaScript の中も見る。**
+    const js = [...s.matchAll(/<script[^>]+src="\.\/([\w.-]+)"/g)].map((m) => m[1]);
+    const 名乗り = (s + js.map((n) => src[n] ?? "").join("\n")).includes("国土地理院");
+    if (!引く.has(f)) { ok(`${f}（⚠ 地理院タイルを読まない画面）`); continue; }
+    名乗り
+      ? ok(`${f}（地理院）`)
+      : bad(`${f}: 地理院タイルを読んでいるのに、⚠ 出典表記が無い（⚠ 出典明示は利用の条件）`);
+  }
 }
 
 // ⚠ **配るデータは、商用利用できるものだけ**（2026-08-22 の Owner 判断。ADR 0032）。
@@ -82,51 +100,25 @@ for (const f of htmlFiles) {
 }
 
 {
-  // ⚠ **出典は 2 か所にある。同じ問いに答えるので、機械で突き合わせる**（掟3）。
-  //   1) 地図の帰属表示 … peel3d.js の ATTR_GSI / ATTR_OSM から MapLibre が組む。**常に見えている側**
-  //   2) 左パネルの「出典」 … 手書きの HTML。リンクを辿れる詳しい版
-  //   ⚠ 片方だけ増やす・消すと、画面と画面で答えが変わる。
-  //     実際に破れていた: OSM が peel3d.js 側に無く、**地図の帰属表示に OSM が出ていなかった**
-  //     （2026-08-17。パネル側には書いてあったので、字面だけ見ると揃っているように見えた）。
-  const j = src["peel3d.js"] ?? "", ph = src["peel.html"] ?? "";
-  if (!j || !ph) bad("peel3d.js か peel.html が読めない（この検査が何も見ていない）");
-  else {
-    // peel3d.js の出どころ（ATTR_* の中身）
-    // ⚠ **宣言があるだけでは足りない。実際に地図へ渡っているものだけを数える。**
-    //   最初「const ATTR_* を宣言しているか」で見ていたら、名前を変えて
-    //   `attribution:` から外しても緑のままだった（2026-08-17 に壊して気づいた）。
-    const decl = new Map([...j.matchAll(/const (ATTR_\w+)\s*=\s*'([^']*)'/g)]
-      .map((m) => [m[1], m[2]]));
-    // `attribution: X` の X として使われている名前だけ拾う
-    const used = new Set([...j.matchAll(/attribution\s*:\s*(ATTR_\w+|ATTR)\b/g)].map((m) => m[1]));
-    // `const ATTR = ATTR_GSI` のような別名を1段だけ辿る
-    for (const [k, v] of [...j.matchAll(/const (ATTR\w*)\s*=\s*(ATTR_\w+)\s*;/g)]
-      .map((m) => [m[1], m[2]])) if (used.has(k)) used.add(v);
-    const attrs = [...used].filter((k) => decl.has(k)).map((k) => ({ key: k, html: decl.get(k) }));
-    const need = [
-      { name: "国土地理院", why: "出典明示が利用の条件" },
-      { name: "OpenStreetMap", why: "ODbL でクレジット必須" },
-    ];
-    const joined = attrs.map((a) => a.html).join(" ");
-    const missJs = need.filter((n) => !joined.includes(n.name));
-    // パネル側は、常に見えている側と**同じ名前**を出していること
-    // ⚠ 正規表現で `</div>` まで取ろうとしたら、いちばん近い `</div>` が 600 文字より
-    //   先にあって取れなかった（2026-08-17）。**索引で切り出す。**
-    const anchor = '<div class="label">出典</div>';
-    const at = ph.indexOf(anchor);
-    const panel = at < 0 ? "" : ph.slice(at + anchor.length, at + anchor.length + 400);
-    const missPanel = need.filter((n) => !panel.includes(n.name));
-    // ⚠ ODbL は「© … contributors」の形が要る。名前だけでは足りない
-    const noCopyJs = !/©/.test(joined), noCopyPanel = !/©/.test(panel);
-    if (!attrs.length) bad("peel3d.js で attribution に渡している ATTR_* が無い（地図の帰属表示の出どころ）");
-    else if (missJs.length)
-      bad(`地図の帰属表示に ${missJs.map((n) => `${n.name}（${n.why}）`).join("・")} が無い`);
-    else if (!panel) bad('peel.html の左パネルに「出典」の節が無い');
-    else if (missPanel.length)
-      bad(`左パネルの出典に ${missPanel.map((n) => n.name).join("・")} が無い（地図側にはある）`);
-    else if (noCopyJs || noCopyPanel)
-      bad(`ODbL のクレジット（©）が無い: ${noCopyJs ? "地図の帰属表示" : ""}${noCopyJs && noCopyPanel ? "・" : ""}${noCopyPanel ? "左パネル" : ""}`);
-    else ok(`/peel の出典は 2 か所で一致（${need.map((n) => n.name).join("・")}／© つき）`
-      + `／地図へ渡しているのは ${attrs.map((a) => a.key).join("・")}`);
-  }
+  // ⚠ **地図の上の帰属表示**（2026-09-01 に書き直した。`docs/adr/0080`）。
+  //   ⚠ **前は β 版の MapLibre が組む `ATTR_*` を見ていた。**
+  //   ⚠ **v0.1.0 は地図を手で組んでおり、⚠ MapLibre の帰属表示が付いてこない。**
+  //   ⚠ **だから HTML に手で置いてある。**⚠ **置き忘れると、⚠ 何も出ない。**
+  //
+  // ⚠ **見るのは 3 つ**: ⚠ 字があること ／ ⚠ 一覧へ行けること ／ ⚠ 覆われていないこと。
+  //   ⚠ **覆われていないことは実描画が見る**（`test/render/next.mjs`）。⚠ ここは配信物だけ。
+  // ⚠ **OSM は見ない。**⚠ **v0.1.0 は建物を使わない**（⚠ 使い始めたら、⚠ ここに足す）。
+  const ix = src["index.html"] ?? "";
+  const 一覧 = "maps.gsi.go.jp/development/ichiran.html";
+  const 帯 = /<p class="attrib">[\s\S]{0,300}?<\/p>/.exec(ix)?.[0] ?? "";
+  !ix
+    ? bad("index.html が読めない（⚠ この検査が何も見ていない）")
+    : !帯
+      ? bad("地図の上に帰属表示（.attrib）が無い（⚠ 出典明示は地理院タイル利用の条件）")
+      : !帯.includes("国土地理院")
+        ? bad(`帰属表示に「国土地理院」の字が無い: ${帯.slice(0, 60)}`)
+        : !帯.includes(一覧)
+          ? bad(`帰属表示から出典の一覧へ行けない（${一覧} が無い）`)
+          : ok("地図の上の帰属表示は、⚠ 国土地理院を名乗り、⚠ 出典の一覧へ行ける"
+             + "（⚠ 覆われていないことは実描画が見る）");
 }

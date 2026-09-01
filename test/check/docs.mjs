@@ -26,8 +26,7 @@
 
 import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
-import { unpack as blUnpack } from "../../scripts/bl-format.mjs";
-import { ROOT, PUB, ok, bad, head, src , BLOCK_COMMENT, HTML_COMMENT, LINE_COMMENT, dropComment } from "./lib.mjs";
+import { ROOT, PUB, ok, bad, warn, head, src , BLOCK_COMMENT, HTML_COMMENT, HEAD_COMMENT, LINE_COMMENT, dropComment } from "./lib.mjs";
 
 // ⚠ **SPEC の「静的 N件」が、本当に N 件か。**
 //   上の検査は「空・0・書き方」だけを見ていて、**中身のずれは見ていなかった**。
@@ -188,77 +187,9 @@ import { ROOT, PUB, ok, bad, head, src , BLOCK_COMMENT, HTML_COMMENT, LINE_COMME
   }
 }
 
-// ⚠ **配っているデータの数を、⚠ `docs/SPEC.md` と突き合わせる**（2026-08-22。Owner 判断）。
-//   ⚠ **検査の件数とは事情が違う。**⚠ 検査の件数は ⚠ **毎 PR で変わる**ので書く場所を無くした
-//     （hidetzu/konjaku#184）。⚠ **配っているデータの数は、取り込み直したときしか変わらない**ので、
-//     ⚠ **競合しない。**⚠ 起きるのは「黙って古くなる」ほう。
-//   ⚠ **実際に踏んだ（2026-08-22）**: SPEC は 403,397件・生17.0MB と書いていたが、
-//     ⚠ **配っていたのは 499,656件・生25.8MB（1.24 倍）。**⚠ **誰も気づかなかった。**
-//   ⚠ **掟 §6 は「数字は必ず主張範囲の分母で書く」**と言うので、⚠ **SPEC から数字を消せない。**
-//     ⚠ だから ⚠ **書いたうえで、機械で突き合わせる**（`CLAUDE.md` §3）。
-//   ⚠ **数えるのは配っている現物**（`public/data/bl`）。⚠ **取り込みのログではない。**
-{
-  const dir = join(ROOT, "public", "data", "bl");
-  const files = [];
-  const walk = async (d) => {
-    for (const e of await readdir(d, { withFileTypes: true })) {
-      const p = join(d, e.name);
-      if (e.isDirectory()) await walk(p);
-      // ⚠ 索引（`index.json`）はタイルではない。⚠ 数に入れると 1 枚多くなる
-      else if (/[\\/]\d+[\\/]\d+[\\/]\d+\.json$/.test(p)) files.push(p);
-    }
-  };
-  await walk(dir).catch(() => {});
-  if (!files.length) {
-    bad("配っている建物タイルを 1 枚も読めない（⚠ この検査が何も見ていない）");
-  } else {
-    let total = 0, def = 0, dated = 0, named = 0, rawBytes = 0;
-    for (const f of files) {
-      const buf = await readFile(f);
-      rawBytes += buf.length;
-      for (const ft of blUnpack(JSON.parse(buf.toString("utf8"))).features) {
-        total++;
-        if (ft.properties.heightSource === "default") def++;
-        if (ft.properties.startDate) dated++;
-        if (ft.properties.name) named++;
-      }
-    }
-    const pct = (a) => ((a / total) * 100).toFixed(2);
-    const mb  = (rawBytes / 1e6).toFixed(1);
-    const spec = await readFile(join(ROOT, "docs", "SPEC.md"), "utf8").catch(() => "");
-    const num = (t) => Number(String(t).replace(/,/g, ""));
-    // ⚠ **周りの語で位置を決める。**⚠ 数字だけを見ると、別の主張の数字を拾う
-    const claims = [
-      ["配っている総数",   /配っている ([\d,]+)件/,                          () => total],
-      ["既定値の件数",     /\*\*([\d,]+)件（[\d.]+%）が既定値\*\*/,        () => def],
-      ["既定値の割合",     /\*\*[\d,]+件（([\d.]+)%）が既定値\*\*/,        () => pct(def)],
-      ["建設年の分母",     /([\d,]+)件中 \*\*[\d,]+件（[\d.]+%）\*\*/,     () => total],
-      ["建設年の件数",     /[\d,]+件中 \*\*([\d,]+)件（[\d.]+%）\*\*/,     () => dated],
-      ["建設年の割合",     /[\d,]+件中 \*\*[\d,]+件（([\d.]+)%）\*\*/,     () => pct(dated)],
-      ["流れの図の件数",   /\(([\d,]+)件 \/ 生[\d.]+MB/,                    () => total],
-      ["流れの図の重さ",   /\([\d,]+件 \/ 生([\d.]+)MB/,                    () => mb],
-    ];
-    const wrong = [];
-    let found = 0;
-    for (const [name, re, want] of claims) {
-      const m = re.exec(spec);
-      if (!m) { wrong.push(`${name}: ⚠ SPEC に見つからない`); continue; }
-      found++;
-      const w = String(want()), got = m[1];
-      if (num(w) !== num(got)) wrong.push(`${name}: SPEC ${got} ／ ⚠ 実物 ${w}`);
-    }
-    wrong.length
-      ? bad(`docs/SPEC.md の数字が、配っている現物と違う（${wrong.length} か所）: ${wrong.join(" ／ ")}`
-          + "。⚠ **取り込み直したら SPEC も直す。**⚠ 数えたのは public/data/bl の現物")
-      : ok(`docs/SPEC.md の数字が、配っている現物と合っている（${found} か所を突き合わせた）`);
-    // ⚠ **突き合わせた数を名乗る。**⚠ 0 か所でも緑になると、⚠ 何も見ていないのに通る
-    found === claims.length
-      ? ok(`配っている建物を数えた（タイル ${files.length} 枚 ／ ${total.toLocaleString()} 件 ／ 生 ${mb}MB`
-          + ` ／ 既定値 ${pct(def)}% ／ 建設年 ${pct(dated)}% ／ 名前 ${pct(named)}%）`)
-      : bad(`SPEC の中に、突き合わせる先が ${found} / ${claims.length} か所しか無い`
-          + "（⚠ 文を書き換えたなら、⚠ この検査の探し方も直す）");
-  }
-}
+// ⚠ **建物タイルを数える節は落とした**（2026-09-01。`docs/adr/0080`）。
+//   ⚠ **数えていたのは β 版の `public/data/bl`。**⚠ **本番から消えた。**
+//   ⚠ **v0.1.0 は建物を使わない**（⚠ 使い始めたら、⚠ そのとき改めて数える）。
 
 // ============================================================
 // ⚠ ドメインモデル（docs/DOMAIN.md）が、実物とつながっているか
@@ -279,19 +210,16 @@ import { ROOT, PUB, ok, bad, head, src , BLOCK_COMMENT, HTML_COMMENT, LINE_COMME
   if (!dom) fails.push("docs/DOMAIN.md を読めない");
   else {
     // ① 持ち主として名指ししたものが実在すること
-    const OWNERS = [["public/prov.js", "KonjakuProv"], ["public/swale.js", "SWALE"],
-                    ["public/verify.js", "ERAS"]];
+    // ⚠ **2026-09-01 に v0.1.0 の持ち主へ書き直した**（`docs/adr/0080`）。
+    //   ⚠ **`prov.js` は β 版のもの。**⚠ **本番から消えた。**
+    const OWNERS = [["public/answer.js", "MEIJI_NONE"], ["public/words.js", "GROUND_GLOSS"],
+                    ["public/swale.js", "SWALE"], ["public/verify.js", "ERAS"],
+                    ["public/monument.js", "nearby"], ["public/saved.js", "merge"]];
     for (const [f, sym] of OWNERS) {
       if (!dom.includes(f)) fails.push(`DOMAIN.md が ${f} を名指ししていない`);
       const src2 = f.startsWith("public/") ? src[f.slice(7)] : null;
       if (src2 == null) fails.push(`${f} を読めない`);
       else if (!src2.includes(sym)) fails.push(`${f} に ${sym} が無い（持ち主が変わった）`);
-    }
-    // ⚠ **トップの JS は `top.js`**（2026-08-24）。⚠ TOPWORD の持ち主が移った
-    for (const [f, sym] of [["WORD", "peel3d.js"], ["TOPWORD", "top.js"]]) {
-      if (!dom.includes(f)) fails.push(`DOMAIN.md が ${f} を名指ししていない`);
-      if (!(src[sym] ?? "").includes(`const ${f} = {`) && !(src[sym] ?? "").includes(`const ${f} = {`))
-        fails.push(`${sym} に ${f} が無い（持ち主が変わった）`);
     }
     // ② ⚠ 画面に出さないと決めた語が、**利用者に見えるところ**に出ていないこと。
     //   ⚠ コメントは先に落とす（検査が自分の説明を拾う。3 回踏んでいる）。
@@ -302,7 +230,7 @@ import { ROOT, PUB, ok, bad, head, src , BLOCK_COMMENT, HTML_COMMENT, LINE_COMME
     const BAN = [
       { w: "この場所は", why: "場所の指し方は「この土地は」に統一（DOMAIN §2-1）" },
     ];
-    for (const f of ["index.html", "peel3d.js", "peel.html"])
+    for (const f of ["index.html", "top.js", "deep.js"])
       for (const g of BAN) {
         const n = [...strip(src[f]).matchAll(new RegExp(g.w, "g"))].length;
         if (n) fails.push(`${f} に「${g.w}」が ${n} 箇所（${g.why}）`);
@@ -373,4 +301,62 @@ import { ROOT, PUB, ok, bad, head, src , BLOCK_COMMENT, HTML_COMMENT, LINE_COMME
           + "（置換に失敗しても、文書は誰も実行しないので気づけない）")
       : ok("docs/SPEC.md に空の強調は無い");
   }
+}
+
+// ⚠ **追跡ファイルが、⚠ 追跡していない場所（`tmp/`）を指していないか** ----
+//
+// ⚠ **`tmp/` は git に追跡していない。**⚠ **上書き・削除されても誰も気づけない。**
+//   ⚠ **実際に失われた**（2026-08-31 に数えた）: ⚠ **ADR が「原文」と呼んでいたものが、
+//   ⚠ 別の内容に上書きされていた。**⚠ **12 件から参照されていて、⚠ もう読めないものもある。**
+// ⚠ **v0.1.0 が何を解決するのかを書いた文書は、⚠ 7 件から参照されていたので `docs/` へ移した**
+//   （⚠ 移す前に消えていたら、⚠ どこにも無くなっていた）。
+//
+// ⚠ **コメントを先に落とす**（`CLAUDE.md` §5）。⚠ **落とさないと、⚠ この説明に書いた字面を、
+//   ⚠ 検査自身が拾う**（⚠ 2026-08-31 に踏んだ。⚠ **この節を書いた直後に、⚠ 自分で落ちた**）。
+//
+// ⚠ **既に失われたものは、⚠ 理由と一緒に一覧へ書く**（⚠ 消えた記録を、⚠ 無かったことにしない）。
+//   ⚠ **これから増えるものを止めるのが、⚠ この検査の目的。**
+{
+  const { existsSync: ex } = await import("node:fs");
+  const { execFileSync } = await import("node:child_process");
+
+  // ⚠ **もう読めないと分かっているもの**（2026-08-31 に実測）。⚠ **増やさない。**
+  const 失われた = new Map([
+    ["tmp/tmp2.md", "Owner の原文。⚠ ADR 0052・0056・0057 ほかが引く。⚠ 決めたことは ADR 本文が持つ"],
+    ["tmp/tmp3.md", "Owner の原文。⚠ ADR 0030 が引く。⚠ 決めたことは ADR 本文が持つ"],
+    ["tmp/tmp.md", "Owner の原文。⚠ ADR 0049 の「原文」。⚠ 別の内容へ上書きされていた"],
+    ["tmp/measure-urllen.mjs", "その場で測った走り書き。⚠ 数字は ADR 本文に控えてある"],
+  ]);
+
+  const 追跡 = execFileSync("git", ["ls-files", "docs", "test", "public-next", "wrangler.next.jsonc"],
+    { cwd: ROOT, encoding: "utf8" }).split("\n").filter((f) => /\.(md|mjs|js|jsonc|html)$/.test(f));
+  const 死んでいる = new Map(), 生きている = new Set();
+  for (const f of 追跡) {
+    // ⚠ **落とし方は `lib.mjs` から借りる**（⚠ コピーが増えると、⚠ どれが正か分からなくなる）。
+    const 素 = (await readFile(join(ROOT, f), "utf8").catch(() => ""))
+      .replace(HTML_COMMENT, " ")
+      .replace(BLOCK_COMMENT, " ")
+      .replace(HEAD_COMMENT, " ");
+    // ⚠ **日本語のファイル名と空白も拾う**（2026-08-31 に踏んだ。⚠ **`[A-Za-z0-9._-]` だけだと、
+    //   ⚠ `tmp/今昔 利用規約.md` のようなものを一生見ない**。⚠ **その日に直した相手がそれだった**）。
+    //   ⚠ **区切りになる字だけ外す**（⚠ 引用符・括弧・読点。⚠ ここで欲張ると隣の文まで飲む）。
+    for (const m of 素.matchAll(/tmp\/[^\n`"'、。（）()\[\]<>|]+?\.(?:md|mjs|json|jsonc|txt|png)/g)) {
+      const 先 = m[0];
+      if (失われた.has(先)) continue;
+      if (ex(join(ROOT, 先))) { 生きている.add(先); continue; }
+      if (!死んでいる.has(先)) 死んでいる.set(先, []);
+      死んでいる.get(先).push(f);
+    }
+  }
+
+  死んでいる.size
+    ? bad(`追跡ファイルが、⚠ 存在しない ${死んでいる.size} 件を指している: `
+        + [...死んでいる].map(([先, どこ]) => `${先}（${どこ.join("・")}）`).join(" ／ ")
+        + "。⚠ **参照される文書は `docs/` へ移す**"
+        + "（⚠ もう読めないものは、⚠ この検査の一覧に理由と一緒に書く）")
+    : 生きている.size
+      ? warn(`追跡ファイルが、⚠ 追跡外の ${生きている.size} 件をまだ指している: `
+          + `${[...生きている].join(" ／ ")}。⚠ **いま在るが、⚠ 消えても誰も気づけない**`)
+      : ok(`追跡ファイルは、⚠ 追跡していない場所を指していない`
+          + `（⚠ もう読めないと分かっているもの ${失われた.size} 件は、⚠ 理由つきで一覧に在る）`);
 }

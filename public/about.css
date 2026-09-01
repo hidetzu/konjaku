@@ -1,0 +1,55 @@
+/* 読み物の画面（about / privacy / terms）。行の長さと段の間だけを決める。
+   色・44px・余白の段は theme.css / brand.css から借りる。ここで持ち直さない。 */
+.about{max-width:38rem; margin:0 auto;
+  padding:calc(2.75rem + env(safe-area-inset-top) + 1.5rem) var(--pad-md) 6rem}
+@media (min-width:700px){
+  .about{padding:calc(2.75rem + env(safe-area-inset-top) + 2.5rem) var(--pad-md) 8rem}
+}
+
+.about__h{margin:0 0 var(--gap-block); font-size:1.375rem; color:var(--ink)}
+
+/* 1 行目。何ができるかから書く。 */
+.about__lead{margin:0 0 var(--gap-block); font-size:1rem; line-height:1.8; color:var(--ink)}
+
+.about__sec{margin:0 0 var(--gap-block);
+  padding-top:var(--gap-block); border-top:1px solid var(--line)}
+.about__h2{margin:0 0 var(--gap-row); font-size:1rem; color:var(--ink)}
+.about__p{margin:0 0 var(--gap-row); font-size:.9375rem; line-height:1.8; color:var(--ink-2)}
+.about__p:last-child{margin-bottom:0}
+
+/* 「なぜそう言える？」と同じ並び方にする。左に問い、右に答え。 */
+.about__rows{margin:0; padding:0}
+.about__row{display:flex; gap:var(--gap-row);
+  padding:var(--pad-sm) 0; border-bottom:1px solid var(--line)}
+.about__row:last-child{border-bottom:0}
+.about__k{flex:0 0 6.5rem; margin:0; font-size:.8125rem; color:var(--ink-3); line-height:1.8}
+.about__v{flex:1 1 auto; margin:0; font-size:.9375rem; color:var(--ink-2); line-height:1.8}
+@media (max-width:23rem){
+  .about__row{flex-direction:column; gap:0}
+  .about__k{flex:none}
+}
+
+/* 冒頭の要約。読み物の先頭で、要点だけを先に渡す（privacy）。
+   本文より大きくしない。ここは目次ではなく、これだけ読んでも足りる形にする。
+   点は付けない（並びは 4 つで、順番に意味が無い）。 */
+.about__sum{margin:0 0 var(--gap-block); padding:0; list-style:none}
+.about__sumItem{
+  margin:0 0 var(--gap-row); padding-top:var(--gap-row);
+  border-top:1px solid var(--line);
+  font-size:.9375rem; line-height:1.8; color:var(--ink-2);
+}
+.about__sumItem:last-child{margin-bottom:0}
+.about__sumK{display:block; color:var(--ink); font-weight:700}
+
+/* 添え書き。言えないことは、ここで理由と一緒に書く。 */
+.about__note{margin:var(--gap-row) 0 0; font-size:.8125rem; line-height:1.8; color:var(--ink-3)}
+.about__note a{color:var(--action)}
+
+.about__ver{margin:var(--gap-block) 0 0; font-size:.8125rem; color:var(--ink-3)}
+
+/* 条文の並び。番号は意味を持つ（第2条の 3 は「第2条3」として引かれる）ので消さない。 */
+.about__ol, .about__ul{margin:0; padding-left:1.5rem}
+.about__ol li, .about__ul li{
+  font-size:.9375rem; color:var(--ink-2); line-height:1.8; margin-bottom:var(--gap-sub);
+}
+.about__ol li:last-child, .about__ul li:last-child{margin-bottom:0}

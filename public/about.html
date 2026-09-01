@@ -1,0 +1,121 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<!-- URL に地名と座標が載る。押した先へ Referer で渡さない。
+     _headers と二重にしてある。片方が効かない配信経路があっても漏らさないため。
+
+     no-referrer ではなく same-origin。外へは一切送らないのは同じだが、
+     こちらは同じサイトの中では残る。/deep が「どこから来たか」を読み、
+     「← ひとつ前へ」を出すのに要る（back.js）。
+     no-referrer にしたら、同じサイトから来ても直前へ返せなくなった。 -->
+<meta name="referrer" content="same-origin">
+<title>このサイトについて — 今昔</title>
+<meta name="description" content="今昔がどんな道具かを書いています。何が言えて、何が言えないかも。">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="今昔">
+<meta property="og:title" content="このサイトについて — 今昔">
+<meta property="og:description" content="今昔がどんな道具かを書いています。何が言えて、何が言えないかも。">
+<meta property="og:url" content="https://konjaku.hidetzu.work/about">
+<meta property="og:image" content="https://konjaku.hidetzu.work/ogp.png">
+<meta property="og:image:alt" content="この土地は、昔なんだったのか？ — 土地の成り立ちを、根拠とともに見る">
+<meta property="og:locale" content="ja_JP">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="このサイトについて — 今昔">
+<meta name="twitter:description" content="今昔がどんな道具かを書いています。何が言えて、何が言えないかも。">
+<meta name="twitter:image" content="https://konjaku.hidetzu.work/ogp.png">
+<link rel="icon" href="./favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="./apple-touch-icon.png">
+<link rel="stylesheet" href="./theme.css">
+<link rel="stylesheet" href="./brand.css">
+<link rel="stylesheet" href="./foot.css">
+<link rel="stylesheet" href="./about.css">
+
+<!-- このサイトについて。名乗りの帯のメニューから来る。
+     読み物なので地図も控えも持たない。
+
+     何を預けるかは privacy.html が持つ（2026-08-31 に割った）。
+     メニューの項目が別なら、画面も別にする。同じ字を 2 か所に置かない。 -->
+<header class="brand">
+  <div class="brand__inner">
+    <a class="brand__name" href="./">
+      <img class="brand__mark" src="./favicon.svg" alt="" width="20" height="20">
+      <span class="brand__words"><span class="brand__title">今昔</span><span class="brand__tag">この土地は、昔なんだったのか？</span></span>
+    </a>
+    <nav class="brand__nav" aria-label="主な行き先">
+      <a class="brand__link" href="./">地図で調べる</a>
+    </nav>
+    <details class="menu">
+      <summary class="menu__btn" aria-label="メニュー">
+        <span class="menu__bars" aria-hidden="true"></span>
+      </summary>
+      <nav class="menu__panel" aria-label="サイトの案内">
+        <a class="menu__item" href="./about" aria-current="page">このサイトについて</a>
+        <a class="menu__item" href="./privacy">プライバシーポリシー</a>
+        <a class="menu__item" href="./terms">利用規約</a>
+        <a class="menu__item" href="https://github.com/hidetzu/konjaku/issues/new?template=feedback.yml" target="_blank" rel="noopener">ご意見・不具合報告（GitHub で公開）</a>
+      </nav>
+    </details>
+  </div>
+</header>
+
+<main class="about">
+  <h1 class="about__h">このサイトについて</h1>
+  <p class="about__lead">
+    その土地が昔なんだったのかを、国土地理院が公開している地図と写真を読んで答えます。
+    調べた場所は、気に入ったものだけ手元に残せます。
+  </p>
+
+  <section class="about__sec">
+    <h2 class="about__h2">何を読んでいるか</h2>
+    <dl class="about__rows">
+      <div class="about__row">
+        <dt class="about__k">いまの地形</dt>
+        <dd class="about__v">国土地理院の地形分類。足元がどんな成り立ちの土地かを言います。</dd>
+      </div>
+      <div class="about__row">
+        <dt class="about__k">明治期の地図</dt>
+        <dd class="about__v">明治期の低湿地データ。その頃そこが水だったかを読みます。</dd>
+      </div>
+      <div class="about__row">
+        <dt class="about__k">空中写真</dt>
+        <dd class="about__v">年代を切りかえて、同じ場所の写真を見くらべます。</dd>
+      </div>
+      <div class="about__row">
+        <dt class="about__k">この周辺</dt>
+        <dd class="about__v">対応した地域では、周辺の公開されている記録も添えます。</dd>
+      </div>
+    </dl>
+    <p class="about__note">
+      出典 <a href="https://maps.gsi.go.jp/development/ichiran.html"
+      target="_blank" rel="noopener">国土地理院</a>。
+      読める範囲は、対応した場所から順に増やしています。
+    </p>
+  </section>
+
+  <section class="about__sec">
+    <h2 class="about__h2">送るものと、預けるもの</h2>
+    <p class="about__p">
+      保存した場所はこの端末の中だけに残ります。別の端末へ渡すときだけ、こちらで預かります。
+      何を預けて、いつ使えなくなるかは、<a href="./privacy">プライバシーポリシー</a>に書いています。
+    </p>
+  </section>
+
+  <!-- バージョンを出すのは、この 1 か所だけ。理由は docs/adr に置く
+       （HTML コメントも配信物なので、ここには経緯を書かない）。 -->
+  <p class="about__ver">今昔 v0.1.0</p>
+</main>
+<!-- ページの下の案内。広い幅だけが持つ（狭い幅の下は、行き先の帯が使う）。
+     持つのは名乗りのメニューと同じ 4 つ。広い幅ではメニューを畳むので、
+     ここが欠けると案内へ行けなくなる。
+     地図・保存の導線はここに置かない。それは上の帯が持つ。 -->
+<footer class="foot">
+  <nav class="foot__nav" aria-label="サイトの案内">
+    <a class="foot__link" href="./about" aria-current="page">このサイトについて</a>
+    <a class="foot__link" href="./privacy">プライバシーポリシー</a>
+    <a class="foot__link" href="./terms">利用規約</a>
+    <a class="foot__link" href="https://github.com/hidetzu/konjaku/issues/new?template=feedback.yml"
+       target="_blank" rel="noopener">ご意見・不具合報告（GitHub で公開）</a>
+  </nav>
+</footer>
+<script src="./menu.js"></script>

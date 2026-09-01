@@ -1,0 +1,161 @@
+/* 帰宅後の深掘り画面。
+   散歩中の画面（top.css）とは別の作り。共通の色だけ同じ形で持つ。
+   ここは「読み物」なので、読む行の幅を先に決める。 */
+/* 色も、--tap も、余白の段も theme.css にしかない（決めごと）。
+   ここは暗いほうが既定だったが、集めるときに明るい既定へそろえた（top.css に合わせた）。
+   見た目の向きは変わらない。端末の設定に従うのは前と同じ。 */
+:root{
+  --read:38rem;              /* 読む行の幅。この画面だけが使う */
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0; background:var(--bg); color:var(--ink-2);
+  font:16px/1.9 system-ui,-apple-system,"Hiragino Kaku Gothic ProN","Yu Gothic",sans-serif;
+}
+/* 名乗りの帯のぶん下げる。帯は position:absolute なので、場所を取らない。 */
+#doc{max-width:var(--read); margin:0 auto;
+  padding:calc(2.75rem + env(safe-area-inset-top) + var(--pad-md)) var(--pad-md) 6rem}
+@media (min-width:700px){
+  #doc{padding:calc(2.75rem + env(safe-area-inset-top) + 2rem) 1.5rem 8rem}
+}
+
+.back{
+  display:inline-flex; align-items:center; min-height:var(--tap);
+  color:var(--action); font-size:.875rem; font-weight:700; text-decoration:none;
+}
+.back:focus-visible{outline:2px solid var(--action); outline-offset:2px}
+
+#head{border-bottom:1px solid var(--line); padding-bottom:var(--gap-block)}
+.place{margin:0; font-size:.8125rem; color:var(--ink-3)}
+/* 答えは主。区分名は出典の言葉として添える（散歩中の画面と同じ決め方）。 */
+.ans{margin:var(--gap-sub) 0 0; font-size:1.75rem; line-height:1.4; color:var(--ink); font-weight:700}
+/* 答えの出典と、いまの地形。散歩中の画面と同じ並びにする。 */
+.ans__src{margin:var(--gap-sub) 0 0; font-size:.6875rem; letter-spacing:.06em;
+          line-height:1.5; color:var(--ink-3)}
+.ans__src[hidden]{display:none}
+.ans__sub{margin:var(--gap-sub) 0 0; font-size:.9375rem; line-height:1.6; color:var(--ink-2)}
+.ans__sub[hidden]{display:none}
+.term{margin:var(--gap-sub) 0 0; font-size:.8125rem; color:var(--ink-3)}
+.term[hidden]{display:none}
+
+.sec{margin-top:2rem}
+
+/* ここから下は、この地点そのものではなく、まわりに残っている記録。
+   節の見出しだけでは、上と同じ「この地点の履歴」に読まれる
+   （2026-09-01。仮想利用者 2 名）。線を引き、束ごと分ける。
+   線は区切りなので --line（情報を持つ枠ではない。rules/css.md）。
+   margin-top は .sec の 2rem のまま。線の上に 2rem、下に 1 段。 */
+.sec--around{
+  border-top:1px solid var(--line);
+  padding-top:var(--gap-block);
+}
+.sec__kind{
+  margin:0 0 var(--gap-sub);
+  font-size:.75rem; line-height:1.6; color:var(--ink-3);
+}
+.sec > h2{
+  margin:0 0 var(--gap-row); font-size:.75rem; font-weight:700; letter-spacing:.1em;
+  color:var(--ink-3);
+}
+
+/* どう変わったか。この画面の主役。
+   明治期の地図 → 空中写真の年代 → いま を、時の流れの向きに並べる。
+   1 枚ずつ切り替えるのではなく、並べる。切り替えると、前の絵を覚えていないと比べられない。 */
+.time__lead{margin:0 0 var(--gap-block); font-size:1rem; color:var(--ink)}
+.frames{display:grid; gap:var(--gap-block); grid-template-columns:repeat(auto-fit,minmax(9rem,1fr))}
+/* display を持つ規則には、[hidden] の打ち消しが要る（top.css と同じ話）。
+   書き忘れると hidden が効かず、属性で見ている検査は素通りする。 */
+.back[hidden],.frames[hidden]{display:none}
+.frame{margin:0}
+/* 絵の窓。真ん中がその地点。まわりは同じ縮尺で切り取っている */
+.frame__win{
+  position:relative; width:100%; aspect-ratio:1; overflow:hidden;
+  border-radius:.5rem; border:1px solid var(--line-strong); background:var(--surface-2);
+}
+.frame__win img{position:absolute; width:256px; height:256px; image-rendering:auto}
+/* その地点の印。真ん中に置く */
+.frame__win::after{
+  content:""; position:absolute; left:50%; top:50%; width:.75rem; height:.75rem;
+  transform:translate(-50%,-50%); border-radius:50%;
+  border:2px solid var(--pin-ring); background:var(--action);
+  box-shadow:0 0 0 1px color-mix(in srgb, var(--shadow) 35%, transparent);
+}
+.frame__y{margin:var(--gap-sub) 0 0; font-size:.875rem; font-weight:700; color:var(--ink)}
+.frame__t{margin:0; font-size:.75rem; color:var(--ink-3); line-height:1.5}
+.frame--none .frame__win{border-style:dashed}
+.time__note{margin:var(--gap-block) 0 0; font-size:.75rem; color:var(--ink-3); line-height:1.7}
+
+/* 成因と、起こりうること。国土地理院の記述をそのまま出す。要約しない。 */
+.why__item + .why__item{margin-top:var(--gap-block)}
+.why__k{margin:0; font-size:.8125rem; font-weight:700; color:var(--ink)}
+.why__v{margin:var(--gap-sub) 0 0; font-size:1rem; line-height:1.9}
+.why__from{margin:var(--gap-sub) 0 0; font-size:.75rem; color:var(--ink-3)}
+.why__none{color:var(--ink-3)}
+/* 災害の話。⚠ は災害リスク専用の印なので、在庫や対応状況には使わない。 */
+.why--risk{border-left:3px solid var(--evidence); padding-left:var(--pad-md)}
+
+/* まわり ── この一帯について、公式資料から言えること。
+   散歩中は 1 件だけ出している。帰宅後は全部出す。読み物なので年表として読める。
+   ⚠ この地点の記録ではない。そこは散歩中と同じく、いちばん先に言う。 */
+.near__lead{margin:0; font-size:1rem; color:var(--ink)}
+/* この一帯の明治期。点ではなく面で数える。
+   点は「ここは何だったか」、面は「まわりはどうだったか」。混ぜない。
+   割合には、必ず分母（範囲の広さと、数えた画素）を添える。 */
+.around{margin:var(--gap-block) 0 0}
+.around__lead{margin:0; font-size:1rem; color:var(--ink)}
+.shares{margin:var(--gap-row) 0 0; padding:0; list-style:none}
+.shares li{display:flex; align-items:center; gap:var(--gap-row); padding:.1875rem 0; font-size:.9375rem}
+.shares .bar{flex:none; width:8rem; height:.5rem; border-radius:999px; background:var(--surface-2); overflow:hidden}
+.shares .bar i{display:block; height:100%; background:var(--evidence)}
+.shares .pc{flex:none; width:3rem; text-align:right; font-variant-numeric:tabular-nums; color:var(--ink)}
+.shares .nm{flex:1; min-width:0; color:var(--ink-2)}
+.around__note{margin:var(--gap-row) 0 0; font-size:.75rem; color:var(--ink-3); line-height:1.7}
+
+.years{margin:2rem 0 0; padding:0; list-style:none}
+.years li{
+  display:flex; gap:var(--gap-block); padding:var(--gap-row) 0;
+  border-bottom:1px solid var(--line); font-size:.9375rem; line-height:1.7;
+}
+.years li:last-child{border-bottom:0}
+/* 年は揃える。並べて読むので、桁がずれると年表に見えない */
+.years .y{
+  flex:none; width:5.5rem; font-variant-numeric:tabular-nums;
+  color:var(--ink); font-weight:700;
+}
+.years .t{flex:1; min-width:0}
+/* 散歩中に出している 1 件。どれを最初に見たかが分かるようにする */
+.years li.shown .t::after{
+  content:"　散歩中に出した 1 件"; font-size:.75rem; color:var(--ink-3); font-weight:400;
+}
+.near__note{margin:var(--gap-block) 0 0; font-size:.8125rem; color:var(--ink-3); line-height:1.7}
+.near__from{margin:var(--gap-sub) 0 0; font-size:.75rem; color:var(--ink-3)}
+.near__from a{color:var(--ink-2)}
+
+/* 標高。散歩中は出さないと決めてある（ADR 0059。その 1 行に紙面を割く値打ちが
+   無かった）。帰宅後は前提が違う。「なぜ液状化のリスクがあるのか」に直接効く。 */
+.elev{margin:var(--gap-block) 0 0; font-size:1rem; color:var(--ink)}
+.elev .v{font-variant-numeric:tabular-nums; font-weight:700}
+.elev .from{display:block; margin-top:var(--gap-sub); font-size:.75rem; color:var(--ink-3)}
+
+/* 読んだもの。本当に読んだのかを、読んだ人が確かめられるようにする。
+   読み物としては重いので、いちばん下に置く。 */
+.read{margin:0; font-size:.8125rem; line-height:1.7}
+.read > div{display:flex; gap:var(--gap-row); padding:.1875rem 0}
+.read dt{flex:0 0 7rem; color:var(--ink-3); margin:0}
+.read dd{flex:1; min-width:0; margin:0; color:var(--ink-2); overflow-wrap:anywhere}
+.read a{color:var(--ink-2)}
+
+/* 近くに残る災害の記録。出典の字をそのまま出すので、行が長くなる。 */
+.mon__lead{margin:0 0 var(--gap-row); font-size:.9375rem; line-height:1.6; color:var(--ink-2)}
+.mon{margin:0; padding:0; list-style:none; display:flex; flex-direction:column; gap:var(--gap-block)}
+.mon[hidden]{display:none}
+.mon__item{margin:0; padding-top:var(--gap-row); border-top:1px solid var(--line)}
+.mon__item:first-child{padding-top:0; border-top:0}
+.mon__where{margin:0; font-size:.6875rem; letter-spacing:.06em; color:var(--ink-3)}
+.mon__name{margin:var(--gap-sub) 0 0; font-size:1.0625rem; font-weight:700; line-height:1.5; color:var(--ink)}
+.mon__what{margin:var(--gap-sub) 0 0; font-size:.9375rem; line-height:1.6; color:var(--ink-2)}
+.mon__built{margin:var(--gap-sub) 0 0; font-size:.8125rem; color:var(--ink-3)}
+.mon__info{margin:var(--gap-row) 0 0; font-size:.875rem; line-height:1.75; color:var(--ink-2)}
+.mon__cite{margin:var(--gap-block) 0 0; font-size:.8125rem; color:var(--ink-3)}
+.mon__cite[hidden]{display:none}

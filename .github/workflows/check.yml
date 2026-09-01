@@ -3,7 +3,12 @@ name: check
 on:
   pull_request:
   push:
-    branches: [main]
+    # ⚠ **`develop` が、⚠ いまの主線**（`docs/adr/0050`）。
+    #   ⚠ **足すまで、⚠ `develop` へ取り込んだあとの検査が走っていなかった**
+    #     （⚠ 実測 2026-08-29: `main` より **30 コミット先**だった）。
+    #   ⚠ **PR で `render-scope.mjs` が絞ったぶんは、⚠ この push で取り戻す**（下の render-plan）。
+    #   ⚠ **外部リンク（全部）も、⚠ PR では走らない。**⚠ ここしか見る機会が無い。
+    branches: [main, develop]
   # 外部サイトのURLは自分たちの都合と関係なく消えるので、定期的にも見る
   schedule:
     - cron: "0 0 * * 1"
@@ -18,6 +23,13 @@ permissions:
 #   入れる版とキャッシュのキーの両方がこれを見る（出どころを2つ持たない）。
 env:
   PLAYWRIGHT_VERSION: "1.62.1"
+  # ⚠ **wrangler の版も、⚠ ここだけで決める**（2026-08-29。`docs/adr/0070`）。
+  #   ⚠ **`npx wrangler` と書くと、⚠ その日の最新が降ってくる。**
+  #   ⚠ **配信の道具が、⚠ こちらの差分なしに入れ替わる**（⚠ Playwright と同じ踏み方）。
+  WRANGLER_VERSION: "4.127.1"
+  # ⚠ **v0.1.0 を出す先**（`docs/adr/0050`。⚠ 名前を付けたのは Cloudflare の画面）。
+  #   ⚠ **β 版（`konjaku.hidetzu.work`）ではない。**
+  SITE_ORIGIN: "https://konjaku.hidetzu.work"
 
 # 古い実行を止める。⚠ **PR のときだけ**キャンセルする。
 #   main への push は、そこでしか走らない検査（外部リンク・全部）を持っているので、
@@ -406,3 +418,97 @@ jobs:
             exit 1
           fi
           echo "実描画は全部通った"
+
+
+  # ⚠ **本番（`konjaku`）を出す**（2026-09-01。`docs/adr/0080`）。
+  #
+  # ⚠ **2026-09-01 に、⚠ v0.1.0 を本番へ上げた。**⚠ **Worker も器も 1 つになった。**
+  #   ⚠ **前はここが `konjaku-next`（`wrangler.next.jsonc`）だけを出していた。**
+  #   ⚠ **いまは `wrangler.jsonc` を出す**（⚠ 設定は 1 つしかないので `-c` は要らない）。
+  #
+  # ⚠ **なぜ Workers Builds ではなく、⚠ ここから出すか**（`docs/adr/0070` の続き）:
+  #   ⚠ **Cloudflare 側は、⚠ GitHub の検査の緑を待てない。**⚠ **赤のまま出る。**
+  #   ⚠ **ここなら `needs:` で、⚠ 門番の後ろに置ける**（⚠ 下の 3 つが全部緑のときだけ走る）。
+  #
+  # ⚠ **Cloudflare 側の Workers Builds は、⚠ こちらからは止められない**（⚠ ダッシュボードの設定）。
+  #   ⚠ **切っていないと、⚠ 検査を待たずに出る経路が残る。**⚠ **これは人が確かめること。**
+  #
+  # ⚠ **`main` への push でだけ走る**（2026-09-01。Owner 判断。`docs/adr/0081`）。
+  #   ⚠ **前は `develop` だった。**⚠ **取り込む操作と、⚠ 出す操作が同じだった。**
+  #   ⚠ **`develop` へ merge した瞬間に本番が入れ替わり、⚠ 確かめる場所が無かった。**
+  #
+  # ⚠ **いまの流れ**:
+  #
+  #     feature → develop   ⚠ 取り込むだけ。⚠ **出さない**
+  #     develop → main      ⚠ **これが本番**。⚠ 出たあとタグを打つ
+  #
+  # ⚠ **`main` は「いま本番にあるもの」を指す。**⚠ **戻す先が言える。**
+  #   ⚠ **前は `main` が 68 本遅れで、⚠ 何も出しておらず、⚠ 戻る基準が無かった。**
+  #
+  # ⚠ **PR では走らない。**⚠ **fork の PR に秘密を渡さない**（⚠ このリポジトリは public）。
+  #   ⚠ `pull_request` には、⚠ そもそも secrets が渡らないが、⚠ 条件でも閉じておく。
+  deploy:
+    name: 本番を出す（konjaku）
+    # ⚠ **門番 3 つの後ろ。**⚠ **`render` は `always()` の門番なので、⚠ 必ず結果を返す**
+    #   （⚠ 返さない者を `needs` に置くと、⚠ ここが永久に待ちになる）。
+    needs: [checks, search, render]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # ⚠ **この段だけ、⚠ 印を作れる**（⚠ 全体の既定は `contents: read`）。
+    #   ⚠ **広げるのはここ 1 つ。**⚠ **他の段は読むだけのまま。**
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    # ⚠ **既定は 360 分。**⚠ 実測（2026-08-29・手元）: 照合は 17 ファイルで数秒。
+    #   ⚠ **デプロイ本体が支配的。**⚠ 取り直しを 3 回入れても収まる長さにする。
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          # ⚠ 認証情報を .git/config に残さない（⚠ 上のジョブと同じ）
+          persist-credentials: false
+
+      # ⚠ **版は上の env の 1 か所だけ**（⚠ `npx wrangler` だと、その日の最新が降る）。
+      # ⚠ **`npm ci` を挟まない。**⚠ このリポジトリは依存ゼロで、⚠ wrangler は使い捨てで入れる
+      #   （⚠ `npm ci` が通ること自体は、⚠ 上の「静的検査」のジョブが見ている）。
+      - name: 出す（konjaku）
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx --yes wrangler@${{ env.WRANGLER_VERSION }} deploy
+
+      # ⚠ **「デプロイが成功した」は、⚠ 「出ている」ではない**（`CLAUDE.md` §1）。
+      #   ⚠ **配った実体を取り直して、⚠ 手元と突き合わせる。**
+      #
+      # ⚠ **判定は `scripts/check-deploy.mjs` が 1 か所で持つ**（2026-08-29）。
+      #   ⚠ **前はここに bash で書いていた。**⚠ **そうすると、⚠ 判定そのものを誰も確かめられない**
+      #     （⚠ 「robots.txt は前に足されてよい」のような例外を、⚠ 字面でしか見られなくなる）。
+      #   ⚠ **いまは静的検査が `judge()` を直に呼んで、⚠ 例外が効いていることを見ている。**
+      #
+      # ⚠ **`?cb=<commit>` を渡す。**⚠ 付けないと、⚠ 端の古い写しを「いまの本番」と読みうる。
+      - name: 出たものが、手元と同じか（全ファイル）
+        run: node scripts/check-deploy.mjs --origin=${{ env.SITE_ORIGIN }} --cb=${{ github.sha }}
+
+      # ⚠ **出たことを確かめてから、⚠ その commit に印を残す**（2026-09-01。`docs/adr/0081`）。
+      #   ⚠ **順を変えない。**⚠ **先に打つと、⚠ 出ていないものに「出た」の印が付く。**
+      #
+      # ⚠ **版は `public/about.html` の 1 か所から読む**（⚠ 静的検査 ⑱ が 1 か所を守っている）。
+      #   ⚠ **ここに数字を書かない。**⚠ **書くと 2 か所になる**（`CLAUDE.md` §3）。
+      #
+      # ⚠ **同じ版の印が既に在ったら、⚠ 打ち直さない。**⚠ **黙って動かさない**
+      #   （⚠ 動かすと、⚠ 前にその印で見た人と、⚠ いま見る人で中身が変わる）。
+      #   ⚠ **版を上げ忘れたことは、⚠ ここで分かる**（⚠ 出力に出る）。
+      # ⚠ **`persist-credentials: false` のまま**（⚠ 認証情報を `.git/config` に残さない）。
+      #   ⚠ **だから `git push` は使わない。**⚠ **API で印を作る。**
+      - name: 出たものに、版の印を残す
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          v=$(grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' public/about.html | head -1)
+          if [ -z "$v" ]; then echo "::error::public/about.html から版を読めない"; exit 1; fi
+          if gh api "repos/${{ github.repository }}/git/ref/tags/$v" >/dev/null 2>&1; then
+            echo "⚠ $v の印は既にある。打ち直さない（版を上げ忘れていないか見ること）"
+            exit 0
+          fi
+          gh api "repos/${{ github.repository }}/git/refs" \
+            -f ref="refs/tags/$v" -f sha="${{ github.sha }}" >/dev/null
+          echo "$v を打った"

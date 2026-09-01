@@ -32,6 +32,10 @@ if (!WORDS) throw new Error("public/words.js を読み込めない（一覧行�
 //     ⚠ こちらの検査が 4 件落ち続け、⚠ **原因を自分の変更だと誤認しかけた。**
 export const PORT = Number(process.env.KONJAKU_RENDER_PORT ?? 8099);
 export const BASE = `http://127.0.0.1:${PORT}`;
+// ⚠ **v0.1.0（`public-next/`）は別の Worker。**⚠ **実描画でも別のサーバに立てる**（2026-08-29）。
+//   ⚠ **本番と同じく、⚠ 根が `/`。**⚠ **同じサーバの下の階に置くと、⚠ URL の形が変わる。**
+export const NEXT_PORT = PORT + 1;
+export const NEXT_BASE = `http://127.0.0.1:${NEXT_PORT}`;
 // ⚠ 隠しディレクトリ（`.` 始まり）にしない。
 //   `.artifacts/` に置いていたので actions/upload-artifact@v4 が既定で除外し、
 //   **75 枚撮って 1 枚も保存されていなかった**（2026-08-15 に実測）。

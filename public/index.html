@@ -1,1432 +1,186 @@
 <!doctype html>
-<html lang="ja">
-<head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<!-- ⚠ URL に地名と座標が載っている（?q=豊洲&ll=35.65,139.79）。既定のままだと、
-     計測の POST にも外部リンクにも Referer としてそれが付いて出ていく。
-     「地名も座標も送らない」と画面に書いている以上、ここを塞がないとその記述が嘘になる。
-     実測で /t への referer に ?q= と ?ll= が乗っていた（掟: 地名も座標も送らない） -->
-<meta name="referrer" content="no-referrer">
-<!-- ⚠ 看板は「効能」で名乗る（掟: 看板は効能で名乗る）。
-     以前は「その土地を知る」= カテゴリ名で、何が起きるか読んだ人に分からなかった。
-     主題（成り立ち・掟: 主題は「成り立ち」。明治期は手法のひとつ）と判定文は変えていない。変えたのは名乗りだけ。
-     「昔なんだったか」は地形分類の成因と明治期の低湿地から判定できる範囲の話で、
-     埋立年や「いつ陸になったか」は画素から出せない（掟: 確率を出さない。実測値そのものを出す）ので、ここでも約束しない。 -->
-<!-- ⚠ 「この土地」であって「あなたの住所」ではない。
-     判定文が「この場所は 旧水部 で、いまは 盛土地･埋立地 です」なので語が揃う。
-     そして駅名・施設名でも検索できるようにした以上、
-     入口を「住所」と名乗ると、実際にできることより狭く伝わる。 -->
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<!-- URL に地名と座標が載る。押した先へ Referer で渡さない。
+     _headers と二重にしてある。片方が効かない配信経路があっても漏らさないため。
+
+     no-referrer ではなく same-origin。外へは一切送らないのは同じだが、
+     こちらは同じサイトの中では残る。/deep が「どこから来たか」を読み、
+     「← ひとつ前へ」を出すのに要る（back.js）。
+     no-referrer にしたら、同じサイトから来ても直前へ返せなくなった。 -->
+<meta name="referrer" content="same-origin">
 <title>この土地は、昔なんだったのか？ — 今昔</title>
-<meta name="description" content="その土地が昔なんだったかを、国土地理院のデータを実際に読んで判定します。読んだタイルと画素まで根拠として出します。そこから、その場所について調べられることが並びます。">
+<meta name="description" content="その土地が昔なんだったかを、国土地理院の資料を実際に読んで答えます。読んだ資料まで根拠として出します。保存して、あとで深掘りできます。">
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="今昔">
 <meta property="og:title" content="この土地は、昔なんだったのか？ — 今昔">
-<meta property="og:description" content="その土地が昔なんだったかを、国土地理院のデータを実際に読んで判定します。読んだタイルと画素まで根拠として出します。そこから、その場所について調べられることが並びます。">
+<meta property="og:description" content="その土地が昔なんだったかを、国土地理院の資料を実際に読んで答えます。読んだ資料まで根拠として出します。保存して、あとで深掘りできます。">
 <meta property="og:url" content="https://konjaku.hidetzu.work/">
 <meta property="og:image" content="https://konjaku.hidetzu.work/ogp.png">
 <meta property="og:image:alt" content="この土地は、昔なんだったのか？ — 土地の成り立ちを、根拠とともに見る">
 <meta property="og:locale" content="ja_JP">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="この土地は、昔なんだったのか？ — 今昔">
-<meta name="twitter:description" content="その土地が昔なんだったかを、国土地理院のデータを実際に読んで判定します。読んだタイルと画素まで根拠として出します。そこから、その場所について調べられることが並びます。">
+<meta name="twitter:description" content="その土地が昔なんだったかを、国土地理院の資料を実際に読んで答えます。読んだ資料まで根拠として出します。保存して、あとで深掘りできます。">
 <meta name="twitter:image" content="https://konjaku.hidetzu.work/ogp.png">
-<meta name="twitter:image:alt" content="この土地は、昔なんだったのか？ — 土地の成り立ちを、根拠とともに見る">
-<link rel="icon" href="/favicon.svg" type="image/svg+xml">
-<link rel="manifest" href="/manifest.webmanifest">
-<!-- ⚠ ブラウザの枠の色。⚠ **色みと揃える**（2026-08-26・hidetzu/konjaku#96）。
-     ⚠ **`media` で分ける。**⚠ 1 行だけだと、⚠ 明るい端末でも枠だけ暗いまま残る。
-     ⚠ **値は theme.css の --bg と同じ。**⚠ ここには CSS 変数を書けない（meta は解決しない）。 -->
-<meta name="theme-color" content="#0b0e13" media="(prefers-color-scheme: dark)">
-<meta name="theme-color" content="#f7f8fa" media="(prefers-color-scheme: light)">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="今昔">
-<link rel="apple-touch-icon" href="/icon-192.png">
-<!-- ⚠ 2 画面で共通の見た目の定義。**ここが唯一の出どころ**（ADR 0021）。
-     ⚠ 色は持たない（→ theme.css）。画面ごとに違う文字の段は、下の <style> に残してある。 -->
-<link rel="stylesheet" href="./css/tokens.css">
-<!-- ⚠ 色みの定義。**色の値はここが唯一の出どころ**（2026-08-26・hidetzu/konjaku#96）。
-     ⚠ 下の <style> に色を書き戻さない（書くと、色みを足したとき片方だけ切り替わる）。 -->
-<link rel="stylesheet" href="./css/theme.css">
-<style>
-  /* ⚠ 色は public/css/theme.css が持つ（2026-08-26）。⚠ **値は 1 つも変えていない。**
-     ⚠ 色の名前を「意味で付ける」理由は、theme.css の見出しにある（ここには書かない）。 */
-  :root{
-    /* 写真の右下は地図の帰属表示（国土地理院）が使う。実測 24px。
-       ⚠ **写真の上に載せるものは、全部この値だけ底を上げる。** 別々に決めると必ずずれる。
-         実際にずれた: 年代の札を外したら、下駄が無くなった「重ねる」が落ちてきて
-         帰属表示に 9×24px（344px 幅）・33×24px（320px 幅）重なった（2026-08-17）。
-       ⚠ 出典は隠さない（掟: 地理院の記述はそのまま見せる）。 */
-    --attrib:44px;
+<link rel="icon" href="./favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="./apple-touch-icon.png">
+<link rel="stylesheet" href="./theme.css">
+<link rel="stylesheet" href="./brand.css">
+<link rel="stylesheet" href="./top.css">
+<link rel="stylesheet" href="./tabs.css">
 
-    /* ============ 文字の大きさ ============
-       二層にしてある。**値はここ（--text-*）にしか書かない。**
-       使う側は下の役割（--fs-*）だけを書く。こうしておくと
-       「根拠を一段上げる」が --fs-evidence の1行で済む。
-       ⚠ 生の px を font-size に書いたら scripts/check.mjs が落とす。
-
-       なぜ整えたか（実測 2026-08-15）:
-         トップ 375 で 12px 未満が 46/70 個（66%）、/peel 375 で 51/63 個（81%）。
-         同じ「根拠」を出すのに 9 / 9.5 / 10 / 10.5px が混在していて、
-         **まとめて上げることができない状態**だった。
-       ⚠ 段の**構造**（根拠 ≦ 但し書き ≦ 主張）は測定に基づくが、
-         **12 という数字そのものに、この画面での実測の裏づけは無い**。
-         主要なフレームワークの最小段が 11〜12px（Tailwind text-xs=12px /
-         Material Design 3 label-small=11px / Apple iOS Caption 2=11pt）という
-         慣習に合わせた。読めるかを利用者に確かめたものではない。
-       ⚠ px のまま。**ブラウザの文字サイズ設定は効かない**（まだ直していない）。
-         → docs/adr/0027-直していないと分かっていることを、名前で残す.md
-         移るときは、下の --text-* の値だけを直せばよい（使う側は触らない）。 */
-
-    /* 値の段 */
-
-    /* 役割（使う側はこちらを書く） */
-    /* ⚠ 入力欄は 16px 未満にしない。iOS Safari は 16px 未満の入力欄に触れると
-       ページごと拡大し、戻らない。見た目の都合で下げないこと。 */
-  }
-  /* ⚠ 色みを足すときは public/css/theme.css に書く（ここではない）。
-     ⚠ 個々の規則は1行も触らない。⚠ 「実測／推定／取れなかった」の3色は、
-        どの色みでも**互いに区別できる**こと。検査が実測している。 */
-
-  *{box-sizing:border-box}
-  /* ⚠ **html に font-size を書かない**（2026-08-20）。書くと、
-       ⚠ **ブラウザの文字サイズ設定を画面が上書きしてしまう**。
-     ⚠ 実測（2026-08-20・375×667）: 設定を 125% / 150% にしても
-       ⚠ **body も h1 も #q も 1px も変わらなかった**（14 / 19 / 16px のまま）。
-     ⚠ **本文の大きさは変えない。**0.875rem × 既定 16px = 14px で、いままでと同じ。
-       ⚠ rem なので、設定を上げれば一緒に大きくなる。 */
-  html,body{margin:0;min-height:100%;background:var(--bg);color:var(--ink)}
-  body{font:0.875rem/1.65 -apple-system,"Hiragino Sans","Noto Sans JP",sans-serif}
-  /* ⚠ **狭い幅では、⚠ 上の余白を詰める**（2026-08-25。hidetzu/konjaku#176 の続き）。
-     ⚠ **この画面は「狭い幅が既定」**なので、⚠ ここが詰めた側。⚠ **広い幅で戻す**（`.claude/rules/css.md`）。
-     ⚠ **px 固定なので、⚠ 文字サイズに関係なく同じだけ効く。**⚠ そこが効き目の理由。
-     ⚠ 実測（320×640・豊洲・SW 無効・hasTouch・文字サイズは読み込みの前に効かせた）:
-       ⚠ **34px + 20px + 9px のうち 33px を返すと、⚠ 150% で「重ねる」が初めて初期画面に入る**
-         （⚠ 671 / 640 → 640 / 640）。⚠ **写真は 1px も減っていない。**
-     ⚠ **16px + 8px 案では 1px 足りなかった**（⚠ 641 / 640）。⚠ **1px の余裕で出さない**
-       （⚠ この repo は 6px の余裕で破れた前例がある）。 */
-  .wrap{max-width:680px;margin:0 auto;padding:12px 18px 90px}
-  header{margin-bottom:6px}
-  h1{margin:0 0 3px;font-size:var(--fs-sign);letter-spacing:.05em;font-weight:500}
-  /* サブコピー。順位は h1（--fs-sign 19px）＞ここ＞但し書き（--fs-note 12px）。
-     ⚠ 12px（--fs-note）のままだと、画面に残った唯一の文が但し書きと同じ格になる。
-       ここは「次に何をすればよいか」を言う 1 文なので、本文の格で出す。
-     ⚠ 太字にも色付きにもしない。強いのは h1 と検索欄の 2 つで、ここは 3 番目 */
-  .lead{margin:0;font-size:var(--fs-body);color:var(--ink-dim)}
-  /* 場所が決まったら、サブコピーは用が済んでいる。「場所を検索して」と言い続けると、
-     もう選び終えた人に前の段の指示が残る（場所選択中の責務にサービス紹介は無い）。
-     h1（＝この画面が答える問い）は残す。写真がその問いへの答えになっている。
-     ⚠ ここも display で消すが、消えるのは「場所が決まったあと」＝タップの処理が
-       終わったあとなので、入口の1タップは壊れない（.hint の事故と同じ轍は踏まない） */
-  body.picked .lead{display:none}
-  /* サービス名。共有リンクから来た人が「何のサイトか」「戻る先」を持てるように */
-  /* ⚠ **サービス名を、⚠ 説明文の段から引き上げた**（2026-08-23。Owner 判断）。
-     ⚠ 実測（2026-08-23・375×667・変更前）: ⚠ **サービス名 12px は、⚠ 画面でいちばん小さい段**
-       （⚠ 補足・「たとえば」・プライバシーと同じ 12px）。⚠ **見出し H1 19px の 63%。**
-     ⚠ 利用者役 4 名に画面だけを見せた（⚠ **実在の利用者ではない**）:
-       ⚠ **2/4 が「見出しのほうがサービス名だと思った」。**
-     ⚠ **H1 を越えさせない。**⚠ 主役は検索で、⚠ **名前は主役ではない**（`ui-ux-review` §1-2）。
-       ⚠ 15px は H1 19px の 79%。⚠ **名前だと分かる大きさで、⚠ 見出しを食わない。**
-     ⚠ **大きくしたぶん、⚠ 字間を締める**（.22em のままだと散って読みにくい）。 */
-  .brand{display:inline-flex;align-items:center;gap:7px;font-size:var(--fs-brand);letter-spacing:.08em;
-    color:var(--ink-dim);text-decoration:none;
-    /* ⚠ **この箱は `inline-flex` なので、⚠ `margin-bottom` は次の行を押し下げない**
-       （2026-08-23 に実測して分かった。⚠ **元の `margin-bottom:6px` も効いていなかった**）。
-       ⚠ **縦を決めているのは、⚠ この箱の高さのほう**（⚠ 印と字の大きい側）。
-       ⚠ **`line-height:1` で、⚠ 字のぶんの余りを落とす。** */
-    line-height:1;margin-bottom:0}
-  a.brand:hover{color:var(--action)}
-    /* ⚠ **印は、⚠ 字より大きくしない。**⚠ 大きいほうが箱の高さを決めるので、
-       ⚠ **印を上げると、⚠ 名前を上げていないのに縦が伸びる。**
-       ⚠ 実測（2026-08-23・320×640）: ⚠ 印 18px にしたら、
-         ⚠ **「重ねる」が画面の外へ出た**（641 / 640）。 */
-    .brand .mark{width:16px;height:16px;border-radius:4px;flex:none;display:block}
-  .brand{align-items:center}
-/* ⚠ **色は上げない**（2026-08-23）。⚠ 大きさと太さだけで段を付ける。
-   ⚠ **`--ink` にすると H1 と同じ明るさになり、⚠ 見出しと競う**（実測 コントラスト 16.59）。
-   ⚠ **主役は検索。**⚠ 名前は主役ではない（`ui-ux-review` §1-2）。 */
-.brand b{font-weight:600;letter-spacing:.1em}
-  /* ⚠ **β 版であることを、⚠ サービス名の横に置く**（2026-08-23。Owner 判断）。
-     ⚠ 実測（2026-08-23・利用者役 4 名・画面だけを見せた。⚠ **実在の利用者ではない**）:
-       ⚠ **2/4 が「完成品だと思った」。**⚠ 1 名は「個人開発っぽいから、たぶん作りかけ」と
-       ⚠ **画面からではなく雰囲気で**判断していた。
-     ⚠ **説明文にしない。**⚠ H1 と検索欄が主役なので、⚠ competing させない。
-     ⚠ **`⚠` は使わない**（画面の `⚠` は災害リスク専用。CLAUDE.md §4-1）。 */
-  /* ⚠ **β は、⚠ 名前より小さい。**⚠ 名前の付属物であって、⚠ **同格ではない**
-     （⚠ 変更前は β 12.5px ＞ 名前 12px で、⚠ **付属物のほうが大きかった**）。
-     ⚠ **色は \`--ink-faint\` をやめた。**⚠ 実測（2026-08-23）: ⚠ **コントラスト 4.18**で、
-       ⚠ **WCAG AA の 4.5 を割っていた**（⚠ 小さい字ほど効く）。⚠ \`--ink-dim\` で 5.29。 */
-  .brand__beta{font-size:var(--fs-brand-tag);letter-spacing:.04em;line-height:1;
-    padding:2px 6px;border:1px solid var(--line-strong);border-radius:999px;
-    color:var(--ink-dim);flex:none;
-    /* ⚠ **名前と同じ高さに揃えない。**⚠ 揃えると同格に見える（Owner 判断 2026-08-23）。 */
-    align-self:center;position:relative;top:1px}
-
-
-  /* ============ 入力（2段: 場所 → コマンド） ============ */
-  .scope{display:flex;align-items:center;gap:0;border:1px solid var(--line-strong);border-radius:12px;
-    background:var(--surface);overflow:hidden}
-  .scope.on{border-color:color-mix(in srgb, var(--action) 45%, transparent)}
-  .chip{display:none;align-items:center;gap:7px;padding:0 4px 0 13px;white-space:nowrap;flex:none}
-  .scope.on .chip{display:flex}
-  .chip .nm{font-size:var(--fs-lead);color:var(--action)}
-  /* ⚠ 当たり判定は「CSS の計算値」ではなく「その座標を押して本当に届くか」で決める。
-     擬似要素を親からはみ出させる書き方は、.scope の overflow:hidden で下端が切られ、
-     右側は後から重なる #q が先にクリックを拾って、実測 42×42 にしかなっていなかった。
-     ボタン**そのもの**を 44×44 にして、見た目の 19px は中の <i> で描く。
-     こうすると flex の場所取りも var(--tap) ぶん確保されるので、誰にも重ねられないし切られない。 */
-  .chip .x{flex:none;width:var(--tap);height:var(--tap);padding:0;border:0;background:transparent;
-    color:var(--ink-dim);font-size:var(--fs-note);line-height:1;cursor:pointer;display:grid;place-items:center}
-  .chip .x i{width:19px;height:19px;border-radius:5px;border:1px solid var(--line-strong);
-    display:grid;place-items:center;font-style:normal}
-  .chip .x:hover{color:var(--missing)}
-  .chip .x:hover i{border-color:var(--missing)}
-  .scope__input{flex:1;min-width:0;padding:15px 16px;font:inherit;font-size:var(--fs-input);border:0;outline:none;
-    background:transparent;color:var(--ink)}
-  /* placeholder に入りきらない補足。場所を選ぶ前に、入力欄に触れている間だけ出す。
-     ⚠ display で出し入れしてはいけない。**入口が塞がる。**
-       入力欄がフォーカスを失った瞬間にこの行が消え、下にあるもの（候補・地名の例）が
-       まるごと 42px 上へずれる。指を離す前にレイアウトが動くので、
-       押したつもりの座標には別の要素が来ている。
-       実測（375×667）: クイック選択も検索候補も **1タップ目が必ず空振り**していた。
-         クイック「豊洲」 y=302 → タップ後 260（ずれ 42px）→ 判定が始まらない
-         候補1件目      y=299 → タップ後 257（同上）      → 何も選ばれない
-         対照として .hint を常時表示に固定すると、1タップ目で通る
-       親切のつもりで足した1行が、スマホ利用者の最初の1回を毎回無効にしていた。
-     → 場所は常に確保し、visibility だけ切り替える。これならレイアウトが動かない。
-       場所が決まったあと（.scope.on）は用が済んでいるので、そこで初めて畳む
-       （このときの畳みは click の処理が終わったあとなので、タップを壊さない）。 */
-  .hint{visibility:hidden;margin:var(--gap-row) 2px 0;font-size:var(--fs-note);color:var(--ink-dim)}
-  .scope:not(.on):focus-within~.hint{visibility:visible}
-  .scope.on~.hint{display:none}
-
-  #list{margin-top:var(--gap-row)}
-  /* min-height は指の当たり判定（iOS の最小 var(--tap)）。副題の無い行でも下回らせない */
-  #list .it{display:flex;align-items:center;gap:11px;width:100%;min-height:var(--tap);text-align:left;
-    padding:10px 13px;margin-bottom:4px;border:1px solid var(--line-strong);border-radius:9px;
-    background:var(--surface);color:var(--ink);font:inherit;font-size:var(--fs-lead);cursor:pointer;text-decoration:none}
-  #list .it:hover,#list .it.sel{border-color:var(--action);outline:none}
-  #list .it.sel{background:color-mix(in srgb, var(--action) 7%, transparent)}
-  #list .ic{flex:none;width:24px;text-align:center;font-size:var(--fs-body)}
-  #list .tx{flex:1;min-width:0}
-  #list .tx b{font-weight:500}
-  #list .tx small{display:block;color:var(--ink-dim);font-size:var(--fs-note);font-variant-numeric:tabular-nums}
-  /* 判定から出た行だけ、副題（＝なぜ出ているかの理由）を上のバッジと同じ色味にする。
-     どの行も副題を持っているので、グレーのままでは理由が単なる補足に見えてしまう。
-     色は判定に追従させる。ベージュ固定にしていたときは、水域の土地（豊洲など）で
-     判定カードもバッジも青いのにタグだけベージュになり、指し示す先が画面に無かった */
-  #list{--why:var(--land);--why-bg:color-mix(in srgb, var(--land) 12%, transparent);--why-sub:var(--land-ink)}
-  #list.w{--why:var(--water);--why-bg:color-mix(in srgb, var(--water) 14%, transparent);--why-sub:var(--water-ink)}
-  #list .it.why .tx small{color:var(--why-sub)}
-  /* ⚠ **組の見出し**（2026-08-21）。⚠ 行ごとのタグをここへ移した。
-     ⚠ 行ではないので、⚠ 押せる見た目にしない（押しても何も起きない導線を置かない）。 */
-  #list .lh{margin:var(--gap-block) 2px 5px;font-size:var(--fs-note);font-weight:600;color:var(--ink-dim)}
-  #list .lh:first-child{margin-top:var(--gap-sub)}
-  /* 判定バッジから導かれた組であることを色で繋ぐ（陸=.badge.land / 水域=.badge.water と同じ）。
-     ⚠ **2026-08-21 に、行ごとのタグから組の見出しへ移した。**⚠ 繋ぐ理由は変えていない:
-     ベージュ固定にしていたときは、水域（青い判定）でここだけベージュになり、
-     色が何を指しているのか分からなかった。 */
-  /* ⚠ **`.fold` より後か、⚠ 強い書き方にする。**⚠ 同じ強さだと後勝ちで色が消える
-     （⚠ 実測で踏んだ: 見出し rgb(139,150,163) / バッジ rgb(91,163,224)）。 */
-  #list .lh.fold.lh-why{color:var(--why)}
-  /* ⚠ **次の体験（この場所を深掘り）**。⚠ 2026-08-21 に判定カードの中へ入れた。
-     ⚠ 前は一覧の 1 行目に置き、⚠ **枠と地色だけで判定カードと 1 枚に見せていた**
-       （溶接。利用者の指摘「深掘りのための情報は同一カード内に表示しないと迷う」）。
-     ⚠ **中に入れたので、⚠ 溶接そのものが要らなくなった。**⚠ CSS ごと消した。
-     ⚠ 実測（豊洲・375×667・hasTouch・SW 無効）: **y1135 → y655**（⚠ 初期画面に顔を出す）。
-     ⚠ **外部へ渡すだけの行と同じ顔にしない。**⚠ 実測で、本命が「ごはん / ラーメン」と
-       同じ見た目のせいで、⚠ **一覧全体が「リンク集」に見え、2 画面下まで気づかれていなかった。** */
-  .verdict .peel-cta{display:flex;align-items:center;gap:11px;width:100%;min-height:56px;
-    margin:var(--gap-block) 0 0;padding:var(--pad-md);border:1px solid color-mix(in srgb, var(--evidence) 30%, transparent);border-radius:9px;
-    background:color-mix(in srgb, var(--evidence) 5%, transparent);color:var(--ink);text-decoration:none}
-  .verdict.w .peel-cta{border-color:color-mix(in srgb, var(--water) 32%, transparent);background:color-mix(in srgb, var(--water) 6%, transparent)}
-  .verdict .peel-cta:hover{border-color:var(--action)}
-  .verdict .peel-cta .ic{flex:none;width:24px;text-align:center;font-size:var(--fs-sign)}
-  .verdict .peel-cta .tx{flex:1;min-width:0}
-  .verdict .peel-cta .tx b{display:block;font-weight:500;font-size:var(--fs-body)}
-  .verdict .peel-cta .tx small{display:block;color:var(--ink-dim);font-size:var(--fs-note)}
-  .verdict .peel-cta .go{flex:none;color:var(--action)}
-  /* ⚠ **畳んだ組の見出し**（2026-08-21）。⚠ 押すと開く。
-     ⚠ 中身が 0 件の組は、⚠ 見出しごと出さない（Owner 判断）。
-     ⚠ **PC でも畳む**（Owner 判断）。 */
-  #list .lh.fold{display:flex;align-items:center;gap:9px;width:100%;min-height:var(--tap);
-    text-align:left;font:inherit;font-size:var(--fs-note);font-weight:600;cursor:pointer;
-    margin:var(--gap-row) 0 0;padding:var(--pad-md);border:1px solid var(--line-strong);border-radius:9px;
-    background:transparent;color:var(--ink-dim)}
-  #list .lh.fold:hover{border-color:var(--action)}
-  #list .lh.fold .n{margin-left:auto;font-weight:500}
-  #list .lh.fold .cv{flex:none;width:1em;text-align:center;color:var(--ink-dim)}
-  /* 災害リスク。断定ではなく引用なので、出典を必ず添える（掟: 根拠のないことは書かない） */
-  /* ⚠ 畳むが、消さない。掟: 災害リスクを、根拠の奥ではなく正面に出す で「根拠の奥から正面へ」引き上げた判断は生きている。
-     ただし実測で 167px あり、判定カードでいちばん場所を食っていた。
-     見出しは常に見えるので「気をつけることがある」ことは分かる。
-     ⚠ 見出しに危険の中身は書かない。要約すると、原典より強くも弱くもなる（掟: 根拠のないことは書かない）。
-       書けるのは「どの区分についての、誰の記述か」まで。 */
-  .risk{margin-top:var(--gap-block);padding:7px 10px;border-radius:8px;font-size:var(--fs-note);line-height:1.6;
-    background:color-mix(in srgb, var(--wash) 4%, transparent);border-left:2px solid var(--ink-dim);color:var(--ink-2)}
-  .risk>summary{cursor:pointer;list-style:none;display:flex;flex-wrap:wrap;
-    align-items:baseline;gap:4px 8px;min-height:26px}
-  .risk>summary::-webkit-details-marker{display:none}
-  .risk>summary::after{content:"▸";font-size:var(--fs-label);color:var(--ink-dim);margin-left:auto;transition:transform .15s}
-  .risk[open]>summary::after{transform:rotate(90deg)}
-  .risk .rl{font-size:var(--fs-note);letter-spacing:.06em;color:var(--ink-2)}
-  .risk .rs2{font-size:var(--fs-note);color:var(--ink-dim)}
-  .risk .rbody{margin-top:var(--gap-row);padding-top:6px;border-top:1px dashed var(--line)}
-  .risk .rs{display:block;font-size:var(--fs-note);color:var(--ink-dim);margin-top:var(--gap-sub)}
-  .report{display:inline-block;margin-left:6px;padding:3px 10px;border-radius:999px;
-    border:1px solid var(--line-strong);color:var(--action);text-decoration:none;font-size:var(--fs-note)}
-  .report:hover{border-color:var(--action)}
-  .close-why{display:block;width:100%;margin-top:var(--gap-block);padding:10px;border-radius:9px;
-    border:1px solid var(--line-strong);background:transparent;color:var(--ink-dim);
-    font:inherit;font-size:var(--fs-badge);cursor:pointer;min-height:var(--tap)}
-  .close-why:hover{border-color:var(--action);color:var(--action)}
-  /* この範囲の内訳（面）。**凡例と数字を同じ場所で出す。**
-     ⚠ 3 人が 3 人とも「重ねている絵のピンクが荒地か泥地か分からない」と答えた。
-       凡例を別に置くとまた 2 か所になるので、ここが凡例そのものになる。
-     ⚠ 色の四角は**凡例の色そのまま**を使う（`KonjakuSwale.SWALE` の rgb）。
-       ここで色を作り直すと、絵と凡例が食い違う。 */
-  /* ⚠ 余白は 8px。9px だと本命の行が y=1043 で、検査の境目（< 1043）に 1px 足りなかった。
-     ⚠ **文を削って合わせない。** 落とせない中身（別の資料・時期が書かれていない・分母）は
-       すでに 1 行ずつに詰めてある。ここは余白で払う。 */
-  .area{margin-top:var(--gap-row);padding:8px 11px;border-radius:9px;
-    background:color-mix(in srgb, var(--wash) 3.5%, transparent);border:1px solid var(--line-strong)}
-  .area-lead{font-size:var(--fs-body);color:var(--ink);line-height:1.6}
-  .area-lead b{font-weight:600}
-  .area-list{list-style:none;margin:var(--gap-row) 0 0;padding:0;display:flex;flex-wrap:wrap;gap:4px 14px}
-  .area-list li{display:inline-flex;align-items:center;gap:6px;font-size:var(--fs-note);color:var(--ink-dim)}
-  .area-list .nm{color:var(--ink-dim)}
-  .area-list b{color:var(--ink);font-variant-numeric:tabular-nums}
-  /* ⚠ 色の四角は、細い枠を付ける。淡い色（干潟・砂浜）が地に溶けて見えなくなる */
-  .area-list .sw{width:12px;height:12px;border-radius:3px;flex:none;
-    border:1px solid color-mix(in srgb, var(--wash) 35%, transparent)}
-  /* ⚠ 分母。小さくするが、消さない（掟4: 数字は必ず主張範囲の分母で書く）。
-     初見の人は「最初は読み飛ばしたが、読んで必要だと思った。これが無いと
-     浦安ぜんぶの話だと勘違いしていた」と答えた */
-  /* 分母は％のすぐ上（初見の 2 人が「地図全体の話だと思って読んだ」）。⚠ 小さくても消さない */
-  .area-where{margin-top:var(--gap-sub);font-size:var(--fs-evidence);color:var(--ink-dim);line-height:1.5}
-  /* 打ち切った残り。⚠ 色は持たない（凡例に無いものに色を付けると、絵と対応しない） */
-  .area-list .rest{opacity:.75}
-  .area-list .sw-rest{background:repeating-linear-gradient(45deg,
-    color-mix(in srgb, var(--wash) 22%, transparent) 0 3px, color-mix(in srgb, var(--wash) 6%, transparent) 3px 6px)}
-  /* 区分を押すと出る解説。⚠ **こちらでは書かない**（凡例の解説文をそのまま出す）。
-     ⚠ カーソルオーバにしない。スマホで hover が効かない */
-  .area-list .area-item{display:inline-flex;align-items:center;gap:6px;
-    padding:3px 6px;margin:-3px -6px;border:0;border-radius:6px;background:transparent;
-    color:inherit;font:inherit;font-size:var(--fs-note);cursor:pointer;text-align:left}
-  .area-list .area-item:hover{background:color-mix(in srgb, var(--wash) 6%, transparent)}
-  .area-list .area-item[aria-expanded="true"]{background:color-mix(in srgb, var(--action) 14%, transparent)}
-  /* ⚠ 指で押せる高さを取る。見た目を弱めるのと、押しにくくするのは別のこと */
-  @media (hover:none){ .area-list .area-item{min-height:var(--tap);padding:6px} }
-  .area-why{margin-top:var(--gap-row);padding:8px 10px;border-radius:8px;
-    background:color-mix(in srgb, var(--wash) 4%, transparent);border-left:2px solid var(--action);
-    font-size:var(--fs-note);color:var(--ink-dim);line-height:1.65}
-  .area-why-tx{margin-top:var(--gap-sub);color:var(--ink)}
-  /* 出典。⚠ 消さない（引用なので出典を添える。掟3） */
-  .area-why-src{margin-top:var(--gap-row);font-size:var(--fs-evidence);color:var(--ink-faint)}
-  /* 取れなかったことを言う色。⚠ 「無い」と同じ見た目にしない（掟1） */
-  .area-why .warn-tx{color:var(--missing)}
-  /* 数えた範囲を、写真の上に白い枠で出す。
-     ⚠ 「204m 四方」と書いても画面のどこか分からない、と 2 人が言った。
-        言葉ではなく枠で示す。⚠ 押せる見た目にしない（枠だけ。当たり判定も持たせない） */
-  .big .areabox{position:absolute;border:1.5px solid color-mix(in srgb, var(--wash) 85%, transparent);
-    border-radius:2px;pointer-events:none;box-shadow:0 0 0 1px color-mix(in srgb, var(--shadow) 35%, transparent)}
-  .share-msg{margin-top:var(--gap-row);padding:var(--pad-sm);border-radius:7px;font-size:var(--fs-note);
-    background:color-mix(in srgb, var(--evidence) 10%, transparent);border-left:2px solid var(--evidence);color:var(--evidence-ink)}
-  .quick{display:flex;flex-wrap:wrap;gap:6px;margin-top:var(--gap-block)}
-  /* 「たとえば」。行を独り占めさせて、地名の帯の見出しにする。
-     ⚠ 押せる見た目にしない（span のまま。掟: 押しても何も起きない導線を置かない） */
-  .quick .q-lead{flex:0 0 100%;font-size:var(--fs-note);color:var(--ink-faint);margin-bottom:-1px}
-  /* 地名の例は「何を打てばいいか分からない」を越えさせるためのもの。
-     場所が確定したら役目は終わっている。出し続けると一覧の全下（実測 y≈1183、
-     ファーストビューの外）に居座り、押しても画面は動かないので何が起きたか見えない。
-     場所を変える手段は ✕ と「保存した場所」が既に持っている */
-  #scope.on ~ .quick{display:none}
-  /* ⚠ プライバシーの 3 段は、⚠ **場所を送る前だけ**出す。入力例と同じ扱い。
-     ⚠ 送ったあとに残すと「これから送ります」に読める（掟: 進行形を状態の説明に使わない）。 */
-  /* ⚠ 検索欄と**同じ強さ**で並べない。ここは主操作ではなく「何を打てばいいか」の例。
-     実測（375×667）で 10 個・144px あり、枠線が判定カードと同じ var(--line) だったため、
-     主ボタンが 11 個あるように見えていた。枠を外し、地の色をわずかに敷くだけにする。
-     ⚠ 弱めても 10 個は 3 行・169px を占めていたので、出す数そのものを 3 件にした
-       （選び方は下の TOP_EXAMPLE_IDS）。見た目を弱める話と、数を絞る話は別の手当て。
-     ⚠ **当たり判定は下げない。** 見た目を弱めるのと、押しにくくするのは別のこと
-       （下の @media (hover:none) の min-height はそのまま）。 */
-  .quick button{padding:4px 11px;border:1px solid transparent;border-radius:999px;
-    background:color-mix(in srgb, var(--wash) 4.5%, transparent);
-    color:var(--ink-dim);font:inherit;font-size:var(--fs-note);cursor:pointer}
-  /* ⚠ 指で押す端末では、押せる高さを var(--tap) 取る（Apple の指針の値）。
-     実測（375px）: 高さ 29px のまま10個を2行に詰めると、行の間隔が 6px しかなく、
-     押し間違いが「隣の街が開く」という、間違えたことに気づきにくい形で出る。
-     ⚠ 見えない当たり判定を ::after で広げる手は使わない。行の間隔（35px）より
-     判定（var(--tap)）が大きくなり、上下の行の判定が重なって、
-     **下の行を押したのに上の行が開く**という、もっと分かりにくい壊れ方になる。
-     見た目と当たり判定は一致させる。 */
-  @media (hover:none){ .quick button{min-height:var(--tap);padding:4px 13px} }
-  .quick button:hover{border-color:var(--action);color:var(--action)}
-  /* 検索窓に組み込むボタン。入力欄は必ずファーストビューにあるので埋もれない */
-  .in-box{flex:none;height:30px;min-width:34px;padding:0 9px;margin-right:8px;
-    border-radius:8px;border:1px solid var(--line-strong);background:transparent;
-    color:var(--ink-dim);font:inherit;font-size:var(--fs-body);cursor:pointer;line-height:1}
-  .in-box:hover{border-color:var(--action);color:var(--action)}
-  .in-box[disabled]{opacity:.4;cursor:default}
-  #here.busy{color:var(--action);border-color:var(--action)}
-  /* 拒否されたときは、直し方と代わりの手段を必ず出す。消さずに残す */
-  .here-msg{margin-top:var(--gap-row);padding:var(--pad-md);border-radius:8px;font-size:var(--fs-note);line-height:1.7;
-    background:color-mix(in srgb, var(--estimate) 9%, transparent);border-left:2px solid var(--estimate);color:var(--estimate-ink)}
-  .here-msg b{color:var(--estimate);font-weight:500}
-  .here-msg .dim{color:var(--ink-dim)}
-  /* 場所を選んだ時点の「事実」。コマンドではないので一覧の外に置く */
-  .verdict{display:flex;align-items:center;gap:10px;margin-top:var(--gap-row);padding:11px 14px;
-    border-radius:10px;border:1px solid color-mix(in srgb, var(--evidence) 28%, transparent);background:color-mix(in srgb, var(--evidence) 7%, transparent);
-    font-size:var(--fs-body)}
-  .verdict.w{border-color:color-mix(in srgb, var(--water) 35%, transparent);background:color-mix(in srgb, var(--water) 9%, transparent);color:var(--water)}
-  .verdict .tx{flex:1;min-width:0}
-  .verdict .dim{color:var(--ink-dim);font-size:var(--fs-badge)}
-  .verdict{display:block}
-  /* ⚠ **問いの見出し**（2026-08-20。hidetzu/konjaku#122）。⚠ 答えより控えめにする。
-     ⚠ 見出しのほうが目立つと、答えが読まれない（原則3: 結論 → 詳細 → 根拠）。 */
-  .verdict .gq{font-size:var(--fs-note);color:var(--ink-dim);font-weight:600;
-    margin:var(--gap-row) 0 2px;line-height:1.4}
-  .verdict .gq:first-child{margin-top:0}
-  /* ⚠ **2 行になる**（成因と人工改変。ADR 0030 §4-4）。⚠ 横並びにしない */
-  /* ⚠ **行の間を 2 → 6px にした**（2026-08-22。hidetzu/konjaku#148）。
-     ⚠ 補助説明は**上の区分名のもの**なので、⚠ **上との間が下との間より狭い**こと。
-     ⚠ 2px のままだと、区分名との間 1px ／ 次の行との間 2px で、⚠ **ほぼ等間隔**だった
-       （どちらの行の説明か、置き方から読めない）。 */
-  .verdict .v-head{display:flex;flex-direction:column;align-items:flex-start;gap:6px}
-  /* ⚠ **区分名の下の、平易な補助説明**（2026-08-22。hidetzu/konjaku#148）。
-     ⚠ **答えより弱く。**⚠ 同じ格で置くと、どちらが答えか分からなくなる
-       （区分名は <b>＝ --ink、ここは --ink-dim の 12px）。
-     ⚠ **1 行に収める**（18 字まで。字数は check.mjs が数える）。
-     ⚠ **行間を詰める。**⚠ 本文と同じ 1.65 にすると 1 行 20px になり、
-       ⚠ 2 行ぶんで 40px（実測 320×640 の余白は 0px しかない）。1.35 で 16px。 */
-  .verdict .v-head .gl{display:block;margin-top:0;
-    font-size:var(--fs-note);line-height:1.35;color:var(--ink-dim);font-weight:400}
-  /* ⚠ **縦が短い画面では、写真に上限を置く**（2026-08-20。hidetzu/konjaku#122）。
-     ⚠ 答えを先頭へ動かしたぶん（103px）、⚠ **「重ねる」が初期画面から出た**
-       （実測 375×667: y=628〜672 / 画面 667。320×640: 612〜656 / 画面 640）。
-     ⚠ **「重ねる」は写真と一緒に見えていなければならない**（押した結果が見えない）。
-       既存の検査が 1280×800 / 375×667 / 320×640 の 3 つで守っている。
-     ⚠ **29rem は、見出し・答え・年代のコマ・重ねる の合計から出した実測値**で、
-       ⚠ 縦に余裕がある画面（375×720 以上）では 1px も効かない。
-     ⚠ 実測（29rem あり）: 375×667 で写真 391–586・重ねる 591–635。
-                          320×640 で写真 416–584・重ねる 589–633。
-     ⚠ **29rem → 31.5rem にした**（2026-08-22。hidetzu/konjaku#148）。
-       ⚠ 区分名の下に補助説明を 1 行ずつ足したぶん、⚠ **答えが 48 → 83px（+35px）**になった。
-       ⚠ **足したぶんは写真から出した。**⚠ 他に出どころが無かった。
-     ⚠ **31.5rem → 24rem にした**（2026-08-25。hidetzu/konjaku#176）。
-       ⚠ **写真から出すのをやめ、⚠ 下の「判定が出たあとに引っ込めるもの」から出す。**
-       ⚠ 実測（2026-08-25・豊洲・SW 無効・hasTouch・⚠ 文字サイズは**読み込みの前**に効かせた）:
-         ⚠ **31.5rem のままだと、文字 125% で写真 37px・150% で 2px**。⚠ 資料が読めない。
-       ⚠ 実測（24rem ＋ 下限 112px）: 375×667 で 既定 232px（⚠ 初めて 4:3 に戻る）／
-                          125% 187px／150% 112px。⚠ 320×640 で 既定 191px／125% 160px／150% 112px。
-         ⚠ **375×667 の 125% と 150% で、⚠ 「重ねる」が初めて初期画面に入った。**
-       ⚠ **もっと詰めれば 320×640 の 125% も入った。**⚠ **採らなかった**: ⚠ その値だと
-         ⚠ **320×640 の 150% で写真が 16px** になる。⚠ 利用者役 4 名が「写真だと思わなかった」
-         ⚠ と言ったのは 37px（⚠ **実在の利用者ではない**）。
-         ⚠ **見えている写真を、⚠ チェックボックスの位置と引き換えにしない。**
-         ⚠ **この 2 つは、⚠ 定数を詰めるのをやめたら両方とれた**（⚠ 下）。
-
-     ⚠ **24rem は、いまは控えでしかない**（2026-08-26。hidetzu/konjaku#279。ADR 0038）。
-       ⚠ **定数をやめ、⚠ `top.js` の `fitBig()` が実測して `--big-above` に渡す。**
-       ⚠ **上に積んだものと下の「重ねる」を測って引く**ので、⚠ 手で書き写す値が無い。
-       ⚠ **`24rem` が効くのは、⚠ JS が動かなかったときだけ。**
-       ⚠ 実測（2026-08-26・`main` = `1d9c556`・豊洲・SW 無効・hasTouch・⚠ 文字サイズは読み込みの前）:
-                             写真 ／ 重ねるの下端 ／ 画面
-         375×667 既定        232px      600 / 667
-         375×667 125%        232px      666 / 667
-         375×667 150%        165px      667 / 667
-         320×640 125%        171px      640 / 640
-         320×640 150%        120px      640 / 640
-       ⚠ **320×640 の 125% と 150% も、⚠ 初期画面に入るようになった**
-         （⚠ **2026-08-25 の時点では外だった。**⚠ **写真を潰して入れたのではない**:
-          ⚠ 125% 160 → 171px ／ 150% 112 → 120px）。
-       ⚠ **横向きは別**（hidetzu/konjaku#281）。⚠ **写真を 2px まで潰しても足りない**ので、
-         ⚠ **そこでは「重ねる」を諦めて写真を取る**（⚠ 下の下限の項）。
-       ⚠ **読み込んだ「あと」に文字サイズを変えて測らないこと。**
-         ⚠ `layoutBig()` が置き直さないので、⚠ **判定点の位置が嘘になる**（⚠ 1 回踏んだ）。 */
-  /* ⚠ **下限 112px は、⚠ 好みではなく足し算で決まる**（2026-08-25）。
-       ⚠ 写真の右下は **帰属表示（国土地理院）が 44px**（`--attrib`。⚠ **出典は隠さない**＝掟）。
-       ⚠ その上に ＋−。⚠ **PC は縦積みのまま**（32 + 4 + 32 = **68px**）。⚠ 44 + 68 = **112px**。
-       ⚠ **指の端末は横並び 44px** なので 88px で足りるが、⚠ **小さいほうに合わせない。**
-         ⚠ **1 つの値で両方を賄う**（⚠ 2 つ持つと、⚠ 片方だけ古くなる）。
-       ⚠ **112px を割ると、⚠ ＋− は出典を隠さずに置けない。**
-     ⚠ **切れた ＋− は「押しても何も起きない導線」**（ADR 0026）。
-       ⚠ 実測（2026-08-25。⚠ **座標を押して確かめた**）: ⚠ 写真 64px で ＋− とも届かない。
-       ⚠ **computed style は 44×44 のままなので、⚠ 押さないと気づけない。**
-     ⚠ **横向きも、⚠ この下限だけで足りる**（⚠ 別の規則を持たない）。
-       ⚠ 実測: 667×375 ／ 740×360 ／ 844×390 は、⚠ **既定の文字サイズでも写真が 2px** だった
-         （⚠ `100dvh - 24rem` が負になる）。⚠ **そこでは「重ねる」を諦めて写真を取る。**
-       ⚠ **写真を 2px まで潰しても、⚠ まだ 58〜90px 足りない**（実測）。⚠ **潰す意味が無い。** */
-  .verdict > .big{max-height:calc(100dvh - var(--big-above, 24rem));min-height:112px}
-
-  /* ============ 判定が出たあとに引っ込めるもの（2026-08-25。hidetzu/konjaku#176） ============
-     ⚠ **この画面は「狭い幅が既定」。**⚠ ここに書いたものは PC にも効く（`.claude/rules/css.md`）。
-
-     ⚠ **答えが出たら、⚠ 答えを出すための道具は引っ込める。**
-       ⚠ 実測（16px → 24px）: 見出し 31→94px ／ 検索欄 58→72px ／ 問いの見出し 17→25px。
-       ⚠ **この 3 つが、⚠ 判定を読んでいるあいだ、ずっと画面を占めていた。**
-       ⚠ **文字を大きくするほど、⚠ 道具のほうが速く育つ。**
-
-     ⚠ **消すのではなく、⚠ 引っ込める。**⚠ 読み上げと操作からは減らさない。 */
-
-  /* ⚠ **見出しは読み上げに残す。**⚠ `display:none` にすると、⚠ 見出しの無い文書になる。
-     ⚠ **答えそのもの（この土地は ○○）は、すぐ下に出ている。** */
-  body.picked h1{position:absolute;width:1px;height:1px;
-    overflow:hidden;clip-path:inset(50%);white-space:nowrap}
-
-  /* ⚠ **入力欄は畳まない**（2026-08-25 に一度畳んで、⚠ **戻した**）。
-     ⚠ 一度は「判定が出たら検索は済んでいる」と考えて `display:none` にしたが、
-       ⚠ **判定後の入力欄は、⚠ 別の道具に変わっていた**（`top.js` の `setMode`）:
-         ⚠ 未選択  「地名・住所を入力」        ＝ 場所を決める
-         ⚠ 選択後  「豊洲 で調べる（例: ごはん、公園、歯医者、昔）」 ＝ **その場所で探す**
-     ⚠ **畳むと、⚠ 判定後に「ごはん」「昔」と打つ道が丸ごと消える。**
-     ⚠ **実描画が 2 件で捕まえた**（`page.fill("#q")` が届かない／`#q` が見えない）。
-     ⚠ **高さだけを見て、⚠ 何をする欄かを読んでいなかった**（`CLAUDE.md` §7「呼び出し元と依存先を見る」）。 */
-
-  /* ⚠ **1 つ目の問いの見出し**（「ここはどんな土地？」）。
-     ⚠ **答えの文が「この土地は 旧水部」と、⚠ 既に問いを含んでいる。** */
-  body.picked .verdict > .gq:first-of-type{display:none}
-
-  /* ⚠ **▶ と 🔊 の「字」だけ畳む。**⚠ ボタン（44×44）は残す。
-     ⚠ **同じことを `aria-label` が言っている**ので、⚠ 読み上げからは何も減らない。
-     ⚠ 実測: 150% でこの字が 2 行に折れ、⚠ **▶ に重なって見えていた。** */
-  body.picked .strip-ops-tx,
-  body.picked .strip-ax{display:none}
-
-  /* ⚠ **次の段と接させない**（2026-08-20）。⚠ 接すると、44×44 の下端 1px を隣の見出しが拾い、
-     ⚠ **指で押せる大きさが実質 43px になる**（実測: .v-acts の下端 349 と #yrBig の上端 349）。
-     ⚠ computed style は 44 のままなので、⚠ **座標を押して確かめないと気づけない。** */
-  .verdict .v-acts{margin-bottom:10px}
-  /* ✕ と同じ理由で、ボタンそのものを 44×44 にする（見た目の丸は 22px のまま） */
-  .verdict .why{flex:none;width:var(--tap);height:var(--tap);padding:0;border:0;background:transparent;
-    color:var(--ink-dim);font:inherit;font-size:var(--fs-note);cursor:pointer;display:grid;place-items:center}
-  .verdict .why i{width:22px;height:22px;border-radius:50%;border:1px solid var(--line-strong);
-    display:grid;place-items:center;font-style:normal}
-  .verdict .why:hover{color:var(--action)}
-  .verdict .why:hover i{border-color:var(--action)}
-  .verdict .why[aria-expanded="true"]{color:var(--action-ink)}
-  .verdict .why[aria-expanded="true"] i{background:var(--action);border-color:var(--action)}
-  /* 答えの下に、押せるものだけを並べる行。
-     ⚠ 以前この 2 つは**答えの一文の中に浮いていて**、実測（2026-08-17 / 375×667）で
-       「もとは 水だった土地（旧水部）です。いまは 盛土地･埋立地 です。」を **3 行に割り**、
-       最終行に「す。」だけが取り残されていた。
-       UI/UX レビュー 原則2「主役は1つ」— 本命は答えの一文なのに、脇のボタンが割っていた。
-     ⚠ **名前を添える。** 絵だけだと初見の人 3 体とも「どこかへ飛ぶ」と予想して 3 体とも外れ、
-       1 体は 2 回押して画像が 2 枚落ちた（2026-08-14）。何が起きるかを字で書く。 */
-  .v-acts{display:flex;flex-wrap:wrap;gap:7px;margin-top:var(--gap-row)}
-  .v-acts .why{width:auto;min-width:0;height:auto;min-height:var(--tap);padding:0 11px 0 7px;
-    grid-auto-flow:column;gap:7px;border-radius:9px;border:1px solid var(--line-strong);
-    font-size:var(--fs-badge)}
-  .v-acts .why:hover{border-color:var(--action)}
-  /* ============ 年代（帯＝操作 ＋ 大きい写真） ============ */
-  /* この土地の空中写真を、撮られた順に並べて選ばせる。選んだ年代が下で大きくなる。
-     ⚠ 中間の年代について、こちらは一言も書かない。
-       「1960年代：造成開始」のような行は、空中写真からは出せないことが実測で
-       分かっている（掟: 画素から出せないことは言わない（実測1） — 輝度・分散・彩度では水陸すら分離できない。
-       皇居の森が東京湾より暗い）。建設年も OSM に **543件中8件**しか無い
-       （10街40万件では 1,216件 = 0.30%）。
-       写真を切り替えれば、変化は見た人が読み取る。こちらが言葉にした瞬間、
-       それは判定ではなく作文になり、この画面のほかの行と格が揃わなくなる。
-     ⚠ 出せるのは photos() が実際に読めた年代だけ。読めていない年代は並べない。 */
-  .strip{display:flex;align-items:flex-start;gap:4px;margin:0 0 9px}
-  /* 共有された年代がこの土地に無かったときの1行。**年代を選ぶ帯のすぐ上**に置く。
-     ⚠ 判定文の近くではなく、ここ。読んだ人が次にすることは「別の年代を選ぶ」なので、
-       選ぶ場所の隣にないと、何をすればよいか分からない。
-     ⚠ 警告色（err）にはしない。壊れてはいない。共有元と別のものを見ている、という断り書き */
-  .era-miss{margin:0 0 7px;padding:var(--pad-sm);border-radius:7px;border:1px solid var(--line-strong);
-    background:color-mix(in srgb, var(--wash) 4%, transparent);color:var(--ink-dim);font-size:var(--fs-note);line-height:1.5}
-  /* 昔 → 今 の向きを、端に置いた2文字だけで示す。
-     枠が狭い端末では年代ラベルを畳むので、向きの手がかりがこれだけになる */
-  /* 帯を動かす操作。⚠ **帯のすぐ上**に置く。動かす相手は帯（年代）なので、
-     押すものと動くものを離さない。実測（2026-08-17）で、以前は
-     **帯の下端から 487px（375px 幅）／650px（PC）**離れていた。
-     ⚠ 帯の中（コマと同じ行）には入れない。コマが縮む（375px: 27→25px / 320px: 21→18px）。
-     ⚠ **名前を添える。** ▶ だけだと「何が始まるか分からないので押すのが怖い」と
-       初見の人が答えた（2026-08-17）。 */
-  .strip-ops{display:flex;align-items:center;gap:7px;margin:0 0 5px}
-  .strip-ops-tx{font-size:var(--fs-evidence);color:var(--ink-faint)}
-  /* ⚠ 実体の指定は下（`.op` の定義より後ろ）に置く。ここに書くと、
-     あとから来る `.op{width:30px;height:30px}` に上書きされて 44px が効かない（実測で踏んだ）。 */
-
-  /* 「昔 → 今」の向き。**帯の外、すぐ上の行の右端**に置く。
-     ⚠ 以前は帯の両端（`.strip .end`）にあり、実測（2026-08-17 / 375×667）で
-       帯 309px のうち **34px（11%）を両端が食っていた**。コマは 27px×9枚。
-       外へ出すと 309px を全部コマに使えて **30px** になる。
-       コマは「小さくて押せるように見えない」と指摘が出ている場所なので、ここは効く。
-     ⚠ **向きは消さない。** 「昔→今」は初見の人が
-       「時間のスライダーだとすぐ分かった。ここは良い」と評価した数少ない要素。
-       両端に離して置く代わりに、矢印で向きを明示する。
-     ⚠ 行は増やさない（▶ の行に相乗りする）。独立行にすると写真も本命も 18px 下がる。 */
-  .strip-ax{margin-left:auto;display:flex;align-items:center;gap:5px;flex:none;
-    font-size:var(--fs-label);color:var(--ink-dim)}
-  .strip-ax i{font-style:normal;color:var(--ink-faint);letter-spacing:-.5px}
-  /* 判定を待つあいだの骨組み。本番と同じ形にして、差し替わるときに飛び跳ねさせない */
-  .strip .sk{flex:1 1 0;min-width:0;aspect-ratio:1;border-radius:6px;border:1px solid var(--line);
-    background:linear-gradient(100deg,var(--surface) 30%,var(--surface-2) 50%,var(--surface) 70%);
-    background-size:220% 100%;animation:sk 1.4s ease-in-out infinite}
-  @keyframes sk{0%{background-position:180% 0}100%{background-position:-80% 0}}
-  /* ⚠ 幅を固定しない。8枚を 375px に収めるために、枠のほうを伸縮させる。
-     以前は 72px 固定＋横スクロールで、いちばん見せたい「現在」が画面の外にいた */
-  .strip .f{flex:1 1 0;min-width:0;padding:0;border:0;background:transparent;
-    color:inherit;font:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent}
-  .strip .im{position:relative;display:block;width:100%;aspect-ratio:1;border-radius:6px;
-    overflow:hidden;border:1px solid var(--line-strong);background:var(--surface)}
-  .strip .im img{width:100%;height:100%;object-fit:cover;display:block;opacity:.62}
-  .strip .f:hover .im{border-color:var(--action)}
-  .strip .f.on .im{border-color:var(--action);box-shadow:0 0 0 2px color-mix(in srgb, var(--action) 35%, transparent)}
-  .strip .f.on .im img{opacity:1}
-  .strip .f.now.on .im{border-color:var(--action)}
-  /* 明治期は写真ではなくデータ。写真と同じ顔で並べない */
-  .strip .f.meiji .im{border-color:color-mix(in srgb, var(--land) 45%, transparent)}
-  .strip .f.meiji .yr{color:var(--land)}
-  .strip .im>img+img{position:absolute;inset:0}
-  /* 判定した地点そのもの。object-position と同じ割合で置くので、枠が何pxでも同じ場所を指す */
-  .strip .mk{position:absolute;width:7px;height:7px;margin:-4px 0 0 -4px;border-radius:50%;
-    border:1.5px solid color-mix(in srgb, var(--wash) 90%, transparent);box-shadow:0 0 0 1px color-mix(in srgb, var(--shadow) 60%, transparent)}
-  .strip .yr{display:none;margin-top:var(--gap-sub);font-size:var(--fs-note);line-height:1.2;color:var(--ink-dim);
-    text-align:center;font-variant-numeric:tabular-nums}
-  .strip .f.on .yr{color:var(--ink)}
-  /* 年代ラベルは、入る幅があるときだけ出す。入らない幅では大きい写真の見出しが受け持つ */
-  @media (min-width:520px){ .strip .yr{display:block} }
-  /* 出せなかった1枚。img からは「写真が無い」のか「読めなかった」のか区別できないので、
-     枠を残して読めなかったとだけ言う。黙って詰めると年代が飛んだように見える */
-  .strip .im.err{display:grid;place-items:center}
-  /* ⚠ 読めていないコマ。押せないので、押せる見た目にしない（ADR 0026） */
-  .strip .f.unread{cursor:default;opacity:.85}
-  /* ⚠ **「読み込めず」をやめた。**実測（2026-08-19・利用者役 3 名。⚠ 実在の利用者ではない）:
-     ⚠ **2/3 が「自分の通信のせい」と読んだ**（CLAUDE.md §4-1 が禁じている読まれ方）。
-     ⚠ こちらにも相手にも原因を決めつけず、**この画面でいまどうなのか**だけを言う。
-     ⚠ 進行形（「読み込み中」）にしない。いま自分の端末で起きていることに読める。 */
-  /* ⚠ **改行は自分で入れる。**任せると 375px で「いま出せませ／ん」と語の途中で割れた
-     （実測 2026-08-19・出島）。⚠ この画面は同じ踏み方を一度している
-     （「空中写真ではありま／せん」）。 */
-  .strip .im.err::after{content:"いま\A出せません";white-space:pre-line;
-    font-size:var(--fs-label);line-height:1.2;
-    color:var(--estimate);text-align:center;padding:0 2px}
-  .strip .im.err img,.strip .im.err .mk{display:none}
-
-  /* --- 選んだ年代を大きく --- */
-  /* 掴めることを、形でも出す（タッチ端末には効かないので、文言も別に出している） */
-  .big{cursor:grab;position:relative;width:100%;aspect-ratio:4/3;border-radius:10px;overflow:hidden;
-    border:1px solid var(--line-strong);background:var(--surface);margin:0 0 9px}
-  /* ⚠ 広い画面では 4:3 だと**写真そのものが初期画面から出る**。
-     実測（2026-08-17 / 1280×800）: 写真 614×461px で下端 y=818（画面 800）。
-     写真の下に「重ねる」を出したので、両方を初期画面に入れるには写真を縮めるしかない。
-     ⚠ 縮めるのは**幅ではなく比**。max-height で切ると、絵は同じ大きさのまま上下が
-       切れるだけで、印（中心）が枠の真ん中から外れる。 */
-  /* ⚠ 16/10（下端 794px）では画面 800 まで **6px** しか無く、CI のフォントで簡単に破れる
-     （実測で 10px 動いた前例がある）。5/3 にして 22px 取る。 */
-  @media (min-width:760px){ .big{aspect-ratio:5/3} }
-  .big .lyr{position:absolute;inset:0;opacity:0;transition:opacity .28s ease}
-  .big .lyr .t{position:absolute;display:block}
-  .big .lyr.on{opacity:1}
-  .big .mk{position:absolute;width:11px;height:11px;margin:-6px 0 0 -6px;border-radius:50%;
-    border:2px solid color-mix(in srgb, var(--wash) 95%, transparent);box-shadow:0 0 0 1.5px color-mix(in srgb, var(--shadow) 65%, transparent)}
-  /* 主役は年代。写真の上に、読める大きさで置く（TimeMap の年バッジと同じ役割） */
-  /* ⚠ 年バッジと「寄せたものの名前」は、同じ積み上げに入れて位置を決める。
-       以前 .fx を bottom:46px で別に置いていたら、sub を持つ年代
-       （1936–42 陸軍撮影 / 1945–50 米軍撮影 / 現在 / 明治期 ＝ 9 コマ中 4 つ）で
-       年バッジが 46px より高くなり、実測で 102×10px 覆っていた。
-       固定値で避けようとすると、年バッジの高さが変わるたびに破れる。 */
-  .big .bl{position:absolute;left:10px;bottom:var(--attrib);z-index:3;
-    display:flex;flex-direction:column-reverse;align-items:flex-start;gap:6px;
-    max-width:calc(100% - 72px)}
-  /* いま見ている年代。**帯の見出し**として、帯のすぐ上に置く。
-     ⚠ 以前は写真の中（左下の札）にあり、実測（2026-08-17 / 375×667）で
-       写真 309×232px の **23%（現在）〜29%（明治期）**を覆っていた。
-     ⚠ **副題を同じ行に流す**（`小さい字`）。明治期は「低湿地データ／空中写真ではありません」の
-       2 行があり、これは落とせない（掟1: 空中写真でないものを写真と呼ばない）。
-     ⚠ 折り返しても帯を押し下げるだけで、何も覆わない。写真の中にいたときは覆っていた。 */
-  .strip-title{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 8px;margin:0 0 6px;
-    font-size:var(--fs-era);letter-spacing:.02em;font-variant-numeric:tabular-nums;line-height:1.3}
-  .strip-title small{font-size:var(--fs-evidence);color:var(--ink-dim);letter-spacing:.04em;
-    line-height:1.4}
-  /* 大きい写真が落ちたときに、前の絵を黙って残さない */
-  .big-err{display:none}
-  /* ⚠ 年代の見出し（#yrBig）は写真の外へ出したので、ここでは隠さない。
-     写真が落ちても「どの年代を見ようとしていたか」は残す（消すと、何が落ちたか分からない） */
-  .big.err .lyr,.big.err .mk,.big.err .bl{display:none}
-  .big.err .big-err{display:grid;place-items:center;position:absolute;inset:0;
-    font-size:var(--fs-note);color:var(--estimate);text-align:center;padding:0 12px;
-    /* ⚠ 理由と接続の話を 2 行で出す（2026-08-20）。⚠ **1 行に詰めると読めない** */
-    white-space:pre-line;line-height:1.7}
-  /* --- 寄る --- */
-  .big-in{position:absolute;inset:0;transition:transform .35s cubic-bezier(.2,.7,.2,1)}
-  /* 拡大量と移動量は JS が入れる（枠の外にあるものを真ん中へ寄せるため） */
-  .big .unzoom{display:none;position:absolute;right:8px;top:8px;z-index:3;
-    padding:5px 10px;border-radius:999px;border:1px solid var(--line-strong);
-    background:color-mix(in srgb, var(--bg) 75%, transparent);color:var(--ink);font:inherit;font-size:var(--fs-note);cursor:pointer}
-  .big.zoom .unzoom{display:block}
-  /* 🔊 は ▶ と同じ行（.strip-ops）にいる。写真の中ではない */
-  .say{flex:none;width:30px;height:30px;border-radius:50%;cursor:pointer;padding:0;
-    border:1px solid var(--line-strong);display:grid;place-items:center;
-    background:transparent;color:var(--ink);font:inherit;font-size:var(--fs-note);line-height:1}
-  .say i{font-style:normal}
-  .say:hover{border-color:var(--action);color:var(--action)}
-  .say.on{background:var(--action);color:var(--action-ink);border-color:var(--action)}
-  /* 鳴らなかったことを、画面に出す（無音のまま黙らない） */
-  .say-msg{display:block;margin:0 0 7px;padding:6px 10px;border-radius:8px;
-    font-size:var(--fs-note);line-height:1.5;
-    background:color-mix(in srgb, var(--bg) 85%, transparent);border:1px solid color-mix(in srgb, var(--estimate) 45%, transparent);color:var(--estimate-ink)}
-  .big.zoom .unzoom:hover{border-color:var(--action);color:var(--action)}
-  /* この範囲にあるものの位置。写真は静止画なので、印の側で示す */
-  /* 地図（触った瞬間に載る）。載ったら静止した写真は下に隠す */
-  .big .map{position:absolute;inset:0;display:none}
-  .big.map-on .map{display:block}
-  .big.map-on .big-in{display:none}
-  .big.map-on .bl{z-index:3}
-  .big:active{cursor:grabbing}
-  /* ⚠ 右下は地図の帰属表示（国土地理院）が使う。実測（2026-08-16 / 375×667）で
-     ＋− がその上に乗り、「国土地理院」が途中で切れて読めなかった。出典は隠さない。 */
-  .big .zoombar{position:absolute;right:8px;bottom:var(--attrib);z-index:4;display:flex;flex-direction:column;gap:4px}
-  .big .zoombar button{width:32px;height:32px;border-radius:8px;cursor:pointer;
-    border:1px solid var(--line-strong);background:color-mix(in srgb, var(--bg) 75%, transparent);color:var(--ink);
-    font:inherit;font-size:var(--fs-claim);line-height:1;backdrop-filter:blur(6px)}
-  .big .zoombar button:hover{border-color:var(--action);color:var(--action)}
-  /* ⚠ **指で押す端末では var(--tap)。** 実測（2026-08-17 / 375×667 touch）で
-     🔊 34×34px・＋ 32×32px・− 32×32px と、どれも 44px に届いていなかった。
-     オーナーが「スマホで操作してみたけど、押しづらい」と報告して分かった。
-     ⚠ **同じ 44px の規則を `/peel` では検査していた**（ズーム・読み上げ）のに、
-       トップには検査が無く、誰も見ていなかった。だから 34px のまま残った。
-     ⚠ PC は 34/32px のまま。マウスの狙いは指より細かく、
-       写真の上の札は大きいほど写真を隠す（写真が本命）。 */
-  @media (hover:none){
-    .say{width:var(--tap);height:var(--tap)}
-    .big .zoombar button{width:var(--tap);height:var(--tap)}
-    /* ⚠ **指の端末では、⚠ ＋− を横に並べる**（2026-08-25。hidetzu/konjaku#176。Owner 判断）。
-       ⚠ **縦だと 44+4+44 = 92px** あり、⚠ **写真が短いときに枠から出て押せなくなる。**
-       ⚠ 実測（2026-08-25・豊洲・SW 無効・hasTouch。⚠ **座標を押して届くかで見た**）:
-         ⚠ 縦: 375×667 の 150% で ＋ が **見えている高さ 22px・届かない**。
-             ⚠ 320×640 の 150% では **0px**（⚠ **完全に枠の外**）。
-         ⚠ 横: 4 条件とも届く。⚠ **下限 112px と合わせて、⚠ どの条件でも 44×44 が残る。**
-       ⚠ **`css.md` の MUST「押せるものは 44×44 を割らない」。**
-         ⚠ **computed style は縦でも 44×44 のまま**なので、⚠ **座標を押さないと気づけない。**
-       ⚠ **PC は縦のまま。**⚠ 横に広げると、⚠ 写真（本命）を横に隠す。 */
-    .big .zoombar{flex-direction:row}
-  }
-  .big.map-loading .loading{display:block}
-  .big.map-loading .loading::after{content:"地図を読み込んでいます…"}
-  .big.map-loading .loading{font-size:0}
-  .big.map-loading .loading::after{font-size:var(--fs-label)}
-  .big .loading{display:none;position:absolute;left:50%;top:12px;transform:translateX(-50%);
-    z-index:4;padding:5px 12px;border-radius:999px;font-size:var(--fs-note);color:var(--ink);
-    background:color-mix(in srgb, var(--bg) 80%, transparent);border:1px solid var(--line);backdrop-filter:blur(6px)}
-  .big .pin{position:absolute;width:9px;height:9px;margin:-5px 0 0 -5px;border-radius:50%;
-    background:color-mix(in srgb, var(--estimate) 90%, transparent);border:1.5px solid color-mix(in srgb, var(--bg) 85%, transparent);
-    box-shadow:0 0 0 1px color-mix(in srgb, var(--estimate) 50%, transparent)}
-  .big .pin.on{background:var(--action);box-shadow:0 0 0 3px color-mix(in srgb, var(--action) 35%, transparent)}
-  /* ⚠ 寄せた先に、押したものの名前を残す。
-     実測（2026-08-14・利用者役のエージェント3体）: 押すと一覧の行そのものが画面から出ていき、
-     17行中15行で**名前がどこにも残らなかった**。画面にはぼやけた写真と同じ色の丸が
-     複数あるだけで、「動いたのは分かるが、何に寄ったのか分からない」。
-     年バッジ（左下）の上に置く。右下は拡大縮小のボタンが 76px 使うので避ける。 */
-  .big .fx{display:none;max-width:100%;padding:5px 10px;border-radius:8px;
-    font-size:var(--fs-lead);line-height:1.45;color:var(--ink);
-    background:color-mix(in srgb, var(--bg) 85%, transparent);border:1px solid var(--line-strong);backdrop-filter:blur(6px)}
-  /* 中身が無いときは出さない（押しても何も起きない導線を置かない、の裏返し） */
-  .big.zoom .fx:not(:empty){display:block}
-  .big .fx .fy{color:var(--estimate);font-variant-numeric:tabular-nums;margin-right:7px}
-
-  /* --- この時点までにできていたもの --- */
-  .ev{margin:0 0 11px}
-  /* ⚠ flex-wrap が無いと、狭い幅で件数ピルが縮んで 2 行に割れる
-       （実測 375/320px で 8 種の見出しすべて。18.5 → 35.0px） */
-  .ev-h{display:flex;align-items:center;flex-wrap:wrap;gap:7px;font-size:var(--fs-note);
-    color:var(--ink-dim);margin-bottom:6px}
-  .ev-n{font-size:var(--fs-label);padding:1px 7px;border-radius:999px;
-    background:color-mix(in srgb, var(--estimate) 14%, transparent);color:var(--estimate)}
-  .ev-row{display:flex;align-items:stretch;gap:4px;margin-bottom:3px}
-  .ev-it{display:flex;align-items:center;flex-wrap:wrap;gap:9px;row-gap:1px;flex:1;min-width:0;min-height:38px;text-align:left;
-    padding:6px 10px;border:1px solid var(--line-strong);border-radius:8px;
-    background:var(--surface);color:var(--ink);font:inherit;font-size:var(--fs-badge);cursor:pointer}
-  /* ⚠ 項目ごとの出典。source_url を必須にしておきながら、画面に出していなかった */
-  .ev-u{flex:none;display:grid;place-items:center;width:30px;border:1px solid var(--line-strong);
-    border-radius:8px;color:var(--ink-dim);text-decoration:none;font-size:var(--fs-note)}
-  .ev-u:hover{border-color:var(--action);color:var(--action)}
-  .ev-it:hover{border-color:var(--action)}
-  .ev-it.on{border-color:var(--action);background:color-mix(in srgb, var(--action) 8%, transparent)}
-  .ev-y{flex:none;font-size:var(--fs-evidence);color:var(--estimate);font-variant-numeric:tabular-nums}
-  /* 無くなったものは、できたものと同じ顔で並べない */
-  .ev-row.gone .ev-y{color:var(--ink-dim)}
-  .ev-row.gone .ev-l{color:var(--ink-dim);text-decoration:line-through;text-decoration-color:color-mix(in srgb, var(--wash) 25%, transparent)}
-  .ev-k{flex:none;font-size:var(--fs-label);padding:1px 6px;border-radius:999px;
-    background:color-mix(in srgb, var(--wash) 7%, transparent);color:var(--ink-dim)}
-  /* ⚠ flex:1 だと名前枠と説明枠が余白を折半し、説明の頭が名前の長さで動く
-       （PC 実測: 8 行 7 通り・幅 91.7px。表なのに列が揃わない）。名前は左に寄せきる。 */
-  .ev-l{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  /* ⚠ 説明は、押す前に読めるところに置く。利用者役のエージェント3体の第1位が「押す前に知りたい」で、
-       アコーディオン（開かないと読めない）は2周とも0票だった。
-     ⚠ 既定で行を折り返す（flex-basis:100%）。名前の長さで折り返す行としない行が
-       混ざると、境界に乗った項目（島病院は 256.9px vs 255px）で見え方が揺れる。
-     ⚠ 680px 以上では名前の右が空いている（実測 463.6px の名前枠のうち 75.8% が空）ので、
-       同じ行に置く。PC では行の高さは 38px のまま増えない。 */
-  .ev-d{flex:1 1 100%;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
-    font-size:var(--fs-note);line-height:1.5;color:var(--ink-dim)}
-  @media (min-width:680px){ .ev-d{flex:1 1 auto} }
-  .ev-row.gone .ev-d{color:var(--ink-faint)}
-  /* ⚠ 「位置を見る」を行ごとに繰り返すのはやめた（利用者役のエージェントによる検証 3/3 で外す側）。
-       9.5px の 5 文字を 8 回、**行そのものが既に持っている情報**として並べていた。
-       しかも実測すると、PC では右端ではなく **名前と説明のあいだ**に入り
-       （説明のある行は途中／無い行は右端）、同じ画面で位置が 2 か所を行き来していた。
-       当たり判定はもともと行ぜんぶ（SP 257×52.9px／PC 580×38px）にある。
-       行は枠＋面＋角丸で、この画面に来るために押した #list .it と同じ形をしていて、
-       あちらも動作を名乗るラベルを 1 文字も持っていない。
-       ⚠ .ev-it.on .ev-go{color:--action} も一緒に消した。書いてはあったが、
-       押した 300ms 後には写真へスクロールしていて、**見える瞬間が存在しなかった**。
-     代わりに、案内は見出しの下に 1 回だけ置く。 */
-  .ev-tip{font-size:var(--fs-note);color:var(--action);margin:0 0 6px}
-  /* ⚠ 指の的。実測（2026-08-15）で、行 38px・↗ 30px幅・隙間 4px と、
-       自分で宣言している --tap:44px を3つとも割っていた。
-     ⚠ 隙間を広げるのは、隣り合う的の**行き先が違う**から。
-       行＝この画面の中で地図が動く／↗＝外部サイトへ出ていく。
-       4px の誤爆で、人がサイトから出る。 */
-  @media (hover:none){
-    .ev-it{min-height:var(--tap)}
-    .ev-u{width:var(--tap)}
-    .ev-row{gap:8px}
-  }
-  .ev-note{padding:7px 10px;border-radius:8px;font-size:var(--fs-note);line-height:1.6;
-    background:color-mix(in srgb, var(--wash) 4%, transparent);color:var(--ink-dim)}
-  .ev-note.warn{background:color-mix(in srgb, var(--estimate) 9%, transparent);border-left:2px solid var(--estimate);color:var(--estimate-ink)}
-  /* ⚠ 指で押せる大きさ（var(--tap)）。ピンを 29→var(--tap) に上げたのと同じ理由。
-     ここは初めて来た人が最初に触る可能性のある唯一の一歩なので、外させない */
-  /* ⚠ 注記そのものを押せるようにする。別の要素を足すと高さが増え、折り返しの下へ出る
-     （実測: ボタンを足したら 51px → 95px）。見た目は注記のまま、当たり判定だけ全面。 */
-  .ev-note.step{display:block;width:100%;text-align:left;font:inherit;font-size:var(--fs-note);
-    line-height:1.6;cursor:pointer;border:1px solid var(--line-strong);
-    border-left:2px solid var(--action)}
-  .ev-note.step:hover{border-color:var(--action)}
-  /* ⚠ 指で押す端末では var(--tap)（ピンを 29→var(--tap) にしたのと同じ理由）。
-     ここは初めて来た人が最初に触る可能性のある唯一の一歩なので、外させない */
-  @media (hover:none){ .ev-note.step{min-height:var(--tap)} }
-  .ev-note.step b{color:var(--action);font-weight:600}
-  .ev-note.step .go{color:var(--action);margin-left:6px}
-  .ev-note.warn b{color:var(--estimate);font-weight:500}
-  /* ⚠ 出典と、何を言っていないかを必ず添える。ここを削ると、ただの断定になる */
-  .ev-more{margin-top:var(--gap-sub);font-size:var(--fs-note);color:var(--ink-dim)}
-  /* ⚠ **この行そのものを押せるようにする**（2026-08-21。hidetzu/konjaku#141）。
-     ⚠ 別のボタンを足すと高さが増える。⚠ 上の .ev-note.step と同じ手。
-     ⚠ 見た目は注記のまま、⚠ **当たり判定だけ全面**。 */
-  .ev-more.step{display:block;width:100%;text-align:left;font:inherit;
-    font-size:var(--fs-note);line-height:1.6;cursor:pointer;padding:7px 10px;
-    border-radius:8px;background:color-mix(in srgb, var(--wash) 4%, transparent);
-    border:1px solid var(--line-strong);border-left:2px solid var(--action);color:var(--ink-dim)}
-  .ev-more.step:hover{border-color:var(--action)}
-  /* ⚠ 指で押す端末では var(--tap) を割らない */
-  @media (hover:none){ .ev-more.step{min-height:var(--tap)} }
-  .ev-more.step .go{color:var(--action);margin-left:6px}
-  .ev-src{margin-top:var(--gap-row);font-size:var(--fs-evidence);line-height:1.65;color:var(--ink-faint)}
-  .ev-src b{color:var(--ink-dim);font-weight:500}
-
-  /* 重ねる操作。別ページでやっていたことを、判定と同じ画面に置く */
-  .ops{display:flex;align-items:center;gap:9px;margin:0 0 9px}
-  .op{flex:none;width:30px;height:30px;border-radius:50%;cursor:pointer;
-    border:1px solid var(--line-strong);background:transparent;color:var(--ink);
-    font:inherit;font-size:var(--fs-note);line-height:1}
-  .op:hover{border-color:var(--action);color:var(--action)}
-  /* 帯を動かす ▶。⚠ **指で押す端末では 44px 取る**（Apple の指針）。
-     ⚠ `.op` より**後ろ**に置くこと。前に置くと上書きされる（実測で踏んだ）。 */
-  .op-play{width:30px;height:30px}
-  @media (hover:none){ .op-play{width:var(--tap);height:var(--tap);font-size:var(--fs-note)} }
-  .op.on{background:var(--action);color:var(--action-ink);border-color:var(--action)}
-  .mixbar{display:flex;flex:1;min-width:0;align-items:center;gap:9px;font-size:var(--fs-note);color:var(--ink-dim)}
-  /* 「現在」を選んでいるときは、重ねるものが無い（自分と自分を比べることになる） */
-  .mixbar.off{visibility:hidden}
-  /* 明治期の土地を写真に重ねる。判定の裏取りとして、面で見える。
-     ⚠ **「水域」と呼ばない。** 重ねているタイルは低湿地データの **14 区分すべて**で、
-       水域はそのうち 2 つ（干潟・砂浜 / 河川・湖沼・海面）でしかない。
-       実測（2026-08-17）: 豊洲は水域 100% だが、**浦安は 97% が水域以外**
-       （砂礫地 85.8% / 草地 6.8% / 水域 2.9% / 堤防 2.7% / 泥炭地 0.5% …）。
-       「水域を重ねる」は**見せているものより狭い名前**だった。
-     ⚠ `/peel` の「水域」は建物の足元が水だったかの話なので、あちらは正しい。揃えない。
-     ⚠ 写真の左下の積み上げ（.bl）に入れる。以前は写真・判定文・▶ の下にあり、
-        実測（2026-08-16 / 豊洲）で 1280×800 では y=831 と**初期画面の外**、
-        375×667 でも 552px と写真の下だった。固定値で位置を決めると隣と重なるので、
-        年バッジ・寄せた先の名前と同じ積み上げに入れて、写真と一緒に動かす。 */
-  /* ⚠ **写真の上に載る板は、これ 1 つだけにした**（2026-08-17）。
-     以前は年代の札（yr-big）と 2 枚が縦に並び、実測で写真 309×232px の
-     29%（明治期）を覆っていた。札は帯の見出し（.strip-title）へ出した。
-     この操作は補助なので、地色も文字も一段引く。ただし**押せる大きさは削らない**（44px）。 */
-  /* ⚠ **写真の外（枠のすぐ下）に置く。** 中に載せていたときの名残に注意:
-       地色を敷いていたのは「明るい写真や水色の上で沈む」からで（実測 2026-08-16）、
-       外へ出したいまは要らない。背景と同じ地の上なので、枠だけで足りる。 */
-  .ov{display:flex;align-items:center;gap:8px;width:100%;min-height:44px;
-    box-sizing:border-box;padding:5px 11px;margin:-4px 0 9px;border-radius:8px;cursor:pointer;
-    background:transparent;border:1px solid var(--line-strong);
-    font-size:var(--fs-evidence);line-height:1.35;color:var(--ink-dim)}
-  .ov:hover{border-color:var(--action)}
-  .ov input{accent-color:var(--action);flex:none}
-  /* いま重ねているのかどうかを、言葉で出す（チェックの形だけに頼らない） */
-  /* ⚠ 小さくはするが、薄くはしすぎない。ここは「いまどうなっているか」そのもの */
-  .ov-st{display:block;font-size:var(--fs-label);color:var(--ink-dim)}
-  /* ⚠ 以前ここに `.ov.none{display:none}` があり、明治期のコマで重ねる操作を隠していた。
-     当時は「重ねる相手（空中写真）が無い」ため正しかったが、いまは相手がある
-     （下に敷いた淡色地図）。塗りを透かしたので入り切りで絵が変わる。規則ごと消した。 */
-  .mixbar input[type=range]{flex:1;min-width:0;accent-color:var(--action);height:22px}
-  .mixbar .mixv{flex:none;width:34px;text-align:right;font-variant-numeric:tabular-nums}
-  /* ⚠ 上に詰めない。実測（2026-08-17）で `margin-top:-3px` にしており、
-     面の内訳の枠と **3px 重なって**いた（オーナーが「被っているようにみえる」と報告）。
-     これは「調べた範囲の申告」なので、上の枠と混ざって読めるようにしない */
-  .strip-foot{margin:var(--gap-block) 0 11px;font-size:var(--fs-note);color:var(--ink-dim)}
-  .strip-foot b{color:var(--ink);font-weight:500}
-  .strip-foot .warn{color:var(--estimate)}
-
-  /* バッジ。読ませずに1秒で伝えるための層 */
-  .badges{display:flex;flex-wrap:wrap;gap:5px;margin-top:var(--gap-block)}
-  /* 粗い区分で答えたときの断り書き。判定を打ち消す情報なので、判定と同じ枠の中に置く */
-  .coarse{margin-top:var(--gap-row);padding:var(--pad-sm);border-radius:7px;font-size:var(--fs-note);line-height:1.5;
-    background:color-mix(in srgb, var(--estimate) 9%, transparent);border-left:2px solid var(--estimate);color:var(--estimate-ink)}
-  /* ⚠ **nowrap は残す**（バッジの途中で折り返すと、何のバッジか読めなくなる）。
-     ⚠ **ただし、画面より広くならないようにする**（2026-08-20）。
-       実測: 文字サイズ 150%・320px 幅で「📷1936–42年から見られる（7年代）」が
-       ⚠ **339px になり、画面（320px）を 52px はみ出していた**。
-     ⚠ **max-width で頭打ちにし、あふれたら … で切る。**
-       ⚠ 切れても押せるし、⚠ **全文は吹き出し（title）に残す**。 */
-  .badge{display:inline-flex;align-items:center;gap:5px;padding:3px 9px;border-radius:999px;
-    font-size:var(--fs-note);letter-spacing:.01em;border:1px solid var(--line-strong);background:color-mix(in srgb, var(--wash) 4%, transparent);
-    color:var(--ink-dim);white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis}
-  .badge i{font-style:normal;font-size:var(--fs-note)}
-  .badge.water{color:var(--water);border-color:color-mix(in srgb, var(--water) 35%, transparent)}
-  .badge.land{color:var(--land);border-color:color-mix(in srgb, var(--land) 30%, transparent)}
-  .badge.warn{color:var(--estimate);border-color:color-mix(in srgb, var(--estimate) 35%, transparent)}
-  /* 取れなかったときの行。断定の代わりに、状態と復帰手段だけを出す（掟: 取れなかったを「無い」と言わない） */
-  .retry-msg{margin-top:var(--gap-block);padding:var(--pad-md);border-radius:8px;font-size:var(--fs-note);line-height:1.7;
-    background:color-mix(in srgb, var(--estimate) 9%, transparent);border-left:2px solid var(--estimate);color:var(--estimate-ink)}
-  .retry-msg b{color:var(--estimate);font-weight:500}
-  .retry-msg .retry,#result .retry{margin-left:8px;padding:3px 11px;border-radius:6px;
-    border:1px solid color-mix(in srgb, var(--estimate) 45%, transparent);background:transparent;color:var(--estimate);
-    font:inherit;font-size:var(--fs-note);cursor:pointer}
-  .retry-msg .retry:hover{border-color:var(--estimate);background:color-mix(in srgb, var(--estimate) 16%, transparent)}
-  /* PC の操作説明。キーは実物らしく見せる（Raycast のような手触りを狙う） */
-  /* 候補は10行あるので、一覧の直下に置くだけでは下端が画面の外に出る（実測 y=889 / 780px 画面）。
-     見えない説明に意味は無いので、はみ出す間だけ画面下端に貼る。
-     貼り付く範囲は #listbox の中なので、一覧を通り過ぎればそのまま流れて消える。
-     背景はページと同じ色。板が増えたようには見えないが、下の行は透けない。 */
-  .kbd{position:sticky;bottom:0;z-index:2;background:var(--bg);
-    font-size:var(--fs-note);color:var(--ink-faint);padding:8px 0 6px;display:flex;flex-wrap:wrap;
-    gap:5px 14px;align-items:center}
-  .kbd .k{display:inline-flex;align-items:center;gap:4px}
-  /* 押しても何も起きないキーは薄くする。表示と挙動を同じ規則（sel<0）から生やす */
-  .kbd .k.off{opacity:.42}
-  .kbd .k b{font-weight:400;color:var(--ink-dim)}
-  .kbd kbd{display:inline-block;min-width:19px;padding:2px 6px;border-radius:5px;
-    font:inherit;font-size:var(--fs-note);line-height:1.4;text-align:center;color:var(--ink);
-    background:linear-gradient(180deg,var(--surface-2),var(--surface));
-    border:1px solid color-mix(in srgb, var(--wash) 14%, transparent);border-bottom-color:color-mix(in srgb, var(--shadow) 60%, transparent);
-    box-shadow:0 1px 0 color-mix(in srgb, var(--shadow) 50%, transparent),inset 0 1px 0 color-mix(in srgb, var(--wash) 6%, transparent)}
-  /* タッチ端末には出さない。物理キーが無いので説明として使えないうえ、
-     画面下端に貼り付くぶん候補が2行隠れる（実測 375×667・候補10件）。
-     使えない説明のために見える候補を減らすのは、どちらの目的も達していない。 */
-  @media (hover:none){ .kbd{display:none} }
-
-  /* ============ 結果 ============ */
-  #result{margin-top:26px;display:none}
-  .group{margin-top:22px}
-  .group>.gh{display:flex;align-items:center;gap:8px;font-size:var(--fs-label);letter-spacing:.16em;
-    color:var(--ink-dim);margin-bottom:9px}
-  .card{display:block;padding:13px 15px;margin-bottom:7px;border-radius:11px;text-decoration:none;
-    border:1px solid var(--line-strong);background:var(--surface);color:var(--ink);transition:.13s}
-  a.card:hover{border-color:var(--action);transform:translateX(2px)}
-  .card .t{font-size:var(--fs-body)}
-  .card .d{font-size:var(--fs-evidence);color:var(--ink-dim);margin-top:var(--gap-sub)}
-  .card .v{font-size:var(--fs-claim);margin-top:var(--gap-row)}
-  .card .v.w{color:var(--water)}
-  .card .ev{margin-top:var(--gap-row);padding-top:7px;border-top:1px dashed var(--line);
-    font-size:var(--fs-evidence);color:var(--ink-dim);font-variant-numeric:tabular-nums;line-height:1.55}
-  .card .arrow{float:right;color:var(--ink-dim);font-size:var(--fs-note)}
-  /* 取得方法。直読みなのか推定なのかを、事実ごとに隠さず出す */
-  .card .method{float:right;font-size:var(--fs-label);letter-spacing:.08em;padding:1.5px 7px;border-radius:999px;
-    background:color-mix(in srgb, var(--evidence) 14%, transparent);color:var(--evidence)}
-  .card .method.weak{background:color-mix(in srgb, var(--estimate) 16%, transparent);color:var(--estimate)}
-  /* コマンドから飛んできたとき、どのカードの話かを一瞬示す */
-  @keyframes flash{0%{border-color:var(--action);background:color-mix(in srgb, var(--action) 16%, transparent)}
-    100%{border-color:var(--line-strong);background:var(--surface)}}
-  .card.flash{animation:flash 1.1s ease-out}
-  /* 評価は検索窓の右端に置く。入力欄は必ずファーストビューにあるので埋もれない */
-  .mine-toggle{flex:none;margin-right:8px;min-width:34px;height:30px;padding:0 9px;
-    border-radius:8px;border:1px solid var(--line-strong);background:transparent;
-    color:var(--ink-dim);font:inherit;font-size:var(--fs-lead);cursor:pointer;line-height:1}
-  .mine-toggle:hover{border-color:var(--mine);color:var(--mine)}
-  .mine-toggle.rated{color:var(--mine);border-color:color-mix(in srgb, var(--mine) 45%, transparent);background:color-mix(in srgb, var(--mine) 10%, transparent)}
-  .mine-toggle[aria-expanded="true"]{border-color:var(--mine);color:var(--mine)}
-  #mine{margin-top:var(--gap-row);padding:11px 13px;border-radius:10px;
-    border:1px solid color-mix(in srgb, var(--mine) 24%, transparent);background:color-mix(in srgb, var(--mine) 5%, transparent)}
-  .mine-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-  .mine-note{margin-left:auto;font-size:var(--fs-note);color:var(--ink-dim)}
-  .saveline .dim{color:var(--ink-dim)}
-  .stars{display:flex;gap:4px;margin:0 0 8px}
-  .stars button{width:30px;height:30px;border-radius:7px;border:1px solid var(--line-strong);
-    background:transparent;color:var(--ink-dim);font-size:var(--fs-body);cursor:pointer;padding:0}
-  .stars button.on{color:var(--mine);border-color:color-mix(in srgb, var(--mine) 45%, transparent);background:color-mix(in srgb, var(--mine) 10%, transparent)}
-  #memo{width:100%;min-height:66px;padding:var(--pad-md);border-radius:9px;border:1px solid var(--line-strong);
-    background:color-mix(in srgb, var(--shadow) 25%, transparent);color:var(--ink);font:inherit;font-size:var(--fs-badge);resize:vertical}
-  #memo:focus{outline:none;border-color:var(--action)}
-  .saveline{display:flex;justify-content:space-between;align-items:center;margin-top:var(--gap-row);
-    font-size:var(--fs-note);color:var(--ink-dim)}
-  .saveline button{padding:4px 10px;border:1px solid var(--line-strong);border-radius:6px;background:transparent;
-    color:var(--ink-dim);font:inherit;font-size:var(--fs-note);cursor:pointer}
-  .saveline button:hover{border-color:var(--action);color:var(--action)}
-  #saved .row{display:flex;justify-content:space-between;gap:10px;padding:8px 12px;margin-bottom:5px;
-    border:1px solid var(--line-strong);border-radius:9px;background:var(--surface);cursor:pointer;font-size:var(--fs-badge)}
-  #saved .row:hover{border-color:var(--action)}
-  #saved .row .s{color:var(--mine);font-size:var(--fs-note);white-space:nowrap}
-  .note{font-size:var(--fs-note);color:var(--ink-dim);line-height:1.6}
-  .warn{color:var(--estimate)}
-  /* フッターは権利表記と作者だけ。細かい注記は畳んでおく */
-  footer{margin-top:34px;padding-top:14px;border-top:1px solid var(--line);
-    font-size:var(--fs-note);color:var(--ink-faint);line-height:1.7}
-  footer .f-main{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
-  footer .sep{color:var(--ink-ghost)}
-  footer .f-priv{margin-top:var(--gap-row);font-size:var(--fs-note);line-height:1.7;color:var(--ink-dim)}
-  footer .f-priv b{color:var(--ink-3);font-weight:500}
-  footer .f-more{margin-top:var(--gap-row)}
-  footer .f-more summary{cursor:pointer;color:var(--ink-faint);font-size:var(--fs-note);list-style:none;
-    display:inline-flex;align-items:center;gap:5px;padding:2px 0}
-  footer .f-more summary::-webkit-details-marker{display:none}
-  footer .f-more summary::before{content:"▸";font-size:var(--fs-label);transition:transform .15s}
-  footer .f-more[open] summary::before{transform:rotate(90deg)}
-  footer .f-more summary:hover{color:var(--action)}
-  footer .f-author{margin-top:var(--gap-block);padding-top:8px;border-top:1px solid var(--line);
-    display:flex;flex-wrap:wrap;gap:6px;align-items:center}
-  /* ⚠ **押せるものは 44×44 を割らない**（`.claude/rules/css.md`）。
-     ⚠ 実測（2026-08-23・375×667・main = 71349bf）: ⚠ **13 個が 44 を割っていた**
-       （例: 「国土地理院」60×20 ／ 畳みの「プライバシーについて」129×24）。
-     ⚠ **利用者役 1 名が、⚠ 国土地理院のリンクを押そうとして 2 回外した。**
-     ⚠ **指の端末だけに効かせる**（PC はポインタが細いので、⚠ 余白だけ増えても損）。
-     ⚠ この画面は「狭い幅が既定」なので、⚠ **既定に書いて、⚠ 広い幅で戻す**
-       （`css.md`。⚠ **打ち消しは同じ形のセレクタで書く**。⚠ 3 回踏んでいる）。 */
-  footer .f-main a, footer .f-author a, footer .f-more summary{
-    display:inline-flex;align-items:center;min-height:44px;min-width:44px}
-  footer .f-body{margin-top:var(--gap-row);padding:10px 12px;border-radius:8px;
-    background:color-mix(in srgb, var(--wash) 3%, transparent);border:1px solid var(--line);font-size:var(--fs-note);line-height:1.75}
-  footer .f-body b{color:var(--ink-dim);font-weight:500}
-  /* ⚠ **フッターのリンクは、⚠ 通常はグレー**（2026-08-23。Owner 判断）。
-     ⚠ 実測（2026-08-23・375×667）: ⚠ **出典リンクのコントラストが 10.06 で、⚠ 画面で最大**
-       だった（⚠ プライバシーの 1 行 5.29 ／ サービス名 6.43）。
-     ⚠ 利用者役 4 名に画面だけを見せた（⚠ **実在の利用者ではない**）:
-       ⚠ **2/4 が「本文より出典のほうが目立っている」。**⚠ **2/4 は「目立ってよい」で割れた。**
-     ⚠ **消すのではない。**⚠ 押せることは、⚠ **下線で分かる**（下線は残す）。
-     ⚠ **hover と focus では、⚠ アクセント色に戻す**（⚠ 押せると分かる手がかりを減らさない）。
-     ⚠ **focus の輪郭は消さない**（⚠ キーボードで辿れなくなる）。 */
-  footer a{color:var(--ink-dim)}
-  footer a:hover, footer a:focus-visible{color:var(--action)}
-  /* ============ 深掘りの URL に場所が無かったときの 1 行 ============ */
-  /* ⚠ **hidetzu/konjaku#221。**⚠ Owner 判断（2026-08-23）で「自然に閉じる」形にした。
-     ⚠ **消えるのはこれだけ。**⚠ 「次に何をすればいいか」は、⚠ **下の `.hint` が常時言っている**
-       （⚠ ADR 0026: ⚠ 正しい但し書きを見えない場所に置くのは、書いていないのとほぼ同じ）。
-     ⚠ **警告色にしない**（⚠ `/peel` の `#stateMiss` と同じ考え。⚠ 壊れてはいない）。
-     ⚠ **`⚠` の記号も使わない**（画面の `⚠` は災害リスク専用）。
-     ⚠ **新しい CSS なので class で組む**（`.claude/rules/css.md`）。 */
-  .flashnote{display:flex;align-items:flex-start;gap:8px;
-    margin:0 0 10px;padding:9px 10px;border-radius:8px;
-    border:1px solid color-mix(in srgb, var(--wash) 18%, transparent);background:color-mix(in srgb, var(--wash) 5%, transparent);
-    color:var(--ink-dim);font-size:var(--fs-note);line-height:1.6}
-  .flashnote__text{flex:1;min-width:0}
-  /* ⚠ **自動で閉じるものにも、⚠ 手で閉じる道を残す。**⚠ 44×44 を割らない */
-  .flashnote__close{flex:none;display:inline-flex;align-items:center;justify-content:center;
-    width:var(--tap);height:var(--tap);margin:-9px -10px -9px 0;
-    border:0;background:transparent;color:var(--ink-dim);font:inherit;
-    font-size:var(--fs-badge);cursor:pointer;border-radius:8px}
-  .flashnote__close:hover{color:var(--action)}
-  /* ⚠ **出るときだけ動かす。**⚠ 消えるときは、⚠ 読んでいる途中で動くと追えない */
-  .flashnote{animation:flashnote-in .18s ease-out}
-  @keyframes flashnote-in{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
-  a{color:var(--action)}
-  @media(min-width:681px){
-    /* ⚠ **上の余白は、⚠ 広い幅では元に戻す**（2026-08-25）。⚠ 詰めたのは狭い幅の事情。 */
-    .wrap{padding-top:34px}
-    header{margin-bottom:20px}
-    .verdict{margin-top:var(--gap-block)}
-    /* ⚠ **同じ形のセレクタで戻す**（上と同じ 0-0-3 / 0-1-2）。⚠ 形が違うと負ける */
-    footer .f-main a, footer .f-author a, footer .f-more summary{min-height:0;min-width:0}
-  }
-  /* ============ 動きを減らす ============ */
-  /* ⚠ OS・ブラウザで「動きを減らす」を入れている人には、動きだけを消す。
-     ⚠ **消すのは動きであって、結果ではない。** 年代は変わるし、寄せた先へも行く。
-       0 にせず .01ms にするのは、`transitionend` / `animationend` を待つ処理を
-       止めないため（0 だと発火しない実装がある）。
-     ⚠ **個別のセレクタを並べない。** 並べると、次に transition を足した人が漏らす。
-       実測（2026-08-19）: この画面は transition 5 宣言・animation 2 宣言。
-       /peel は transition 8 宣言。数え上げで維持できる数ではない。
-     ⚠ 同梱 MapLibre の DOM にも届くが、**地図のカメラは WebGL/JS なので影響しない**。
-       MapLibre 自身も同じ扱いをしている（vendor の CSS に同じ媒体クエリがある）。 */
-  @media (prefers-reduced-motion: reduce){
-    *,*::before,*::after{
-      animation-duration:.01ms !important;
-      animation-iteration-count:1 !important;
-      transition-duration:.01ms !important;
-      /* ⚠ いまこの画面に scroll-behavior は 1 つも無い（実測 2026-08-19）。
-         **効いていないが、置いておく。** あとで足した人がここを通る。
-         ⚠ 寄せる操作の behavior は JS 側（scrollToEl）が決めていて、こことは別。 */
-      scroll-behavior:auto !important}
-  }
-
-  /* ============================================================
-     ⚠ PC は 2 カラム（2026-08-20・hidetzu/konjaku#87）
-     ⚠ **左＝読むもの、右＝見るもの。**⚠ 1 本の線だけ。タブは作らない。
-
-     ⚠ **なぜ必要か**（実測 2026-08-20・1280×800・豊洲）
-       本文幅は 3 幅とも 680px 固定で、⚠ **1920 では画面の 65%（1240px）が空白**。
-       それでいて縦は 1879px あり、⚠ **答えの文（.v-head）の下端が y=811 で画面の外**。
-       ⚠ **答えの上に「見るもの」が 563px 積まれている**のが理由
-       （見出し 38 ＋ ▶ 30 ＋ 帯 83 ＋ 写真 368 ＋ 重ねる 44）。
-       ⚠ **それを右へ抜けば、答えが上がる。**
-
-     ⚠ **DOM の順は変えない。**⚠ CSS だけで割る。
-       読み上げとキーボードの順が変わると、別の不具合になる。
-
-     ⚠ **割るのは #verdict の中だけ。**⚠ .wrap では割れない。
-       #verdict は自前の枠（背景・境界・角）を持っている。
-       ⚠ display:contents で平らにすると、その枠が壊れる。
-       ⚠ **だから #listbox は、いままでどおり枠の下に横いっぱいで残す。**
-     ⚠ **2026-08-21 に、⚠ #list との溶接はやめた**（⚠ 深掘りをカードの中へ入れたため）。
-
-     ⚠ **切り替える幅は 68.75rem（＝1100px）。**
-       ⚠ 左 28.75rem ＋ 右 38.375rem（いまの写真幅 614px）＝ 67.125rem が下限。
-       ⚠ **@media は CSS 変数を読めない**ので、ここだけ直に書く。
-       ⚠ メディアクエリの rem は html{font-size} の影響を受けない（初期値が基準）。
-     ============================================================ */
-  @media (min-width:68.75rem){
-    /* ⚠ 版面を広げるのは、2 カラムのときだけ。狭い幅では触らない。
-       ⚠ **上限を置く。**⚠ 置かないと、広い画面で 1 行が長くなりすぎて読めない。 */
-    .wrap{max-width:min(100%, 100rem)}
-
-    /* ⚠ **格子（grid）では作れなかった。**⚠ 実測（2026-08-20・1280×800）:
-         列を指定しても**行は左右で共有**され、⚠ **2 つの列ではなく 2 列の表**になる。
-           行3  帯(96)   ／ 明治期の面(119)  → ⚠ 左の 119 が右の帯を押し下げた
-           行4  写真(400) ／ 昔の写真(20)    → ⚠ 右の 400 が左のバッジを y=946 へ押し下げた
-         ⚠ その結果、⚠ **「重ねる」が y=857 で画面の外**へ出た（既存の検査が捕まえた）。
-       ⚠ **列ごとに独立して積むには float を使う。**⚠ float は前の float の下に積む。
-       ⚠ **DOM の順は変えていない**（読み上げとキーボードの順はそのまま）。
-       ⚠ flow-root は、float だけになった箱の高さを保つため（overflow:hidden だと中身が切れる）。 */
-    .verdict{display:flow-root}
-
-    /* ⚠ **右＝見るもの。**⚠ clear:right で、右の中だけで縦に積む */
-    .verdict > .strip-title,
-    .verdict > .strip-ops,
-    .verdict > .strip,
-    .verdict > .big,
-    .verdict > .ov,
-    /* ⚠ **次の体験は「見るもの」の列**（2026-08-21）。⚠ 重ねるのすぐ下に置く。
-       ⚠ **流れの中の箱のままにすると、⚠ 2 段組そのものが壊れる**（実測で踏んだ）:
-         ⚠ 幅いっぱいの箱が float の列を分断し、⚠ **1 段組に戻って
-           #verdict が 605 → 1074px・ページが 1546 → 1643px になった**。 */
-    .verdict > .peel-cta{float:right;clear:right;
-      width:calc(100% - var(--detail-pane-width) - 20px)}
-
-    /* ⚠ **左＝読むもの。**⚠ 幅を決めて、右の float の左に流す。
-       ⚠ **float:left にしてはいけない**（2026-08-20 にやって戻した。hidetzu/konjaku#122）。
-         ⚠ float は、⚠ **前の float の上端より上に出られない。**
-         ⚠ 写真の下に置いた「共有する／なぜそう言える？」は DOM 上で右の float の後ろに来るので、
-           ⚠ **左の段ごと y=661 まで落ち、ページ高が 1439 → 1773 に増えた**（1100×800 実測）。
-         ⚠ **流れの中の箱は、前の float を無視して上から積める。**だから float にしない。 */
-    .verdict > .gq,
-    .verdict > .v-head,
-    .verdict > .v-acts,
-    .verdict > .share-msg,
-    .verdict > .say-msg,
-    .verdict > .area,
-    .verdict > .strip-foot,
-    .verdict > .ev,
-    .verdict > .badges,
-    .verdict > .risk,
-    .verdict > .coarse,
-    .verdict > .retry-msg,
-    .verdict > .ev-tip{width:var(--detail-pane-width);clear:left}
-
-    /* ⚠ 判定を待っているあいだの 1 行は、横いっぱいで出す */
-    .verdict > .v-head:only-child{width:auto;float:none}
-
-    /* ⚠ **写真の高さに上限を置く。**⚠ **2 つの小さいほう。**
-         30rem（＝480px）  … ⚠ **横を使ったぶん縦が増えるのを止める**。
-                              実測（上限なし・1920×1080）: ページ高 1879 → **2023**。
-                              ⚠ **この Issue は縦のあふれを直すもの。増やしたら本末転倒。**
-         100dvh - 28rem    … ⚠ **「重ねる」が写真と一緒に初期画面に見える**ため。
-                              実測（30rem だけ・1280×800）: 重ねるの下端が **864**（画面 800）。
-                              ⚠ **写真と操作が離れると、何を重ねるのか分からない**
-                              （既存の検査が守っている。⚠ **実際にそれが落ちた**）。
-       ⚠ **2 つとも効いている**（2026-08-20 に片方ずつ外して確かめた）。
-         30rem を外すと      1920×1080 で「重ねる」が **1091**（画面 1080）→ 外へ出る
-         100dvh-28rem を外すと 1280×800 で「重ねる」が **804**（画面 800）→ 外へ出る
-       ⚠ **28rem → 33rem にした**（2026-08-20。hidetzu/konjaku#122）。
-         ⚠ 答えを先頭へ動かしたので、⚠ **右の段が答えの下からしか始まれない**
-           （float は、前の float の上端より上に出られない）。⚠ その差だけ写真を詰める。
-         ⚠ 実測（1280×800）: 28rem のままだと「重ねる」が **865**（画面 800）で外へ出る。
-       ⚠ **33rem → 35.5rem にした**（2026-08-22。hidetzu/konjaku#148）。
-         ⚠ 補助説明の 1 行ずつで答えが +35px。⚠ 左が伸びれば、右の段も同じだけ下がる。
-         ⚠ 実測（1280×800）: 33rem のままだと「重ねる」が **811**（画面 800）で外へ出る。 */
-    /* ⚠ **35.5rem → 30rem にした**（2026-08-25。hidetzu/konjaku#176）。
-       ⚠ **狭い幅と同じ不具合が、⚠ PC にもあった。**⚠ 実測（1280×800）:
-         ⚠ **文字 150% で写真が 2px・判定点が枠の外**（⚠ 35.5rem だと引き算が負になる）。
-       ⚠ 実測（30rem）: 既定 320px（⚠ 232px から戻った）／125% 200px／150% 80px。⚠ 3 段とも入る。
-       ⚠ **上の 30rem（＝横を使ったぶん縦が増えるのを止める）とは別の数字。**⚠ 偶然そろっただけ。 */
-    .verdict > .big{max-height:min(30rem, calc(100dvh - var(--big-above, 30rem)))}
-  }
-
-</style>
-</head>
-<body>
-<div class="wrap">
-
-<header>
-  <div class="brand"><svg class="mark" viewBox="0 0 64 64" aria-hidden="true"><rect x="8" y="8" width="48" height="48" rx="6" fill="#2f7fc4"/><path d="M32 8h24v48H32z" fill="#e8dcc0"/><rect x="13" y="34" width="6" height="14" fill="#dce8f2"/><rect x="22" y="27" width="6" height="21" fill="#dce8f2"/><path d="M36 46c4-3 6 2 9 0s6 2 9 0" stroke="#2f7fc4" stroke-width="3" fill="none"/><path d="M36 37c4-3 6 2 9 0s6 2 9 0" stroke="#2f7fc4" stroke-width="3" fill="none" opacity=".6"/><rect x="31" y="8" width="2" height="48" fill="#0b0e13" opacity=".5"/></svg><b>今昔</b><span class="brand__beta">β</span></div>
-  <!-- 何のサービスかを最初の画面で言う。
-       利用者役のエージェントによる検証で「グルメ検索? 不動産?」と受け取られ、理解まで1分半かかっていた。
-       書けるのは判定できることだけ（掟: 根拠のないことは書かない / 掟: 確率を出さない。実測値そのものを出す）。埋立年や「昔は海」は画素から出せないので書かない。 -->
-  <h1>この土地は、昔なんだったのか？</h1>
-  <!-- ⚠ 標高は「低地かどうか」に使うだけで、区分の判定には**使っていない**。
-       区分は地形分類のポリゴンと明治期の低湿地タイルの画素だけで決まる。
-       読んだものと使ったものを混ぜて書かない。 -->
-  <!-- サブコピーは**1文だけ**。この画面の責務は「場所を1つ決めること」で、
-       土地の判定・年代・根拠・保存を説明する責務は持たない。
-       ⚠ ここで言うのは**次に何をすればよいか**であって、こちらの手口ではない。
-         以前ここには「国土地理院などのデータを実際に読んで判定します。」と
-         「🔍場所を探す →🗺成り立ちを判定 →📷昔の写真」の 3 段の図が並んでいた。
-         実測（2026-08-17 / 375×667）で説明が 2 つ・40px を占め、検索欄は y=164 にいた。
-         2 つは同じことを二度言っている（何が起きるか）ので、1 文に畳んだ。
-       ⚠ **何を読んでいるかを画面から消したわけではない。**
-         出所（国土地理院・OpenStreetMap・Wikidata）はフッターに常時出ており、
-         判定の中身は場所を選んだあとの判定カードと根拠が持つ。
-         最初の 5 秒に要らないものを、**後ろへ動かした**（掟: 必要になるまで見せない）。
-         ⚠ 消えていないことは実描画が見る（フッターに出典が出ていること）。
-       ⚠ 「判定根拠まで確認できます」も初期画面には置かない。
-         根拠は**判定したあとにしか操作できない**ので、ここに置くと説明だけが増える
-         （原則4「説明より操作」）。根拠の入口は判定カードの ? とフッターにある。 -->
-  <p class="lead">場所を検索して、その土地の時間をさかのぼる。</p>
-</header>
-
-<!-- ⚠ 深掘りの URL に場所が無かったときの 1 行（hidetzu/konjaku#221）。
-     ⚠ **既定では空**（高さ 0）。⚠ 中身を入れるのはスクリプトの 1 か所だけ。
-     ⚠ **`role="status"` にする**（⚠ `alert` にしない。⚠ 危険ではない）。
-     ⚠ **検索欄より上に置く**（2026-08-23 に測って決めた）。
-       ⚠ **前は入力例の下に置いていた。**⚠ `?q=` で検索が成功すると、
-         ⚠ **候補と結果が上に積まれて、⚠ y=359 → 1166 へ押し出された**
-         （⚠ 375×667。⚠ **画面の外**）。⚠ **見えていない注釈は無いのと同じ**（ADR 0026）。
-       ⚠ **ここなら、⚠ 下に何が積まれても動かない。**
-     ⚠ **「場所を選ぶと深掘りできます」と言うので、⚠ 選ぶ場所のすぐ上に置く。** -->
-<div id="flashNote" role="status" aria-live="polite"></div>
-
-<div class="scope" id="scope">
-  <div class="chip"><span class="nm" id="chipName"></span><button class="x" id="chipX" title="場所を変える"><i>✕</i></button></div>
-  <!-- placeholder は入力欄の可視幅（375px 幅の端末で 259px）に収まる長さにする。
-       前の文言は 361px 必要で、肝心の「（例: 豊洲）」が切れて見えなかった。
-       ⚠ 「（例: 豊洲）」はここから外した。すぐ下に「たとえば ［豊洲］［渋谷］［広島］」が
-         出ており、同じ例を二度出していた。ここは**何を入れられるか**だけを言う。
-       ⚠ 場所が決まったあとの文言は setMode() が持っている。**2 か所ある**ので、
-         片方だけ直さない（場所未選択と場所選択中で入力欄の意味が違う）。
-       補足は下の .hint に出す（入力欄に触れている間だけ） -->
-  <input id="q" class="scope__input" placeholder="地名・住所を入力" autocomplete="off" autofocus>
-  <button id="here" class="in-box" title="現在地から調べる">📍</button>
-  <button id="mineToggle" class="mine-toggle in-box" title="この場所の評価とメモ"
-          aria-expanded="false" style="display:none">☆</button>
-</div>
-<!-- placeholder に入らなかった補足。場所を選ぶ前に入力欄へ触れている間だけ出す -->
-<div class="hint">地名のほか、駅名・施設名でも探せます（📍 で現在地から）</div>
-<div id="hereMsg" class="here-msg" style="display:none"></div>
-<!-- 自分の記録。入力欄の右端の ☆ で開く。
-     ⚠ 判定カードの**前**に置く。後ろに置いていたとき、実測でパネルは y=976 に出ていた。
-       押したのは画面上部のボタンなのに、開く先は2画面下。しかも自動でスクロールしないので、
-       利用者からは「星の色が変わっただけ」に見えていた。 -->
-<div id="mine" style="display:none">
-  <div class="mine-row">
-    <div class="stars" id="stars"></div>
-    <span class="mine-note" id="savedAt">未保存</span>
-  </div>
-  <textarea id="memo" placeholder="行った / また来たい / 誰と来た など"></textarea>
-  <div class="saveline"><span class="dim">この端末にだけ保存され、公開されません</span>
-    <button id="clearOne">この場所の記録を消す</button></div>
-</div>
-<div id="verdict" style="display:none"></div>
-
-<!-- 一覧とキーヒントを1つの箱にまとめる。ヒントは箱の中で下端に貼り付くので、
-     候補が10行あっても画面内に残り、一覧を通り過ぎれば一緒に消える -->
-<div id="listbox">
-  <div id="list"></div>
-  <div class="kbd">
-    <span class="k" id="kMove"><kbd>↑</kbd><kbd>↓</kbd> 選ぶ</span>
-    <span class="k" id="kEnter"><kbd>Enter</kbd> <b>決定</b></span>
-    <span class="k" id="kEsc"><kbd>Esc</kbd> <b>入力を消す</b></span>
-  </div>
-</div>
-<div class="quick" id="quick"></div>
-
-<div id="result">
-  <div class="group">
-    <!-- ⚠ ここには「自前・根拠あり」のバッジがあった（2026-08-20 に消した）。
-         ⚠ **中身が全部この土地の根拠なので、バッジが何も分けていなかった。**
-         ⚠ 作り手側の分類でもある（掟: 内部状態をそのまま画面に出さない）。 -->
-    <div class="gh">この土地について</div>
-    <div id="own"></div>
-    <!-- 開くと自動で下までスクロールするので、? は画面の外にある。
-         ここに閉じる手段が無いと、戻り方が見えない -->
-    <button class="close-why" id="closeWhy" style="display:none">根拠を閉じる</button>
-  </div>
-</div>
-
-<div class="group" id="savedWrap" style="display:none">
-  <div class="gh">保存した場所</div>
-  <div id="saved"></div>
-  <div class="saveline"><span class="note">ブラウザ内に保存。消えると失われる</span>
-    <button id="exportBtn">JSONで書き出す</button></div>
-</div>
-
-<footer>
-  <!-- ⚠ フッターに置くのは、置かないと嘘になるものだけ。
-       1) 出典（地理院タイルは出典明示が利用の条件、OSM は ODbL でクレジット必須）
-       2) 何を送っていて何を送っていないか
-       3) データの限界（位置誤差・実験的提供）— 畳んでよいが、消してはいけない -->
-  <div class="f-main">
-    出典 <a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" rel="noopener">国土地理院</a>
-    ・<a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>
-    ・<a href="https://www.wikidata.org/" target="_blank" rel="noopener">Wikidata</a>
-  </div>
-
-  <!-- ⚠ ここは畳まない。「住所を入力するのに住所を集めない」はこのサービスの性格そのもので、
-       畳むと伝わらない。ただし**言い切りすぎない**: 地図やデータを取りに行く相手には、
-       表示に必要な範囲の座標が渡る。「どこにも送らない」は嘘になる。 -->
-  <!-- ⚠ いちばん強い約束の2行だけ、常に見えるところに残す。
-       「保存しません」ではなく「**送りません**」と書く。実装はそもそも送っていない
-       （/t が受け取るのは固定文字列だけで、地名も座標も含まない）ので、
-       「保存しない」と書くと、強い事実を弱く言い換えることになる。
-       残りは畳む。以前はここが 107px の地の文で、利用者役のエージェントによる検証で誰も読んでいなかった。 -->
-  <!-- ⚠ **「こちらのサーバーには送りません」は事実でなかった**（2026-08-15 に実測）。
-       判定すると URL に ?q=<地名>&ll=<座標> が載る。replaceState 自体は通信しないが、
-       **リロード・共有・ブックマーク・履歴から開くと、その URL が配信元へ届く**。
-       実測: リロードで自分のサーバーへ出た 11 件のうち 1 件が `/?q=豊洲&ll=35.65480,139.79750`。
-       ⚠ 送っていないのは**利用状況の計測**（/t）のほうで、そちらは固定文字列だけ。
-       主語を「計測」に限定する。**言い換えで誤魔化さず、起きることを書く。**
-       ⚠ 「保存しません」には弱めない。計測に関しては本当に送っていない。
-       ⚠ 文言は peel.html にも同じものを置き、食い違わないことを npm run check が見る。 -->
-  <!-- ⚠ **ここを、⚠ プライバシーの「畳まずに見える 1 行」の 1 か所にした**（2026-08-23。Owner 判断）。
-       ⚠ **前は 2 か所にあった**（検索欄の下の `.privacy-short` と、ここ）。
-         ⚠ 実測（2026-08-23・利用者役 4 名・画面だけを見せた。⚠ **実在の利用者ではない**）:
-         ⚠ **3/4 が「同じ話が 2 回」**と答えた（⚠ 「Cookie も使いません」が字面で 2 回出ていた）。
-         ⚠ **4/4 が、検索欄の下の版を「あとで読めばいい情報」**と答えた
-           （⚠ 「まだ何も調べていないのに、調べた場所の話をされている」）。
-       ⚠ **消したのではない。**⚠ **words.js の PRIVACY_SHORT を、⚠ ここで出す。**
-         ⚠ 前の `.f-priv` の主張（計測に地名も座標も送らない・Cookie も使わない）は、
-         ⚠ **PRIVACY_SHORT が丸ごと含んでいる**ので、⚠ **落ちる主張が無い。**
-       ⚠ **2026-08-20 に「畳んだフッターの中にしか無い」を直した経緯がある**
-         （⚠ 利用者役 2/4 が「これは先に見たかった」）。⚠ **そこへ戻していない。**
-         ⚠ **ここは `<details>` の外**で、⚠ **4 幅とも、⚠ スクロールなしで見える**
-         （⚠ 実測 2026-08-23・この変更後: ⚠ フッターの上端 y は
-          375=334 ／ 344=354 ／ 320=408 ／ 1280=320。⚠ **どれも viewport より上。**
-          ⚠ 数字は固定しない。⚠ **実描画が測り直す。**）⚠ **畳まれてはいない。**
-       ⚠ **場所を選んでも消さない**（⚠ 前は `#scope.on ~` で消していた）。
-         ⚠ フッターは常時あるので、⚠ 消す理由が無くなった。
-       ⚠ **字は words.js の 1 か所。**/peel の情報パネルと同じ文。 -->
-  <p class="f-priv" id="privacyShort" data-privacy-lead></p>
-  <details class="f-more">
-    <summary>プライバシーについて</summary>
-    <div class="f-body" data-privacy-body>
-      <!-- ⚠ 順番は「載る」→「届く」→「残らない」。「計測には送らない」だけ書くと、
-           畳まずに見える1行が、また言い切りすぎになる。 -->
-      調べた場所は、<b>ブラウザのアドレス欄（URL）に入ります</b>。戻ったり、人に送ったりできるようにするためです。<br>
-      その URL を<b>開いたとき</b>は、アドレスの一部として<b>このサイトを配信している事業者（Cloudflare）に届きます</b>。
-      <!-- ⚠ **保持期間を書かない。** 「一定期間だけ保持されます」と書いていたが、
-           **確認していない**（2026-08-15 に指摘されて削除）。
-           プラン・Logpush / Logpull・Workers Logs の設定を見ていない。
-           ⚠ しかも**静的アセットは通常 Worker を経由しない**ので、
-           Workers Logs（Worker 呼び出し単位）がそもそも当てはまらない可能性がある。
-           掟「確認できないことを『検査済み』と呼ばない」。
-           **「届く」までは実測で言える**ので、そこで止める。 -->
-      <b>こちらが自分で数えているのは、判定・共有などの回数だけ</b>です。
-      そこに<b>地名も座標も含めていません</b>。<b>こちらの記録には</b>、誰がどこを調べたかは1件も残りません。<br>
-      <!-- ⚠ 主語を落とさない。「誰が・どこを調べたかは1件も残しません」とだけ書いていたが、
-           **配信元も含めた断定に読める**（2026-08-15 に指摘）。実測では、配信元には
-           クエリのほかに接続元 IP・端末の種類（User-Agent）も届く。**こちらの記録の話だと分かる形にする。** -->
-      なお、通信そのものには<b>接続元の IP や端末の種類</b>が伴い、これは配信元（Cloudflare）に届きます。
-      <b>こちらはそれを保存も利用もしません</b>（Cookie も識別子も使いません）。<br>
-      <!-- ⚠ ここは**確認したから書ける**（2026-08-15）。確認していないことは書かない。
-             ・計測の受け口 /t は fetch("/t",{method:"POST"}) で、**クエリが付かない**
-             ・静的アセットに一致する要求では Worker が起動しない（run_worker_first を書いていない）
-               → 実測: 本番で / と /?q=..&ll=.. は 200（素の配信）、/t は worker.js の 405、
-                 存在しないパスは worker.js の 404。**場所つき URL は Worker を通らない**
-             ・記録を外部へ出す設定（Logpush）は、ダッシュボードに項目が無い（無料プランでは提供されない）
-           ⚠ 「エッジに届かない」とは書かない。**届く**（HTTP の性質上、避けられない）。
-             書けるのは「**こちらが持つログには残らない／外へ出していない**」まで。
-           ⚠ プランを上げると Logpush が使えるようになる。そのときここが黙って嘘になる。 -->
-      計測の受け口にはこの URL が付かないため、<b>こちらが持つログにも場所は残りません</b>。
-      記録を外部へ出す設定（Logpush）も<b>使っていません</b>。<br>
-      ★とメモは<b>この端末の中だけ</b>に残ります（こちらには届きません）。<br>
-      🔊 の読み上げは<b>端末の中で合成</b>します（音声は外へ送りません）。<br>
-      <!-- ⚠ 「こちらには送らない」だけ書いて「相手には渡っている」を書かないと、
-           Referrer-Policy を二重にしたり /t の Origin を塞いだりしてきた筋と食い違う。
-           実測で1人あたり国土地理院へ 28〜556 リクエスト出ており、タイルのURLに座標が入る。 -->
-      地図と判定に使うデータは、上の提供元から<b>その場で</b>取得します。
-      <b>提供元には、表示に必要な範囲の座標が渡ります</b>（こちらを経由しません）。
+<div id="app">
+  <!-- 目には出さないが、読み上げと OGP の名乗りのために持つ。
+       この画面は地図が主役で、見出しを置く場所が無い。
+       β 版の /peel が同じ理由で同じ形を持っていた。
+       OGP の見出しと同じ字であることは scripts/generate-ogp.mjs が突き合わせる。 -->
+  <h1 class="sr-only">この土地は、昔なんだったのか？</h1>
+  <div id="map" role="application" aria-label="地図"></div>
+  <!-- 名乗り。何のサイトかを、画面のどこにも書いていなかった。
+       同じ問題を β 版が実測で踏んで、同じ形で解いている。 -->
+  <header class="brand">
+    <div class="brand__inner">
+      <a class="brand__name" href="./">
+        <img class="brand__mark" src="./favicon.svg" alt="" width="20" height="20">
+        <span class="brand__words"><span class="brand__title">今昔</span><span class="brand__tag">この土地は、昔なんだったのか？</span></span>
+      </a>
+      <nav class="brand__nav" aria-label="主な行き先">
+        <a class="brand__link" href="./" aria-current="page">地図で調べる</a>
+      </nav>
+      <details class="menu">
+        <summary class="menu__btn" aria-label="メニュー">
+          <span class="menu__bars" aria-hidden="true"></span>
+        </summary>
+        <nav class="menu__panel" aria-label="サイトの案内">
+          <a class="menu__item" href="./about">このサイトについて</a>
+          <a class="menu__item" href="./privacy">プライバシーポリシー</a>
+          <a class="menu__item" href="./terms">利用規約</a>
+          <a class="menu__item" href="https://github.com/hidetzu/konjaku/issues/new?template=feedback.yml" target="_blank" rel="noopener">ご意見・不具合報告（GitHub で公開）</a>
+        </nav>
+      </details>
     </div>
-  </details>
-  <details class="f-more">
-    <summary>データ・判定について</summary>
-    <div class="f-body">
-      <b>判定</b>：<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" rel="noopener">国土地理院タイル</a>
-      （<a href="https://www.gsi.go.jp/bousaichiri/lfc_index.html" target="_blank" rel="noopener">地形分類</a>／年代別空中写真／<a href="https://www.gsi.go.jp/bousaichiri/lc_meiji.html" target="_blank" rel="noopener">明治期の低湿地</a>／標高）。
-      <b>成り立ち・災害リスクの説明文は国土地理院の記述</b>をそのまま表示しています。<br>
-      地形分類は<a href="https://maps.gsi.go.jp/" target="_blank" rel="noopener">地理院地図</a>の<b>ベクトルタイル提供実験</b>、
-      住所検索も<a href="https://github.com/gsi-cyberjapan/gsimaps/issues/29" target="_blank" rel="noopener">地理院地図からの利用を想定した機能</a>のため、
-      どちらも予告なく仕様変更・停止の可能性があります。主要平野部の外では<b>広い区分</b>でしか答えられません（そのときは画面にそう表示します）。<br>
-      明治期の資料は三角点整備前のため<b>位置誤差</b>を含みます。街区単位の判断に留めてください。<br>
-      <b>この範囲で、年が記録されているもの</b>：<a href="https://www.wikidata.org/" target="_blank" rel="noopener">Wikidata</a>（CC0）。
-      年が記録されているものだけで、<b>写真に写っているかどうかまでは確かめていません</b>。<br>
-      <b>建物</b>：© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a>（ODbL）
-    </div>
-  </details>
-  <!-- ⚠ **作者は、⚠ フッターのいちばん下**（2026-08-23。Owner 判断）。
-       ⚠ **「作」をやめて `©` にした。**⚠ 前は「出典 … | 作 hidetzu」と同じ行にあり、
-         ⚠ **作者も出典の 1 つに読めた。**⚠ 出典は「使う条件」、⚠ 作者は「誰が作ったか」で、
-         ⚠ **別のこと。**
-       ⚠ **「GitHub」と書く。**⚠ 前は「hidetzu」だけで、⚠ **GitHub へのリンクだと分からなかった。**
-       ⚠ 実測（2026-08-23・利用者役 4 名・画面だけを見せた。⚠ **実在の利用者ではない**）:
-         ⚠ **0/4 が「作者情報が目立つ」と答えた。**⚠ 下げても失うものが無い。 -->
-  <div class="f-author">
-    © 2026 <a href="https://github.com/hidetzu" target="_blank" rel="noopener">hidetzu</a>
-    <span class="sep">·</span>
-    <a href="https://github.com/hidetzu/konjaku" target="_blank" rel="noopener">GitHub</a>
+  </header>
+  <div class="column" id="bar">
+    <form id="find" role="search">
+      <input id="q" type="search" placeholder="住所・場所を検索"
+             autocomplete="off" enterkeyhint="search" aria-label="住所・場所を検索">
+    </form>
+    <button id="here" type="button" title="いまいる場所から">
+      <span aria-hidden="true">📍</span><span class="sr">いまいる場所から</span>
+    </button>
   </div>
-</footer>
+  <ul class="column" id="hits" role="listbox" aria-label="検索の候補" hidden></ul>
+
+  <!-- ⚠ **出典明示は、地理院タイルの利用の条件。**⚠ **隠さない・覆わない。**
+       ⚠ **板と同じ積み上げに入れる。**⚠ 固定値で位置を決めると、
+       ⚠ **板の高さが場所ごとに変わる（271〜325px）ので重なる。** -->
+  <div class="column" id="bottom">
+    <p class="attrib"><a href="https://maps.gsi.go.jp/development/ichiran.html"
+       target="_blank" rel="noopener">出典 国土地理院</a></p>
+
+  <section id="card" aria-live="polite">
+    <p class="kick">
+      <span class="kick__l"><i class="dot" aria-hidden="true"></i><span id="kickText">地図を動かすと、その場所を調べます</span></span>
+      <button class="share" id="share" type="button" aria-label="この場所のリンクを送る" hidden>
+        <span aria-hidden="true">⇱</span><span id="shareText">送る</span>
+      </button>
+      <button class="save" id="save" type="button" aria-pressed="false" hidden>
+        <span aria-hidden="true" id="saveMark">☆</span><span id="saveText">保存</span>
+      </button>
+    </p>
+    <!-- 答えの出典。見出しの上に小さく置く。2 つの資料が独立に同じことを言っているのが
+         価値なのに、出典を名乗らないと繰り返しに読まれた（利用者役 5 名中 3 名）。 -->
+    <p class="ans__src" id="glossSrc" hidden></p>
+    <p class="ans" id="gloss">　</p>
+    <p class="sub" id="sub"></p>
+
+    <!-- 空中写真の年代。押すと、その年代の写真が地図になる。
+         チップの直上に「これは何か」を置く。置かないと、押す前に
+         「いつ変わったか」と読まれる（利用者役 5 名中 3 名）。 -->
+    <p class="eras__label" id="erasLabel" hidden>
+      <i class="eras__mark" aria-hidden="true"></i><span id="erasLabelText"></span>
+    </p>
+    <div class="eras" id="eras" role="group" aria-label="空中写真の年代" hidden></div>
+    <p class="era-note" id="eraNote" hidden></p>
+    <button class="era-back" id="eraBack" type="button" hidden>地図に戻す</button>
+
+    <!-- 根拠は 1 か所にまとめる。その場では読まれない側。 -->
+    <details class="why" id="why">
+      <summary class="why__sum">なぜそう言える？</summary>
+      <dl class="why__rows">
+        <div class="why__row">
+          <dt class="why__k">いまの地形</dt><dd class="why__v" id="name"></dd>
+        </div>
+        <div class="why__row" id="meijiRow" hidden>
+          <dt class="why__k">明治期の地図</dt><dd class="why__v" id="meiji"></dd>
+        </div>
+        <div class="why__row" id="photoRow" hidden>
+          <dt class="why__k">空中写真</dt><dd class="why__v" id="photo"></dd>
+        </div>
+        <div class="why__row" id="areaRow" hidden>
+          <dt class="why__k">この周辺</dt>
+          <dd class="why__v">
+            <span class="why__note" id="areaNote"></span>
+            <span class="why__body" id="area"></span>
+            <span class="why__cite" id="areaCite"></span>
+          </dd>
+        </div>
+      </dl>
+      <!-- 帰宅後に読む画面へ。散歩中は押されない前提だが、押せる形にはしておく。 -->
+      <a class="why__more" id="deepLink" href="./deep">この場所をもっと深く読む →</a>
+    </details>
+    <ul id="legend" aria-label="この画面に映っている土地"></ul>
+    <button id="more" type="button" hidden></button>
+  </section>
+
+  </div>
+
+
+
+  <section class="column" id="sheet" hidden aria-label="この画面に映っている土地">
+    <header>
+      <h2>この画面に映っている土地</h2>
+      <button class="close" type="button" id="sheetClose" aria-label="閉じる">✕</button>
+    </header>
+    <ul id="sheetList"></ul>
+    <p class="state" id="sheetState" hidden></p>
+  </section>
 </div>
 
-<!-- 外部から来た文字列（Wikidata のラベル・地理院の地名・OSM のタグ）を
-     HTML として実行させないための1か所。⚠ ほかより先に読む（下のインラインが使う） -->
+<!-- 下の帯。主な行き先は 2 つだけ（地図と保存した場所）。
+     深掘りは場所を選んでから決まるので、ここには置けない（行き先が定まらない）。
+     案内（このサイトについて・プライバシー・利用規約）は名乗りのメニューが持つ。 -->
+<nav class="tabs" aria-label="主な行き先">
+  <div class="tabs__inner">
+  <a class="tabs__item" href="./" aria-current="page">
+    <svg class="tabs__icon" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">
+      <path d="M12 2a7 7 0 0 0-7 7c0 5.2 7 13 7 13s7-7.8 7-13a7 7 0 0 0-7-7Zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5Z"/>
+    </svg>
+    <span>地図</span>
+  </a>
+  <a class="tabs__item" href="./saved">
+    <svg class="tabs__icon" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">
+      <path d="m12 17.3-5.8 3.3 1.5-6.6L2.6 9.5l6.7-.6L12 2.7l2.7 6.2 6.7.6-5.1 4.5 1.5 6.6z"/>
+    </svg>
+    <span>保存した場所</span>
+  </a>
+  </div>
+</nav>
+
 <script src="./esc.js"></script>
-  <script src="./photos.js"></script>
-  <!-- 段の作り方（hidetzu/konjaku#170）。DOM も地図も持たない -->
-  <script src="./eras.js"></script>
-  <!-- ⚠ URL の「場所の指定」を読む 1 か所（hidetzu/konjaku#221）。DOM も地図も持たない。
-       ⚠ **`/peel` は「深掘りできるか」を、⚠ トップは「なぜ戻ってきたか」を、同じ答えから引く。** -->
-  <script src="./place-arg.js"></script>
-  <script src="./words.js"></script>
-<!-- ⚠ verify.js / peel3d.js より**先に**読む。明治期の 14 区分と 1 画素の分類は
-     ここが唯一の定義で、あとの2つはこれを借りている（掟6: 同じ問いに答える実装を2つ持たない）。 -->
+<script src="./place-arg.js"></script>
+<script src="./saved.js"></script>
+<script src="./when.js"></script>
+<script src="./words.js"></script>
+<script src="./answer.js"></script>
 <script src="./swale.js"></script>
 <script src="./verify.js"></script>
-<!-- 取得済みの土地情報を控える、ただ1か所。⚠ **verify.js より後に読む**（取得の層を借りる）。
-     ⚠ 画面はここだけを見る。⚠ **Konjaku.landform / meiji / facts を画面から直接呼ばない**
-     （scripts/check.mjs が見張っている）。 -->
 <script src="./land.js"></script>
-<!-- 住所検索の応答を並べ替える。scripts/search-check.mjs がこのファイルをそのまま読んで
-     35語の回帰検査を回すので、検査した実装と出荷する実装が同じであることを保証できる -->
-<!-- ⚠ **口を先に読む**（2026-08-22。hidetzu/konjaku#181）。⚠ places.js がこれを使う -->
+<!-- places.js は、読み込んだ時点で gsi-address-search.js の TIMEOUT_MS を読む。
+     先に置くと undefined になり、ページのスクリプトが丸ごと止まる。順を変えない。 -->
 <script src="./gsi-address-search.js"></script>
 <script src="./places.js"></script>
-<script src="./events.js"></script>
-<script src="./share.js"></script>
-<!-- ⚠ 「この場所に 3D の下地があるか」に答える1か所。/peel も同じものを見ている。
-     ここで別に判定すると、**導線を出したのに建物が出ない場所**ができる
-     （掟6: 同じ問いに答える実装を2つ持たない）。 -->
-<script src="./ground.js"></script>
 <script src="./top.js"></script>
-<script>
-// PWA。地図タイルはキャッシュしない（sw.js 参照）ので、オフラインで地図は出ない。
-// 目的はホーム画面から素早く全画面で開けること。
-// ⚠ localhost も安全なコンテキストなので登録する。https だけにしていたため、
-//   タイルを使い回す仕組みを**手元で検査できない**状態だった。
-if ("serviceWorker" in navigator
-    && (location.protocol === "https:" || location.hostname === "127.0.0.1"
-        || location.hostname === "localhost"))
-  addEventListener("load", () => navigator.serviceWorker.register("/sw.js").catch(() => {}));
-</script>
-</body>
-</html>
+<script src="./menu.js"></script>
