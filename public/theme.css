@@ -50,25 +50,25 @@
 
 :root{
   /* 面（⚠ 奥から手前へ）。⚠ **`--surface-2` は「もう一段」**。 */
-  --bg:#f2f5f7;
-  --surface:#ffffff;
-  --surface-2:#eef3f5;
+  --bg:light-dark(#f2f5f7, #0b0f14);
+  --surface:light-dark(#ffffff, #131a21);
+  --surface-2:light-dark(#eef3f5, #1b242d);
 
   /* 文字の段（⚠ 強い順）。⚠ **新しい中間色を作らない**。 */
-  --ink:#10161d;      /* 本文・答え */
-  --ink-2:#3d4b57;    /* 準本文 */
-  --ink-3:#62707b;    /* 注記・出典・添え字 */
+  --ink:light-dark(#10161d, #e7edf2);      /* 本文・答え */
+  --ink-2:light-dark(#3d4b57, #b3c0cb);    /* 準本文 */
+  --ink-3:light-dark(#62707b, #8595a2);    /* 注記・出典・添え字 */
 
   /* 枠は 2 つ。⚠ **押せるかどうかで選ぶ**。 */
-  --line:#c9d3db;         /* 区切り線。⚠ 下限は求めない */
-  --line-strong:#7d8e9c;  /* 情報を持つ枠。⚠ 3.0 以上 */
+  --line:light-dark(#c9d3db, #28323c);         /* 区切り線。⚠ 下限は求めない */
+  --line-strong:light-dark(#7d8e9c, #5c6f7e);  /* 情報を持つ枠。⚠ 3.0 以上 */
 
   /* 押せる色と、⚠ **その上に載る文字**（⚠ 地に対して測っても意味がない）。 */
-  --action:#175c90;
-  --action-ink:#ffffff;
+  --action:light-dark(#175c90, #69aede);
+  --action-ink:light-dark(#ffffff, #0b0f14);
 
   /* 深掘り画面が使う。⚠ **「なぜそう言える？」の帯。** */
-  --evidence:#175c90;
+  --evidence:light-dark(#175c90, #69aede);
 
   /* ⚠ **地図の上に置く印の縁。**⚠ **色みで反転させない。**
      ⚠ **乗る相手は、⚠ こちらの面ではなく地図**（⚠ 地理院の淡色地図・空中写真）。
@@ -92,26 +92,11 @@
   --shadow:#000000;
 }
 
-@media (prefers-color-scheme:dark){
-  :root{
-    --bg:#0b0f14;
-    --surface:#131a21;
-    --surface-2:#1b242d;
-
-    --ink:#e7edf2;
-    --ink-2:#b3c0cb;
-    --ink-3:#8595a2;
-
-    --line:#28323c;
-    --line-strong:#5c6f7e;
-
-    --action:#69aede;
-    --action-ink:#0b0f14;
-
-    --evidence:#69aede;
-
-    /* ⚠ **反転させない**（上の理由）。⚠ **同じ値をわざと書く。** */
-    --pin-ring:#ffffff;
-    --shadow:#000000;
-  }
-}
+/* ⚠ **色みの切り替え。**⚠ **ここに色の値を 1 つも書かない。**
+   ⚠ **値は上の `light-dark()` が両方持っている**（⚠ 同じ値が 2 か所にならない）。
+   ⚠ **既定は端末の設定に従う**（`color-scheme: light dark`）。
+   ⚠ **人が選んだときだけ、⚠ `data-theme` が片方に固定する。**
+   ⚠ **前後で 1 画素も変えていない**（⚠ 実測 2026-09-02: 3 画面 × 2 色み・952 要素 × 5 つの色）。 */
+:root{ color-scheme: light dark }
+:root[data-theme="light"]{ color-scheme: light }
+:root[data-theme="dark"] { color-scheme: dark }

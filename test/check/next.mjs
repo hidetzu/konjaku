@@ -130,32 +130,95 @@ else {
     else {
       const css = readFileSync(THEME, "utf8").replace(BLOCK_COMMENT, " ");
 
-      // ⚠ **色みごとに、⚠ 名前 → 値の表を作る。**⚠ **明るいが既定、⚠ 暗いは media の中。**
-      const 明 = {}, 暗 = {};
-      const 拾う = (chunk, into) => {
-        for (const m of chunk.matchAll(/--([\w-]+)\s*:\s*([^;]+);/g)) {
-          const v = m[2].trim();
-          if (parseColor(v)) into[m[1]] = v;
+      // ⚠ **色みごとに、⚠ 名前 → 値の表を作る。**
+      //   ⚠ **2026-09-02 に形が変わった**（`docs/adr/0086`）。⚠ **`@media` の 2 段ではなく、
+      //   ⚠ 1 つの token が `light-dark(明, 暗)` で両方を持つ。**⚠ **値は 1 か所のまま。**
+      //   ⚠ **読めないと、⚠ この節の色が表から落ち、⚠ コントラストの検査が黙って何も測らなくなる。**
+      //     ⚠ **緑のまま何も見ない**ので、⚠ **落ちない不具合になる。**⚠ **だから読める形にする。**
+      const 明 = {}, 暗 = {}, 両方同じ = [];
+      {
+        const LD = /^light-dark\(\s*([^,]+?)\s*,\s*([^)]+?)\s*\)$/;
+        for (const m of css.matchAll(/--([\w-]+)\s*:\s*([^;]+);/g)) {
+          const 名 = m[1], v = m[2].trim();
+          const ld = LD.exec(v);
+          if (ld) {
+            if (!parseColor(ld[1]) || !parseColor(ld[2])) continue;
+            明[名] = ld[1]; 暗[名] = ld[2];
+          } else if (parseColor(v)) {
+            明[名] = v; 暗[名] = v; 両方同じ.push(名);   // ⚠ 色みで変えないもの
+          }
         }
-      };
-      const i = css.indexOf("@media");
-      拾う(css.slice(0, i < 0 ? css.length : i), 明);
-      Object.assign(暗, 明);
-      if (i >= 0) 拾う(css.slice(i), 暗);
+      }
+      if (Object.keys(明).length < 8)
+        bad(`theme.css から色を ${Object.keys(明).length} 個しか読めていない`
+          + "（⚠ **この節が何も見ていない**）");
 
-      // ⚠ **名前が色みどうしで揃っているか**（⚠ 欠けると、⚠ 前の色みの色がそこだけ残る）。
-      //   ⚠ **重ねたあとで数えない。**⚠ **重ねると、⚠ 欠けた名前が明るい色みの値を継いで見えなくなる**
-      //   （⚠ 2026-08-30 に実際にそうなった: ⚠ 暗い色みの `--line` を消しても素通りした）。
-      //   ⚠ **だから、⚠ それぞれの節が「自分で宣言した名前」を数える。**
-      const 宣言 = {};
-      拾う(css.slice(0, i < 0 ? css.length : i), 宣言);   // ⚠ 明るい色みの宣言（＝ 明 と同じ）
-      const 暗の宣言 = {};
-      if (i >= 0) 拾う(css.slice(i), 暗の宣言);
-      const 欠け = Object.keys(宣言).filter((k) => !(k in 暗の宣言));
-      欠け.length
-        ? bad(`暗い色みで宣言されていない色がある: ${欠け.join(" ")}`
-            + "。⚠ **明るい色みの値がそこだけ残る**")
-        : ok(`色の名前が 2 つの色みで揃っている（${Object.keys(宣言).length} 個）`);
+      // ⚠ **色みで変えない色は、⚠ 決めたものだけ。**⚠ **書き忘れと区別がつかなくなる。**
+      //   ⚠ **前は「暗い側の節に宣言があるか」で見ていた。**⚠ **節が無くなったので、
+      //   ⚠ 「`light-dark()` で書かれているか」で見る。**⚠ **主張は同じ**（⚠ 片方の値がそこだけ残る）。
+      const 変えないと決めたもの = {
+        // ⚠ **地図の上に置く印の縁。**⚠ **乗る相手は地図で、⚠ こちらの面ではない。**
+        "pin-ring": "空中写真の上で、印が地図の記号に紛れないため",
+        // ⚠ **影は、⚠ 明るい色みでも暗い。**
+        "shadow": "影とスクリムは色みで反転しない",
+      };
+      const 不明 = 両方同じ.filter((k) => !(k in 変えないと決めたもの));
+      不明.length
+        ? bad(`色みで変わらない色があるが、⚠ 変えないと決めたものに入っていない: ${不明.join(" ")}`
+            + "。⚠ **書き忘れと区別がつかない。**⚠ **`light-dark()` にするか、⚠ 理由と一緒に一覧へ足す**")
+        : ok(`色は ${Object.keys(明).length} 個。⚠ うち ${両方同じ.length} 個は`
+            + `色みで変えないと決めたもの（${両方同じ.map((k) => `${k}=${変えないと決めたもの[k]}`).join(" ／ ")}）`);
+
+      // ⚠ **色みを選ぶ口が、⚠ 色を 1 つも持たないこと**（2026-09-02。`docs/adr/0086`）。
+      //   ⚠ **`[data-theme]` に色を書くと、⚠ 同じ値が 2 か所になる**（`.claude/rules/css.md`）。
+      //   ⚠ **切り替えるのは `color-scheme` だけ。**⚠ **値は `light-dark()` が両方持つ。**
+      {
+        const 欠け = [];
+        for (const m of css.matchAll(/:root\[data-theme="(\w+)"\]\s*\{([^}]*)\}/g)) {
+          const 中 = m[2];
+          if (/#[0-9a-fA-F]{3,8}|rgba?\(|light-dark\(/.test(中))
+            欠け.push(`data-theme="${m[1]}" に色の値がある`);
+          if (!/color-scheme\s*:/.test(中))
+            欠け.push(`data-theme="${m[1]}" が color-scheme を切り替えていない`);
+        }
+        const 段 = [...css.matchAll(/:root\[data-theme="(\w+)"\]/g)].map((m) => m[1]).sort();
+        if (段.join(",") !== "dark,light")
+          欠け.push(`色みの固定が light と dark の 2 つになっていない: ${段.join(",") || "（0 個）"}`);
+        // ⚠ **既定は端末の設定に従う**（`docs/adr/0040` は変えていない）。
+        if (!/:root\s*\{\s*color-scheme:\s*light dark\s*\}/.test(css))
+          欠け.push("既定が「端末の設定に従う」になっていない（:root の color-scheme: light dark）");
+        // ⚠ **切り替える口も、⚠ 色を持たない。**
+        const JS = existsSync(join(NEXT, "theme.js"))
+          ? readFileSync(join(NEXT, "theme.js"), "utf8").replace(BLOCK_COMMENT, " ")
+              .split("\n").filter((l) => !/^\s*\/\//.test(l)).join("\n")
+          : null;
+        if (JS === null) 欠け.push("色みを切り替える theme.js が無い");
+        else {
+          if (/#[0-9a-fA-F]{3,8}|rgba?\(/.test(JS)) 欠け.push("theme.js が色の値を持っている");
+          // ⚠ **押しても何も起きない導線を置かない**（ADR 0026）。⚠ **動くまで出さない。**
+          if (!/\.hidden\s*=\s*false/.test(JS))
+            欠け.push("theme.js が、⚠ 動くまで隠しておく形になっていない");
+          // ⚠ **保存領域を触れない端末で落ちない**（⚠ プライベート窓）。
+          if ((JS.match(/try\s*\{/g) ?? []).length < 2)
+            欠け.push("theme.js が、⚠ 保存領域を触れない端末を想定していない");
+        }
+        // ⚠ **最初の描画より前に当てる**（⚠ でないと、⚠ 一瞬だけ前の色みで描かれる）。
+        for (const f of ["index.html", "about.html", "deep.html", "privacy.html",
+                         "terms.html", "saved.html", "take.html"]) {
+          if (!existsSync(join(NEXT, f))) continue;
+          const h = readFileSync(join(NEXT, f), "utf8").replace(/<!--[\s\S]*?-->/g, " ");
+          const js = h.indexOf('src="./theme.js"');
+          const body = h.search(/<(header|main|div id="app")/);
+          if (js < 0) 欠け.push(`${f} が theme.js を読んでいない`);
+          else if (body >= 0 && js > body)
+            欠け.push(`${f} が theme.js を、⚠ 中身より後で読んでいる（⚠ 一瞬だけ前の色みで描かれる）`);
+          if (!/id="theme"/.test(h)) 欠け.push(`${f} に色みを切りかえる口が無い`);
+        }
+        欠け.length
+          ? bad(`色みを選ぶ口が決めた形になっていない: ${欠け.join(" ／ ")}`)
+          : ok("色みは、⚠ 端末の設定が既定で、⚠ 人が明るい／暗いに固定でき、"
+              + "⚠ その口は色を 1 つも持たない（⚠ 7 画面とも、⚠ 描く前に当てている）");
+      }
 
       // ⚠ **色の値が theme.css の外に無いか**（`.claude/rules/css.md` の MUST）
       //   ⚠ **`mask-image` の中は見ない**（⚠ 色ではなく「隠す／出す」の指定）。

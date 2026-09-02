@@ -3278,6 +3278,92 @@ for (const [名, viewport] of [["PC", PCな幅], ["スマホ", SP], ["いちば�
   });
 }
 
+// ⚠ **色みを、⚠ 人が選べる**（2026-09-02。`docs/adr/0086`）。
+//
+// ⚠ **静的検査は、⚠ 字と形しか見ない。**⚠ **本当に色が変わったか、⚠ 次に開いても残るか、
+//   ⚠ 端末の設定に勝てるかは、⚠ ここでしか出ない。**
+// ⚠ **端末の設定は「暗い」に固定して回す。**⚠ **勝てないなら、⚠ 選ばせる意味が無い。**
+for (const [名, viewport] of [["PC", PCな幅], ["スマホ", SP], ["いちばん狭い幅", { width: 320, height: 640 }]]) {
+  CASES.push({
+    name: `${名}で、色みを 3 つから選べて、次に開いても残る`,
+    path: "/about", origin: NEXT_BASE, viewport, colorScheme: "dark",
+    async check(page) {
+      await 待つ(page, () => {
+        const b = document.getElementById("theme");
+        return b && !b.hidden;
+      }, "色みの切りかえ");
+      const 見る = () => page.evaluate(() => {
+        const b = document.getElementById("theme"), q = b.getBoundingClientRect();
+        const 帯 = document.querySelector(".brand__inner").getBoundingClientRect();
+        const menu = document.querySelector(".menu__btn").getBoundingClientRect();
+        return {
+          // ⚠ **印はフォントに頼らず描いている**（⚠ ☾ が豆腐になった。`docs/adr/0086`）。
+          //   ⚠ **だから字ではなく、⚠ 描いた形そのものを見る。**
+          印: b.getAttribute("data-mode") ?? "", 絵: (b.querySelector("svg")?.innerHTML ?? "").length,
+          aria: b.getAttribute("aria-label") ?? "",
+          w: Math.round(q.width), h: Math.round(q.height),
+          固定: document.documentElement.getAttribute("data-theme"),
+          // ⚠ **実際に色が付く要素で見る**（⚠ body は透明な画面がある）
+          帯の地: getComputedStyle(document.querySelector(".brand")).backgroundColor,
+          重なり: q.right > menu.left && menu.right > q.left,
+          はみ出し: q.left < 帯.left - 1 || q.right > 帯.right + 1,
+          横あふれ: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+        };
+      });
+      const 見た = [];
+      for (let i = 0; i < 3; i++) {
+        const r = await 見る();
+        見た.push(r);
+        // ⚠ **押せるものは 44×44 を割らない**（⚠ 320px で 37×44 になっていた）
+        must(r.w >= 44 && r.h >= 44, `色みの切りかえが小さい（${r.w}x${r.h}）`);
+        must(!r.重なり, "色みの切りかえが、⚠ メニューと重なっている");
+        must(!r.はみ出し, "色みの切りかえが、⚠ 帯からはみ出している");
+        must(!r.横あふれ, "色みの切りかえを置いたら、⚠ 画面が横にあふれた");
+        // ⚠ **色と位置だけで状態を言わない。**⚠ **字も読み上げも、⚠ いまの色みを名乗る。**
+        must(r.aria.includes("色み"), `いまの色みを名乗っていない: 「${r.aria}」`);
+        await page.click("#theme");
+        await page.waitForTimeout(250);
+      }
+      // ⚠ **3 つが別**（⚠ 印も、⚠ 読み上げの字も）
+      must(new Set(見た.map((r) => r.印)).size === 3,
+        `色みの印が 3 つに分かれていない: ${見た.map((r) => r.印).join(" ")}`);
+      // ⚠ **描いた形も 3 つとも違うこと**（⚠ 名前だけ変えて絵が同じ、を通さない）
+      must(見た.every((r) => r.絵 > 0), "色みの印が 1 つも描かれていない");
+      must(new Set(見た.map((r) => r.絵)).size === 3,
+        `色みの印の絵が 3 つに分かれていない: ${見た.map((r) => r.絵).join(" ")}`);
+      must(new Set(見た.map((r) => r.aria)).size === 3,
+        "色みの読み上げが 3 つに分かれていない");
+      // ⚠ **端末の設定は暗い。**⚠ **明るいを選んだら、⚠ 本当に明るくなること。**
+      const 暗い = 見た.find((r) => r.固定 === null || r.固定 === "dark");
+      const 明るい = 見た.find((r) => r.固定 === "light");
+      must(明るい && 暗い, `3 つの状態が出そろっていない: ${見た.map((r) => r.固定).join(" ")}`);
+      must(明るい.帯の地 !== 暗い.帯の地,
+        `明るいを選んでも色が変わらない（どちらも ${明るい.帯の地}）`);
+
+      // ⚠ **次に開いても残る**（⚠ 端末の設定は暗いまま）。
+      //   ⚠ **押して残すこと。**⚠ **保存領域をこちらで書いてから読むと、
+      //     ⚠ 「押しても残さない」形を素通りする**（⚠ 2026-09-02 に実際に素通りした）。
+      //   ⚠ **3 回押して auto に戻っているので、⚠ もう 1 回押すと明るいになる。**
+      await page.click("#theme");
+      await page.waitForTimeout(250);
+      must(await page.evaluate(() => document.documentElement.getAttribute("data-theme")) === "light",
+        "3 回押して 1 周したあと、⚠ もう 1 回押しても明るいにならない");
+      await page.reload({ waitUntil: "domcontentloaded" });
+      await 待つ(page, () => {
+        const b = document.getElementById("theme");
+        return b && !b.hidden;
+      }, "開き直したあとの切りかえ");
+      const 後 = await 見る();
+      must(後.固定 === "light",
+        `明るいを選んだのに、⚠ 開き直すと ${String(後.固定)} に戻っている`);
+      must(後.帯の地 === 明るい.帯の地,
+        `開き直したら色が違う（${明るい.帯の地} → ${後.帯の地}）`);
+      return `${見た.map((r) => `${r.印}(${r.絵}字)`).join(" → ")}`
+           + ` ／ ${見た[0].w}x${見た[0].h}px ／ 開き直して ${後.印}${後.固定}`;
+    },
+  });
+}
+
 // ⚠ **読み物の出口。**⚠ **押して、⚠ 本当にトップへ着くところまで見る**
 //   （⚠ 字と href だけなら静的検査が見ている。⚠ ここは着くかを見る）。
 for (const [名, viewport] of [["PC", PCな幅], ["スマホ", SP]]) {

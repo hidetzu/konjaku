@@ -26,6 +26,7 @@
 <meta name="twitter:image" content="https://konjaku.hidetzu.work/ogp.png">
 <link rel="icon" href="./favicon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="./apple-touch-icon.png">
+<script src="./theme.js"></script>
 <link rel="stylesheet" href="./theme.css">
 <link rel="stylesheet" href="./brand.css">
 <link rel="stylesheet" href="./foot.css">
@@ -48,6 +49,10 @@
       <nav class="brand__nav" aria-label="主な行き先">
         <a class="brand__link" href="./">地図で調べる</a>
       </nav>
+      <button class="brand__theme" id="theme" type="button" hidden
+              aria-label="色みを切りかえる">
+        <svg class="brand__themeIcon" viewBox="0 0 24 24" width="20" height="20"
+             aria-hidden="true" focusable="false"></svg></button>
       <details class="menu">
         <summary class="menu__btn" aria-label="メニュー">
           <span class="menu__bars" aria-hidden="true"></span>
