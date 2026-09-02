@@ -705,6 +705,56 @@ CASES.push({
 });
 
 CASES.push({
+  // ⚠ **洪水・津波・高潮・土砂災害は、⚠ 今昔では判定しない**（hidetzu/konjaku#446。`docs/adr/0090`）。
+  //   ⚠ **公式のほうが凡例も断りも整っている。**⚠ **渡すのは、⚠ いま見ている場所だけ。**
+  //
+  // ⚠ **見るのは 3 つ**:
+  //   ⚠ **渡す場所が、⚠ いま見ている場所と同じか**（⚠ 別の場所を開いたら、⚠ 嘘になる）
+  //   ⚠ **こちらが判定していないこと**（⚠ 実行時に相手へ 1 本も出していない）
+  //   ⚠ **押せること**（⚠ 44px を割らない。⚠ 新しい窓で開く）
+  name: "洪水・津波・高潮・土砂災害は、公式のハザードマップへ渡す",
+  path: `/deep.html?${TOYOSU}`, origin: NEXT_BASE, viewport: SP,
+  async check(page) {
+    await 待つ(page, () => !!document.getElementById("hazard"), "ハザードマップへの道");
+    const r = await page.evaluate(() => {
+      const a = document.getElementById("hazard");
+      const b = a.getBoundingClientRect();
+      const sec = document.getElementById("groundSec");
+      const A = window.KonjakuAnswer;
+      const arg = window.KonjakuPlaceArg.readPlace(new URLSearchParams(location.search));
+      return {
+        href: a.getAttribute("href"), target: a.target, rel: a.rel,
+        w: Math.round(b.width), h: Math.round(b.height),
+        節の中: sec.contains(a), 末尾: sec.lastElementChild === a,
+        見出し: a.querySelector(".hazard__k")?.textContent.trim(),
+        添え: a.querySelector(".hazard__v")?.textContent.trim(),
+        H: A ? { 見る: A.HAZARD.見る, 添え: A.HAZARD.添え,
+                 期待: arg.state === "ok" ? A.HAZARD.url(arg.lat, arg.lon) : null } : null,
+        // ⚠ **こちらから相手へ出していない**（⚠ 出していたら、⚠ 判定していることになる）
+        出した: performance.getEntriesByType("resource")
+          .filter((x) => x.name.includes("disaportal")).length,
+      };
+    });
+    must(r.H !== null, "KonjakuAnswer が読み込まれていない（⚠ この検査が何も見ていない）");
+    must(r.節の中 && r.末尾, "地盤と揺れの節の末尾に置かれていない");
+    // ⚠ **渡す先は、⚠ 製品が組み立てたものと同じ**（⚠ 検査に URL を書き写さない）
+    must(r.H.期待 !== null, "場所が読めていない（⚠ この検査が何も見ていない）");
+    must(r.href === r.H.期待, `渡す先が、いま見ている場所と違う: ${r.href}`);
+    must(/^https:\/\/disaportal\.gsi\.go\.jp\//.test(r.href), `相手が公式ではない: ${r.href}`);
+    // ⚠ **こちらでは判定しない**（⚠ 実行時に 1 本も出さない）
+    must(r.出した === 0, `ハザードマップへ ${r.出した} 本出している（⚠ 判定していることになる）`);
+    // ⚠ **押せる**（⚠ 新しい窓で開く。⚠ 44px を割らない）
+    must(r.target === "_blank" && /noopener/.test(r.rel),
+      `新しい窓の開き方が違う: target=${r.target} rel=${r.rel}`);
+    must(r.w >= 44 && r.h >= 44, `導線が 44px を割っている: ${r.w}x${r.h}`);
+    // ⚠ **字は製品から借りる**（⚠ 書き写さない）
+    must(r.見出し === r.H.見る, `字が違う: ${r.見出し}`);
+    must(r.添え === r.H.添え, `断りが出ていない: ${r.添え}`);
+    return `${r.w}x${r.h}・${r.href}・外へ ${r.出した} 本`;
+  },
+});
+
+CASES.push({
   // ⚠ **一帯の記録が、⚠ 文の塊に見えていた**（利用者役 5 名中 2 名）。
   //   ⚠ **出来事の種類を、⚠ 記録の文から見分けて印と短い言葉を付けた。**
   //   ⚠ **これは原典の分類ではない**ので、⚠ **そのことを断りに書いている。**

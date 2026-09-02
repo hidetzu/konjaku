@@ -165,6 +165,18 @@ body{
 }
 /* 低い値を「安全」と読ませないための断り。削らない。 */
 .ground__note{margin:var(--gap-row) 0 0; font-size:.75rem; line-height:1.7; color:var(--ink-3)}
+/* 公式のハザードマップへ渡す道。押せるものなので 44px を割らず、輪郭を持つ
+   （押せることが分からないと、押されない。--line-strong は情報を持つ枠）。
+   外へ出る道なので、この節のいちばん下に置く。 */
+.hazard{
+  display:flex; flex-direction:column; gap:var(--gap-sub);
+  margin:var(--gap-block) 0 0; padding:var(--pad-md);
+  min-height:var(--tap); border:1px solid var(--line-strong);
+  color:var(--ink); text-decoration:none;
+}
+.hazard__k{color:var(--action); font-weight:700; font-size:.9375rem}
+.hazard__v{color:var(--ink-3); font-size:.75rem; line-height:1.7}
+.hazard[hidden]{display:none}
 
 /* まわり ── この一帯について、公式資料から言えること。
    散歩中は 1 件だけ出している。帰宅後は全部出す。読み物なので年表として読める。
