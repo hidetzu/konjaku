@@ -569,6 +569,75 @@ CASES.push(
 );
 
 CASES.push({
+  // ⚠ **同じ区分名を、⚠ 画面で 2 度言わない**（hidetzu/konjaku#362。Owner 決定 1・3）。
+  //
+  // ⚠ **前はこうだった**（実測 2026-09-02・`main` = `97df702`・豊洲・375×667）:
+  //   ⚠ 説明が `.sub`（y413）、⚠ 区分名が `#legend`（y572）と `#why`（開くと y456）に分かれ、
+  //   ⚠ **間に別の出典の答えが挟まっていた。**⚠ 利用者役 7 名中 7 名が「同じことを何度も読んだ」。
+  //
+  // ⚠ **数えるのは「水」の字ではない**（⚠ 字で数えると `旧水部` と `水面` を消す方向へ後押しする。
+  //   `CLAUDE.md` §9）。⚠ **見るのは「同じ区分名が 2 つの枠に出ていないか」。**
+  //
+  // ⚠ **区分名は、⚠ カードとは別の道から取る**（⚠ 凡例。⚠ `drawLegend` は別の関数）。
+  //   ⚠ **カードの字をカードから取って比べると、⚠ 何も確かめていないことになる**（`CLAUDE.md` §9）。
+  // ⚠ **印の字は製品から借りる**（`KonjakuAnswer.WHY_READ`）。⚠ **書き写さない。**
+  name: "同じ区分名を、カードと「なぜそう言える？」の両方で言わない",
+  path: `/?${TOYOSU}`, origin: NEXT_BASE, viewport: SP,
+  async check(page) {
+    await waitAnswer(page);
+    await 待つ(page, () => document.querySelectorAll("#legend li.here").length > 0, "凡例の「ここ」");
+    await 待つ(page, () => (document.getElementById("meiji")?.textContent ?? "").trim().length > 0,
+      "明治期の行");
+    await page.locator(".why__sum").click();
+    await page.waitForTimeout(400);
+    const r = await page.evaluate(() => {
+      const t = (sel) => (document.querySelector(sel)?.textContent ?? "").trim();
+      // ⚠ 凡例の「ここ」から区分名を取る（⚠ カードとは別の道）
+      const 凡例 = t("#legend li.here");
+      return {
+        区分名: 凡例.replace(/（ここ）\s*$/, "").trim(),
+        凡例, ans: t(".ans"), sub: t(".sub"),
+        why: (document.getElementById("why")?.textContent ?? "").trim(),
+        いまの地形の行: t("#name"), 明治期の行: t("#meiji"),
+        見出しの出典: t(".ans__src"),
+        行の見出し: [...document.querySelectorAll(".why__row")]
+          .filter((row) => !row.hidden).map((row) => t2(row)),
+        READ: window.KonjakuAnswer ? window.KonjakuAnswer.WHY_READ : null,
+        SOURCE: window.KonjakuAnswer ? window.KonjakuAnswer.SOURCE : null,
+      };
+      function t2(row) { return (row.querySelector(".why__k")?.textContent ?? "").trim(); }
+    });
+    must(r.READ !== null && r.SOURCE !== null,
+      "KonjakuAnswer が読み込まれていない（⚠ この検査が何も見ていない）");
+    must(r.区分名.length > 0, `凡例から区分名を取れない: ${r.凡例}`);
+    // ⚠ **1**: 同じ区分名が、⚠ カード（.ans / .sub）と why の両方に出ていない
+    const 枠 = [["カードの見出し", r.ans], ["カードの 2 行目", r.sub], ["なぜそう言える？", r.why]]
+      .filter(([, 字]) => 字.includes(r.区分名)).map(([名]) => 名);
+    must(枠.length === 1,
+      `区分名「${r.区分名}」が ${枠.length} か所に出ている: ${枠.join(" / ") || "どこにも出ていない"}`);
+    // ⚠ **2**: 区分名と、その説明が同じ枠にある（⚠ 割って置かない）
+    const 説明 = await page.evaluate((nm) => window.KonjakuWords.groundGloss(nm), r.区分名);
+    must(説明 && r.sub.includes(r.区分名) && r.sub.includes(説明),
+      `区分名と説明が同じ枠にない: 2 行目「${r.sub}」／説明「${説明}」`);
+    // ⚠ **3**: why の行は、⚠ どれも出典名を持つ（⚠ 消すと、何を根拠にしたか追えない）
+    for (const 見出し of r.行の見出し)
+      must(見出し.length > 0, `出典名の無い行がある: ${JSON.stringify(r.行の見出し)}`);
+    must(r.行の見出し.includes(r.SOURCE.terrain) && r.行の見出し.includes(r.SOURCE.meiji),
+      `出典名が足りない: ${r.行の見出し.join(" / ")}`);
+    // ⚠ **4**: 答えに使った出典の行は、⚠ 答えの再掲ではなく印
+    must(r.見出しの出典 === r.SOURCE.meiji,
+      `豊洲の答えは明治期から出るはず: ${r.見出しの出典}`);
+    must(r.明治期の行 === r.READ.出どころ,
+      `答えに使った行が、答えを再掲している: ${r.明治期の行}`);
+    must(r.いまの地形の行.startsWith(r.READ.読めた),
+      `カードに出した区分名を、why が繰り返している: ${r.いまの地形の行}`);
+    // ⚠ **5**: 凡例の「（ここ）」は残す（⚠ 地図を読むために要る。Owner 決定 2）
+    must(/（ここ）/.test(r.凡例), `凡例から「（ここ）」が消えた: ${r.凡例}`);
+    return `区分名「${r.区分名}」は ${枠[0]} だけ・why は「${r.いまの地形の行}」「${r.明治期の行}」`;
+  },
+});
+
+CASES.push({
   // ⚠ **動きを止めている人の設定を無視しない**（`ui-ux-review` §3）。
   //   ⚠ **v0.1.0 は、⚠ いま動くものを 1 つも持っていない**（⚠ 実測 2026-08-29: 見えている 83 要素で 0）。
   // ⚠ **壊れていなくても残す。**⚠ **次に動きを足した人が、⚠ この設定を忘れたら止まる。**

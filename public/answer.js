@@ -73,16 +73,44 @@
   //   2 行目は自分の出典を字の中に持つ（いまの地形は、…）ので、ラベルは付けない。
   //   両方にラベルを付ける版も測ったが、カードが 春日部で 337 → 372px になった。
   //   ラベル 1 つなら 豊洲 315 → 303px・軽井沢 280 → 268px で、むしろ縮む。
-  const lines = ({ terrain, meiji }) => {
+  // 区分名と、その説明は 1 対。割って置かない（hidetzu/konjaku#362。Owner 決定 1）。
+  //   前は 2 行目が説明だけを言い、区分名（旧水部）は「なぜそう言える？」の中と凡例にしか無かった。
+  //   実測（2026-09-02・main = 97df702・豊洲・375×667）: 説明が y413、区分名が y572。
+  //   間に別の出典の答えが挟まり、7 名中 7 名が「同じことを何度も読んだ」と言った。
+  //   添えると 2 行目が 1 行 → 2 行になり、カードが 19px 高くなる（375・320 の実測）。
+  //   768 と 1280 では 1 行のまま。4 幅とも横スクロールは 0。
+  //
+  // 返す 出した は、カードが字として出した区分名。呼ぶ側が「なぜそう言える？」で
+  //   繰り返さないために使う（Owner 決定 3）。ここで DOM は触らない。
+  //
+  // 区分名を添えるかは、呼ぶ側が決める（既定は添えない）。
+  //   深掘り画面は「国土地理院の区分：旧水部」を別に持っているので、
+  //   ここでも添えると、あちらで同じ区分名が 2 か所になる（この Issue と同じ問題を移すだけ）。
+  //   実測（2026-09-02・豊洲・375×667）: 添えた版の /deep は 旧水部 が 2 枠に出た。
+  const lines = ({ terrain, meiji }, { 区分名を添える = false } = {}) => {
     const gloss = g.KonjakuWords.groundGloss(terrain);
-    const 成り立ち = gloss ? `${SOURCE.terrain}は、${gloss}` : "";
+    const 成り立ち = !gloss ? ""
+      : 区分名を添える ? `${SOURCE.terrain}は ${terrain}（${gloss}）`
+      : `${SOURCE.terrain}は、${gloss}`;
     if (meiji && meiji.value)
-      return { label: SOURCE.meiji, head: `ここは ${meiji.value} でした`, sub: 成り立ち };
+      return { label: SOURCE.meiji, head: `ここは ${meiji.value} でした`, sub: 成り立ち,
+               出した: 区分名を添える && 成り立ち ? [meiji.value, terrain] : [meiji.value] };
     // 地形分類そのものが昔を名指す。出典は 2 行目と同じなので、ラベルはそちらに任せない。
     //   見出しが地形分類の字そのものなので、ラベルもそう名乗る。
+    //   ⚠ ここは見出しが説明そのもので、区分名を字として出していない。
+    //     だから 出した は空。区分名は「なぜそう言える？」が名乗る（消さない）。
     if (PAST_IN_TERRAIN.includes(terrain))
-      return { label: SOURCE.terrain, head: `ここは、${gloss}`, sub: "" };
-    return { label: SOURCE.meiji, head: MEIJI_NONE[meiji && meiji.none] ?? "", sub: 成り立ち };
+      return { label: SOURCE.terrain, head: `ここは、${gloss}`, sub: "", 出した: [] };
+    return { label: SOURCE.meiji, head: MEIJI_NONE[meiji && meiji.none] ?? "", sub: 成り立ち,
+             出した: 区分名を添える && 成り立ち ? [terrain] : [] };
+  };
+
+  // 「なぜそう言える？」の行が、区分名の代わりに出す字（Owner 決定 3）。
+  //   why は答えの再掲ではなく、どの資料が何を言ったかの一覧。
+  //   出典名は行の見出し（いまの地形／明治期の地図）が名乗るので、ここでは繰り返さない。
+  const WHY_READ = {
+    出どころ: "この答えの出どころ",
+    読めた:   "読み取れました",
   };
 
   // いま出している場所が、どこから来たか。画面が板の 1 行目に出す字。
@@ -165,6 +193,6 @@
     },
   };
 
-  g.KonjakuAnswer = { SOURCE, MEIJI_NONE, PAST_IN_TERRAIN, lines, WHERE, WHERE_STILL, whereFailed,
+  g.KonjakuAnswer = { SOURCE, MEIJI_NONE, PAST_IN_TERRAIN, lines, WHY_READ, WHERE, WHERE_STILL, whereFailed,
                       GROUND, 確率の字 };
 })(typeof window === "undefined" ? globalThis : window);

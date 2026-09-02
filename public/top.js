@@ -422,9 +422,9 @@
     askMeiji(seq, 明治期の約束);
     askPhoto(lon, lat, seq);
     showArea(lon, lat);
-    // 区分名は、出典の言葉として添える。主ではない。
+    // 区分名を描くのは drawWhySources の 1 か所（hidetzu/konjaku#362）。
+    //   ここでも書くと、カードに出したかどうかを知らないまま先に描いてしまう。
     //   消しはしない。国土地理院の区分名を名乗れないと、何を根拠に言っているか分からなくなる。
-    nameEl.innerHTML = `<b>${esc(v.value)}</b>（国土地理院）`;
     drawAnswer();
     drawLegend();
   }
@@ -436,12 +436,38 @@
   const 答え = { terrain: null, meiji: undefined };
   function drawAnswer() {
     if (!答え.terrain || 答え.meiji === undefined) return;
-    const { label, head, sub } = KonjakuAnswer.lines(答え);
+    const { label, head, sub, 出した } = KonjakuAnswer.lines(答え, { 区分名を添える: true });
     glossSrcEl.textContent = label;
     glossSrcEl.hidden = !label;
     glossEl.textContent = head;
     subEl.textContent = sub;
     subEl.hidden = !sub;
+    drawWhySources(new Set(出した));
+  }
+
+  // 「なぜそう言える？」の出典の行（Owner 決定 3・hidetzu/konjaku#362）。
+  //   why は答えの再掲ではなく、どの資料が何を言ったかを示す場所。
+  //   カードが字として出した区分名は、ここで繰り返さない。かわりに読めたことを言う。
+  //   出典名は行の見出し（dt。answer.js の SOURCE が字を持つ）が名乗るので、消えない。
+  //   ⚠ ここに SOURCE の字を書かない。静的検査が「書き写している」と落とす（test/check/next.mjs ⑤）。
+  //     ⚠ コメントも読まれる（CLAUDE.md §5）。実際に 1 回落とした。
+  //   ⚠ カードに出していない区分名は、そのまま名乗る（消すと根拠が追えなくなる）。
+  //   ⚠ 取れなかったときの 3 つの字は、これまでどおりそのまま出す（docs/adr/0056）。
+  function drawWhySources(出した) {
+    const 地形 = 答え.terrain;
+    nameEl.innerHTML = 出した.has(地形)
+      ? `<span class="why__read">${esc(KonjakuAnswer.WHY_READ.読めた)}</span>（国土地理院）`
+      : `<b>${esc(地形)}</b>（国土地理院）`;
+    const m = 答え.meiji;
+    if (!m) return;
+    meijiRow.hidden = false;
+    if (m.none) {
+      meijiEl.innerHTML = `<span class="none">${esc(KonjakuAnswer.MEIJI_NONE[m.none])}</span>`;
+      return;
+    }
+    meijiEl.innerHTML = 出した.has(m.value)
+      ? `<span class="why__read">${esc(KonjakuAnswer.WHY_READ.出どころ)}</span>`
+      : `<b>${esc(m.value)}</b> でした`;
   }
 
   // 明治期の低湿地。地形分類とは別の出典で、別の答えを返す。
@@ -466,14 +492,8 @@
     const none = (!m || m.state === Konjaku.STATE.UNREACHABLE) ? "unreachable"
                : m.state === Konjaku.STATE.ABSENT ? "absent"
                : !m.value ? "noClass" : null;
-    meijiRow.hidden = false;
-    if (none) {
-      meijiEl.innerHTML = `<span class="none">${esc(KonjakuAnswer.MEIJI_NONE[none])}</span>`;
-      答え.meiji = { none };
-    } else {
-      meijiEl.innerHTML = `<b>${esc(m.value)}</b> でした`;
-      答え.meiji = { value: m.value };
-    }
+    // 字を描くのは drawWhySources の 1 か所（hidetzu/konjaku#362）。ここは状態だけ持つ。
+    答え.meiji = none ? { none } : { value: m.value };
     drawAnswer();
   }
 
