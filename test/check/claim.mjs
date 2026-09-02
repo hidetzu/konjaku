@@ -51,6 +51,46 @@ head("名乗り");
   else ok(`看板・title・og:title の名乗りが揃っている（${h1}）`);
 }
 
+// ⚠ **`/about` は、⚠ 外からの入口**（2026-09-03。Owner 指示）。
+//   ⚠ **共有カードで見えるのは、⚠ この 2 行だけ。**⚠ **中身は読まれない。**
+//   ⚠ **前は「このサイトについて — 今昔」「今昔がどんな道具かを書いています」だった。**
+//     ⚠ **どちらも、⚠ 何ができる道具かを言っていない。**
+// ⚠ **画面の問い（`h1`）と、⚠ 共有カードの名乗りを、⚠ 割らない。**
+{
+  const ab = await readFile(join(PUB, "about.html"), "utf8");
+  const q = /<h1[^>]*class="entry__q"[^>]*>([^<]+)<\/h1>/.exec(ab)?.[1]?.trim();
+  const title = /<title>([^<]+)<\/title>/.exec(ab)?.[1]?.trim();
+  const 名乗り = {
+    "og:title": /property="og:title" content="([^"]+)"/.exec(ab)?.[1]?.trim(),
+    "twitter:title": /name="twitter:title" content="([^"]+)"/.exec(ab)?.[1]?.trim(),
+  };
+  const 説明 = {
+    "description": /name="description" content="([^"]+)"/.exec(ab)?.[1]?.trim(),
+    "og:description": /property="og:description" content="([^"]+)"/.exec(ab)?.[1]?.trim(),
+    "twitter:description": /name="twitter:description" content="([^"]+)"/.exec(ab)?.[1]?.trim(),
+  };
+  const 欠け = [];
+  if (!q) 欠け.push("/about の問い（h1.entry__q）を読めない（⚠ この検査が何も見ていない）");
+  if (!title) 欠け.push("/about の title を読めない");
+  for (const [k, v] of Object.entries(名乗り)) {
+    if (!v) { 欠け.push(`/about の ${k} を読めない`); continue; }
+    if (v !== title) 欠け.push(`/about の名乗りが割れている: title「${title}」／ ${k}「${v}」`);
+  }
+  // ⚠ **画面の問いが、⚠ そのまま名乗りに出ていること**（⚠ 中身と共有カードを割らない）
+  if (q && title && !title.includes(q))
+    欠け.push(`/about の名乗りに、画面の問い「${q}」が入っていない: 「${title}」`);
+  // ⚠ **何ができる道具かを、⚠ 説明が言っていること**（⚠ 「このサイトについて」では分からない）
+  for (const [k, v] of Object.entries(説明)) {
+    if (!v) { 欠け.push(`/about の ${k} を読めない`); continue; }
+    if (!/地図/.test(v) || !/空中写真/.test(v))
+      欠け.push(`/about の ${k} が、何から答えるかを言っていない: 「${v}」`);
+    if (!/昔/.test(v)) 欠け.push(`/about の ${k} が、何を知る道具かを言っていない: 「${v}」`);
+  }
+  欠け.length
+    ? bad(欠け.join(" ／ "))
+    : ok(`/about の名乗りは、画面の問いと揃っている（${title}）`);
+}
+
 // ⚠ 名乗りは、実装が実際にやっていることに合わせる。
 //   OGP と title は共有先まで届くので、ここが実装とずれると**共有先で嘘をつく**。
 //   実際にずれていた（2026-08-14）:

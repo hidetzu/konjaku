@@ -50,14 +50,21 @@
 }
 
 /* 地図へ行く道。この画面で、いちばん強く塗るのはここ。 */
-.entry__cta{
+/* 上（入口）と下（出口）は、同じ「地図へ行く」ボタン。同じ大きさにする。
+   前は下だけ inline-flex・44px・15px で、上は 52px・16px だった。
+   同じことをする 2 つが違う大きさだと、下のほうが弱い選択肢に見える。 */
+.entry__cta,
+.about__goLink{
   display:flex; align-items:center; justify-content:center;
-  min-height:3.25rem; margin:var(--gap-row) 0 0;
+  min-height:3.25rem;
   background:var(--action); color:var(--action-ink);
   border-radius:.75rem; font-size:1rem; font-weight:700; text-decoration:none;
 }
-.entry__cta:hover{opacity:.9}
-.entry__cta:focus-visible{outline:2px solid var(--action); outline-offset:2px}
+.entry__cta{margin:var(--gap-row) 0 0}
+.entry__cta:hover,
+.about__goLink:hover{opacity:.9}
+.entry__cta:focus-visible,
+.about__goLink:focus-visible{outline:2px solid var(--action); outline-offset:2px}
 
 .about__sec{margin:0 0 var(--gap-block);
   padding-top:var(--gap-block); border-top:1px solid var(--line)}
@@ -160,14 +167,7 @@
    読み物なので、押すものが 1 つしか無いことが分かる形にする。
    ⚠ --action の上に載る字は --action-ink（地に対して測っても意味がない）。 */
 .about__go{margin:var(--gap-block) 0 0}
-.about__goLink{
-  display:inline-flex; align-items:center; min-height:var(--tap);
-  padding:0 var(--gap-block);
-  background:var(--action); color:var(--action-ink);
-  border-radius:.75rem; font-size:.9375rem; font-weight:700; text-decoration:none;
-}
-.about__goLink:hover{opacity:.9}
-.about__goLink:focus-visible{outline:2px solid var(--action); outline-offset:2px}
+/* .about__goLink の見た目は、上の .entry__cta と 1 か所で持つ。 */
 
 .about__ver{margin:var(--gap-block) 0 0; font-size:.8125rem; color:var(--ink-3)}
 
