@@ -187,7 +187,21 @@
 
     if (r.地盤.state === "ok") {
       if (r.地盤.微地形) 項(W.微地形, r.地盤.微地形);
-      if (r.地盤.増幅率 !== null) 項(W.増幅率, String(r.地盤.増幅率));
+      if (r.地盤.増幅率 !== null) {
+        const d = 項(W.増幅率, String(r.地盤.増幅率));
+        // 数字の右に、同じ行のまま目盛りを置く（行が増えない）。
+        //   1.0 を基準の目印にする。目盛りの端は 3.0（J-SHIS の表層地盤で見る範囲の上）。
+        //   ⚠ ここで「危険／安全」の判定はしない。値をそのまま長さにするだけ。
+        const 目盛 = document.createElement("span");
+        目盛.className = "scale"; 目盛.setAttribute("aria-hidden", "true");
+        目盛.style.setProperty("--p", Math.max(0, Math.min(1, r.地盤.増幅率 / 3)));
+        目盛.style.setProperty("--base", 1 / 3);
+        d.querySelector(".why__v").append(目盛);
+        // 何に対する比かを、出典の定義の言葉で言う（読み方の足場）。
+        const 物差し = document.createElement("p");
+        物差し.className = "scale__note"; 物差し.textContent = W.増幅率の物差し;
+        d.append(物差し);
+      }
     } else {
       項(W.微地形, r.地盤.state === "absent" ? W.無い.地盤 : W.読めない.地盤, true);
     }
@@ -202,7 +216,12 @@
         k.textContent = W.震度(x.震度);
         const v = document.createElement("span"); v.className = "ground__v";
         v.textContent = KonjakuAnswer.確率の字(x.確率);
-        li.append(k, v); ul.append(li);
+        // 4 つの値を見くらべられるようにする。字と字のあいだの空きに置くので、行は増えない。
+        //   ⚠ 読み上げからは外す（隣に同じ値の字がある）。⚠ 長さは確率そのもの。
+        const 帯 = document.createElement("span");
+        帯.className = "ground__bar"; 帯.setAttribute("aria-hidden", "true");
+        帯.style.setProperty("--p", Math.max(0, Math.min(1, x.確率)));
+        li.append(k, 帯, v); ul.append(li);
       }
       d.append(ul);
     } else {
@@ -211,6 +230,16 @@
 
     groundFrom.textContent = W.出典(r.版);
     groundNote.textContent = W.断り;
+
+    // 液状化のしやすさ（成因の節）と、揺れやすさ（この節）は、利用者には 1 つの問い。
+    //   節はまとめない（国土地理院の「成り立ち → 起こりうること」の対応が切れる）。
+    //   行き先だけを置く。⚠ この節を出すときだけ置く（押しても何も無い導線を作らない）。
+    if (!document.getElementById("toGround")) {
+      const a = document.createElement("a");
+      a.id = "toGround"; a.className = "why__to"; a.href = "#groundSec";
+      a.textContent = `${W.見にいく} →`;
+      whySec.append(a);
+    }
   }
 
   // 標高。散歩中は出さないと決めてある（docs/adr/0059）。
@@ -340,6 +369,21 @@
   //   帰宅後は全部出す。読み物として、年表で読める。
   //   ⚠ この地点の記録ではないことは、散歩中と同じくいちばん先に言う。
   //     利用者役 3 名中 1 名が、1 件でも年をこの地点のものとして読んだ。
+
+  // 記録の印。⚠ 種類ごとに形を変える（飾りではない）。⚠ 字は answer.js が持つ。
+  //   線だけの小さな形にする。色は文字の色を継ぐので、色みが変わっても一緒に動く。
+  const 印 = (d) => `<svg viewBox="0 0 16 16" width="14" height="14" fill="none"`
+    + ` stroke="currentColor" stroke-width="1.4" stroke-linecap="round"`
+    + ` stroke-linejoin="round">${d}</svg>`;
+  const RECORD_ICON = {
+    開港:   印('<path d="M8 3v10M4.5 5.5h7"/><path d="M2.5 9c1.5 3 9.5 3 11 0"/>'),
+    完成:   印('<path d="M2.5 13h11"/><path d="M4.5 13V6l3.5-3 3.5 3v7"/><path d="M7 13v-3h2v3"/>'),
+    工事:   印('<path d="M3 13.5h10"/><path d="M4.5 13.5V3.5h7"/><path d="M11.5 3.5v3"/><path d="M4.5 6l4-2.5"/>'),
+    接収:   印('<path d="M4 14V2"/><path d="M4 3h8l-2 2.5L12 8H4"/>'),
+    制度:   印('<path d="M3.5 2.5h6l3 3v8h-9z"/><path d="M9.2 2.5v3.3h3.3"/><path d="M5.5 9h5M5.5 11h5"/>'),
+    計画:   印('<path d="M2.5 4.5h11v7h-11z"/><path d="M2.5 7h11"/><path d="M5.5 9.5h5"/>'),
+    その他: 印('<circle cx="8" cy="8" r="2.5"/>'),
+  };
   async function drawNear(lon, lat) {
     nearSec.hidden = true;
     let j = null;
@@ -368,14 +412,25 @@
     //   散歩中は新しい順に 1 件だけ出しているが、あちらは「1 件を選ぶ」話で、
     //   ここは「並べて読む」話。目的が違うので並びも違ってよい。
     const 並び = [...(a.records ?? [])].sort((x, y) => x.year - y.year);
-    yearsEl.innerHTML = 並び.map((r) =>
-      `<li class="${r.year === a.shown ? "shown" : ""}">`
-      + `<span class="y">${esc(String(r.year))}年</span>`
-      + `<span class="t">${esc(r.text)}</span></li>`).join("");
-    nearNote.textContent =
-      "※この地点に関する記録ではありません。"
-      + "この場所がいつ陸になったかは、この資料からは分かりません。"
-      + (a.place_note ? a.place_note : "");
+    // 出来事の種類を、記録の文から見分ける（字と語は answer.js が持つ）。
+    //   ⚠ 当たらない記録には何も付けない。⚠ 付けたことは、下の読み方に書く。
+    //   印は年の左の細い列に置く。年と同じ行なので、縦は増えない。
+    yearsEl.innerHTML = 並び.map((r) => {
+      const k = KonjakuAnswer.recordKind(r.text);
+      return `<li class="rec ${r.year === a.shown ? "shown" : ""}">`
+        + `<span class="rec__mark" aria-hidden="true">${RECORD_ICON[k ? k.kind : "その他"]}</span>`
+        + `<p class="rec__t"><b class="rec__y">${esc(String(r.year))}年</b>`
+        + (k ? `<span class="rec__kind">${esc(k.label)}</span>` : "")
+        + `${esc(r.text)}</p></li>`;
+    }).join("");
+    // 断りは本文に埋めず、まとめて 1 か所に出す（字は answer.js）。
+    const N = KonjakuAnswer.RECORD_NOTE;
+    nearNote.innerHTML =
+      `<b class="note__k">${esc(N.見出し)}</b>`
+      + `<span class="note__list">`
+      + [...N.行, ...(a.place_note ? [a.place_note] : [])]
+          .map((t) => `<span class="note__row">${esc(t)}</span>`).join("")
+      + `</span>`;
     nearFrom.innerHTML =
       `出典：<a href="${esc(a.source.url)}" target="_blank" rel="noopener">`
       + `${esc(a.source.name)}</a>（${esc(a.source.retrieved_at)} に読んだもの）`;

@@ -638,6 +638,136 @@ CASES.push({
 });
 
 CASES.push({
+  // ⚠ **深掘り画面は、⚠ 文章だけで 7.8 画面続いていた**（実測 2026-09-02・本番・豊洲・375×667）。
+  //   ⚠ **利用者役 5 名中 3 名が「目的の情報にたどり着けない」、⚠ 2 名が「数字が読めない」と言った。**
+  //   ⚠ **足したのは、⚠ 節の印・数字の目盛り・行き先。**⚠ **どれも行の中に置くので、縦は増えない。**
+  //
+  // ⚠ **見るのは「在ること」だけではない。**⚠ **印は節ごとに形が違うこと**（同じ形なら識別に効かない）、
+  //   ⚠ **目盛りと帯の長さが値と合っていること**（合っていない図は、嘘をつく図）。
+  name: "節の印・数字の目盛り・揺れへの行き先が、深掘り画面に出ている",
+  path: `/deep.html?${TOYOSU}`, origin: NEXT_BASE, viewport: SP,
+  async check(page) {
+    await 待つ(page, () => !document.getElementById("groundSec")?.hidden, "地盤の節");
+    await 待つ(page, () => document.querySelectorAll(".ground__bar").length > 0, "見込みの帯");
+    const r = await page.evaluate(() => {
+      const secs = [...document.querySelectorAll("section.sec")].filter((s) => !s.hidden);
+      const 印 = secs.map((s) => {
+        const svg = s.querySelector(":scope > h2 .sec__icon");
+        return { id: s.id, 形: svg ? svg.innerHTML.replace(/\s+/g, "") : null };
+      });
+      const to = document.getElementById("toGround");
+      const tb = to?.getBoundingClientRect();
+      const sc = document.querySelector(".scale");
+      const 増幅率 = parseFloat([...document.querySelectorAll(".why__v")]
+        .map((e) => e.textContent.trim()).find((t) => /^\d+(\.\d+)?$/.test(t)) ?? "NaN");
+      return {
+        印,
+        行き先: to ? { href: to.getAttribute("href"), w: Math.round(tb.width), h: Math.round(tb.height) } : null,
+        目盛: sc ? Number(sc.style.getPropertyValue("--p")) : null,
+        基準: sc ? Number(sc.style.getPropertyValue("--base")) : null,
+        増幅率,
+        物差し: [...document.querySelectorAll(".scale__note")].map((e) => e.textContent.trim()),
+        帯: [...document.querySelectorAll(".ground__bar")].map((e) => Number(e.style.getPropertyValue("--p"))),
+        値: [...document.querySelectorAll(".ground__v")].map((e) => e.textContent.trim()),
+        W: window.KonjakuAnswer ? window.KonjakuAnswer.GROUND : null,
+      };
+    });
+    must(r.W !== null, "KonjakuAnswer が読み込まれていない（⚠ この検査が何も見ていない）");
+    // ⚠ **印は、⚠ 見えている節すべてに在る**
+    const 印なし = r.印.filter((x) => !x.形).map((x) => x.id);
+    must(印なし.length === 0, `印の無い節がある: ${印なし.join(" / ")}`);
+    // ⚠ **形が節ごとに違う。**⚠ **同じ形を配ると、⚠ 節の識別には効かない**（在るだけになる）
+    const 形 = r.印.map((x) => x.形);
+    must(new Set(形).size === 形.length,
+      `印の形が重なっている（${形.length} 節に ${new Set(形).size} 種類）`);
+    // ⚠ **揺れへの行き先。**⚠ **押せるものは 44 を割らない**
+    must(r.行き先 && r.行き先.href === "#groundSec",
+      `揺れの節への行き先が無い、または飛び先が違う: ${JSON.stringify(r.行き先)}`);
+    must(r.行き先.w >= 44 && r.行き先.h >= 44,
+      `行き先が 44px を割っている: ${r.行き先.w}x${r.行き先.h}`);
+    // ⚠ **目盛りの長さが、⚠ 値と合っている**（端は 3.0・基準は 1.0）
+    must(Number.isFinite(r.増幅率), "増幅率の数字が画面に出ていない");
+    must(Math.abs(r.目盛 - r.増幅率 / 3) < 0.001,
+      `目盛りの長さが値と合っていない: --p=${r.目盛} ／ 増幅率 ${r.増幅率}`);
+    must(Math.abs(r.基準 - 1 / 3) < 0.001, `基準（1.0）の位置がずれている: --base=${r.基準}`);
+    // ⚠ **物差しの字は製品から借りる**（⚠ 検査に書き写さない）
+    must(r.物差し.includes(r.W.増幅率の物差し),
+      `増幅率の物差しが出ていない: ${JSON.stringify(r.物差し)}`);
+    // ⚠ **帯の長さは確率そのもの。**⚠ **震度が上がるほど下がる**（逆なら、図が嘘をついている）
+    must(r.帯.length === r.値.length && r.帯.length >= 2,
+      `帯と値の数が合わない: 帯 ${r.帯.length} ／ 値 ${r.値.length}`);
+    for (let i = 1; i < r.帯.length; i++)
+      must(r.帯[i] <= r.帯[i - 1] + 1e-9,
+        `帯が震度の順に下がっていない: ${r.帯.join(" > ")}`);
+    for (const p of r.帯) must(p >= 0 && p <= 1, `帯の長さが 0〜1 の外: ${p}`);
+    return `印 ${形.length} 種・目盛り ${r.増幅率}/3・帯 ${r.帯.map((x) => x.toFixed(2)).join(",")}・行き先 ${r.行き先.w}x${r.行き先.h}`;
+  },
+});
+
+CASES.push({
+  // ⚠ **一帯の記録が、⚠ 文の塊に見えていた**（利用者役 5 名中 2 名）。
+  //   ⚠ **出来事の種類を、⚠ 記録の文から見分けて印と短い言葉を付けた。**
+  //   ⚠ **これは原典の分類ではない**ので、⚠ **そのことを断りに書いている。**
+  //   ⚠ **断りは本文に埋めず、⚠ 箱に分けた**（「この地点の記録ではない」は消さない。掟 §1）。
+  //
+  // ⚠ **記録の件数は、⚠ 配っている資料そのものから数えて突き合わせる**（画面に数えさせない）。
+  name: "一帯の年表は、出来事の種類が分かる形で出て、断りが本文と分かれている",
+  path: `/deep.html?${TOYOSU}`, origin: NEXT_BASE, viewport: SP,
+  async check(page) {
+    await 待つ(page, () => document.querySelectorAll("#years li").length > 0, "一帯の年表");
+    const r = await page.evaluate(async () => {
+      const A = window.KonjakuAnswer;
+      const j = await fetch("./data/area-record.json").then((x) => x.json());
+      const a = (j.areas ?? []).find((x) => {
+        const b = x.bbox;
+        return b && 139.7967 >= b.w && 139.7967 <= b.e && 35.6553 >= b.s && 35.6553 <= b.n;
+      });
+      const 行 = [...document.querySelectorAll("#years li")].map((li) => ({
+        印: !!li.querySelector(".rec__mark svg"),
+        形: li.querySelector(".rec__mark svg")?.innerHTML.replace(/\s+/g, "") ?? null,
+        種別: li.querySelector(".rec__kind")?.textContent.trim() ?? null,
+        字: li.querySelector(".rec__t")?.textContent.trim() ?? "",
+      }));
+      const note = document.getElementById("nearNote");
+      return {
+        行, 資料の件数: (a?.records ?? []).length,
+        資料の種別: (a?.records ?? []).map((x) => A?.recordKind(x.text)?.label ?? null),
+        ラベル一覧: A ? A.RECORD_KINDS.map((k) => k.label) : null,
+        断り: note ? note.textContent : null,
+        断りの行: A ? A.RECORD_NOTE.行 : null,
+        断りは年表の外: note ? !document.getElementById("years").contains(note) : null,
+      };
+    });
+    must(r.ラベル一覧 !== null, "KonjakuAnswer が読み込まれていない（⚠ この検査が何も見ていない）");
+    // ⚠ **画面の件数を、⚠ 配っている資料と突き合わせる**（⚠ 別の道で得たもの）
+    must(r.行.length === r.資料の件数,
+      `年表の件数が資料と合わない: 画面 ${r.行.length} ／ 資料 ${r.資料の件数}`);
+    must(r.行.every((x) => x.印), `印の無い行がある: ${r.行.filter((x) => !x.印).length} 件`);
+    // ⚠ **種別が違えば、⚠ 印の形も違う。**⚠ **同じ形を配ると、⚠ ひと目で区別できない**
+    //   （⚠ 在るだけになる。⚠ 実際に、⚠ わざと同じ形にして確かめた）。
+    const 形の対応 = new Map();
+    for (const x of r.行) {
+      if (!x.種別) continue;
+      const 先 = [...形の対応].find(([k, v]) => v === x.形 && k !== x.種別);
+      must(!先, `種別「${x.種別}」と「${先?.[0]}」の印が同じ形`);
+      形の対応.set(x.種別, x.形);
+    }
+    // ⚠ **付けた種別は、⚠ 決めた一覧のどれか**（⚠ 画面が勝手な言葉を作っていない）
+    for (const x of r.行)
+      must(x.種別 === null || r.ラベル一覧.includes(x.種別), `知らない種別が出ている: ${x.種別}`);
+    // ⚠ **当たらない記録には付けない**（⚠ 無理に分けると、⚠ こちらの解釈が事実に見える）
+    const 並び = r.行.map((x) => x.種別);
+    must(JSON.stringify(並び) === JSON.stringify(r.資料の種別),
+      `種別が資料から出したものと違う: 画面 ${JSON.stringify(並び)} ／ 資料 ${JSON.stringify(r.資料の種別)}`);
+    // ⚠ **断りは、⚠ 本文ではなく箱に在る。**⚠ **3 つとも、⚠ そのまま出ている**
+    must(r.断りは年表の外, "断りが年表の中に埋まっている（⚠ 本文と分かれていない）");
+    for (const 行 of r.断りの行)
+      must(r.断り.includes(行), `断りが出ていない: ${行}`);
+    return `${r.行.length} 件・種別 ${並び.filter(Boolean).length} 件に付いた・断り ${r.断りの行.length} 行`;
+  },
+});
+
+CASES.push({
   // ⚠ **動きを止めている人の設定を無視しない**（`ui-ux-review` §3）。
   //   ⚠ **v0.1.0 は、⚠ いま動くものを 1 つも持っていない**（⚠ 実測 2026-08-29: 見えている 83 要素で 0）。
   // ⚠ **壊れていなくても残す。**⚠ **次に動きを足した人が、⚠ この設定を忘れたら止まる。**
@@ -992,19 +1122,31 @@ CASES.push(
       const r = await page.evaluate(() => ({
         見出し: document.getElementById("nearLead").textContent.trim(),
         件数: document.querySelectorAll("#years li").length,
-        年: [...document.querySelectorAll("#years .y")].map((e) => Number(e.textContent.replace(/\D/g, ""))),
+        年: [...document.querySelectorAll("#years .rec__y")].map((e) => Number(e.textContent.replace(/\D/g, ""))),
         印: document.querySelectorAll("#years li.shown").length,
         断り: document.getElementById("nearNote").textContent.trim(),
+        断りの行: window.KonjakuAnswer ? window.KonjakuAnswer.RECORD_NOTE.行 : null,
         出典: document.getElementById("nearFrom").textContent.trim(),
       }));
       must(r.件数 >= 5, `年表が全部出ていない（${r.件数} 件）`);
+      // ⚠ **年を 1 件も拾えていないのに通す形にしない。**
+      //   ⚠ 実際に踏んだ（2026-09-03）: ⚠ 年の class を変えたら空配列になり、
+      //     ⚠ **`every` が真のまま通って、⚠ 並び順を何も見ていなかった。**
+      must(r.年.length === r.件数,
+        `年を ${r.年.length} 件しか拾えていない（行は ${r.件数} 件）`);
+      must(r.年.every((v) => Number.isFinite(v) && v > 1000), `年が数として読めない: ${r.年.join(" ")}`);
       // ⚠ **古い順**（⚠ 年表として読むので、⚠ 時の流れの向き）
       must(r.年.every((v, i) => i === 0 || r.年[i - 1] <= v),
         `年表が古い順に並んでいない: ${r.年.join(" ")}`);
       // ⚠ **散歩中に出している 1 件が、⚠ どれか分かる**
       must(r.印 === 1, `散歩中に出した 1 件の印が ${r.印} 個（1 個のはず）`);
       // ⚠ **この地点の記録ではないと、⚠ 先に言う**
-      must(/この地点に関する記録ではありません/.test(r.断り), `断りが無い: ${r.断り}`);
+      //   ⚠ **字は製品から借りる**（`KonjakuAnswer.RECORD_NOTE`）。⚠ **書き写さない。**
+      //   ⚠ 実際に踏んだ（2026-09-03）: ⚠ ここに字を書き写していたので、
+      //     ⚠ **画面の言い直し（「に関する」を外した）だけで、⚠ 製品ではなく検査が落ちた。**
+      must(r.断りの行 && r.断りの行.length >= 1,
+        "KonjakuAnswer.RECORD_NOTE が読み込まれていない（⚠ この検査が何も見ていない）");
+      must(r.断り.includes(r.断りの行[0]), `断りが無い: ${r.断り}`);
       must(!/^\d/.test(r.断り), "断りより先に年が来ている");
       must(/出典/.test(r.出典) && /読んだもの/.test(r.出典), `出典と読んだ日が無い: ${r.出典}`);
       return `${r.件数} 件・${r.年[0]}〜${r.年[r.年.length - 1]}・印 1 個`;
