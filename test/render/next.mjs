@@ -3278,6 +3278,140 @@ for (const [名, viewport] of [["PC", PCな幅], ["スマホ", SP], ["いちば�
   });
 }
 
+// ⚠ **色みを、⚠ 人が選べる**（2026-09-02。`docs/adr/0086`）。
+//
+// ⚠ **3 つを並べて出す。**⚠ **押すたびに回る形はやめた**（2026-09-02。Owner 指示）。
+//   ⚠ **回る形は、⚠ いまがどれで、⚠ 次が何になるかが、⚠ 押してみるまで分からない。**
+// ⚠ **静的検査は、⚠ 字と形しか見ない。**⚠ **本当に色が変わったか、⚠ 次に開いても残るか、
+//   ⚠ 端末の設定に勝てるかは、⚠ ここでしか出ない。**
+// ⚠ **端末の設定は「暗い」に固定して回す。**⚠ **勝てないなら、⚠ 選ばせる意味が無い。**
+for (const [名, viewport] of [["PC", PCな幅], ["スマホ", SP], ["いちばん狭い幅", { width: 320, height: 640 }]]) {
+  CASES.push({
+    name: `${名}で、色みを 3 つから選べて、次に開いても残る`,
+    path: "/about", origin: NEXT_BASE, viewport, colorScheme: "dark",
+    async check(page) {
+      await 待つ(page, () => {
+        const b = document.getElementById("theme");
+        return b && !b.hidden;
+      }, "色みを選ぶ口");
+      const 見る = () => page.evaluate(() => {
+        const box = document.getElementById("theme");
+        const btn = box.querySelector(".theme__btn"), q = btn.getBoundingClientRect();
+        const 帯 = document.querySelector(".brand__inner").getBoundingClientRect();
+        const menu = document.querySelector(".menu__btn").getBoundingClientRect();
+        return {
+          いま: box.getAttribute("data-mode") ?? "",
+          絵: (box.querySelector(".theme__icon")?.innerHTML ?? "").length,
+          aria: btn.getAttribute("aria-label") ?? "",
+          w: Math.round(q.width), h: Math.round(q.height),
+          固定: document.documentElement.getAttribute("data-theme"),
+          // ⚠ **実際に色が付く要素で見る**（⚠ body は透明な画面がある）
+          帯の地: getComputedStyle(document.querySelector(".brand")).backgroundColor,
+          重なり: q.right > menu.left && menu.right > q.left,
+          はみ出し: q.left < 帯.left - 1 || q.right > 帯.right + 1,
+          横あふれ: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+        };
+      });
+      // ⚠ **3 つが、⚠ 開いた時点で全部見えていること**（⚠ 押してみるまで分からない形にしない）
+      await page.click(".theme__btn");
+      await page.waitForTimeout(250);
+      const 並び = await page.evaluate(() => {
+        const box = document.getElementById("theme");
+        const 板 = box.querySelector(".theme__panel").getBoundingClientRect();
+        return [...box.querySelectorAll(".theme__item")].map((e) => {
+          const q = e.getBoundingClientRect();
+          return { v: e.getAttribute("data-v"), 字: e.textContent.trim(),
+                   押されている: e.getAttribute("aria-pressed"),
+                   w: Math.round(q.width), h: Math.round(q.height),
+                   見えている: e.checkVisibility(),
+                   はみ出し: q.right > innerWidth + 1 || q.left < -1 };
+        }).concat([{ v: "（板）", 字: "", 押されている: "-",
+                     w: Math.round(板.width), h: Math.round(板.height),
+                     見えている: true, はみ出し: 板.right > innerWidth + 1 || 板.left < -1 }]);
+      });
+      must(並び.length === 4, `色みの選択肢が 3 つではない（${並び.length - 1} 個）`);
+      for (const it of 並び) {
+        must(it.見えている, `色みの選択肢「${it.字 || it.v}」が見えていない`);
+        must(!it.はみ出し, `色みの板が画面からはみ出している（${it.v}）`);
+        if (it.v !== "（板）") must(it.h >= 44, `色みの選択肢「${it.字}」が低い（${it.h}px）`);
+      }
+      // ⚠ **いま選んでいるものが、⚠ 字か aria で分かること**（⚠ 色と位置だけで言わない）
+      must(並び.filter((it) => it.押されている === "true").length === 1,
+        `いま選んでいるものが 1 つに定まっていない: ${並び.map((it) => it.押されている).join(" ")}`);
+      // ⚠ **「1 つだけ押されている」では足りない。**⚠ **それが、⚠ いまの色みであること。**
+      //   ⚠ **HTML に書いたまま動かなくても、⚠ 1 つだけは押されている**
+      //   （⚠ 2026-09-02 に実際に素通りした）。
+      {
+        const いま = (await 見る()).いま;
+        const 押されているの = 並び.find((it) => it.押されている === "true")?.v;
+        must(押されているの === いま,
+          `押されている印が、⚠ いまの色みと違う（印 ${押されているの} ／ いま ${いま}）`);
+      }
+      must(new Set(並び.slice(0, 3).map((it) => it.字)).size === 3,
+        `選択肢の字が 3 つに分かれていない: ${並び.slice(0, 3).map((it) => it.字).join(" ")}`);
+
+      // ⚠ **3 つとも押して、⚠ 印・色・読み上げが変わること**
+      const 見た = [];
+      for (const v of ["auto", "light", "dark"]) {
+        // ⚠ **押すと閉じる。**⚠ **次を押す前に、⚠ 開いているかを見てから開ける。**
+        if (!(await page.evaluate(() => document.getElementById("theme").open))) {
+          await page.click(".theme__btn");
+          await page.waitForTimeout(200);
+        }
+        await page.click(`.theme__item[data-v="${v}"]`);
+        await page.waitForTimeout(250);
+        const r = await 見る();
+        見た.push(r);
+        must(r.いま === v, `「${v}」を押したのに ${r.いま} になっている`);
+        must(r.w >= 44 && r.h >= 44, `色みの口が小さい（${r.w}x${r.h}）`);
+        must(!r.重なり, "色みの口が、⚠ メニューと重なっている");
+        must(!r.はみ出し, "色みの口が、⚠ 帯からはみ出している");
+        must(!r.横あふれ, "色みの口を置いたら、⚠ 画面が横にあふれた");
+        must(r.aria.includes("いま"), `いまの色みを名乗っていない: 「${r.aria}」`);
+        // ⚠ **押したものへ、⚠ 印が移ること**
+        const 印 = await page.evaluate(() =>
+          document.querySelector('#theme .theme__item[aria-pressed="true"]')?.getAttribute("data-v"));
+        must(印 === v, `「${v}」を押したのに、⚠ 印は ${String(印)} のまま`);
+        // ⚠ **押したら閉じること**（⚠ 開いたまま地図の上に残らない）
+        must(!(await page.evaluate(() => document.getElementById("theme").open)),
+          `「${v}」を押しても、⚠ 開いたまま残っている`);
+      }
+      must(見た.every((r) => r.絵 > 0), "色みの印が 1 つも描かれていない");
+      must(new Set(見た.map((r) => r.絵)).size === 3,
+        `色みの印が 3 つに分かれていない: ${見た.map((r) => r.絵).join(" ")}`);
+      must(new Set(見た.map((r) => r.aria)).size === 3, "読み上げが 3 つに分かれていない");
+      // ⚠ **端末の設定は暗い。**⚠ **明るいを選んだら、⚠ 本当に明るくなること。**
+      const [自動, 明るい, 暗い] = 見た;
+      must(明るい.帯の地 !== 暗い.帯の地,
+        `明るいを選んでも色が変わらない（どちらも ${明るい.帯の地}）`);
+      must(自動.帯の地 === 暗い.帯の地,
+        `端末の設定は暗いのに、⚠ 「端末に合わせる」が暗くない（${自動.帯の地}）`);
+
+      // ⚠ **次に開いても残る**（⚠ 端末の設定は暗いまま）。
+      //   ⚠ **押して残すこと。**⚠ **保存領域をこちらで書いてから読むと、
+      //     ⚠ 「押しても残さない」形を素通りする**（⚠ 2026-09-02 に実際に素通りした）。
+      if (!(await page.evaluate(() => document.getElementById("theme").open))) {
+        await page.click(".theme__btn");
+        await page.waitForTimeout(200);
+      }
+      await page.click('.theme__item[data-v="light"]');
+      await page.waitForTimeout(250);
+      await page.reload({ waitUntil: "domcontentloaded" });
+      await 待つ(page, () => {
+        const b = document.getElementById("theme");
+        return b && !b.hidden;
+      }, "開き直したあとの口");
+      const 後 = await 見る();
+      must(後.固定 === "light",
+        `明るいを選んだのに、⚠ 開き直すと ${String(後.固定)} に戻っている`);
+      must(後.帯の地 === 明るい.帯の地,
+        `開き直したら色が違う（${明るい.帯の地} → ${後.帯の地}）`);
+      return `${並び.slice(0, 3).map((it) => `${it.字}(${it.h}px)`).join(" ")}`
+           + ` ／ 板 ${並び[3].w}x${並び[3].h} ／ 開き直して ${後.いま}`;
+    },
+  });
+}
+
 // ⚠ **読み物の出口。**⚠ **押して、⚠ 本当にトップへ着くところまで見る**
 //   （⚠ 字と href だけなら静的検査が見ている。⚠ ここは着くかを見る）。
 for (const [名, viewport] of [["PC", PCな幅], ["スマホ", SP]]) {
