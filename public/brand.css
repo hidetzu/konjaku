@@ -143,21 +143,43 @@ a.brand__name:hover{color:var(--action)}
   overflow:hidden; clip-path:inset(50%); white-space:nowrap; border:0;
 }
 
-/* 色みの切り替え。押すたびに 端末の設定に従う → 明るい → 暗い と回る。
-   ☰ の手前に置く。名乗りと ☰ のあいだは、狭い幅でも 300px 以上空いている。
+/* 色みを選ぶ。3 つを並べて出す。押すたびに回る形はやめた
+   （いまがどれで、次が何になるかが、押してみるまで分からない）。
    ⚠ 色を 1 つも持たない。切り替えるのは theme.css の color-scheme。
    ⚠ JavaScript が動くまで出さない（hidden）。押しても何も起きない導線を置かないため。 */
-.brand__theme{
+.theme{position:relative; flex:0 0 auto}
+.theme[hidden]{display:none}
+.theme__btn{
   display:flex; align-items:center; justify-content:center;
-  /* ⚠ 縮ませない。狭い幅で帯が詰まると、flex が横だけ削って 37x44 になった
-     （実測 2026-09-02・320px）。押せるものは 44x44 を割らない。 */
-  flex:0 0 auto;
   width:var(--tap); height:var(--tap);
-  padding:0; margin:0;
-  background:none; border:0; cursor:pointer;
-  font:inherit; line-height:1; color:var(--ink-3);
+  cursor:pointer; list-style:none; border-radius:.5rem; color:var(--ink-3);
 }
-.brand__theme[hidden]{display:none}
-.brand__theme:hover{color:var(--action)}
-.brand__theme:focus-visible{outline:2px solid var(--action); outline-offset:-2px}
-.brand__themeIcon{display:block; width:20px; height:20px}
+.theme__btn::-webkit-details-marker{display:none}
+.theme__btn:hover{color:var(--action)}
+.theme__btn:focus-visible{outline:2px solid var(--action); outline-offset:2px}
+.theme[open] .theme__btn{color:var(--action)}
+.theme__icon{display:block; width:20px; height:20px}
+
+/* 開いた中身。メニューと同じ形で、帯の下へ右端をそろえて出す。 */
+.theme__panel{
+  position:absolute; top:calc(100% + .25rem); right:0; z-index:1;
+  display:flex; flex-direction:column; min-width:11rem;
+  background:var(--surface); border:1px solid var(--line-strong); border-radius:.5rem;
+  box-shadow:0 6px 24px color-mix(in srgb, var(--shadow) 18%, transparent);
+  overflow:hidden;
+}
+.theme__item{
+  display:flex; align-items:center; gap:var(--gap-row);
+  min-height:var(--tap); padding:0 var(--pad-md);
+  background:none; border:0; border-bottom:1px solid var(--line);
+  font:inherit; font-size:.875rem; color:var(--ink); text-align:left; cursor:pointer;
+}
+.theme__item:last-child{border-bottom:0}
+.theme__item:hover{background:var(--bg)}
+.theme__item:focus-visible{outline:2px solid var(--action); outline-offset:-2px}
+/* いま選んでいるものに印を付ける。色だけで言わない（字の前に ✓ を出す）。 */
+.theme__item::before{
+  content:"\2713"; width:1em; color:var(--action); visibility:hidden;
+}
+.theme__item[aria-pressed="true"]{color:var(--action); font-weight:700}
+.theme__item[aria-pressed="true"]::before{visibility:visible}
