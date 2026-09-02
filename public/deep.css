@@ -54,19 +54,39 @@ body{
   margin:0 0 var(--gap-sub);
   font-size:.75rem; line-height:1.6; color:var(--ink-3);
 }
+/* 節の見出し。7.8 画面ぶんを上から読むので、節の切れ目が目印になる必要がある。
+   実測（2026-09-02・本番・豊洲・375×667）: 見出しは 12px・--ink-3 で、
+   その中の小見出し（.why__k 13px・--ink）より小さく薄かった。階層が逆だった。
+   利用者役 5 名中 1 名が「どこまで読んだか分からなくなる」と言った。
+   線は区切りなので --line（情報を持つ枠ではない。rules/css.md）。 */
 .sec > h2{
-  margin:0 0 var(--gap-row); font-size:.75rem; font-weight:700; letter-spacing:.1em;
-  color:var(--ink-3);
+  margin:0 0 var(--gap-row); font-size:1.25rem; font-weight:700; letter-spacing:.02em;
+  color:var(--ink); display:flex; align-items:center; gap:var(--gap-row);
+  border-top:1px solid var(--line); padding-top:var(--gap-block);
 }
+/* 節の印。その節がどの資料を読んでいるかを表す（飾りではない）。
+   見出しの行の中に置くので、縦は 1px も増えない。字が主で、印は添え。 */
+.sec__icon{flex:none; color:var(--ink-3)}
+/* まわりの記録の束は、上で線を引いている。見出しの線と二重にしない。 */
+.sec--around > h2{border-top:0; padding-top:0}
 
 /* どう変わったか。この画面の主役。
    明治期の地図 → 空中写真の年代 → いま を、時の流れの向きに並べる。
    1 枚ずつ切り替えるのではなく、並べる。切り替えると、前の絵を覚えていないと比べられない。 */
 .time__lead{margin:0 0 var(--gap-block); font-size:1rem; color:var(--ink)}
-.frames{display:grid; gap:var(--gap-block); grid-template-columns:repeat(auto-fit,minmax(9rem,1fr))}
+/* 8 枚を並べる。⚠ 縮めるのは「読む量を減らす」ためではなく、⚠ 1 画面に入る枚数を増やして
+   ⚠ 見くらべられるようにするため。⚠ 枚数は減らさない（根拠を削らない）。
+   実測（2026-09-02・375×667）: 9rem だと 2 列 4 行で 1,329px、6.5rem だと 3 列 3 行。 */
+.frames{display:grid; gap:var(--gap-block); grid-template-columns:repeat(auto-fit,minmax(5.5rem,1fr))}
+/* 広い幅では、1 枚を大きく戻す（狭い幅が既定。rules/css.md）。
+   実測（2026-09-03・豊洲）: 1280px で 5.5rem だと 5 列 101px になり、PC なのに小さくなった。
+   9rem なら 3 列で、いまと同じ。 */
+@media (min-width:700px){
+  .frames{grid-template-columns:repeat(auto-fit,minmax(9rem,1fr))}
+}
 /* display を持つ規則には、[hidden] の打ち消しが要る（top.css と同じ話）。
    書き忘れると hidden が効かず、属性で見ている検査は素通りする。 */
-.back[hidden],.frames[hidden]{display:none}
+.back[hidden],.frames[hidden],.why__to[hidden],.near__note[hidden]{display:none}
 .frame{margin:0}
 /* 絵の窓。真ん中がその地点。まわりは同じ縮尺で切り取っている */
 .frame__win{
@@ -106,8 +126,43 @@ body{
   padding:var(--gap-sub) 0; border-bottom:1px solid var(--line); font-size:.9375rem;
 }
 .ground__list li:last-child{border-bottom:0}
-.ground__k{color:var(--ink-2)}
-.ground__v{font-weight:700; color:var(--ink); font-variant-numeric:tabular-nums}
+.ground__k{color:var(--ink-2); flex:none}
+.ground__v{font-weight:700; color:var(--ink); font-variant-numeric:tabular-nums; flex:none}
+/* 4 つの見込みを見くらべるための帯。字と字のあいだの空きに置くので、行は増えない。
+   利用者役 5 名中 2 名が「高いのか低いのか、比べる相手がない」と言った。
+   ⚠ 長さは確率そのもの。こちらで「危険／安全」の判定はしていない。 */
+.ground__bar{
+  flex:1; align-self:center; min-width:2rem; height:.375rem; margin:0 var(--gap-block);
+  border-radius:999px; background:var(--surface-2); position:relative; overflow:hidden;
+}
+.ground__bar::before{
+  content:""; position:absolute; inset:0 auto 0 0;
+  width:calc(var(--p) * 100%); background:var(--action);
+}
+/* 増幅率の目盛り。数字と同じ行に置く（行は増えない）。
+   細い縦線が 1.0（基準）。端は 3.0。値をそのまま長さにするだけで、判定はしない。 */
+.scale{
+  display:inline-block; vertical-align:middle; position:relative;
+  width:5rem; height:.375rem; margin-left:var(--gap-block);
+  border-radius:999px; background:var(--surface-2); overflow:hidden;
+}
+.scale::before{
+  content:""; position:absolute; inset:0 auto 0 0;
+  width:calc(var(--p) * 100%); background:var(--action);
+}
+/* 1.0 の目印。塗りの上に来るので、地の色で切って見せる（線を足すより読める）。 */
+/* 目盛りの読み方。⚠ 出典ではないので、出典の名前（.why__from）を借りない。 */
+.scale__note{margin:var(--gap-sub) 0 0; font-size:.75rem; line-height:1.7; color:var(--ink-3)}
+.scale::after{
+  content:""; position:absolute; top:0; bottom:0;
+  left:calc(var(--base) * 100%); width:2px; background:var(--surface);
+}
+/* 揺れの節への行き先。液状化の話と揺れの話は、利用者には 1 つの問い。
+   節はまとめない（原典の並びを崩さない）。押せるものなので 44px を割らない。 */
+.why__to{
+  display:inline-flex; align-items:center; min-height:var(--tap);
+  margin-top:var(--gap-row); font-size:.9375rem; color:var(--action);
+}
 /* 低い値を「安全」と読ませないための断り。削らない。 */
 .ground__note{margin:var(--gap-row) 0 0; font-size:.75rem; line-height:1.7; color:var(--ink-3)}
 
@@ -129,22 +184,54 @@ body{
 .around__note{margin:var(--gap-row) 0 0; font-size:.75rem; color:var(--ink-3); line-height:1.7}
 
 .years{margin:2rem 0 0; padding:0; list-style:none}
-.years li{
-  display:flex; gap:var(--gap-block); padding:var(--gap-row) 0;
+/* 出来事の種類が読み取れるようにする。印は年の左の細い列（年と同じ行なので縦は増えない）。
+   年・種別・本文を 1 つの段落に流すと、狭い幅で折り返しが減る。
+   実測（2026-09-03・375×667・豊洲・記録 10 件）は Issue に書く。 */
+.rec{
+  display:flex; gap:var(--gap-row); padding:var(--gap-row) 0;
   border-bottom:1px solid var(--line); font-size:.9375rem; line-height:1.7;
 }
-.years li:last-child{border-bottom:0}
-/* 年は揃える。並べて読むので、桁がずれると年表に見えない */
-.years .y{
-  flex:none; width:5.5rem; font-variant-numeric:tabular-nums;
-  color:var(--ink); font-weight:700;
+.rec:last-child{border-bottom:0}
+/* 印の列。縦の線でつないで、年表であることを見せる */
+.rec__mark{
+  flex:none; width:1.25rem; position:relative;
+  display:flex; justify-content:center; align-items:flex-start;
+  padding-top:.35rem; color:var(--ink-3);
 }
-.years .t{flex:1; min-width:0}
+.rec__mark::before{
+  content:""; position:absolute; top:1.5rem; bottom:calc(var(--gap-row) * -1 - 1px);
+  left:50%; width:1px; background:var(--line);
+}
+.rec:last-child .rec__mark::before{display:none}
+.rec__t{margin:0; flex:1; min-width:0}
+/* 年は揃える。並べて読むので、桁がずれると年表に見えない */
+.rec__y{
+  font-variant-numeric:tabular-nums; color:var(--ink); font-weight:700;
+  margin-right:var(--gap-row);
+}
+/* 出来事の種類。⚠ こちらで付けた言葉なので、原典の字より弱く置く */
+.rec__kind{
+  display:inline-block; margin-right:var(--gap-row); padding:0 var(--pad-sm);
+  border:1px solid var(--line); border-radius:999px;
+  font-size:.75rem; color:var(--ink-3); vertical-align:.05em;
+}
 /* 散歩中に出している 1 件。どれを最初に見たかが分かるようにする */
-.years li.shown .t::after{
+.rec.shown .rec__t::after{
   content:"　散歩中に出した 1 件"; font-size:.75rem; color:var(--ink-3); font-weight:400;
 }
-.near__note{margin:var(--gap-block) 0 0; font-size:.8125rem; color:var(--ink-3); line-height:1.7}
+/* 年表の読み方。⚠ 本文に埋めず、囲って分ける。
+   ⚠ の印は災害リスクに使っているので、この箱では使わない。
+   枠は情報を持つので --line-strong（rules/css.md）。 */
+.near__note{
+  margin:var(--gap-block) 0 0; padding:var(--pad-md);
+  border:1px solid var(--line-strong); background:var(--surface-2);
+  font-size:.8125rem; color:var(--ink-2); line-height:1.7;
+  display:flex; flex-direction:column; gap:var(--gap-sub);
+}
+.note__k{color:var(--ink); font-size:.875rem}
+.note__list{display:flex; flex-direction:column; gap:var(--gap-sub)}
+.note__row{display:flex; gap:var(--gap-row)}
+.note__row::before{content:"・"; flex:none; color:var(--ink-3)}
 .near__from{margin:var(--gap-sub) 0 0; font-size:.75rem; color:var(--ink-3)}
 .near__from a{color:var(--ink-2)}
 
