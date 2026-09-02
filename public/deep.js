@@ -231,6 +231,22 @@
     groundFrom.textContent = W.出典(r.版);
     groundNote.textContent = W.断り;
 
+    // 公式のハザードマップへ渡す（hidetzu/konjaku#446。docs/adr/0090）。
+    //   洪水・津波・高潮・土砂災害は、こちらでは判定しない。
+    //   ⚠ この節を出すときだけ置く（押しても何も無い導線を作らない。docs/adr/0026）。
+    //   ⚠ 座標が読めていないときは置かない（渡す場所が無い）。
+    if (!document.getElementById("hazard") && arg.state === "ok") {
+      const H = KonjakuAnswer.HAZARD;
+      const a = document.createElement("a");
+      a.id = "hazard"; a.className = "hazard";
+      a.href = H.url(arg.lat, arg.lon);
+      a.target = "_blank"; a.rel = "noopener";
+      const k = document.createElement("span"); k.className = "hazard__k"; k.textContent = H.見る;
+      const v = document.createElement("span"); v.className = "hazard__v"; v.textContent = H.添え;
+      a.append(k, v);
+      groundSec.append(a);
+    }
+
     // 液状化のしやすさ（成因の節）と、揺れやすさ（この節）は、利用者には 1 つの問い。
     //   節はまとめない（国土地理院の「成り立ち → 起こりうること」の対応が切れる）。
     //   行き先だけを置く。⚠ この節を出すときだけ置く（押しても何も無い導線を作らない）。

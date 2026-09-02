@@ -202,6 +202,20 @@
     },
   };
 
+  // 公式のハザードマップへ渡す（hidetzu/konjaku#446。2026-09-03。Owner 判断。docs/adr/0090）。
+  //   洪水・津波・高潮・土砂災害は、今昔では判定しない。公式のほうが凡例も断りも整っている。
+  //   ⚠ タイルの 200/404 で出し分けない（Owner 判断）。
+  //     出し分けると「404 だった＝その災害の想定が無い」に読まれる。
+  //     取れなかったことと、想定が無いことは別（掟 §1）。だから、その地点で何が出るかは言わない。
+  //   ⚠ 渡すのは、いま見ている場所だけ。何が出るかは、開いた先で読む。
+  const HAZARD = {
+    見る: "洪水・津波・高潮・土砂災害を、公式のハザードマップで見る",
+    添え: "国土交通省の「重ねるハザードマップ」が、この場所で開きます。"
+        + "どの想定があるかは、開いた先で確かめてください",
+    // β 版が渡していた形と同じ（z=15）。座標のほかは何も渡さない。
+    url: (lat, lon) => `https://disaportal.gsi.go.jp/maps/index.html?ll=${lat},${lon}&z=15`,
+  };
+
   // 一帯の記録を、記録の文から見分ける（hidetzu/konjaku の /deep 読み直し）。
   //   年表が「文の塊」に見えて、出来事の種類が読み取れなかった（利用者役 5 名中 2 名）。
   //
@@ -234,6 +248,6 @@
     ],
   };
 
-  g.KonjakuAnswer = { SOURCE, MEIJI_NONE, PAST_IN_TERRAIN, lines, WHY_READ, WHERE, WHERE_STILL, whereFailed, RECORD_KINDS, recordKind, RECORD_NOTE,
+  g.KonjakuAnswer = { SOURCE, MEIJI_NONE, PAST_IN_TERRAIN, lines, WHY_READ, WHERE, WHERE_STILL, whereFailed, RECORD_KINDS, recordKind, RECORD_NOTE, HAZARD,
                       GROUND, 確率の字 };
 })(typeof window === "undefined" ? globalThis : window);
