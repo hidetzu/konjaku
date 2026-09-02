@@ -95,6 +95,22 @@ body{
 /* 災害の話。⚠ は災害リスク専用の印なので、在庫や対応状況には使わない。 */
 .why--risk{border-left:3px solid var(--evidence); padding-left:var(--pad-md)}
 
+/* この一帯の地盤と揺れ（J-SHIS）。
+   範囲と断りは、必ず見える段に置く。小さくはするが、読めなくはしない。
+   4 段は縦に並べる。帯グラフにしない（既存の帯は「実測の割合」に使っており、
+   同じ見た目で「見込み（推定）」を出すと、実測と推定が同じ強さで並ぶ）。 */
+.ground__scope{margin:0 0 var(--gap-block); font-size:.8125rem; line-height:1.7; color:var(--ink-3)}
+.ground__list{margin:var(--gap-row) 0 0; padding:0; list-style:none}
+.ground__list li{
+  display:flex; justify-content:space-between; align-items:baseline;
+  padding:var(--gap-sub) 0; border-bottom:1px solid var(--line); font-size:.9375rem;
+}
+.ground__list li:last-child{border-bottom:0}
+.ground__k{color:var(--ink-2)}
+.ground__v{font-weight:700; color:var(--ink); font-variant-numeric:tabular-nums}
+/* 低い値を「安全」と読ませないための断り。削らない。 */
+.ground__note{margin:var(--gap-row) 0 0; font-size:.75rem; line-height:1.7; color:var(--ink-3)}
+
 /* まわり ── この一帯について、公式資料から言えること。
    散歩中は 1 件だけ出している。帰宅後は全部出す。読み物なので年表として読める。
    ⚠ この地点の記録ではない。そこは散歩中と同じく、いちばん先に言う。 */

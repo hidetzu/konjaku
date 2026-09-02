@@ -15,6 +15,8 @@
   const glossSrcEl = $("glossSrc"), glossSubEl = $("glossSub");
   const monSec = $("monSec"), monLead = $("monLead"), monEl = $("mon"), monCite = $("monCite");
   const whySec = $("whySec"), whyEl = $("why");
+  const groundSec = $("groundSec"), groundH = $("groundH"), groundScope = $("groundScope");
+  const groundEl = $("ground"), groundFrom = $("groundFrom"), groundNote = $("groundNote");
   const nearSec = $("nearSec"), nearLead = $("nearLead"), yearsEl = $("years");
   const nearNote = $("nearNote"), nearFrom = $("nearFrom");
   const readSec = $("readSec"), readEl = $("read");
@@ -93,6 +95,7 @@
     drawTime(lon, lat);
     drawWhy(t);
     drawElev(lon, lat, t);
+    drawGround(lon, lat);
     drawAround(lon, lat);
     drawNear(lon, lat);
     drawRead(lon, lat, t);
@@ -148,6 +151,66 @@
     }
     monCite.hidden = false;
     monCite.textContent = "出典 国土地理院「自然災害伝承碑」";
+  }
+
+  // この一帯の地盤と揺れ（J-SHIS）。
+  //   微地形と揺れの見込みを、因果でつながない。別々の項目として並べるだけ。
+  //   低い値を「安全」と読ませない。断りは必ず添える（削らない）。
+  //   「無い」と「取れなかった」を分ける（docs/adr/0056）。
+  async function drawGround(lon, lat) {
+    groundSec.hidden = true;
+    groundEl.innerHTML = "";
+    const W = KonjakuAnswer.GROUND;
+    // 404 を投げ分ける。ground.js が「無い」と「取れなかった」を分けるのに要る。
+    const 取る = (u) => fetch(u).then((r) => {
+      if (r.ok) return r.json();
+      const e = new Error(String(r.status)); e.status = r.status; throw e;
+    });
+    const r = await KonjakuGround.nearby(lon, lat, 取る)
+      .catch(() => ({ 地盤: { state: "unreachable" }, 見込み: { state: "unreachable" },
+                      版: KonjakuGround.版 }));
+    // どちらも無いなら、節ごと出さない（海の上がこれ）。黙るのではなく、
+    //   そこはそもそも「この資料の対象範囲」ではない。
+    if (r.地盤.state === "absent" && r.見込み.state === "absent") return;
+
+    groundH.textContent = W.見出し;
+    groundScope.textContent = W.範囲;
+    groundSec.hidden = false;
+
+    const 項 = (k, v, 弱い) => {
+      const d = document.createElement("div"); d.className = "why__item";
+      const a = document.createElement("p"); a.className = "why__k"; a.textContent = k;
+      const b = document.createElement("p");
+      b.className = 弱い ? "why__v why__none" : "why__v"; b.textContent = v;
+      d.append(a, b); groundEl.append(d); return d;
+    };
+
+    if (r.地盤.state === "ok") {
+      if (r.地盤.微地形) 項(W.微地形, r.地盤.微地形);
+      if (r.地盤.増幅率 !== null) 項(W.増幅率, String(r.地盤.増幅率));
+    } else {
+      項(W.微地形, r.地盤.state === "absent" ? W.無い.地盤 : W.読めない.地盤, true);
+    }
+
+    if (r.見込み.state === "ok") {
+      const d = 項(W.見込み, "");
+      d.querySelector(".why__v").remove();
+      const ul = document.createElement("ul"); ul.className = "ground__list";
+      for (const x of r.見込み.段) {
+        const li = document.createElement("li");
+        const k = document.createElement("span"); k.className = "ground__k";
+        k.textContent = W.震度(x.震度);
+        const v = document.createElement("span"); v.className = "ground__v";
+        v.textContent = KonjakuAnswer.確率の字(x.確率);
+        li.append(k, v); ul.append(li);
+      }
+      d.append(ul);
+    } else {
+      項(W.見込み, r.見込み.state === "absent" ? W.無い.見込み : W.読めない.見込み, true);
+    }
+
+    groundFrom.textContent = W.出典(r.版);
+    groundNote.textContent = W.断り;
   }
 
   // 標高。散歩中は出さないと決めてある（docs/adr/0059）。

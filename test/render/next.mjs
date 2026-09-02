@@ -815,9 +815,12 @@ CASES.push(
         場所: document.getElementById("place").textContent.trim(),
         答え: document.getElementById("gloss").textContent.trim(),
         区分: document.getElementById("term").textContent.trim(),
-        節: [...document.querySelectorAll(".why__k")].map((e) => e.textContent.trim()),
-        文: [...document.querySelectorAll(".why__v")].map((e) => e.textContent.trim()),
-        出どころ: [...document.querySelectorAll(".why__from")].map((e) => e.textContent.trim()),
+        節: [...document.querySelectorAll("#whySec .why__k")].map((e) => e.textContent.trim()),
+        文: [...document.querySelectorAll("#whySec .why__v")].map((e) => e.textContent.trim()),
+        // ⚠ **「なぜこうなった」の節だけを見る**（2026-09-02）。
+        //   ⚠ **地盤と揺れの節も `.why__from` を使う**ので、⚠ 全体から拾うと混ざる。
+        //   ⚠ **この検査が主張しているのは、⚠ 成り立ちと起こりうることの出どころ。**
+        出どころ: [...document.querySelectorAll("#whySec .why__from")].map((e) => e.textContent.trim()),
         読む幅: Math.round(document.getElementById("doc").getBoundingClientRect().width),
         戻る先: document.getElementById("back").getAttribute("href"),
         横あふれ: document.documentElement.scrollWidth > document.documentElement.clientWidth,
@@ -3435,6 +3438,138 @@ for (const [名, viewport] of [["PC", PCな幅], ["スマホ", SP], ["いちば�
         `開き直したら色が違う（${明るい.帯の地} → ${後.帯の地}）`);
       return `${並び.slice(0, 3).map((it) => `${it.字}(${it.h}px)`).join(" ")}`
            + ` ／ 板 ${並び[3].w}x${並び[3].h} ／ 開き直して ${後.いま}`;
+    },
+  });
+}
+
+// ⚠ **この一帯の地盤と揺れ**（2026-09-02。`docs/adr/0088`）。
+//
+// ⚠ **相手（J-SHIS）がいま何を返すかは主張しない**（`CLAUDE.md` §9）。
+//   ⚠ **応答はこちらで作る。**⚠ **見るのは「その値を、⚠ どう書くか」。**
+// ⚠ **20 地点で見つけた危険（hidetzu/konjaku#442）に、⚠ 1 つずつ当てる。**
+for (const [名, viewport] of [["PC", PCな幅], ["スマホ", SP], ["いちばん狭い幅", { width: 320, height: 640 }]]) {
+  CASES.push({
+    name: `${名}の地盤と揺れは、⚠ 0% と書かず、⚠ 断りを添える`,
+    path: `/deep?${TOYOSU}`, origin: NEXT_BASE, viewport,
+    async setup(page) {
+      // ⚠ **軽井沢の実測値**（2026-09-02）。⚠ **震度6強以上 0.000261 が要点。**
+      //   ⚠ **丸めると 0.0% になる。**⚠ **「起きない」と読まれる値。**
+      const 面 = (props) => ({
+        type: "FeatureCollection",
+        features: [{ type: "Feature", properties: props,
+          geometry: { type: "Polygon", coordinates: [[[0, 0], [0, 1], [1, 1], [1, 0], [0, 0]]] } }],
+      });
+      await page.route("**/sstrct/**", (r) => r.fulfill({ status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(面({ JNAME: "砂礫質台地", ARV: "0.75", AVS: "562.3",
+                                  meshcode: "5438450131N" })) }));
+      await page.route("**/pshm/**", (r) => r.fulfill({ status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(面({ T30_I45_PS: "0.582", T30_I50_PS: "0.153",
+                                  T30_I55_PS: "0.012", T30_I60_PS: "0.000261",
+                                  meshcode: "5438451022" })) }));
+    },
+    async check(page) {
+      await 待つ(page, () => {
+        const s = document.getElementById("groundSec");
+        return s && !s.hidden && s.querySelectorAll(".ground__list li").length > 0;
+      }, "地盤と揺れ");
+      const r = await page.evaluate(() => {
+        const s = document.getElementById("groundSec");
+        const mon = document.getElementById("monSec");
+        return {
+          見出し: document.getElementById("groundH").textContent.trim(),
+          範囲: document.getElementById("groundScope").textContent.trim(),
+          項: [...s.querySelectorAll(".why__k")].map((e) => e.textContent.trim()),
+          値: [...s.querySelectorAll(".why__v")].map((e) => e.textContent.trim()),
+          段: [...s.querySelectorAll(".ground__list li")].map((e) => ({
+            k: e.querySelector(".ground__k").textContent.trim(),
+            v: e.querySelector(".ground__v").textContent.trim(),
+            h: Math.round(e.getBoundingClientRect().height),
+          })),
+          出典: document.getElementById("groundFrom").textContent.trim(),
+          断り: document.getElementById("groundNote").textContent.trim(),
+          断りが見える: document.getElementById("groundNote").checkVisibility(),
+          // ⚠ **座標で比べない。**⚠ **隠れている節は top が 0 になり、⚠ 逆に見える**
+          //   （⚠ 2026-09-02 に実際に踏んだ）。⚠ **DOM の並びで見る。**
+          線より上: mon
+            ? !!(s.compareDocumentPosition(mon) & Node.DOCUMENT_POSITION_FOLLOWING) : null,
+          横あふれ: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+          全部の字: s.textContent.replace(/\s+/g, ""),
+        };
+      });
+      must(r.見出し === "この土地の地盤と揺れ", `見出しが違う: ${r.見出し}`);
+      // ⚠ **4 段とも出す**（⚠ 1 つだけ出すと切り取り）
+      must(r.段.length === 4, `揺れの段が 4 つではない（${r.段.length}）`);
+      must(r.段.map((x) => x.k).join(" ") === "震度5弱以上 震度5強以上 震度6弱以上 震度6強以上",
+        `段の字が違う: ${r.段.map((x) => x.k).join(" ")}`);
+      // ⚠ **0.000261 を「0%」と書かない**（⚠ これがこの検査の要点）
+      const 六強 = r.段[3];
+      must(六強.v === "ごくわずか", `0.000261 が「ごくわずか」になっていない: ${六強.v}`);
+      must(!/0%|0\.0%/.test(r.全部の字), "⚠ 画面に 0% と書いている");
+      // ⚠ **「無い」とも書かない**
+      for (const 悪 of ["起きません", "ありません", "揺れません"])
+        must(!六強.v.includes(悪), `震度6強に「${悪}」と書いている`);
+      // ⚠ **「安全」「危険」を 1 度も使わない**
+      for (const 悪 of ["安全", "危険"])
+        must(!r.全部の字.includes(悪), `画面に「${悪}」がある`);
+      // ⚠ **断りが見えていること**（⚠ 低い値を「安全」と読ませないため）
+      must(r.断りが見える, "低い値についての断りが見えていない");
+      must(/揺れない/.test(r.断り) && /意味ではありません/.test(r.断り),
+        `断りが決めた字ではない: ${r.断り}`);
+      // ⚠ **範囲を字の中に持つ**（⚠ 240m で区分名が変わる）
+      must(/250m/.test(r.範囲), `範囲の字に 250m が無い: ${r.範囲}`);
+      // ⚠ **出典と版**
+      must(/J-SHIS/.test(r.出典) && /2024/.test(r.出典), `出典に版が無い: ${r.出典}`);
+      // ⚠ **この地点そのものの話。**⚠ **まわりの記録より上。**
+      must(r.線より上 !== false, "地盤と揺れが、⚠ まわりの記録より下にある");
+      // ⚠ **押すものではないが、⚠ 行が潰れていないこと**
+      for (const x of r.段) must(x.h >= 24, `「${x.k}」の行が低い（${x.h}px）`);
+      must(!r.横あふれ, "地盤と揺れを置いたら、画面が横にあふれた");
+      return `${r.値.join(" | ")} ／ ${r.段.map((x) => `${x.k}${x.v}`).join(" ")}`;
+    },
+  });
+}
+
+// ⚠ **取れなかったときと、⚠ 無いとき。**⚠ **「無い」と言わない**（`docs/adr/0056` と同じ 3 状態）。
+for (const [名, 状態, 期待] of [
+  ["読めなかった", 500, "読み取れませんでした"],
+  ["この資料の外", 404, "含んでいません"],
+]) {
+  CASES.push({
+    name: `地盤と揺れが${名}とき、⚠ 「無い」と言わない`,
+    path: `/deep?${TOYOSU}`, origin: NEXT_BASE, viewport: SP,
+    async setup(page) {
+      // ⚠ **`**/j-shis…/**` は当たらない**（⚠ ホストは `www.j-shis…` で、⚠ 手前は `.` であって `/` ではない）。
+      //   ⚠ **2026-09-02 に実際に踏んだ。**⚠ **述語で書く**（`CLAUDE.md` §9 と同じ轍）。
+      await page.route((u) => /j-shis\.bosai\.go\.jp/.test(u.href), (r) =>
+        r.fulfill({ status: 状態, contentType: "text/plain", body: "x" }));
+    },
+    async check(page) {
+      await page.waitForTimeout(6000);
+      const r = await page.evaluate(() => {
+        const s = document.getElementById("groundSec");
+        if (!s || s.hidden) return { 出ない: true };
+        return { 値: [...s.querySelectorAll(".why__v")].map((e) => ({
+                   字: e.textContent.trim(), 弱い: e.classList.contains("why__none") })),
+                 段: s.querySelectorAll(".ground__list li").length,
+                 全部の字: s.textContent.replace(/\s+/g, "") };
+      });
+      if (状態 === 404) {
+        // ⚠ **どちらも無いなら、⚠ 節ごと出さない**（⚠ 海の上がこれ）。
+        must(r.出ない, "この資料の外なのに、⚠ 節を出している");
+        return "節を出さない（⚠ この資料の対象範囲の外）";
+      }
+      must(!r.出ない, "読めなかったのに、⚠ 節ごと消えている（⚠ 黙ると「無い」と見分けられない）");
+      must(r.段 === 0, `読めなかったのに、⚠ 段が ${r.段} 個出ている`);
+      must(r.値.length >= 2 && r.値.every((v) => v.弱い),
+        `読めなかった字が、⚠ 弱い見た目になっていない: ${r.値.map((v) => v.字).join(" ")}`);
+      for (const v of r.値) must(v.字.includes(期待), `字が違う: ${v.字}`);
+      // ⚠ **「無い」と言わない**
+      for (const 悪 of ["ありません", "無い", "存在しません"])
+        must(!r.全部の字.includes(悪) || r.全部の字.includes("意味ではありません"),
+          `読めなかったのに「${悪}」と書いている`);
+      return r.値.map((v) => v.字).join(" ／ ");
     },
   });
 }
