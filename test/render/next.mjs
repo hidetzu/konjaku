@@ -41,6 +41,20 @@ const waitAnswer = (page) => 待つ(page,
 const waitEras = (page) => 待つ(page,
   () => document.querySelectorAll(".era").length > 0, "年代");
 
+// ⚠ **狭い幅では、⚠ 写真の年代・根拠・凡例が畳まれている**（`docs/adr/0091`）。
+//   ⚠ **押して開ける**。⚠ **開いていれば何もしない**（⚠ 広い幅・畳む器が無い画面）。
+//   ⚠ **`fold.open = true` と直に書かない。**⚠ **利用者と同じ手順で開く**
+//     （⚠ 押しても開かない形になったら、⚠ ここで落ちてほしい）。
+const ひらく = async (page) => {
+  const 口 = page.locator(".fold__sum");
+  if (await 口.count() === 0) return false;
+  if (!await 口.first().isVisible()) return false;           // ⚠ 広い幅（畳んでいない）
+  if (await page.evaluate(() => !!document.getElementById("fold")?.open)) return false;
+  await 口.first().click();
+  await page.waitForTimeout(300);
+  return true;
+};
+
 // ⚠ **見出しは「問いへの近さ」順**（2026-08-31。Owner 判断。`public-next/answer.js`）。
 //   ⚠ **前は「確実性の高い順」**で、⚠ **どの土地でも「ここは、…」で始まっていた**（`docs/adr/0030`）。
 //   ⚠ **いまは 3 通りある**:
@@ -80,6 +94,7 @@ export const CASES = [
         return n;
       });
       must(前 > 0, "地形分類が 1 画素も塗られていない（⚠ 写真を出す前なのに）");
+      await ひらく(page);
       await page.locator(".era").first().click();
       await page.waitForTimeout(1500);
       const r = await page.evaluate(() => {
@@ -129,6 +144,7 @@ export const CASES = [
       must(/maps\.gsi\.go\.jp/.test(地図.先 ?? ""), `出典の行き先が地理院ではない: ${地図.先}`);
 
       // 写真を出しても消えない
+      await ひらく(page);
       await page.locator(".era").first().click();
       await page.waitForTimeout(1200);
       const 写真中 = await 見る();
@@ -136,10 +152,12 @@ export const CASES = [
         `写真を出したら出典が隠れた: ${JSON.stringify(写真中)}`);
 
       // 「ほか N 種を見る」を開いても覆われない
+      await ひらく(page);
       await page.locator(".era-back").click();
       await page.waitForTimeout(600);
       const more = page.locator("#more");
       if (await more.isVisible()) {
+        await ひらく(page);
         await more.click(); await page.waitForTimeout(400);
         const 一覧中 = await 見る();
         must(一覧中?.見えている && 一覧中.覆われていない,
@@ -323,6 +341,7 @@ CASES.push(
     async check(page) {
       await waitAnswer(page);
       await page.waitForTimeout(3000);
+      await ひらく(page);
       await page.locator(".why__sum").click();
       await page.waitForTimeout(400);
       const r = await page.evaluate(() => {
@@ -369,6 +388,7 @@ CASES.push(
     async check(page) {
       await waitAnswer(page);
       await page.waitForTimeout(2500);
+      await ひらく(page);
       await page.locator(".why__sum").click();
       await page.waitForTimeout(400);
       const r = await page.evaluate(() => {
@@ -445,17 +465,50 @@ CASES.push({
   async check(page) {
     await waitAnswer(page); await waitEras(page);
     // ⚠ **いちばん高くなる状態で測る。**⚠ 畳んだままだと、⚠ 伸びたときの重なりを見られない
+    await ひらく(page);
     await page.locator(".why__sum").click();
     await page.waitForTimeout(500);
     const r = await page.evaluate(() => {
+      // ⚠ **`checkVisibility()` は `overflow` の切り取りを見ない**（2026-09-03 に踏んだ）。
+      //   ⚠ **板は中で送るので、⚠ 送られて外へ出たものが「見えている」ままになる。**
+      //   ⚠ **実測: 板 238–560 のとき、⚠ `.kick` が 68–112 と読め、⚠ 検索窓と重なって見えた。**
+      //   ⚠ **実際には板に切り取られていて、⚠ 画面には出ていない。**
+      // ⚠ **なので、⚠ 送る器の矩形で切ってから測る。**⚠ **切ったら消えるものは、⚠ 数えない。**
+      // ⚠ **切り取られない置き方がある**（⚠ わざと重ねたら素通りして、⚠ ここで気づいた）。
+      //   ⚠ **`fixed` は、⚠ 送る器に切り取られない。**⚠ **`absolute` は、⚠ 基準になった祖先までしか切られない。**
+      //   ⚠ **全部を切ると、⚠ 本当に重なっているものまで「切り取られている」ことにしてしまう。**
+      const 切った矩形 = (e) => {
+        const 置き方 = getComputedStyle(e).position;
+        const q = e.getBoundingClientRect();
+        let b = { left: q.left, right: q.right, top: q.top, bottom: q.bottom,
+                  width: q.width, height: q.height };
+        if (置き方 === "fixed") return b.width > 0 && b.height > 0 ? b : null;
+        for (let a = e.parentElement; a; a = a.parentElement) {
+          const o = getComputedStyle(a);
+          // ⚠ **`absolute` は、⚠ 位置の基準にならない祖先には切り取られない**
+          const 基準になれる = o.position !== "static";
+          if (置き方 === "absolute" && !基準になれる) continue;
+          if (o.overflowX !== "visible" || o.overflowY !== "visible") {
+            const c = a.getBoundingClientRect();
+            b = { left: Math.max(b.left, c.left), right: Math.min(b.right, c.right),
+                  top: Math.max(b.top, c.top), bottom: Math.min(b.bottom, c.bottom) };
+            b.width = b.right - b.left; b.height = b.bottom - b.top;
+            if (b.width <= 0 || b.height <= 0) return null;
+          }
+          // ⚠ **基準を 1 つ越えたら、⚠ そこから先は通常の流れと同じに切られる**
+          if (置き方 === "fixed" || (置き方 === "absolute" && 基準になれる)) break;
+        }
+        return b;
+      };
       const 押せる = [...document.querySelectorAll("button, a, summary, input")]
-        .filter((e) => e.checkVisibility());
+        .filter((e) => e.checkVisibility() && 切った矩形(e));
       const 小さい = 押せる.map((e) => {
         const b = e.getBoundingClientRect();
         return { 字: (e.textContent || e.id || e.tagName).trim().slice(0, 10),
                  w: Math.round(b.width), h: Math.round(b.height) };
       }).filter((t) => t.w > 0 && (t.w < 44 || t.h < 44));
-      const 箱 = 押せる.map((e) => ({ e, r: e.getBoundingClientRect() })).filter((x) => x.r.width > 0);
+      // ⚠ **重なりも、⚠ 切ったあとの矩形で見る**（⚠ 切り取られた部分は、⚠ 誰とも重ならない）
+      const 箱 = 押せる.map((e) => ({ e, r: 切った矩形(e) })).filter((x) => x.r.width > 0);
       const 重なり = [];
       for (let i = 0; i < 箱.length; i++) for (let j = i + 1; j < 箱.length; j++) {
         const a = 箱[i].r, c = 箱[j].r;
@@ -493,6 +546,7 @@ CASES.push(
     async check(page) {
       await waitAnswer(page); await waitEras(page);
       // ⚠ **いちばん押せるものが多い状態で見る**（⚠ 畳んだままだと、⚠ 中の 1 つを見られない）
+      await ひらく(page);
       await page.locator(".why__sum").click();
       await page.waitForTimeout(400);
       const 見える = await page.evaluate(() =>
@@ -537,6 +591,7 @@ CASES.push(
     async check(page) {
       await waitAnswer(page);
       await page.waitForTimeout(4000);
+      await ひらく(page);
       await page.locator(".why__sum").click();
       await page.waitForTimeout(400);
       const r = await page.evaluate(() => {
@@ -588,6 +643,7 @@ CASES.push({
     await 待つ(page, () => document.querySelectorAll("#legend li.here").length > 0, "凡例の「ここ」");
     await 待つ(page, () => (document.getElementById("meiji")?.textContent ?? "").trim().length > 0,
       "明治期の行");
+    await ひらく(page);
     await page.locator(".why__sum").click();
     await page.waitForTimeout(400);
     const r = await page.evaluate(() => {
@@ -830,6 +886,7 @@ CASES.push({
   async check(page) {
     await waitAnswer(page); await waitEras(page);
     // ⚠ **いちばん要素が多い状態で見る**
+    await ひらく(page);
     await page.locator(".why__sum").click();
     await page.waitForTimeout(400);
     const r = await page.evaluate(() => {
@@ -886,6 +943,7 @@ CASES.push({
       `保存の状態が、字では分からない（${保存前.字} → ${保存後.字}）`);
 
     const 年代前 = await 撮る(".era");
+    await ひらく(page);
     await page.locator(".era").first().click();
     await page.waitForTimeout(1500);
     const 年代後 = await 撮る(".era");
@@ -1132,6 +1190,7 @@ CASES.push(
     path: `/?${TOYOSU}`, origin: NEXT_BASE, viewport: SP,
     async check(page) {
       await waitAnswer(page);
+      await ひらく(page);
       await page.locator(".why__sum").click();
       await page.waitForTimeout(400);
       const r = await page.evaluate(() => {
@@ -1144,6 +1203,7 @@ CASES.push(
       must(r.h >= 44, `深掘りへの入口が 44 を割っている: ${r.w}x${r.h}`);
       must(/[?&]ll=/.test(r.先 ?? ""), `入口に場所が入っていない: ${r.先}`);
       // ⚠ **押して、⚠ 本当に読めること**（⚠ 行き先が 404 では意味が無い）
+      await ひらく(page);
       await page.locator("#deepLink").click();
       await 待つ(page,
         () => (document.getElementById("gloss")?.textContent ?? "").trim().length > 2, "深掘りの答え");
@@ -1658,6 +1718,7 @@ for (const t of TABLET) {
       await waitAnswer(page);
       await 待つ(page, () => document.querySelectorAll("#eras .era").length > 0, "年代のボタン");
       // ⚠ **いちばん高くなる状態で測る**（⚠ 畳んだままでは、⚠ 伸びたときを見られない）
+      await ひらく(page);
       await page.locator(".why__sum").click();
       await page.waitForTimeout(500);
       const r = await page.evaluate(() => {
@@ -2287,6 +2348,7 @@ for (const [名, ll, 数, subが残る] of [
     path: `/?${ll}`, origin: NEXT_BASE, viewport: SP,
     async check(page) {
       await waitAnswer(page);
+      await ひらく(page);
       await 待つ(page, () => document.querySelectorAll("#eras .era").length > 0, "年代のチップ");
       await 待つ(page, () => {
         const e = document.querySelector(".eras__label");
@@ -3842,6 +3904,108 @@ for (const [名, 状態, 期待] of [
         must(!r.全部の字.includes(悪) || r.全部の字.includes("意味ではありません"),
           `読めなかったのに「${悪}」と書いている`);
       return r.値.map((v) => v.字).join(" ／ ");
+    },
+  });
+}
+
+// ⚠ **散歩中は、⚠ 答えと保存だけあれば足りる**（2026-09-03。Owner 判断。`docs/adr/0091`）。
+//
+// ⚠ **実測（2026-09-03・375×667・春日部）**: ⚠ **板が画面の 57%、⚠ 見える地図は 130px。**
+//   ⚠ **「どこの話か」を地図から読み取るには狭すぎた。**
+// ⚠ **写真・根拠・凡例を畳んだ。**⚠ **答え・出典・2 行目・名乗り・保存は畳まない。**
+// ⚠ **広い幅は畳まない**（⚠ 圧迫していない）。⚠ **覚えない**（⚠ 場所が変わったら閉じる）。
+for (const [名, viewport, 畳む] of [
+  ["スマホ", SP, true],
+  ["いちばん狭い幅", { width: 320, height: 640 }, true],
+  ["PC", PCな幅, false],
+]) {
+  CASES.push({
+    name: `${名}で、答えと保存を残したまま板を畳む`,
+    path: `/?${KASUKABE}`, origin: NEXT_BASE, viewport,
+    async check(page) {
+      await waitAnswer(page);
+      // ⚠ **器ではなく、⚠ 結果を待つ**（`CLAUDE.md` §9）。
+      //   ⚠ **1200ms の固定待ちにしていて、⚠ 手元で通り CI で落ちた**（2026-09-03）。
+      //   ⚠ **PC は画面が広く、⚠ 読む枚数が多い。**⚠ **遅い側で間に合わなかった。**
+      await waitEras(page);
+      await 待つ(page, () => document.querySelectorAll("#legend li").length > 0, "凡例");
+      const 見る = () => page.evaluate(() => {
+        const R = (s) => {
+          const e = document.querySelector(s);
+          if (!e || !e.checkVisibility()) return null;
+          const q = e.getBoundingClientRect();
+          return { 上: Math.round(q.top), 下: Math.round(q.bottom), 高: Math.round(q.height) };
+        };
+        const 板 = R("#card"), 欄 = R("#bar"), f = document.getElementById("fold");
+        const 出す = (id) => !!document.getElementById(id)?.checkVisibility();
+        return {
+          板: 板?.高 ?? 0, 割合: Math.round((板?.高 ?? 0) / innerHeight * 100),
+          // ⚠ **見える地図 ＝ 検索欄の下から板の上まで**（⚠ ここが 130px しかなかった）
+          地図: (板?.上 ?? innerHeight) - (欄?.下 ?? 0),
+          開いている: !!f?.open,
+          押す口: !!f?.querySelector(".fold__sum")?.checkVisibility(),
+          年代: 出す("eras"), 凡例: 出す("legend"), なぜ: 出す("why"),
+          // ⚠ **これは畳まない**（⚠ 散歩中に要るぶん）
+          答え: (document.getElementById("gloss")?.textContent ?? "").trim(),
+          出典: 出す("glossSrc"), 二行目: 出す("sub"),
+          保存: 出す("save"), 名乗り: 出す("kickText"), 帯: 出す("steps"),
+          横あふれ: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+        };
+      });
+      const r = await 見る();
+      // ⚠ **どの幅でも、⚠ 答えと保存と名乗りと出典は初期表示にある**
+      must(r.答え.length > 2, `答えが出ていない: 「${r.答え}」`);
+      must(r.出典, "出典（明治期の地図）が初期表示から消えている");
+      must(r.二行目, "2 行目（成り立ち）が初期表示から消えている");
+      must(r.保存, "保存が初期表示から消えている");
+      must(r.名乗り, "名乗りが初期表示から消えている");
+      // ⚠ **3 手の帯は残す**（`docs/adr/0083` を維持。2026-09-03。Owner 判断）
+      must(r.帯, "3 手の帯が消えている（⚠ ADR 0083 は維持と決めてある）");
+      must(!r.横あふれ, "板を畳んだら、画面が横にあふれた");
+
+      if (!畳む) {
+        // ⚠ **広い幅は畳まない。**⚠ **押す口も出さない**（⚠ 押しても何も起きない導線を置かない）
+        must(r.開いている, "広い幅なのに、⚠ 板が畳まれている");
+        must(!r.押す口, "広い幅なのに、⚠ 開く口が出ている");
+        // ⚠ **どれが出ていないかまで言う**（⚠ 「中身が出ていない」だけだと、⚠ CI の落ちが読めない）
+        must(r.年代 && r.凡例 && r.なぜ,
+          `広い幅なのに、⚠ 中身が出ていない（年代 ${r.年代} 凡例 ${r.凡例} なぜ ${r.なぜ}）`);
+        return `畳まない（板 ${r.板}px・${r.割合}% ／ 地図 ${r.地図}px）`;
+      }
+
+      // ⚠ **狭い幅は畳む**
+      must(!r.開いている, "狭い幅なのに、⚠ 板が開いている");
+      must(r.押す口, "畳んだのに、⚠ 開く口が無い");
+      must(!r.年代 && !r.凡例 && !r.なぜ,
+        `畳んだのに中身が出ている（年代 ${r.年代} 凡例 ${r.凡例} なぜ ${r.なぜ}）`);
+      // ⚠ **畳んだ意味があること。**⚠ **板が画面の半分を超えない。**
+      must(r.割合 <= 45, `畳んでも板が画面の ${r.割合}% を占めている`);
+      const 閉 = r.板;
+
+      // ⚠ **押すと開く**
+      await page.click(".fold__sum");
+      await page.waitForTimeout(400);
+      const 開 = await 見る();
+      must(開.開いている && 開.年代 && 開.凡例 && 開.なぜ,
+        "押しても開かない（⚠ 押しても何も起きない導線になっている）");
+      must(開.板 > 閉, `押しても板が伸びない（${閉} → ${開.板}）`);
+      must(!開.横あふれ, "開いたら、画面が横にあふれた");
+
+      // ⚠ **覚えない。**⚠ **場所が変わったら閉じる**（⚠ 前の場所の続きを開いたままにしない）
+      const 点 = await page.evaluate(() => {
+        const 欄 = document.getElementById("bar").getBoundingClientRect();
+        const 帯 = document.getElementById("steps").getBoundingClientRect();
+        return { x: Math.round(innerWidth / 2), y: Math.round((欄.bottom + 帯.top) / 2) };
+      });
+      await page.mouse.move(点.x, 点.y);
+      await page.mouse.down();
+      await page.mouse.move(点.x - 60, 点.y - 40, { steps: 8 });
+      await page.mouse.up();
+      await 待つ(page, () => !document.getElementById("fold").open, "場所を変えたあとの畳み直し")
+        .catch(() => { throw new Error("場所が変わっても開いたまま（⚠ 前の場所の続きが残る）"); });
+      const 後 = await 見る();
+      must(後.板 <= 閉 + 8, `場所を変えたのに板が畳まれていない（${後.板}px）`);
+      return `閉 ${閉}px(${r.割合}%)・地図 ${r.地図}px → 開 ${開.板}px → 動かすと ${後.板}px`;
     },
   });
 }
