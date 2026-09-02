@@ -2667,10 +2667,15 @@ CASES.push({
   },
 });
 
-// ⚠ **広い幅では、⚠ 行き先と案内の置き場が入れかわる**（2026-08-31。⚠ Owner 指示）。
+// ⚠ **広い幅では、⚠ 案内の置き場が入れかわる**（2026-08-31。⚠ Owner 指示）。
 //
 //     ⚠ 狭い幅  行き先＝画面の下の帯（`.tabs`）   ／ ⚠ 案内＝帯のメニュー（`.menu`）
-//     ⚠ 広い幅  行き先＝帯のナビ（`.brand__nav`） ／ ⚠ 案内＝ページの下（`.foot`）
+//     ⚠ 広い幅  行き先＝⚠ **名乗りだけ**         ／ ⚠ 案内＝ページの下（`.foot`）＋メニュー
+//
+// ⚠ **2026-09-02 に、⚠ 広い幅のナビ（`地図で調べる`）を消した**（Owner 判断。`docs/adr/0087`）。
+//   ⚠ **名乗り（`今昔`）自体が `./` へのリンクで、⚠ 同じ行に同じ行き先が 2 本並んでいた。**
+//   ⚠ **地図の画面では `aria-current="page"` が付き、⚠ 押しても何も起きなかった。**
+//   ⚠ **狭い幅には元から出ていない。**
 //
 // ⚠ **字の有無で見ない。**⚠ **DOM は両方とも在る**（⚠ CSS が出し分けている）。
 //   ⚠ **`checkVisibility()` で見る。**⚠ **属性で見ると、⚠ 両方「在る」で素通りする。**
@@ -2681,18 +2686,16 @@ const スマホな幅 = { width: 393, height: 830 };   // ⚠ **下の帯が出�
 // ⚠ **行き先の数は、⚠ 幅で違う**（2026-09-01。⚠ Owner 判断）。
 //   ⚠ **PC では保存一覧への道を出さない。**⚠ **スマホで読みにくいものを、
 //   ⚠ 別の端末で読みやすくするのが目的**なので、⚠ **PC は受け取って深掘りする側。**
-//   ⚠ **受け取りの道は消えていない**（⚠ `/take` は合言葉が案内する住所で、
-//   ⚠ 受け取ると `./saved` へ進む）。⚠ **別の検査がそれを見ている。**
-for (const [名, viewport, 出るもの, 出ないもの, 下が出る, 行き先] of [
-  ["広い幅", PCな幅, ".brand__nav", ".tabs", true, ["./"]],
-  ["狭い幅", スマホな幅, ".tabs", ".brand__nav", false, ["./", "./saved"]],
+for (const [名, viewport, 下の帯が出る, 下が出る, 行き先] of [
+  ["広い幅", PCな幅, false, true, []],
+  ["狭い幅", スマホな幅, true, false, ["./", "./saved"]],
 ]) {
   CASES.push({
     name: `${名}では、主な行き先が 1 か所にだけ出る`,
     path: "/saved", origin: NEXT_BASE, viewport,
     async check(page) {
       await page.waitForTimeout(1500);
-      const r = await page.evaluate(([出る, 出ない]) => {
+      const r = await page.evaluate(() => {
         const 見る = (sel) => {
           const e = document.querySelector(sel);
           if (!e) return { 無い: true };
@@ -2708,32 +2711,42 @@ for (const [名, viewport, 出るもの, 出ないもの, 下が出る, 行き�
           return { 見える: e.checkVisibility(), w: Math.round(q.width), h: Math.round(q.height), 押せる };
         };
         const foot = document.querySelector(".foot");
-        return { 出る: 見る(出る), 出ない: 見る(出ない),
-                 下: !!foot && foot.checkVisibility() };
-      }, [出るもの, 出ないもの]);
-
-      must(!r.出る.無い, `${出るもの} が DOM に無い`);
-      must(!r.出ない.無い, `${出ないもの} が DOM に無い（⚠ 消さずに、⚠ 幅で出し分ける）`);
-      must(r.出る.見える, `${名}なのに ${出るもの} が出ていない（${r.出る.w}x${r.出る.h}）`);
-      must(!r.出ない.見える,
-        `${名}で ${出ないもの} も出ている（⚠ 同じ道が 2 か所。${r.出ない.w}x${r.出ない.h}）`);
+        const 名乗り = document.querySelector(".brand__name");
+        const nq = 名乗り.getBoundingClientRect();
+        return {
+          帯: 見る(".tabs"),
+          下: !!foot && foot.checkVisibility(),
+          名乗り: { href: 名乗り.getAttribute("href"), 見える: 名乗り.checkVisibility(),
+                    w: Math.round(nq.width), h: Math.round(nq.height) },
+          // ⚠ **消したナビが戻っていないこと**（⚠ 戻ると、また 2 本になる）
+          ナビ: !!document.querySelector(".brand__nav, .brand__link"),
+        };
+      });
+      must(!r.帯.無い, ".tabs が DOM に無い（⚠ 消さずに、⚠ 幅で出し分ける）");
+      must(r.帯.見える === 下の帯が出る,
+        `${名}で、画面の下の帯が ${r.帯.見える ? "出ている" : "出ていない"}`
+        + `（⚠ 期待は ${下の帯が出る ? "出る" : "出さない"}）`);
+      // ⚠ **どの幅でも、⚠ 名乗りが地図へ行く道**（⚠ これが消えると読み物から戻れない）
+      must(r.名乗り.見える && r.名乗り.href === "./",
+        `名乗りが地図へ行く道になっていない（${r.名乗り.href} ／ ${r.名乗り.w}x${r.名乗り.h}）`);
+      must(r.名乗り.h >= 44, `名乗りが 44 を割っている（${r.名乗り.w}x${r.名乗り.h}）`);
+      must(!r.ナビ, "⚠ 消したはずの広い幅のナビ（地図で調べる）が戻っている");
       // ⚠ **ページの下の案内も、⚠ 同じ幅で入れかわる**（⚠ 狭い幅では出さない）。
-      //   ⚠ **`foot.css` を読み込み忘れると、⚠ 素のまま狭い幅にも出る**
-      //     （⚠ 既定の `display:block` に戻るため）。⚠ **ここで捕まる。**
       must(r.下 === 下が出る,
         `${名}で、ページの下の案内が ${r.下 ? "出ている" : "出ていない"}`
         + `（⚠ 期待は ${下が出る ? "出る" : "出さない"}）`);
-      // ⚠ **行き先は幅ごとに決まっている**（⚠ 上の表。⚠ 数を字で書き写さない）。
-      const 先 = r.出る.押せる.map((a) => a.href).sort();
-      must(先.join(" ") === [...行き先].sort().join(" "),
-        `行き先が違う: [${先.join(" ")}]（⚠ この幅で出すのは [${行き先.join(" ")}]）`);
-      // ⚠ **押せるものは 44 を割らない**（⚠ 出ているだけでは足りない）
-      for (const a of r.出る.押せる) {
-        must(a.h >= 44, `「${a.字}」が 44 を割っている（${a.w}x${a.h}）`);
-        must(!a.覆われている, `「${a.字}」が何かに覆われて押せない`);
+      if (下の帯が出る) {
+        const 先 = r.帯.押せる.map((a) => a.href).sort();
+        must(先.join(" ") === [...行き先].sort().join(" "),
+          `行き先が違う: [${先.join(" ")}]（⚠ この幅で出すのは [${行き先.join(" ")}]）`);
+        for (const a of r.帯.押せる) {
+          must(a.h >= 44, `「${a.字}」が 44 を割っている（${a.w}x${a.h}）`);
+          must(!a.覆われている, `「${a.字}」が何かに覆われて押せない`);
+        }
       }
-      return `${出るもの} が ${r.出る.押せる.map((a) => `${a.字}(${a.w}x${a.h})`).join(" ")}`
-           + ` ／ ${出ないもの} は出ていない`;
+      return 下の帯が出る
+        ? `下の帯が ${r.帯.押せる.map((a) => `${a.字}(${a.w}x${a.h})`).join(" ")} ／ 名乗り ${r.名乗り.w}x${r.名乗り.h}`
+        : `下の帯は出ていない ／ 名乗り ${r.名乗り.w}x${r.名乗り.h} → ${r.名乗り.href} ／ ページの下あり`;
     },
   });
 }
@@ -3238,10 +3251,10 @@ for (const [名, viewport] of [["PC", PCな幅], ["スマホ", SP], ["いちば�
     path: "/about", origin: NEXT_BASE, viewport,
     async check(page, reqs) {
       await 待つ(page,
-        () => [...document.querySelectorAll(".about__heroImg")].every((i) => i.complete),
+        () => [...document.querySelectorAll(".entry__img")].every((i) => i.complete),
         "冒頭の 2 枚");
       const r = await page.evaluate(() => {
-        const 絵 = [...document.querySelectorAll(".about__heroImg")];
+        const 絵 = [...document.querySelectorAll(".entry__img")];
         const 断り = document.querySelector(".about__figSrc");
         const 節 = [...document.querySelectorAll(".about__h2")]
           .find((e) => e.textContent.includes("言えないこと"));
@@ -3257,6 +3270,9 @@ for (const [名, viewport] of [["PC", PCな幅], ["スマホ", SP], ["いちば�
           横並び: 絵.length === 2
             && Math.abs(絵[0].getBoundingClientRect().top - 絵[1].getBoundingClientRect().top) < 2,
           断りが見える: !!断り && 断り.checkVisibility(),
+          画面: innerHeight,
+          道の上: (() => { const a = document.querySelector(".entry__cta");
+            return a ? Math.round(a.getBoundingClientRect().top + scrollY) : null; })(),
           言えないことがある: !!節,
           高さ: document.documentElement.scrollHeight,
           横あふれ: document.documentElement.scrollWidth > document.documentElement.clientWidth,
@@ -3265,7 +3281,17 @@ for (const [名, viewport] of [["PC", PCな幅], ["スマホ", SP], ["いちば�
       must(r.枚 === 2, `冒頭の絵が 2 枚ではない（${r.枚} 枚）`);
       for (const [i, w] of r.読めた.entries())
         must(w > 0, `冒頭の ${i + 1} 枚目が読めていない（naturalWidth=${w}）`);
-      must(r.横並び, "冒頭の 2 枚が横に並んでいない（⚠ 「昔 → いま」に読めない）");
+      // ⚠ **2026-09-02 に、⚠ 幅で並べ方を変えた**（`docs/adr/0087`）。
+      //   ⚠ **狭い幅は縦**（⚠ 「昔 → ↓ おなじ場所 → いま」を上から下へ読ませる）。
+      //   ⚠ **広い幅は横**（⚠ 縦に積むと 1 枚 382px になり、⚠ 道が最初の画面から出た）。
+      const 広い = viewport.width >= 700;
+      must(r.横並び === 広い,
+        広い ? "広い幅なのに、⚠ 冒頭の 2 枚が縦に積まれている"
+             : "狭い幅なのに、⚠ 冒頭の 2 枚が横に並んでいる");
+      // ⚠ **地図へ行く道が、⚠ 最初の画面に入っていること**（⚠ これが入口の目的）
+      must(r.道の上 !== null, "/about の入口に、⚠ 地図へ行く道が無い");
+      must(r.道の上 < r.画面,
+        `地図へ行く道が最初の画面から出ている（上端 y${r.道の上} ／ 画面 ${r.画面}px）`);
       must(r.断りが見える, "出典と加工の断りが見えていない");
       must(r.言えないことがある, "「言えないこと」の節が消えている");
       must(!r.横あふれ, "/about が横にあふれている");
@@ -3273,7 +3299,8 @@ for (const [名, viewport] of [["PC", PCな幅], ["スマホ", SP], ["いちば�
       const 外 = reqs.filter((u) => !u.startsWith(NEXT_BASE));
       must(外.length === 0,
         `/about が外へ ${外.length} 本出している: ${外.slice(0, 2).join(" ／ ")}`);
-      return `${r.寸法.map((q) => `${q.w}x${q.h}`).join(" ")} ／ 高さ ${r.高さ}px ／ 外 0 本`;
+      return `${r.寸法.map((q) => `${q.w}x${q.h}`).join(" ")} ／ 道 y${r.道の上}（画面 ${r.画面}）`
+           + ` ／ 高さ ${r.高さ}px ／ 外 0 本`;
     },
   });
 }
