@@ -310,6 +310,9 @@ body{
 .why__v{flex:1; min-width:0; margin:0; color:var(--ink-2)}
 .why__v b{color:var(--ink); font-weight:700}
 .why__v .none{color:var(--ink-3)}
+/* 区分名の代わりに置く「読めた」の字（hidetzu/konjaku#362。Owner 決定 3）。
+   答えの再掲ではないので、区分名（b）より弱く、取れなかった字（.none）と同じ段に置く。 */
+.why__read{color:var(--ink-3)}
 /* 断り → 記録 → 出典 の 3 段。断りが先に来る（実測で誤認 1/3 → 0/3）。 */
 .why__note,.why__body,.why__cite{display:block}
 .why__note{color:var(--ink-3)}
