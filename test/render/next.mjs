@@ -2624,13 +2624,20 @@ CASES.push({
     const 字 = await page.evaluate(() => document.getElementById("back").textContent.trim());
     must(/ひとつ前/.test(字), `同じサイトから来たのに、直前へ返す字でない: ${字}`);
     await page.locator("#back").click();
-    await 待つ(page, () => location.pathname.endsWith("/saved"), "戻った先");
+    // ⚠ **道が変わっただけでは待てていない。**⚠ **一覧が作り直されるのを待つ。**
+    //   ⚠ **器（道）ではなく、⚠ 結果（行）を待つ**（`CLAUDE.md` §9）。
+    //   ⚠ **元は道だけ待って行数を数えており、⚠ 手元で 4 回に 2 回落ちた**
+    //     （2026-09-02。⚠ CI でも落ちた）。⚠ **作り直されないなら、⚠ ここで時間切れになる。**
+    await 待つ(page,
+      () => location.pathname.endsWith("/saved")
+        && document.querySelectorAll("#listItems li").length > 0,
+      "戻った先の一覧");
     const 戻り = await page.evaluate(() => ({
       道: location.pathname,
       行: document.querySelectorAll("#listItems li").length,
     }));
     must(/\/saved$/.test(戻り.道), `来た画面へ戻っていない（いま ${戻り.道}）`);
-    must(戻り.行 === 1, `戻った先が作り直されていない（${戻り.行} 行）`);
+    must(戻り.行 === 1, `戻った先の行数が違う（${戻り.行} 行）`);
     return `「${字}」→ ${戻り.道}（${戻り.行} 件）`;
   },
 });
