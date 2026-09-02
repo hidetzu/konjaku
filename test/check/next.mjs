@@ -1207,7 +1207,10 @@ else {
       欠け.push("3 手の帯が、⚠ 地図の操作を止めている（⚠ pointer-events:none が無い）");
 
     // ⚠ 2. ⚠ **/about の使い方が、⚠ 同じ 3 つの字で始まっているか。**
-    const 使い方 = [...ABOUT.matchAll(/<dt class="about__k">([^<]*)<\/dt>/g)].map((m) => m[1].trim());
+    // ⚠ **2026-09-03 に、⚠ 使い方を 3 手のカードにした**（`docs/adr/0089`）。
+    //   ⚠ **項目名の器が `<dt class="about__k">` から `<p class="steps__k">` に変わった。**
+    //   ⚠ **見ている主張は変えていない**（⚠ トップの帯と同じ 3 つの字であること）。
+    const 使い方 = [...ABOUT.matchAll(/<p class="steps__k">([^<]*)<\/p>/g)].map((m) => m[1].trim());
     for (const h of 手)
       if (!使い方.includes(h)) 欠け.push(`/about の使い方に「${h}」が無い（⚠ トップの帯と食い違う）`);
 
@@ -1247,6 +1250,42 @@ else {
         欠け.push("断りの行（#kickNote）が無い（⚠ 断りは名乗りの行に入らない）");
       if (!/\.kick__note\[hidden\]\{display:none\}/.test(readFileSync(join(NEXT, "top.css"), "utf8")))
         欠け.push("断りの行に、⚠ hidden の打ち消しが無い（⚠ display を持つ規則には要る）");
+    }
+
+    // ⚠ 6. ⚠ **4 つの節が、⚠ 文章の連続ではなく構造になっているか**
+    //   （2026-09-03。Owner 指示。`docs/adr/0089`）。
+    //   ⚠ **印は飾りではない。**⚠ **節の識別と、⚠ 視線の休憩のために置く。**
+    //   ⚠ **印だけで意味が伝わる形にしない。**⚠ **字が必ず隣にある。**
+    {
+      const 器 = [
+        ["使い方", /<ol class="steps">/, /<li class="steps__i">/g, 3],
+        ["何を読んでいるか", /<ul class="cards">/, /<li class="cards__i">/g, 4],
+        ["言えないこと", /<ul class="notes">/, /<li class="notes__i">/g, 4],
+      ];
+      for (const [名, 外, 中, 数] of 器) {
+        if (!外.test(ABOUT)) { 欠け.push(`/about の「${名}」が構造になっていない`); continue; }
+        const n = (ABOUT.match(中) ?? []).length;
+        if (n !== 数) 欠け.push(`/about の「${名}」が ${n} 個（⚠ ${数} 個と決めてある）`);
+      }
+      if (!/<p class="flow" aria-hidden="true">/.test(ABOUT))
+        欠け.push("/about の「送るものと、預けるもの」に図が無い");
+      // ⚠ **印はフォントに頼らない**（⚠ 2026-09-02 に ☾ が豆腐になった）。
+      //   ⚠ **`/deep` と同じ形**（⚠ 16 の格子・`currentColor`）。
+      const 印 = [...ABOUT.matchAll(/<svg class="about__icon"[^>]*>/g)].map((m) => m[0]);
+      if (印.length < 12) 欠け.push(`/about の印が ${印.length} 個しかない（⚠ 3+4+4+5）`);
+      for (const x of 印) {
+        if (!/aria-hidden="true"/.test(x)) 欠け.push("印が読み上げから外れていない");
+        if (!/stroke="currentColor"/.test(x)) 欠け.push("印が色みに追いてこない（currentColor でない）");
+        if (!/viewBox="0 0 16 16"/.test(x)) 欠け.push(`印の格子が /deep と違う: ${x.slice(0, 60)}`);
+      }
+      // ⚠ **画面の `⚠` は災害リスク専用**（⚠ 断りの箱に使わない）。
+      const 本文 = ABOUT.replace(/<[^>]+>/g, " ");
+      if (本文.includes("⚠")) 欠け.push("/about の字に ⚠ がある（⚠ 災害リスク専用）");
+      // ⚠ **押せるものではないので、⚠ 枠は `--line`**（⚠ `--line-strong` は押せるものの輪郭）。
+      const CSS = readFileSync(join(NEXT, "about.css"), "utf8");
+      for (const k of ["steps__i", "cards__i", "flow"])
+        if (new RegExp(`\\.${k}\\{[^}]*--line-strong`).test(CSS))
+          欠け.push(`.${k} が --line-strong を使っている（⚠ 押せるものの輪郭）`);
     }
 
     // ⚠ 4. ⚠ **読み終えた人の出口。**⚠ **行き先まで見る**（⚠ 字だけだと、⚠ どこへも行かない）。
