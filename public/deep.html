@@ -98,6 +98,19 @@
     <div class="why" id="why"></div>
   </section>
 
+  <!-- この一帯の地盤と揺れ（J-SHIS）。
+       この地点そのものの話なので、分離の線（sec--around）より上に置く。
+       微地形と揺れの見込みは、因果でつながない。別々の項目として並べる。
+       実測（2026-09-02）で、同じ埋立地でも震度6弱以上が 12.9% / 20.3% / 35.6% と
+       3 倍近く違った。揺れの見込みは、その土地の地盤だけで決まらない。 -->
+  <section class="sec" id="groundSec" hidden>
+    <h2 id="groundH"></h2>
+    <p class="ground__scope" id="groundScope"></p>
+    <div class="why" id="ground"></div>
+    <p class="why__from" id="groundFrom"></p>
+    <p class="ground__note" id="groundNote"></p>
+  </section>
+
   <section class="sec" id="nearSec" hidden>
     <h2>この一帯は、どうだったか</h2>
     <div class="around" id="around" hidden>
@@ -154,6 +167,7 @@
 <script src="./saved.js"></script>
 <script src="./words.js"></script>
 <script src="./answer.js"></script>
+<script src="./ground.js"></script>
 <script src="./monument.js"></script>
 <script src="./swale.js"></script>
 <script src="./verify.js"></script>

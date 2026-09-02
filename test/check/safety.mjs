@@ -343,6 +343,22 @@ head("7. 外部から来た文字列");
       : ok("エスケープの実装は esc.js の1か所だけ");
   }
 
+  // ⚠ **外から来た字を、⚠ HTML として解釈させていないか**（2026-09-02）。
+  //   ⚠ **微地形区分（J-SHIS の JNAME）を画面に描く。**⚠ **`textContent` でしか描かない。**
+  //   ⚠ **`esc()` を通すより強い**（⚠ そもそも解釈させない）。⚠ **崩したら落ちる。**
+  {
+    const t = src["deep.js"] ?? "";
+    const i = t.indexOf("async function drawGround");
+    const j = t.indexOf("\n  }", i);
+    const 中 = i < 0 ? "" : t.slice(i, j);
+    i < 0
+      ? bad("drawGround が無い（⚠ この検査が何も見ていない）")
+      // ⚠ **空にするだけ（`= ""`）は許す。**⚠ **止めたいのは、⚠ 字を HTML として入れること。**
+      : [...中.matchAll(/\.innerHTML\s*=\s*([^;\n]+)/g)].some((m) => m[1].trim() !== '""')
+        ? bad("地盤と揺れの描画が innerHTML を使っている（⚠ textContent で描くこと）")
+        : ok("地盤と揺れは textContent でしか描かない（⚠ 外から来た字を HTML にしない）");
+  }
+
   // ⚠ 外部の相手が増えたら、この節を見直させる。
   //   応答の文字列を描く相手が増えたのに、エスケープを通さずに足すのが、実際に踏んだ型だった。
   // ⚠ **2026-09-01 に v0.1.0 の実態へ合わせた**（`docs/adr/0080`）。
@@ -360,6 +376,10 @@ head("7. 外部から来た文字列");
     //   ⚠ **画面に差し込まれる集計の本体は `static.cloudflareinsights.com` だが、
     //     ⚠ それは配信側が入れるもので、⚠ この repo には無い**（⚠ だから表に載らない）。
     "developers.cloudflare.com",
+    // ⚠ **地盤と揺れ**（2026-09-02。`docs/adr/0088`）。⚠ **微地形区分の字を描く。**
+    //   ⚠ **`textContent` でしか描かない**（⚠ `innerHTML` を使わない）。
+    //   ⚠ **`esc()` を通すのではなく、⚠ そもそも HTML として解釈させない。**
+    "www.j-shis.bosai.go.jp",
   ];
   {
     const seen = new Set();
