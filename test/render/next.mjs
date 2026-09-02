@@ -4022,7 +4022,14 @@ for (const [名, viewport] of [["PC", PCな幅], ["スマホ", SP]]) {
         if (!a) return { 無い: true };
         const q = a.getBoundingClientRect();
         const 節 = [...document.querySelectorAll(".about__h2")].map((e) => e.textContent.trim());
+        // ⚠ **入口（冒頭）と出口（末尾）は、⚠ 同じ「地図へ行く」ボタン**（2026-09-03。Owner 指示）。
+        //   ⚠ **同じことをする 2 つが違う大きさだと、⚠ 下のほうが弱い選択肢に見える。**
+        const 入 = document.querySelector(".entry__cta");
+        const 入枠 = 入?.getBoundingClientRect();
         return {
+          入口: 入 ? { 高: Math.round(入枠.height), 幅: Math.round(入枠.width),
+                      字大: getComputedStyle(入).fontSize } : null,
+          字大: getComputedStyle(a).fontSize,
           字: a.textContent.trim(), 高: Math.round(q.height), 幅: Math.round(q.width),
           見えている: a.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true }),
           // ⚠ **この画面で色が塗られているものは、⚠ 出口だけ**（⚠ 主な操作は 1 つ）。
@@ -4042,6 +4049,11 @@ for (const [名, viewport] of [["PC", PCな幅], ["スマホ", SP]]) {
       must(r.節.includes("使い方"), `/about に使い方の節が無い: ${r.節.join(" / ")}`);
       must(r.節.includes("言えないこと"), `/about に「言えないこと」の節が無い: ${r.節.join(" / ")}`);
       must(r.版より上, "/about の出口が、版の名乗りより下にある");
+      // ⚠ **入口と出口が同じ大きさ**（⚠ px はここに書かない。⚠ 2 つを突き合わせる）
+      must(r.入口, "/about に入口（.entry__cta）が無い");
+      must(r.高 === r.入口.高 && r.幅 === r.入口.幅 && r.字大 === r.入口.字大,
+        `/about の入口と出口で大きさが違う: 入口 ${r.入口.幅}×${r.入口.高}px ${r.入口.字大}`
+        + ` ／ 出口 ${r.幅}×${r.高}px ${r.字大}`);
       must(!r.横あふれ, "/about が横にあふれている");
       // ⚠ **押して、⚠ 着くところまで見る。**
       await Promise.all([
@@ -4051,7 +4063,7 @@ for (const [名, viewport] of [["PC", PCな幅], ["スマホ", SP]]) {
       const 着いた = new URL(page.url()).pathname;
       must(着いた === "/", `出口を押したのにトップへ着かない: ${着いた}`);
       await waitAnswer(page);
-      return `「${r.字}」${r.幅}×${r.高}px ／ 節 ${r.節.length} 個 ／ 着いた ${着いた}`;
+      return `「${r.字}」${r.幅}×${r.高}px（⚠ 入口と同じ）／ 節 ${r.節.length} 個 ／ 着いた ${着いた}`;
     },
   });
 }
