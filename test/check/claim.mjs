@@ -173,6 +173,27 @@ head("名乗り");
     ["README", stageOf(await readFile(join(ROOT, "README.md"), "utf8"))],
     ["SPEC", stageOf(await readFile(join(ROOT, "docs", "SPEC.md"), "utf8"))],
   ];
+  // ⚠ **版の数は、⚠ いちばん新しいものだけを見る**（2026-09-03。⚠ v0.2.0 を切るときに直した）。
+  //   ⚠ **前は「面ごとの集合が一致すること」を要求していた。**
+  //   ⚠ **そうすると、⚠ 過去の記録を持っている面が必ず割れる**
+  //     （⚠ SPEC の「2026-09-01 に v0.1.0 を本番へ上げた」「v0.1.0 の画面は 1 件も送っていない（実測）」）。
+  //   ⚠ **どちらも事実で、⚠ 消すと事実が消える**（`CLAUDE.md` §1・§4）。
+  //   ⚠ **見たいのは「いま何と名乗っているか」。**⚠ **古い版が並んでいること自体は、⚠ 割れではない。**
+  //   ⚠ **README が v0.1.0 のまま取り残されたら、⚠ いちばん新しいものが違うので落ちる。**
+  const 番号 = /^v\d+\.\d+\.\d+$/;
+  const 順 = (v) => v.slice(1).split(".").map(Number);
+  const 新しい方 = (a, b) => {
+    const x = 順(a), y = 順(b);
+    for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return x[i] > y[i] ? a : b;
+    return a;
+  };
+  const いまの名乗り = (v) => {
+    const 版 = [...v].filter((w) => 番号.test(w));
+    const 語 = [...v].filter((w) => !番号.test(w));
+    return new Set(版.length ? [...語, 版.reduce(新しい方)] : 語);
+  };
+  for (const f of faces) f[1] = いまの名乗り(f[1]);
+
   const silent = faces.filter(([, v]) => !v.size).map(([k]) => k);
   const key = ([, v]) => [...v].sort().join("・");
   const split = new Set(faces.map(key)).size > 1;
