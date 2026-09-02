@@ -79,6 +79,66 @@
   .about__k{flex:none}
 }
 
+/* 節の印。その節が何の話かを表す（飾りではない）。
+   見出しや項目名の行の中に置くので、縦は 1px も増えない。字が主で、印は添え。
+   印だけで意味が伝わる形にしない。字は必ず隣にある。読み上げからは外す。
+   /deep と同じ形（viewBox 0 0 16 16・stroke-width 1.3・--ink-3）。
+   ⚠ フォントに頼らない。☾ が環境によって豆腐になった（2026-09-02）。 */
+.about__icon{flex:none; color:var(--ink-3)}
+
+/* 使い方 ── 3 手。1 手ずつ箱にする。
+   箱の枠は --line（区切り）。押せるものではないので --line-strong は使わない。 */
+.steps{margin:var(--gap-row) 0 0; padding:0; list-style:none; display:grid; gap:var(--gap-row)}
+.steps__i{
+  display:flex; gap:var(--gap-row); padding:var(--pad-md);
+  border:1px solid var(--line); border-radius:.625rem; background:var(--surface);
+}
+.steps__b{min-width:0}
+.steps__k{margin:0; font-size:.8125rem; font-weight:700; color:var(--ink)}
+.steps__v{margin:var(--gap-sub) 0 0; font-size:.875rem; line-height:1.75; color:var(--ink-2)}
+
+/* 何を読んでいるか ── 4 つの資料。1 列に積む。
+   2 列も測ったが、375px で 1 枚 160px になり、説明が 5 行に折り返した（2026-09-03）。
+   140px 短くなるが、読みにくくなる。1 列にした。 */
+.cards{margin:var(--gap-row) 0 0; padding:0; list-style:none; display:grid; gap:var(--gap-row)}
+.cards__i{
+  padding:var(--pad-md);
+  border:1px solid var(--line); border-radius:.625rem; background:var(--surface);
+}
+.cards__k{
+  display:flex; align-items:center; gap:var(--gap-row); margin:0;
+  font-size:.8125rem; font-weight:700; color:var(--ink);
+}
+.cards__v{margin:var(--gap-sub) 0 0; font-size:.875rem; line-height:1.75; color:var(--ink-2)}
+
+/* 言えないこと ── 断りの束。左に色の線を引く。
+   ⚠ 画面の ⚠ は災害リスク専用なので使わない。
+   線と、丸に ! の印で示す。4 つとも同じ印にする（同じ種類の断りだから）。
+   色は --evidence（根拠の帯と同じ）。危険の色ではない。 */
+.notes{margin:var(--gap-row) 0 0; padding:0; list-style:none; display:grid; gap:var(--gap-row)}
+.notes__i{
+  display:flex; gap:var(--gap-row);
+  padding:var(--pad-md) var(--pad-md) var(--pad-md) var(--pad-sm);
+  border-left:3px solid var(--evidence); border-radius:0 .5rem .5rem 0;
+  background:var(--surface);
+}
+.notes__b{min-width:0}
+.notes__k{margin:0; font-size:.8125rem; font-weight:700; color:var(--ink)}
+.notes__v{margin:var(--gap-sub) 0 0; font-size:.875rem; line-height:1.75; color:var(--ink-2)}
+
+/* 送るものと、預けるもの ── どこからどこへ行くかの図。
+   字は下の本文が持つ。ここは道筋だけを見せる。だから読み上げからは外す。 */
+.flow{
+  display:flex; align-items:center; justify-content:center; gap:var(--gap-row);
+  margin:var(--gap-row) 0 0; padding:var(--pad-md);
+  border:1px solid var(--line); border-radius:.625rem; background:var(--surface);
+}
+.flow__n{
+  display:flex; flex-direction:column; align-items:center; gap:var(--gap-sub);
+  min-width:0; font-size:.75rem; line-height:1.5; color:var(--ink-2); text-align:center;
+}
+.flow__a{display:flex; color:var(--ink-3)}
+
 /* 冒頭の要約。読み物の先頭で、要点だけを先に渡す（privacy）。
    本文より大きくしない。ここは目次ではなく、これだけ読んでも足りる形にする。
    点は付けない（並びは 4 つで、順番に意味が無い）。
