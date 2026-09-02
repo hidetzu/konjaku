@@ -374,12 +374,28 @@
   $("sheetClose").addEventListener("click", () => { sheet.hidden = true; moreBtn.focus(); });
   addEventListener("keydown", (e) => { if (e.key === "Escape" && !sheet.hidden) { sheet.hidden = true; moreBtn.focus(); } });
 
+  // 畳む器。散歩中は、答えと保存だけあれば足りる。
+  //   実測（2026-09-03・375x667・春日部）: 板が画面の 57%、見える地図は 130px しかなかった。
+  //   畳むと 32% / 292px に戻る。
+  //   ⚠ 広い幅は畳まない。圧迫していないので、開いたまま出す。
+  //   ⚠ 覚えない。場所が変わったら閉じる。前の場所の続きを開いたままにしない。
+  //   ⚠ 幅の数はここに書かない。CSS の 1 か所（.fold::before）が決め、ここは読むだけ。
+  const fold = $("fold");
+  const 畳み直す = () => {
+    const 印 = getComputedStyle(fold, "::before").content;
+    fold.open = 印.includes("open");
+  };
+  畳み直す();
+  addEventListener("resize", 畳み直す);
+
   // ---- 足元を調べる ----
   let askSeq = 0;
   async function ask() {
     const seq = ++askSeq;
     const lon = px2lon(cx), lat = px2lat(cy);
     kickText.textContent = KonjakuAnswer.WHERE[出どころ];
+    // ⚠ 場所が変わったら閉じる（狭い幅のみ）。前の場所の続きを開いたままにしない。
+    畳み直す();
     // 場所が変わったら、前の断りは残さない
     kickNote.hidden = true; kickNote.textContent = "";
     // 見出しは明治期の答えを使うので、地形分類を待ってから投げると往復が 2 回直列になる。

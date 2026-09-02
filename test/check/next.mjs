@@ -1377,4 +1377,85 @@ else {
           + "⚠ 「さあ、はじめる」でトップへ戻せる（⚠ 冒頭は今昔の実画面 2 枚・出典と加工の断りつき）");
   }
 
+  // ---- ⚠ ㉓ 狭い幅で畳むとき、⚠ 散歩中に要るものまで畳んでいないか ----
+  // ⚠ **実測（2026-09-03・375×667・春日部）**: ⚠ **板が画面の 57%、⚠ 見える地図は 130px しかなかった。**
+  //   ⚠ **「どこの話か」を地図から読み取れない**（`docs/adr/0091`。Owner 判断）。
+  // ⚠ **畳んだのは、⚠ 写真の年代・根拠・凡例。**
+  //   ⚠ **答え・出典・2 行目・名乗り・保存・3 手の帯は畳まない**（⚠ ADR 0083 は維持）。
+  // ⚠ **実際に畳めているか・開くか・場所を変えると閉じるかは実描画が見る。**
+  //   ⚠ **ここが見るのは、⚠ 器の中身の割り振りと、⚠ 幅の数を 2 か所に持っていないこと。**
+  {
+    const 欠け = [];
+    const html = readFileSync(join(NEXT, "index.html"), "utf8");
+    const css = readFileSync(join(NEXT, "top.css"), "utf8");
+    const js = readFileSync(join(NEXT, "top.js"), "utf8");
+
+    // ⚠ **器そのもの。**⚠ **`<details>` で作る**（⚠ 開閉を自前で持たない）。
+    // ⚠ **入れ子を数えて切り出す**（⚠ 中に `#why` の `<details>` が入っている。
+    //   ⚠ **非貪欲な正規表現だと、⚠ そこで閉じたことにして、⚠ 凡例が「外にある」と誤報した**）。
+    const 切る = () => {
+      const i = html.search(/<details[^>]*id="fold"[^>]*>/);
+      if (i < 0) return null;
+      const 始 = html.indexOf(">", i) + 1;
+      let 深さ = 1, j = 始;
+      const 印 = /<details\b|<\/details>/g; 印.lastIndex = 始;
+      for (let m; (m = 印.exec(html)); ) {
+        深さ += m[0] === "</details>" ? -1 : 1;
+        if (深さ === 0) { j = m.index; break; }
+      }
+      return 深さ === 0 ? html.slice(始, j) : null;
+    };
+    const 中 = 切る();
+    if (中 === null) 欠け.push("狭い幅で畳む器（#fold）が無い（⚠ 閉じていない）");
+    else {
+      // ⚠ **押す口が、⚠ 器の中にあること**（⚠ 外に置くと `<details>` が開かない）。
+      if (!/<summary[^>]*class="fold__sum"[^>]*>[^<]*くわしく見る/.test(中))
+        欠け.push("開く口（くわしく見る）が、器の中に無い");
+      // ⚠ **開いた状態を覚えない**（Owner 判断）。⚠ **`open` を書き置かない。**
+      if (/<details[^>]*id="fold"[^>]*\sopen/.test(html))
+        欠け.push("器に open が書いてある（⚠ 開いた状態は覚えないと決めてある）");
+      if (/localStorage[^\n]*fold/.test(js))
+        欠け.push("開いた状態を localStorage に覚えている（⚠ 覚えないと決めてある）");
+
+      // ⚠ **畳む側**（⚠ 立ち止まって読むもの）
+      for (const id of ["erasLabel", "eras", "eraNote", "eraBack", "why", "legend", "more"])
+        if (!new RegExp(`id="${id}"`).test(中))
+          欠け.push(`${id} が畳む器の外にある（⚠ 初期表示で地図を圧迫する）`);
+      // ⚠ **畳まない側**（⚠ 散歩中に、⚠ 数秒で要るもの）
+      for (const [id, なに] of [
+        ["gloss", "答え"], ["glossSrc", "出典"], ["sub", "2 行目（成り立ち）"],
+        ["kickText", "名乗り（どこの話か）"], ["save", "保存"], ["steps", "3 手の帯"],
+      ]) {
+        if (!new RegExp(`id="${id}"`).test(html)) { 欠け.push(`${なに}（#${id}）が無い`); continue; }
+        if (new RegExp(`id="${id}"`).test(中)) 欠け.push(`${なに}（#${id}）まで畳んでいる`);
+      }
+    }
+
+    // ⚠ **幅の数を 2 か所に持たない**（`CLAUDE.md` §3）。
+    //   ⚠ **畳むかどうかは CSS の 1 か所が決め、⚠ JavaScript はそれを読むだけ。**
+    //   ⚠ **実際に一度 `matchMedia("(min-width:700px)")` と書いて、⚠ ここで落ちている。**
+    if (!/\.fold::before\s*\{[^}]*content\s*:/.test(css))
+      欠け.push("畳むかどうかを CSS（.fold::before）が決めていない");
+    if (!/@media\s*\(min-width:\s*700px\)[\s\S]{0,200}\.fold::before\s*\{[^}]*content\s*:\s*"open"/.test(css))
+      欠け.push("広い幅で畳まない指定（.fold::before の content:\"open\"）が無い");
+    // ⚠ **`clientWidth` は見ない**（⚠ 地図の器の寸法に使っており、⚠ 幅の分岐ではない）。
+    //   ⚠ **見るのは「幅で分岐する道具」と「幅の数そのもの」。**
+    const 素 = js.replace(BLOCK_COMMENT, " ").replace(HEAD_COMMENT, " ");
+    if (/matchMedia/.test(素))
+      欠け.push("JavaScript が matchMedia で幅を見ている（⚠ 幅の数は CSS の 1 か所だけが持つ）");
+    if (/\b700\b/.test(素))
+      欠け.push("JavaScript に幅の数（700）が書いてある（⚠ CSS と 2 か所になる）");
+    if (!/getComputedStyle\([^)]*fold[^)]*,\s*"::before"\)/.test(js))
+      欠け.push("JavaScript が、CSS の決めた畳み方を読んでいない");
+
+    // ⚠ **広い幅では、⚠ 押す口を出さない**（⚠ 押しても何も起きない導線を置かない。ADR 0026）。
+    if (!/@media\s*\(min-width:\s*700px\)[\s\S]{0,200}\.fold__sum\s*\{[^}]*display\s*:\s*none/.test(css))
+      欠け.push("広い幅で、開く口を隠していない（⚠ 畳まないのに押す口だけ出る）");
+
+    欠け.length
+      ? bad(`狭い幅の畳み方が壊れている: ${欠け.join(" ／ ")}`)
+      : ok("狭い幅では写真の年代・根拠・凡例を畳み、⚠ 答え・出典・2 行目・名乗り・保存・3 手は畳まない"
+          + "（⚠ 幅の数は CSS の 1 か所。⚠ 開いた状態は覚えない）");
+  }
+
 }

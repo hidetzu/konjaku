@@ -68,6 +68,36 @@ body{
 }
 #hits button:hover,#hits button:focus-visible{background:var(--bg);outline:none}
 
+/* 畳む器。散歩中は、答えと保存だけあれば足りる。
+   実測（2026-09-03・375x667・春日部）: 板 377px（画面の 57%）／ 見える地図 130px。
+   畳むと 215px（32%）／ 292px に戻る。
+   ⚠ 広い幅では畳まない。圧迫していないので、開いたまま出す。
+     details の open を CSS で作れないので、content を消して中身を出す。 */
+/* details そのものは、位置も余白も持たない。中身がそのまま並ぶように見せる。
+   ⚠ [hidden] を打ち消さないこと。class と属性は詳細度が同じで、あとに書いたほうが勝つ。
+   ⚠ 実際に踏んだ: hidden を付けても消えず、実描画の「hidden が本当に消える」が落ちた。 */
+.fold:not([hidden]){display:block}
+/* 畳むかどうかは、ここで決める。⚠ 幅の数を JavaScript に持たせない。
+   top.js は、この印を読むだけ（getComputedStyle の content）。 */
+.fold::before{content:"fold"; display:none}
+@media (min-width:700px){ .fold::before{content:"open"} }
+.fold__sum{
+  display:flex; align-items:center; gap:var(--gap-sub);
+  min-height:var(--tap); margin:var(--gap-sub) 0 0;
+  list-style:none; cursor:pointer;
+  font-size:.8125rem; font-weight:700; color:var(--action);
+}
+.fold__sum::-webkit-details-marker{display:none}
+/* 開いているかを、字でも示す。色と位置だけで言わない。 */
+.fold__sum::after{content:"▾"; font-size:.75rem}
+.fold[open] .fold__sum::after{content:"▴"}
+.fold__sum:focus-visible{outline:2px solid var(--action); outline-offset:2px}
+@media (min-width:700px){
+  /* 広い幅は畳まない。押す口も出さない（押しても何も起きない導線を置かない）。
+     open は top.js が付ける。CSS だけでは details を開けない。 */
+  .fold__sum{display:none}
+}
+
 /* ---- 3 手 ---- */
 /* 出典・答えの板と同じ積み上げ（#bottom）の中に置く。上端から固定値で置かない。
    実際に踏んだ（2026-09-02）: 検索欄の下に固定で置いたら、320x640 で出典と 35px 重なった。
