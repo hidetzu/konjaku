@@ -43,9 +43,6 @@
       <img class="brand__mark" src="./favicon.svg" alt="" width="20" height="20">
       <span class="brand__words"><span class="brand__title">今昔</span><span class="brand__tag">この土地は、昔なんだったのか？</span></span>
     </a>
-    <nav class="brand__nav" aria-label="主な行き先">
-      <a class="brand__link" href="./">地図で調べる</a>
-    </nav>
     <details class="theme" id="theme" hidden>
       <summary class="theme__btn" aria-label="色みを選ぶ">
         <svg class="theme__icon" viewBox="0 0 24 24" width="20" height="20"
@@ -72,46 +69,38 @@
 </header>
 
 <main class="about">
-  <h1 class="about__h">このサイトについて</h1>
-  <p class="about__lead">
-    気になった場所を選ぶと、昔の地図や空中写真から、その土地が昔なんだったのかをたどれます。
-    調べた場所は、気に入ったものだけ手元に残せます。
-  </p>
+  <!-- 入口。初めて来た人が、読む前に「何をする道具か」を絵で分かるようにする。
+       上から 問い → 昔 → いま → 地図へ の 4 つだけを、最初の画面に入れる。
 
-  <!-- 冒頭の 1 組。読む前に、何をする道具かを絵で渡す。
-       今昔の実画面を撮ったもの。装飾のために描いた絵ではない。
-       作り方と、いつ撮ったかは assets/about/hero.json にある（npm run about-hero）。
-
-       お台場にしてある。豊洲では並べられない。
-         実測（2026-09-02）: 豊洲は 1936 年に既に陸（飛行場）で、写真に水が写っていない。
-         「河川・湖沼・海面」は明治期の資料が言っていることで、1936 の写真ではない。
-         並べると、写真が言っていないことを言ったことになる。
-       ⚠ 1 組だけにする。増やすと、下の「言えないこと」まで届く人が減る。
-         実測: 3 か所に足した案は、ページが 375px で 2511 → 4469px になった。
-       ⚠ 幅と高さを属性で書く。書かないと、読み込む前に行が飛ぶ。
-       ⚠ 出典と、こちらで加工したことを必ず添える（下の about__figSrc）。 -->
-  <figure class="about__hero">
-    <div class="about__heroPair">
-      <span class="about__heroOne">
-        <img class="about__heroImg" src="./about-1936.webp" width="720" height="450"
+       ⚠ 絵の名前は、絵の上に重ねる。下に置くと 2 行ぶん（68px）増えて、
+         地図へ行く道が最初の画面から出た（実測 2026-09-02・375x667）。
+       ⚠ 出典と加工の断りは、地図へ行く道の下。断りは消さない。
+       ⚠ 説明文は減らしていない。順番と、絵の大きさと、道の位置だけを変えた。 -->
+  <div class="entry">
+    <h1 class="entry__q">ここは、昔なんだった？</h1>
+    <p class="entry__sub">
+      気になった場所を選ぶと、昔の地図や空中写真から、その土地が昔どうだったのかをたどれます。
+    </p>
+    <figure class="entry__pair">
+      <span class="entry__shot">
+        <img class="entry__img" src="./about-1936.webp" width="720" height="450"
              alt="1936〜42年の空中写真。お台場のあたりは一面が水面" decoding="async">
-        <span class="about__heroCap"><b>1936–42 の空中写真</b>一面が水面</span>
+        <span class="entry__tag">東京・お台場　1936–42 の空中写真</span>
       </span>
-      <span class="about__heroOne">
-        <img class="about__heroImg" src="./about-ima.webp" width="720" height="450"
+      <span class="entry__arrow" aria-hidden="true">おなじ場所</span>
+      <span class="entry__shot">
+        <img class="entry__img" src="./about-ima.webp" width="720" height="450"
              alt="いまの今昔の画面。お台場の街と、地形分類の色" decoding="async">
-        <span class="about__heroCap"><b>いまの画面</b>台場の街</span>
+        <span class="entry__tag">いまの画面</span>
       </span>
-    </div>
-    <figcaption class="about__figCap">
-      東京・お台場。今昔は、この 2 つを行き来して、その土地が昔なんだったのかを読みます。
-    </figcaption>
+    </figure>
+    <a class="entry__cta" href="./">地図で調べてみる →</a>
     <p class="about__figSrc">
       国土地理院が公開している<a href="https://maps.gsi.go.jp/development/ichiran.html"
       target="_blank" rel="noopener">地理院タイル</a>（1936–42 の空中写真・淡色地図・地形分類）を、
       今昔の画面で表示し、切り取った画像です。原図そのままではありません。出典 国土地理院。
     </p>
-  </figure>
+  </div>
 
   <!-- 使い方。トップの 3 手と同じ順・同じ字で始める。
        トップは 1 行しか置けないので、ここで中身を書く。

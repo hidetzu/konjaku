@@ -59,17 +59,8 @@ a.brand__name:hover{color:var(--action)}
 /* 広い幅の行き先。狭い幅では画面の下の帯（tabs.css）が持つので、ここには出さない。
    同じ道を、同じ画面に 2 つ出さない。
    狭い幅の帯と字が違うのは、置ける幅が違うから（帯は絵と 2〜3 字ぶんしかない）。 */
-.brand__nav{display:none}
-.brand__link{
-  display:flex; align-items:center; min-height:var(--tap);
-  padding:0 var(--pad-sm); border-radius:.375rem;
-  color:var(--ink-2); text-decoration:none;
-  font-size:.8125rem; font-weight:700; white-space:nowrap;
-}
-.brand__link:hover{color:var(--action)}
-.brand__link:focus-visible{outline:2px solid var(--action); outline-offset:-2px}
+
 /* いまいる画面は、行き先ではなく現在地として見せる。 */
-.brand__link[aria-current="page"]{color:var(--action)}
 
 /* 右端のメニュー。押すと、サイトの案内が縦に並ぶ。
    1 つずつ帯に並べると、狭い幅で名乗りが切れる
@@ -119,7 +110,6 @@ a.brand__name:hover{color:var(--action)}
 /* いま開いている画面は、行き先ではなく現在地として見せる。 */
 .menu__item[aria-current="page"]{color:var(--ink-3); background:var(--surface-2)}
 
-
 /* ---- 広い幅 ---- */
 /* 行き先の置き場だけが、狭い幅と入れかわる。
      狭い幅  行き先＝画面の下の帯   広い幅  行き先＝この帯のナビ
@@ -128,12 +118,6 @@ a.brand__name:hover{color:var(--action)}
    画面によって帯の形が変わるのをやめた（2026-09-01。Owner 指示）。
    ページの下は、地図の画面が持てないぶんを埋める側ではなく、
    読み終えたところに置く案内として残す。 */
-@media (min-width:700px){
-  .brand__nav{display:flex; align-items:center; gap:var(--gap-sub); margin-left:auto}
-  /* 右へ寄せるのはナビのほう。メニューの margin-left:auto を残すと、
-     余りが 2 つの auto で分けられて、ナビが真ん中へ流れる。 */
-  .menu{margin-left:var(--gap-sub)}
-}
 
 /* 目には出さないが、読み上げには残す。
    見出しを置く場所が無い画面（地図）でも、名乗りを 1 つ持つため。
