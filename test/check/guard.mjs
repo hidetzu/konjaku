@@ -22,7 +22,7 @@
 import { readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { ROOT, ok, bad, head, dropCommentOrHash, walkFiles } from "./lib.mjs";
+import { ROOT, ok, bad, head, dropCommentOrHash, walkFiles, BLOCK_COMMENT, HEAD_COMMENT } from "./lib.mjs";
 // ⚠ **計測の置き場所は `.claude/telemetry-dir.mjs` の 1 か所**（2026-08-24 に寄せた）。
 //   ⚠ **ここで字を持ち直さない。**⚠ **持ち直すと、⚠ 寄せた意味が無くなる。**
 import { TELEMETRY_DIR_NAME, TELEMETRY_IGNORE_LINE } from "../../.claude/telemetry-dir.mjs";
@@ -470,3 +470,56 @@ head("計測が、作業を止めない");
   }
 }
 
+// ⚠ **演習が、世界を変えていないか**（2026-09-04。`.claude/rules/testing.md`）。
+//   ⚠ **今昔ではまだ踏んでいない。**⚠ **踏める口があるので、⚠ 踏む前に壁にする。**
+//   ⚠ **規則だけでは約束にしかならない**（⚠ テンプレート側もそう言っている）。
+//
+// ⚠ **見るのは「検査が、⚠ 外の状態を動かす口を走らせていないか」だけ。**
+//   ⚠ **読むのは自由**（⚠ 中身を静的に確かめるのは、⚠ むしろやるべきこと）。
+//   ⚠ **走らせるのが駄目**（⚠ `ask-slack.mjs` には書き先をすげ替える口が無い。
+//     ⚠ 走らせたら、⚠ 本当に Slack へ投稿される）。
+{
+  head("演習が世界を変えないか");
+
+  // ⚠ **走らせてはいけない相手。**⚠ **すげ替える口が無いか、⚠ 人の許可が要るもの。**
+  const 触るな = [
+    [".claude/hooks/ask-slack.mjs", "Slack へ本当に投稿される"],
+    [".claude/hooks/slack-doctor.mjs", "--post で Slack へ本当に投稿される"],
+  ];
+  // ⚠ **外の状態を動かす道具**（⚠ `CLAUDE.md` §8 が人の許可を要求している）。
+  //   ⚠ **走らせているところだけを見る。**⚠ **案内文の中の字を拾わない**
+  //     （⚠ 実際に踏んだ: `bad()` の中の「`npx wrangler d1 create konjaku` で作った id を入れる」を
+  //      ⚠ 呼び出しだと読んだ）。
+  const 走らせる = "(?:execFileSync|execSync|spawnSync|spawn)\\(\\s*";
+  const 道具 = [
+    [new RegExp(`${走らせる}["'\`](?:gh|/[\\w/]*/gh)["'\`]`), "gh（PR の作成・merge）"],
+    [new RegExp(`${走らせる}["'\`][^"'\`]*(?:wrangler|npx)["'\`]`), "wrangler（配信）"],
+    // ⚠ **git は読むのに使う**（`ls-files` ほか）。⚠ **push だけを見る。**
+    [new RegExp(`${走らせる}["'\`]git["'\`]\\s*,\\s*\\[[^\\]]*["'\`]push["'\`]`), "git push"],
+  ];
+
+  const 検査 = [];
+  for (const f of walkFiles(join(ROOT, "test"))) if (f.endsWith(".mjs")) 検査.push(f);
+  // ⚠ **1 本も見ていないなら、⚠ この検査は何も見ていない**
+  if (検査.length < 5) bad(`検査のファイルを ${検査.length} 本しか見つけられない（⚠ この検査が何も見ていない）`);
+  else {
+    const 漏れ = [];
+    for (const f of 検査) {
+      // ⚠ **コメントを先に落とす**（`CLAUDE.md` §5）。
+      //   ⚠ **落とさないと、⚠ この規則を説明したコメントを、⚠ 検査自身が拾う。**
+      const 素 = (await readFile(f, "utf8")).replace(BLOCK_COMMENT, " ").replace(HEAD_COMMENT, " ");
+      const 名 = f.slice(ROOT.length).replace(/^\/+/, "");
+      for (const [相手, なぜ] of 触るな) {
+        // ⚠ **読むのは自由。**⚠ **走らせているところだけを見る。**
+        const 走らせ = new RegExp(`(execFileSync|spawnSync|execSync|spawn)\\([^)]*${相手.replace(/[.\/]/g, "\\$&")}`);
+        if (走らせ.test(素)) 漏れ.push(`${名} が ${相手} を走らせている（⚠ ${なぜ}）`);
+      }
+      for (const [形, なに] of 道具) if (形.test(素)) 漏れ.push(`${名} が ${なに} を呼んでいる`);
+    }
+    漏れ.length
+      ? bad(`検査が、⚠ 外の状態を動かしている: ${漏れ.join(" ／ ")}`
+          + "（⚠ **演習が世界を変えてはいけない**。`.claude/rules/testing.md`）")
+      : ok(`検査は、⚠ 外の状態を動かす口を走らせていない（⚠ ${検査.length} 本を見た。`
+          + "⚠ 読むのは自由。⚠ 走らせるのが駄目）");
+  }
+}
