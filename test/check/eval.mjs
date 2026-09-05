@@ -17,7 +17,8 @@
 
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { ROOT, ok, bad, head } from "./lib.mjs";
+import { readFileSync } from "node:fs";
+import { ROOT, ok, bad, head, BLOCK_COMMENT, HEAD_COMMENT } from "./lib.mjs";
 
 head("Eval — 集計が事実を曲げない");
 
@@ -272,4 +273,86 @@ const E = await import(pathToFileURL(join(ROOT, TOOL)).href);
         + "未終了は所要時間の母数に入らない・良し悪しの欄を 1 つも持たない・"
         + "推定値であることを両方で名乗る・生の記録は 1 バイトも変わらない・記録が無くても落ちない・"
         + "⚠ 既定の置き場所のまま 1 往復して、⚠ 書いた先を読む側が見つけられる）");
+}
+
+// ⚠ **Owner の手を、⚠ 観測できたぶんだけ出しているか**（2026-09-05。hidetzu/konjaku#471）。
+//
+// ⚠ **相手（Claude Code）がいま何を返すかは主張しない**（`CLAUDE.md` §9）。
+//   ⚠ **記録はこちらで作る。**⚠ **見るのは「その記録から、⚠ 何をどう言うか」。**
+// ⚠ **`ownerOf` を直に呼ぶ。**⚠ **Slack にも Claude Code にも触らない。**
+{
+  head("Owner の手（⚠ 観測できたものだけ）");
+  const 欠け = [];
+  let O = null;
+  try { O = (await import("../../.claude/tools/telemetry-eval.mjs")).ownerOf; }
+  catch (e) { 欠け.push(`ownerOf を読めない: ${e.message}`); }
+
+  if (!O) {
+    欠け.push("ownerOf を読めていない（⚠ この検査が何も見ていない）");
+  } else {
+    const 行 = [
+      // ⚠ 通った道具
+      { event: "PreToolUse", session_id: "s", prompt_id: "p1", tool_name: "Bash", tool_use_id: "t1" },
+      { event: "PostToolUse", session_id: "s", prompt_id: "p1", tool_name: "Bash", tool_use_id: "t1" },
+      // ⚠ 止まった道具（⚠ PostToolUse が来ない）
+      { event: "PreToolUse", session_id: "s", prompt_id: "p1", tool_name: "Edit", tool_use_id: "t2" },
+      // ⚠ 本文で聞いた Turn
+      { event: "Stop", session_id: "s", prompt_id: "p1", ask_inline: true, ask_inline_rule: "末尾が疑問（v1）" },
+      // ⚠ `AskUserQuestion` を使った Turn は、⚠ Decision であって、⚠ 本文で聞いたではない
+      { event: "PreToolUse", session_id: "s", prompt_id: "p2", tool_name: "AskUserQuestion", tool_use_id: "t3" },
+      { event: "PostToolUse", session_id: "s", prompt_id: "p2", tool_name: "AskUserQuestion", tool_use_id: "t3" },
+      { event: "OwnerAsk", session_id: "s", outcome: "answered", waited_ms: 30000 },
+      { event: "Stop", session_id: "s", prompt_id: "p2", ask_inline: true, ask_inline_rule: "末尾が疑問（v1）" },
+      // ⚠ 欄を持たない古い Turn（⚠ 分母に入れない）
+      { event: "Stop", session_id: "s", prompt_id: "p3" },
+    ];
+    const o = O(行);
+
+    // ⚠ 1. ⚠ **止まった道具を数える。**⚠ **通ったものは数えない。**
+    if (o.tool_stopped !== 1) 欠け.push(`止まった道具が ${o.tool_stopped}（1 のはず）`);
+    if (o.tool_calls !== 3) 欠け.push(`道具の呼び出しが ${o.tool_calls}（3 のはず）`);
+
+    // ⚠ 2. ⚠ **`AskUserQuestion` を使った Turn を、⚠ 本文で聞いたに数えない**
+    if (o.ask_inline !== 1)
+      欠け.push(`本文で聞いたが ${o.ask_inline}（1 のはず。⚠ AskUserQuestion の Turn を数えている）`);
+
+    // ⚠ 3. ⚠ **欄を持たない行を、⚠ 分母に入れない**（`CLAUDE.md` §6）。
+    //   ⚠ **入れると「0 / 745」になり、⚠ 「一度も聞いていない」と読まれる。**
+    if (o.ask_inline_judged !== 2)
+      欠け.push(`判定できた Turn が ${o.ask_inline_judged}（2 のはず。⚠ 欄の無い行を混ぜている）`);
+    if (o.turns !== 3) 欠け.push(`Turn が ${o.turns}（3 のはず）`);
+
+    // ⚠ 4. ⚠ **どの規則で決めたかを名乗る**（⚠ 規則を変えたら、⚠ 前後で比べられなくなる）
+    if (!o.ask_inline_rule) 欠け.push("本文で聞いたの判定規則を名乗っていない");
+
+    // ⚠ 5. ⚠ **取れないものを名乗る**（⚠ 欄が無いだけだと「0 件」と読まれる）
+    if (!Array.isArray(o.missing) || !o.missing.includes("intervention"))
+      欠け.push("Owner Intervention が取れないことを名乗っていない");
+
+    // ⚠ 6. ⚠ **「拒否」と言わない**（⚠ 観測しているのは「止まった」まで）
+    const 名 = JSON.stringify(Object.keys(o));
+    if (/deny|denied|reject|拒否/i.test(名))
+      欠け.push(`欄の名前が「拒否」を主張している: ${名}`);
+
+    // ⚠ 7. ⚠ **採点しない**（`docs/adr/0036`）
+    const 採点 = JSON.stringify(o).match(/"(success|failure|quality|score|autonomy|good|bad)[a-z_]*"/gi);
+    if (採点) 欠け.push(`Owner の欄が良し悪しを出している: ${[...new Set(採点)].join("、")}`);
+  }
+
+  // ⚠ **書く側が、⚠ 突き合わせに要るものを残しているか**
+  const 素 = readFileSync(join(ROOT, ".claude/hooks/telemetry.mjs"), "utf8")
+    .replace(BLOCK_COMMENT, " ").replace(HEAD_COMMENT, " ");
+  for (const [語, なぜ] of [
+    ["tool_use_id", "Pre と Post を突き合わせられない"],
+    ["ask_inline", "本文で聞いたかが分からない"],
+    ["ask_inline_rule", "どの規則で決めたかが分からない"],
+  ]) if (!素.includes(語)) 欠け.push(`telemetry.mjs が ${語} を残していない（⚠ ${なぜ}）`);
+  // ⚠ **本文を持たない**（⚠ 判定はフックの中で終える）
+  if (/last_assistant_message\s*[,}]/.test(素.replace(/const reply[^\n]*\n/, "")))
+    欠け.push("telemetry.mjs が返答の本文を記録に載せている");
+
+  欠け.length
+    ? bad(`Owner の手の出し方が壊れている: ${欠け.join(" ／ ")}`)
+    : ok("Owner の手は、⚠ 止まった道具・⚠ Slack で聞いた・⚠ 本文で聞いた だけを出し、"
+        + "⚠ 拒否とは言わず、⚠ 欄の無い行を分母に入れず、⚠ 取れないものを名乗る");
 }
