@@ -549,3 +549,15 @@ body{
 #bar[hidden],#find[hidden],#bottom[hidden]{display:none}
 .why__note[hidden],.why__body[hidden],.why__cite[hidden],.why__more[hidden]{display:none}
 .code__link[hidden],.code__close[hidden]{display:none}
+
+/* この先で、土地が変わる（1 行）。
+   押せる見た目にしない。ここは「行き先」ではなく「そこに在るという事実」。
+   [hidden] を打ち消さないこと。class と属性は詳細度が同じで、あとに書いたほうが勝つ。 */
+.edge:not([hidden]){
+  display:flex; align-items:center; gap:var(--gap-sub);
+  margin:var(--gap-sub) 0 0;
+  font-size:.8125rem; color:var(--ink-3);
+}
+/* 折り返す。⚠ 切って「…」にしない（⚠ 区分名が消えると、何に変わるか分からなくなる）。
+   ⚠ 実測（2026-09-05・320px）: いちばん長い区分名でも 2 行に収まる。 */
+.edge__t{min-width:0}
