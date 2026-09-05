@@ -466,13 +466,16 @@
       (t.x - cx + 1) * タイルm, (cx + 2 - t.x) * タイルm,
       (t.y - cy + 1) * タイルm, (cy + 2 - t.y) * タイルm);
 
-    const r = B.境目(features, lon, lat, { 見えている範囲m });
+    // ⚠ **対照表を先に読む。**⚠ **名前が同じものを境目にしないため**（2026-09-05）。
+    //   ⚠ **読めなければ、⚠ コードだけで見分ける**（⚠ 前と同じ挙動に落ちる）。
+    //   ⚠ **その場合「同じ名前との境目」が出うるので、⚠ 黙って落とさない。**
+    let tbl = null;
+    try { tbl = await table(); } catch { /* 対照表が無くても、距離と方角は言える */ }
+
+    const r = B.境目(features, lon, lat, { 見えている範囲m, 名前: tbl?.codes ?? null });
     if (r.state !== "ok")
       return { ...base, ok: false, state: ABSENT, value: null, why: r.state,
         evidence: { zoom: z, tiles: 読めた } };
-
-    let tbl = null;
-    try { tbl = await table(); } catch { /* 対照表が無くても、距離と方角は言える */ }
     return { ...base, ok: true, state: OK,
       value: tbl?.codes?.[r.toCode] ?? null,
       from: tbl?.codes?.[r.code] ?? null,

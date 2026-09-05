@@ -100,6 +100,8 @@
    * @param opts.上限m       これより遠い境目は出さない（既定 600）
    * @param opts.見えている範囲m  読み込んだタイルが、この点から何 m 先まで在るか。
    *          ⚠ **「境目が無い」と「見えている範囲に無い」を分けるために要る。**
+   * @param opts.名前  コード → 表示名の対照表。⚠ **渡すと、⚠ 名前が同じものを境目にしない。**
+   *          ⚠ **渡さないとコードだけで見分ける**（⚠ 名前が同じでも別の区分として扱う）。
    *
    * @returns
    *   { state:"ok",   code, toCode, m, deg, 方角 }  境目が在って、向こう側の区分も読めた
@@ -109,12 +111,19 @@
    */
   function 境目(features, lon, lat, opts = {}) {
     const 上限 = Number(opts.上限m ?? 上限m);
+    // ⚠ **コードが違っても、⚠ 表示名が同じなら境目ではない**（2026-09-05 に踏んだ）。
+    //   ⚠ **実測: 仙台で「台地･段丘 → 台地･段丘」と出た。**⚠ **コードは違うが、⚠ 名前が同じ。**
+    //   ⚠ **画面に出るのは名前なので、⚠ 利用者には「同じものとの境目」に見える。**
+    //   ⚠ **`toCode !== 自分` だけでは足りなかった**（⚠ 名前レベルの取りこぼし）。
+    const 名前 = opts.名前 ?? null;
+    const 見分け = (code) => (名前 && 名前[code]) ? 名前[code] : `code:${code}`;
     const 見えている = opts.見えている範囲m == null ? null : Number(opts.見えている範囲m);
     const fs = (features ?? []).filter((f) => f && f.geometry && 区分(f));
 
     const ここ = fs.find((f) => 面の中(lon, lat, f.geometry));
     if (!ここ) return { state: "足元が無い" };
     const 自分 = 区分(ここ);
+    const 自分の名 = 見分け(自分);
 
     const 面 = 平面(lat);
     const [px, py] = 面.xy(lon, lat);
@@ -126,7 +135,8 @@
     //   ⚠ **どれも「同じ区分の面の継ぎ目」だった。**⚠ **歩いて確かめる相手ではない。**
     let 最短 = Infinity, 当たり = null, 向こう = null;
     for (const f of fs) {
-      if (区分(f) === 自分) continue;          // ⚠ 同じ区分は、⚠ 境目の向こうではない
+      // ⚠ 同じ区分は、⚠ 境目の向こうではない。⚠ **名前が同じものも同じ扱い。**
+      if (見分け(区分(f)) === 自分の名) continue;
       for (const ring of 環たち(f.geometry)) {
         for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
           const [ax, ay] = 面.xy(ring[j][0], ring[j][1]);
