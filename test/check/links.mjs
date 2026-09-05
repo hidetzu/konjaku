@@ -335,6 +335,36 @@ head("6. 外部リンク");
           + `（新しいリポジトリでは別の Issue を指す。番号ではなく、`
           + `コメント単体で分かる書き方＋ADR を使うこと）`)
       : ok(`コード・文書に、この repo の Issue 番号は埋まっていない（${files.length} ファイルを走査）`);
+
+    // ⚠ **裸の番号を直す作業が、⚠ Issue 番号でないものまで直していないか**（2026-09-05 に踏んだ）。
+    //   ⚠ **実際に `main` に入っていた**: `scripts/visual-decision.mjs` の CSS の色が
+    //   ⚠ `color:hidetzu/konjaku#525c6b` になっていた（⚠ 4 か所）。
+    //   ⚠ **並べたページの補足の色が、⚠ 無効な値になっていた。**
+    // ⚠ **上の走査では見つからない**（⚠ `#525c6b` は `#\d{1,4}\b` に当たらない）。
+    //   ⚠ **見るのは逆向き。**⚠ **repo 名がついているのに、⚠ 中身が Issue 番号でないもの。**
+    // ⚠ **Issue 番号は 1〜4 桁の数字だけ**（⚠ 0 で始まらないのは上と同じ理由）。
+    const 番号でない = [];
+    for (const f of files) {
+      let buf; try { buf = await readFile(join(ROOT, f)); } catch { continue; }
+      if (buf.includes(0)) continue;
+      // ⚠ **コメントを先に落とす**（`CLAUDE.md` §5）。⚠ **落とさないと、
+      //   ⚠ この検査を説明したコメント（⚠ `owner/repo#N` や、⚠ 直した色の実物）を拾う。**
+      //   ⚠ **実際に 2 件拾った**（⚠ `telemetry.mjs` の例示と、⚠ ここの説明そのもの）。
+      // ⚠ **改行は保つ。**⚠ **空白 1 つに潰すと、⚠ 行番号がずれて、⚠ 別の行を指す**
+      //   （⚠ 実際にずれた。⚠ 132 行目のことを 129 行目と言った）。
+      const 改行だけ残す = (m) => m.replace(/[^\n]/g, " ");
+      buf.toString("utf8")
+        .replace(BLOCK_COMMENT, 改行だけ残す).replace(HTML_COMMENT, 改行だけ残す)
+        .split("\n").map(dropComment).forEach((line, i) => {
+          for (const m of line.matchAll(/[\w.-]+\/[\w.-]+#([0-9a-zA-Z]+)/g))
+            if (!/^[1-9]\d{0,3}$/.test(m[1])) 番号でない.push(`${f}:${i + 1} ${m[0]}`);
+        });
+    }
+    番号でない.length
+      ? bad(`リポジトリ名がついているのに、⚠ Issue 番号ではない: ${番号でない.join("、")}`
+          + `（⚠ **裸の番号を直す置換が、⚠ 色や識別子まで書き換えた可能性がある。**`
+          + `⚠ Issue 番号は 1〜4 桁の数字）`)
+      : ok("リポジトリ名つきの参照は、⚠ どれも Issue 番号（⚠ 色や識別子を書き換えていない）");
   }
 }
 
