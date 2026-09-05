@@ -255,7 +255,9 @@ export const format = (s) => {
     L.push(`  うち止まった:         ${o.tool_stopped}`
       + "   ⚠ PostToolUse が来なかった回。⚠ 拒否とは限らない（中断・失敗も同じ形）");
     L.push(`  Slack で聞いた:       ${o.asked}`
-      + (o.asked ? `   ⚠ 待った合計 ${fmtDur(o.waited_ms / 1000)}` : ""));
+      // ⚠ **Owner の作業時間ではない**（2026-09-05。Owner 指摘）。
+      //   ⚠ **AI が、⚠ Owner の返答を待って止まっていた時間の合計。**
+      + (o.asked ? `   ⚠ AI が返答を待って止まっていた合計 ${fmtDur(o.waited_ms / 1000)}` : ""));
     // ⚠ **分母を、⚠ 判定できた Turn にする**（⚠ 欄が無い古い行を混ぜない）
     L.push(`  本文で聞いた:         ${o.ask_inline} / ${o.ask_inline_judged} Turn`
       + (o.ask_inline_rule ? `   ⚠ 規則「${o.ask_inline_rule}」` : ""));
@@ -267,6 +269,24 @@ export const format = (s) => {
     L.push("  ⚠ Owner Intervention（人が止めた瞬間）は、⚠ 直接観測できない");
     L.push("     ⚠ PermissionDenied / PermissionRequest / PostToolUseFailure は呼ばれない");
     L.push("     ⚠ 実測 2026-09-05・Claude Code 2.1.261");
+  }
+
+  // ---- Task 単位（⚠ 7a / 7b）----
+  if (s.per_task) {
+    const t = s.per_task;
+    L.push("");
+    L.push("Task 単位（⚠ 3 つとも観測できた Task だけ）");
+    L.push(`  観測できた Task:      ${t.観測できた}`
+      + "   ⚠ 分母。⚠ フックを足す前の Task は入っていない");
+    L.push(`  Owner の手が入らず:   ${t.手が入らなかった}`
+      + `   ⚠ ${t.注}`);
+    L.push(`  うち PR まで観測:     ${t.PRまで観測できた}`
+      + "   ⚠ gh pr create ／ gh pr merge の命令が通った回");
+    L.push("     ⚠ PR が本当にできたかは見ていない（⚠ 命令が失敗しても記録は来る）");
+    if (t.結べなかった_OwnerAsk)
+      L.push(`  ⚠ Task に結べなかった OwnerAsk: ${t.結べなかった_OwnerAsk} 件`
+        + "（⚠ session_id を持たない古い記録）");
+    L.push("  ⚠ これは「うまくいった数」ではない。⚠ 良し悪しは測っていない");
   }
   return L.join("\n");
 };
@@ -330,7 +350,102 @@ export const ownerOf = (events) => {
     ask_inline_rule: rule.size ? [...rule].join(" / ") : null,
     turns: stops,
     // ⚠ **取れないもの。**⚠ **名乗る。**⚠ **0 件と読ませない。**
-    missing: ["intervention", "rework", "near_miss", "active_time", "completed"],
+    // ⚠ **`completed` を外した**（2026-09-05）。⚠ **`perTaskOf` が PR の命令を観測する。**
+    //   ⚠ **ただし「PR ができた」ではなく「命令が通った」まで。**⚠ **そこは表示が言う。**
+    missing: ["intervention", "rework", "near_miss", "active_time"],
+  };
+};
+
+// ---------- Task 単位（⚠ 7a / 7b）----------
+// ⚠ **Owner の手が入らなかった Task**（7a）と、⚠ **そのうち PR まで観測できたもの**（7b）。
+//   ⚠ 2026-09-05。hidetzu/konjaku#471。Owner 指示。
+//
+// ⚠ **イベントは Task を知らない**（⚠ `PreToolUse` / `PostToolUse` / `OwnerAsk` に `task_id` が無い）。
+//   ⚠ **`UserPromptSubmit` と `Stop` が対応表になる**（⚠ `session_id` ＋ `prompt_id` → `task_id`）。
+//   ⚠ **書く側に鍵を取らせない**ためにこうしている（⚠ 道具は 1 Turn に何度も呼ばれる）。
+//
+// ⚠ **`OwnerAsk` は `prompt_id` を持たない。**⚠ **`session_id` と時刻で結ぶ**
+//   （⚠ その Session で、⚠ その時刻より前の、⚠ いちばん近い `UserPromptSubmit`）。
+//   ⚠ **2026-09-05 より前の `OwnerAsk` は `session_id` も持たない。**⚠ **結べない。**
+//
+// ⚠ **数える相手を間違えない。**⚠ **「手が入らなかった」と言えるのは、
+//   ⚠ 3 つとも観測できた Task だけ**（⚠ フックを足す前の Task を「手が入らなかった」と数えない）。
+export const perTaskOf = (events) => {
+  const 並び = [...events].filter((e) => e?.ts).sort((a, b) => String(a.ts).localeCompare(String(b.ts)));
+  // ⚠ (session, prompt) → task_id
+  const 表 = new Map();
+  // ⚠ session → [{ts, task_id}]（⚠ OwnerAsk を時刻で結ぶため）
+  const 流れ = new Map();
+  for (const e of 並び) {
+    if (e.event !== "UserPromptSubmit" && e.event !== "Stop") continue;
+    if (!e.task_id) continue;
+    if (e.session_id && e.prompt_id) 表.set(`${e.session_id}:${e.prompt_id}`, e.task_id);
+    if (e.event === "UserPromptSubmit" && e.session_id) {
+      if (!流れ.has(e.session_id)) 流れ.set(e.session_id, []);
+      流れ.get(e.session_id).push({ ts: String(e.ts), task_id: e.task_id });
+    }
+  }
+  const 時刻で引く = (sid, ts) => {
+    const a = 流れ.get(sid); if (!a) return null;
+    let 当 = null;
+    for (const x of a) { if (x.ts <= String(ts)) 当 = x.task_id; else break; }
+    return 当;
+  };
+
+  const T = new Map();
+  const 台 = (id) => {
+    if (!T.has(id)) T.set(id, { task_id: id, ask: 0, stopped: 0, inline: 0,
+      pr_create: 0, pr_merge: 0, 見えた: false, 待ちms: 0 });
+    return T.get(id);
+  };
+
+  const pre = new Map(), post = new Set();
+  let 結べない_ask = 0;
+  for (const e of 並び) {
+    const 鍵 = e.session_id && e.prompt_id ? 表.get(`${e.session_id}:${e.prompt_id}`) : null;
+    switch (e.event) {
+      case "PreToolUse":
+        if (e.tool_use_id) pre.set(e.tool_use_id, 鍵 ?? null);
+        break;
+      case "PostToolUse":
+        if (e.tool_use_id) post.add(e.tool_use_id);
+        if (鍵 && e.pr_command === "create") 台(鍵).pr_create++;
+        if (鍵 && e.pr_command === "merge") 台(鍵).pr_merge++;
+        break;
+      case "OwnerAsk": {
+        // ⚠ **`session_id` が無い行は結べない**（⚠ 2026-09-05 より前）。⚠ **数えて名乗る。**
+        const id = e.session_id ? 時刻で引く(e.session_id, e.ts) : null;
+        if (!id) { 結べない_ask++; break; }
+        台(id).ask++;
+        if (Number.isFinite(e.waited_ms)) 台(id).待ちms += e.waited_ms;
+        break;
+      }
+      case "Stop":
+        // ⚠ **`ask_inline` を持つ Stop が在る Task だけ、⚠ 3 つとも観測できたとみなす**
+        //   ⚠ **欄が無い＝フックを足す前。**⚠ **「手が入らなかった」とは言えない。**
+        if (e.task_id && typeof e.ask_inline === "boolean") {
+          const t = 台(e.task_id);
+          t.見えた = true;
+          if (e.ask_inline) t.inline++;
+        }
+        break;
+      default: break;
+    }
+  }
+  for (const [id, 鍵] of pre) if (!post.has(id) && 鍵) 台(鍵).stopped++;
+
+  const 全部 = [...T.values()];
+  const 見えた = 全部.filter((t) => t.見えた);
+  const 手なし = 見えた.filter((t) => !t.ask && !t.stopped && !t.inline);
+  const PRまで = 手なし.filter((t) => t.pr_create || t.pr_merge);
+  return {
+    // ⚠ **分母は「3 つとも観測できた Task」だけ**（⚠ フックを足す前の Task を混ぜない）
+    観測できた: 見えた.length,
+    手が入らなかった: 手なし.length,
+    PRまで観測できた: PRまで.length,
+    結べなかった_OwnerAsk: 結べない_ask,
+    // ⚠ **これは「うまくいった数」ではない**（⚠ 採点しない。`docs/adr/0036`）
+    注: "手が入らなかった＝OwnerAsk・道具が止まった・本文で聞いた が 0 だった Task",
   };
 };
 
@@ -360,6 +475,7 @@ const main = () => {
   // ⚠ **Owner の手は `events.jsonl` から。**⚠ **無くても止まらない**
   const ev = readEvents(dir);
   s.owner = ev.missing ? null : ownerOf(ev.rows);
+  s.per_task = ev.missing ? null : perTaskOf(ev.rows);
   process.stdout.write(process.argv.includes("--json")
     ? `${JSON.stringify(s, null, 2)}\n` : `${format(s)}\n`);
 };

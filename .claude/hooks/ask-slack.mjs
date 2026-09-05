@@ -88,8 +88,13 @@ const note = (sid, rec) => {
       const key = sid ? st?.sessions?.[sid] : null;
       issue = key ? (st?.tasks?.[key]?.issue ?? null) : null;
     } catch { /* ⚠ 無いのが普通（⚠ Issue の作業でないとき） */ }
+    // ⚠ **`session_id` を残す**（2026-09-05。hidetzu/konjaku#471）。
+    //   ⚠ **これが無いと、⚠ どの Task の途中で聞いたかを結べない。**
+    //   ⚠ **前は `issue` だけだった。**⚠ **Issue に紐づかない Task では、⚠ 結べなかった。**
+    //   ⚠ **人の名前や答えの中身は、⚠ 変わらず持たない。**
     appendFileSync(join(dir, "events.jsonl"),
-      `${JSON.stringify({ ts: new Date().toISOString(), event: "OwnerAsk", issue, ...rec })}\n`);
+      `${JSON.stringify({ ts: new Date().toISOString(), event: "OwnerAsk",
+                          session_id: sid ?? null, issue, ...rec })}\n`);
   } catch { /* ⚠ 記録が取れないことより、⚠ 聞けなくなることのほうが悪い */ }
 };
 let mod = null;
