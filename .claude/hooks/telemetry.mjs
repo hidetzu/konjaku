@@ -97,8 +97,22 @@ const bail = (why) => { if (why) process.stderr.write(`telemetry: ${why}\n`); pr
 try {
   const IN = JSON.parse(readFileSync(0, "utf8") || "{}");
   const event = IN.hook_event_name;
-  // ⚠ 見るのは 2 つだけ。ほかの Hook に相乗りしても何もしない
-  if (event !== "UserPromptSubmit" && event !== "Stop") bail();
+  // ⚠ 見るのは 4 つ。ほかの Hook に相乗りしても何もしない
+  //
+  // ⚠ **PreToolUse / PostToolUse を足した**（2026-09-05。hidetzu/konjaku#471）。
+  //   ⚠ **Owner が拒否した瞬間は、⚠ この版では観測できない**
+  //     （⚠ 実測 2026-09-05・Claude Code 2.1.261:
+  //      ⚠ PermissionDenied / PermissionRequest / PostToolUseFailure は、
+  //      ⚠ 拒否させても 1 度も呼ばれなかった）。
+  //   ⚠ **観測できるのは「PreToolUse は在るのに PostToolUse が来ない」だけ。**
+  //   ⚠ **だから、⚠ ここは事実だけを書く。**⚠ **拒否とは書かない。**
+  //
+  // ⚠ **突き合わせは、⚠ 読む側でやる**（`../tools/telemetry-eval.mjs`）。
+  //   ⚠ **書く側は、⚠ tool_use_id を持った行を並べるだけ。**
+  //   ⚠ **そうすると、⚠ 鍵（state.json）の取り合いが増えない**（⚠ 道具は 1 Turn に何度も呼ばれる）。
+  //   ⚠ **実測: フック 1 回は 19〜30ms。⚠ 上限 5 秒に対して余裕がある。**
+  const 道具 = event === "PreToolUse" || event === "PostToolUse";
+  if (!道具 && event !== "UserPromptSubmit" && event !== "Stop") bail();
   // ⚠ **部分エージェントの中は数えない。**Task の単位が違う（親の 1 Turn の内側）
   if (IN.agent_id) bail();
   const sid = String(IN.session_id ?? "").trim();
@@ -191,6 +205,24 @@ try {
   const newTaskId = () => `T-${ts.slice(0, 19).replace(/[-:T]/g, "")}-`
     + Math.floor(Math.random() * 0xffff).toString(16).padStart(4, "0");
 
+  // ---- 道具の呼び出し（⚠ 事実だけ。⚠ 判定しない）----
+  // ⚠ **鍵を取らない。**⚠ **索引も触らない。**⚠ **1 行足すだけ。**
+  //   ⚠ **1 Turn に何度も来るので、⚠ ここを重くしない。**
+  // ⚠ **道具の中身は持たない。**⚠ **名前と id と、⚠ かかった時間だけ**
+  //   （⚠ `tool_input` には、⚠ ファイルの中身も命令も入っている）。
+  if (道具) {
+    put("events.jsonl", {
+      ts, event, session_id: sid, prompt_id: IN.prompt_id ?? null,
+      tool_name: IN.tool_name ?? null,
+      // ⚠ **これで Pre と Post を突き合わせる。**⚠ **両方に入っている**（⚠ 2026-09-05 実測）
+      tool_use_id: IN.tool_use_id ?? null,
+      // ⚠ **Post のときだけ在る**（⚠ 無いことに意味がある）
+      duration_ms: IN.duration_ms ?? null,
+      permission_mode: IN.permission_mode ?? null,
+    });
+    bail();
+  }
+
   if (event === "UserPromptSubmit") {
     // ⚠ **本文はここでしか触らない。**⚠ 読み取ったら捨てる。⚠ 記録に載せない
     const text = String(IN.prompt ?? "");
@@ -235,6 +267,14 @@ try {
     bail();
   }
 
+  // ⚠ **本文で聞いたか。**⚠ **最後の非空行が疑問で終わるときだけ。**
+  //   ⚠ **本文の途中に `？` があるだけでは数えない**（⚠ 説明の中の「〜ですか？」を拾う）。
+  const 本文で聞いた = (text) => {
+    const 行 = String(text ?? "").split("\n").map((l) => l.trim()).filter(Boolean);
+    if (!行.length) return false;
+    return /[？?]$/.test(行[行.length - 1]);
+  };
+
   // ---- Stop ----
   // ⚠ **観測できたのは「Turn が終わった」ことだけ。**⚠ **やり遂げたかは見ていない。**
   //   ⚠ だから `result` は `unknown` のまま動かさない（Phase 1 では採点しない）。
@@ -258,6 +298,16 @@ try {
     effort: IN.effort?.level ?? null,
     stop_hook_active: IN.stop_hook_active ?? null,
     reply_chars: reply.length,   // ⚠ **長さだけ。**⚠ 返答の本文は持たない
+    // ⚠ **`AskUserQuestion` を使わず、⚠ 本文で聞いたか**（`CLAUDE.md` §7-1 は禁じている）。
+    //   ⚠ **本文は持たない。**⚠ **ここで判定して、⚠ 真偽と、⚠ どの規則で決めたかだけ残す。**
+    //   ⚠ **精度優先。**⚠ **曖昧なら数えない**（2026-09-05。Owner 指示）。
+    //   ⚠ **測って決めた**（⚠ 手元の返答 3631 本）:
+    //     ⚠ 本文のどこかに ？        169 件（4.7%）⚠ 説明の中の「〜ですか？」を拾う
+    //     ⚠ 最後の非空行が ？ で終わる 15 件（0.4%）⚠ 15/15 が本当に聞いていた
+    //   ⚠ **同じ Turn で `AskUserQuestion` を使っていたら、⚠ それは Decision であって、これではない。**
+    //     ⚠ **その判定は読む側でやる**（⚠ ここは Turn の中を知らない）。
+    ask_inline: 本文で聞いた(reply),
+    ask_inline_rule: "末尾が疑問（v1）",
   });
   // ⚠ **追記だけ。**⚠ 同じ task_id が何度も出る。⚠ **読むときは最後の行を採る**
   if (snap) put("tasks.jsonl", {

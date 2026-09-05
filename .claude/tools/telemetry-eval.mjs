@@ -245,10 +245,102 @@ export const format = (s) => {
   L.push("     ⚠ Turn 数を種別間で比べても意味がない（束ね方の帰結であって、観測ではない）");
   L.push("  ⚠ 所要時間は「Turn が終わった」までの実時間。手を動かしていた時間ではない");
   L.push("  ⚠ 良し悪しは測っていない（成功率・品質・自律性は出していない）");
+
+  // ---- Owner の手（⚠ 観測できたものだけ）----
+  if (s.owner) {
+    const o = s.owner;
+    L.push("");
+    L.push("Owner の手（⚠ 観測できたものだけ）");
+    L.push(`  道具の呼び出し:       ${o.tool_calls}`);
+    L.push(`  うち止まった:         ${o.tool_stopped}`
+      + "   ⚠ PostToolUse が来なかった回。⚠ 拒否とは限らない（中断・失敗も同じ形）");
+    L.push(`  Slack で聞いた:       ${o.asked}`
+      + (o.asked ? `   ⚠ 待った合計 ${fmtDur(o.waited_ms / 1000)}` : ""));
+    // ⚠ **分母を、⚠ 判定できた Turn にする**（⚠ 欄が無い古い行を混ぜない）
+    L.push(`  本文で聞いた:         ${o.ask_inline} / ${o.ask_inline_judged} Turn`
+      + (o.ask_inline_rule ? `   ⚠ 規則「${o.ask_inline_rule}」` : ""));
+    if (o.turns > o.ask_inline_judged)
+      L.push(`     ⚠ この欄を持たない Turn が ${o.turns - o.ask_inline_judged} 件ある`
+        + "（⚠ 欄を足す前の記録。⚠ 「聞かなかった」ではない）");
+    L.push(`  ⚠ 取れていないもの:   ${o.missing.join(", ")}`);
+    L.push("  ⚠ 「取れていない」は 0 件ではない。⚠ この版では観測できない");
+    L.push("  ⚠ Owner Intervention（人が止めた瞬間）は、⚠ 直接観測できない");
+    L.push("     ⚠ PermissionDenied / PermissionRequest / PostToolUseFailure は呼ばれない");
+    L.push("     ⚠ 実測 2026-09-05・Claude Code 2.1.261");
+  }
   return L.join("\n");
 };
 
+// ---------- Owner の手（⚠ 観測できたものだけ）----------
+// ⚠ **`events.jsonl` から出す**（2026-09-05。hidetzu/konjaku#471）。
+//   ⚠ **書く側は事実だけを並べている。**⚠ **突き合わせはここでやる。**
+//
+// ⚠ **Owner Intervention は、⚠ この版では直接観測できない**
+//   （⚠ 実測 2026-09-05・Claude Code 2.1.261: ⚠ `PermissionDenied` /
+//    ⚠ `PermissionRequest` / `PostToolUseFailure` は、⚠ 拒否させても呼ばれなかった）。
+//   ⚠ **だから、⚠ その欄は作らない。**⚠ **代わりに `owner_missing` で名乗る。**
+//   ⚠ **欄が無いだけだと、⚠ 「0 件」と読まれる。**
+export const ownerOf = (events) => {
+  // ⚠ **道具が止まった回。**⚠ **`PreToolUse` は在るのに `PostToolUse` が来なかったもの。**
+  //   ⚠ **拒否とは言わない。**⚠ **止まった理由は分けていない**（⚠ 中断・落ちた・時間切れも同じ形）。
+  const pre = new Map();     // tool_use_id → { tool_name, session_id }
+  const post = new Set();
+  // ⚠ **`AskUserQuestion` を使った Turn**（⚠ 本文で聞いたのとは別の話）
+  const 道具で聞いた = new Set();
+  let stopped = 0, asked = 0, waited = 0, inline = 0, stops = 0, judged = 0;
+  const rule = new Set();
+  for (const e of events) {
+    switch (e?.event) {
+      case "PreToolUse":
+        if (e.tool_use_id) pre.set(e.tool_use_id, e.tool_name ?? null);
+        // ⚠ **`prompt_id` で Turn を見分ける**（⚠ 無ければ session でまとめる）
+        if (e.tool_name === "AskUserQuestion") 道具で聞いた.add(`${e.session_id}:${e.prompt_id ?? ""}`);
+        break;
+      case "PostToolUse": if (e.tool_use_id) post.add(e.tool_use_id); break;
+      case "OwnerAsk":
+        asked++;
+        if (Number.isFinite(e.waited_ms)) waited += e.waited_ms;
+        break;
+      case "Stop":
+        stops++;
+        // ⚠ **欄が無い行は、⚠ 分母に入れない**（`CLAUDE.md` §6）。
+        //   ⚠ **この欄は 2026-09-05 に足した。**⚠ **それより前の Turn には無い。**
+        //   ⚠ **無いことを「聞かなかった」と数えると、⚠ 割合が嘘になる。**
+        if (typeof e.ask_inline === "boolean") {
+          judged++;
+          // ⚠ **`AskUserQuestion` を使った Turn は、⚠ Decision であって、⚠ これではない**
+          if (e.ask_inline && !道具で聞いた.has(`${e.session_id}:${e.prompt_id ?? ""}`)) {
+            inline++;
+            if (e.ask_inline_rule) rule.add(e.ask_inline_rule);
+          }
+        }
+        break;
+      default: break;
+    }
+  }
+  for (const id of pre.keys()) if (!post.has(id)) stopped++;
+  return {
+    // ⚠ **観測できたもの**
+    tool_stopped: stopped,
+    tool_calls: pre.size,
+    asked, waited_ms: waited,
+    ask_inline: inline,
+    // ⚠ **分母は「その欄を持っていた Turn」だけ**（⚠ 欄は 2026-09-05 に足した）
+    ask_inline_judged: judged,
+    ask_inline_rule: rule.size ? [...rule].join(" / ") : null,
+    turns: stops,
+    // ⚠ **取れないもの。**⚠ **名乗る。**⚠ **0 件と読ませない。**
+    missing: ["intervention", "rework", "near_miss", "active_time", "completed"],
+  };
+};
+
 // ---------- 口 ----------
+export const readEvents = (dir) => {
+  const f = join(dir, "events.jsonl");
+  if (!existsSync(f)) return { rows: [], unreadable: [], missing: true };
+  return { ...parseJsonl(readFileSync(f, "utf8")), missing: false };
+};
+
 export const readTasks = (dir) => {
   const f = join(dir, "tasks.jsonl");
   if (!existsSync(f)) return { rows: [], unreadable: [], missing: true };
@@ -265,6 +357,9 @@ const main = () => {
     return;
   }
   const s = summarize(rows, unreadable);
+  // ⚠ **Owner の手は `events.jsonl` から。**⚠ **無くても止まらない**
+  const ev = readEvents(dir);
+  s.owner = ev.missing ? null : ownerOf(ev.rows);
   process.stdout.write(process.argv.includes("--json")
     ? `${JSON.stringify(s, null, 2)}\n` : `${format(s)}\n`);
 };
