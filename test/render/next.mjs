@@ -3649,6 +3649,53 @@ CASES.push({
   },
 });
 
+// ⚠ **検索の候補を押したら、⚠ 窓の字も、⚠ 選んだ場所になること**（2026-09-06。Owner が見つけた）。
+//
+// ⚠ **実測（2026-09-06・本番 `4a2188c`）**: ⚠ **「静岡市」と打って「静岡市役所」を選んでも、
+//   ⚠ 窓は「静岡市」のままだった。**⚠ **地図だけが市役所へ動いていた。**
+// ⚠ **何が困るか**: ⚠ **もう一度 Enter を押すと、⚠ 窓の字は打った字なので、
+//   ⚠ 選んだはずの場所ではなく、⚠ 8 件の一覧へ戻る。**
+//
+// ⚠ **住所検索の答えは、⚠ こちらで作る**（⚠ 外の相手がいま何を返すかを主張しない。`CLAUDE.md` §9）。
+//   ⚠ **通るのは製品の道**（⚠ 送信 → 並べ替え → 候補を押す）。⚠ **中の変数は触らない。**
+CASES.push({
+  name: "検索の候補を押したら、⚠ 窓の字も選んだ場所になる",
+  path: `/?${TOYOSU}`, origin: NEXT_BASE, viewport: SP,
+  async check(page) {
+    await waitAnswer(page);
+    await page.route("**/address-search/AddressSearch**", (route) => route.fulfill({
+      status: 200, contentType: "application/json",
+      body: JSON.stringify([
+        { geometry: { type: "Point", coordinates: [138.3831, 34.9756] },
+          properties: { title: "静岡県静岡市", dataSource: "1", addressCode: "22100" } },
+        { geometry: { type: "Point", coordinates: [138.3830, 34.9757] },
+          properties: { title: "静岡市役所", dataSource: "1", addressCode: "22100" } },
+      ]),
+    }));
+    await page.fill("#q", "静岡市");
+    await page.press("#q", "Enter");
+    await page.waitForFunction(() => document.querySelectorAll("#hits button").length > 1,
+      null, { timeout: 30000 })
+      .catch(() => { throw new Error("検索の候補が 2 件出ない"); });
+    // ⚠ **打った字と違う候補を選ぶ**（⚠ 同じ字だと、⚠ 直っていなくても通る）
+    const 候補 = await page.evaluate(() =>
+      [...document.querySelectorAll("#hits button")].map((b) => b.textContent.trim()));
+    const 打った = await page.inputValue("#q");
+    const i = 候補.findIndex((t) => t !== 打った);
+    must(i >= 0, `打った字と違う候補が無い: ${候補.join(" / ")}`);
+    await page.click(`#hits button[data-i="${i}"]`);
+    await page.waitForTimeout(1200);
+    const r = await page.evaluate(() => ({
+      窓: document.getElementById("q").value,
+      候補が閉じた: document.getElementById("hits").hidden,
+    }));
+    must(r.窓 === 候補[i],
+      `候補を押したのに、窓の字が変わっていない: 窓「${r.窓}」／ 押したのは「${候補[i]}」`);
+    must(r.候補が閉じた, "候補の一覧が開いたまま");
+    return `「${打った}」→ 候補 ${候補.length} 件 →「${候補[i]}」を押す → 窓も「${r.窓}」`;
+  },
+});
+
 // ⚠ **どの名乗りも、⚠ 器に入ること。**⚠ **いちばん狭い幅で見る。**
 //
 // ⚠ **実際に踏んだ（2026-09-02）**: ⚠ **既定の名乗りを 16 字にしたら、
