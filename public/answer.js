@@ -47,11 +47,33 @@
   //   ラベルと字が親子になり、何の話かが字の中で閉じる。
   //   ラベルの語をそのまま繰り返さない（画面で同じ字が 2 回並ぶ）。
   //   3 つは別の字のまま（ADR 0056。無い・区分が無い・読めなかったは別）。
-  const MEIJI_NONE = {
-    absent:      "この地図は、この地域を含んでいません",
-    noClass:     "この地図に、この場所の区分はありません",
-    unreachable: "この地図を、いま読み取れませんでした",
+  //
+  // 主語を差し替えられる形で持つ（2026-09-06。hidetzu/konjaku#495）。
+  //   見出しに置くときは「この地図」。ラベルが「明治期の地図」と名乗っているので、
+  //   語を繰り返さない。
+  //   答えの下の断りに置くときは「明治期の地図」。ラベルが「いまの地形」に変わるので、
+  //   「この地図」のままだと、背景に見えている地図のことだと読まれる。
+  //   実測（2026-09-06・利用者役 3 名。実在の利用者ではない）: 3/3 が
+  //   「この地図」をサイト全体のことだと最初に読んだ。主語を書いた案では 3 名とも迷わなかった。
+  // 助詞が状態ごとに違う（は／に／を）ので、そこも表が持つ。
+  const MEIJI_NONE_PARTS = {
+    absent:      ["は、", "この地域を含んでいません"],
+    noClass:     ["に、", "この場所の区分はありません"],
+    unreachable: ["を、", "いま読み取れませんでした"],
   };
+  const meijiNone = (none, 主 = "この地図") => {
+    const p = MEIJI_NONE_PARTS[none];
+    return p ? `${主}${p[0]}${p[1]}` : "";
+  };
+  const MEIJI_NONE = Object.fromEntries(
+    Object.keys(MEIJI_NONE_PARTS).map((k) => [k, meijiNone(k)]));
+
+  // 詳細版が整備されていない土地では、広い区分で答えている（hidetzu/konjaku#495）。
+  //   「整備されていないため」から書き始めない（CLAUDE.md §4-1）。
+  //   実測（2026-09-06・利用者役 3 名。実在の利用者ではない）:
+  //   3/3 が「〜していません」で始まる見出しを「サイト全体が対応していない」と読んだ。
+  //   だから、ここでは何ができているかを先に言い、無いものはカッコの中へ置く。
+  const COARSE_NOTE = "広い区分での答えです（より細かい分類は、まだありません）";
 
   // 地形分類そのものが「昔の姿」を名指す区分。
   //   明治期が無くても、ここに在る区分なら見出しに使える。
@@ -87,22 +109,40 @@
   //   深掘り画面は「国土地理院の区分：旧水部」を別に持っているので、
   //   ここでも添えると、あちらで同じ区分名が 2 か所になる（この Issue と同じ問題を移すだけ）。
   //   実測（2026-09-02・豊洲・375×667）: 添えた版の /deep は 旧水部 が 2 枠に出た。
-  const lines = ({ terrain, meiji }, { 区分名を添える = false } = {}) => {
+  const lines = ({ terrain, meiji, 広い区分 = false }, { 区分名を添える = false } = {}) => {
     const gloss = g.KonjakuWords.groundGloss(terrain);
     const 成り立ち = !gloss ? ""
       : 区分名を添える ? `${SOURCE.terrain}は ${terrain}（${gloss}）`
       : `${SOURCE.terrain}は、${gloss}`;
+    // 広い区分で答えたことは、どの筋でも同じ字で言う（字はここ 1 か所）。
+    const 粗さ = 広い区分 ? COARSE_NOTE : "";
     if (meiji && meiji.value)
-      return { label: SOURCE.meiji, head: `ここは ${meiji.value} でした`, sub: 成り立ち,
+      return { label: SOURCE.meiji, head: `ここは ${meiji.value} でした`, sub: 成り立ち, 断り: 粗さ,
                出した: 区分名を添える && 成り立ち ? [meiji.value, terrain] : [meiji.value] };
     // 地形分類そのものが昔を名指す。出典は 2 行目と同じなので、ラベルはそちらに任せない。
     //   見出しが地形分類の字そのものなので、ラベルもそう名乗る。
     //   ⚠ ここは見出しが説明そのもので、区分名を字として出していない。
     //     だから 出した は空。区分名は「なぜそう言える？」が名乗る（消さない）。
     if (PAST_IN_TERRAIN.includes(terrain))
-      return { label: SOURCE.terrain, head: `ここは、${gloss}`, sub: "", 出した: [] };
-    return { label: SOURCE.meiji, head: MEIJI_NONE[meiji && meiji.none] ?? "", sub: 成り立ち,
-             出した: 区分名を添える && 成り立ち ? [terrain] : [] };
+      return { label: SOURCE.terrain, head: `ここは、${gloss}`, sub: "", 断り: 粗さ, 出した: [] };
+
+    // 3 どちらも無い。
+    //   2026-09-06 に、ここだけ順番を入れ替えた（Owner 判断。hidetzu/konjaku#495）。
+    //   前は「なぜ無いか」を見出しにしていた。地形分類は読めていて 2 行目に出ているのに、
+    //   いちばん大きい字が「含んでいません」だった。
+    //   実測（2026-09-06・利用者役 3 名。実在の利用者ではない）:
+    //     3/3 が「サイト全体がこの場所に対応していない」と読み、2 名が「閉じそうになった」。
+    //     順を入れ替えた案を、3 名とも 1 位に選んだ。
+    //   ⚠ 無いことは消さない（CLAUDE.md §1）。主語を付けて、答えの下へ移すだけ。
+    const 限界 = meijiNone(meiji && meiji.none, SOURCE.meiji);
+    if (gloss)
+      return { label: SOURCE.terrain,
+               head: 区分名を添える ? `ここは ${terrain}（${gloss}）` : `ここは、${gloss}`,
+               sub: "", 断り: [限界, 粗さ].filter(Boolean).join("。"),
+               出した: 区分名を添える ? [terrain] : [] };
+    // 地形分類も読めていない。言えるのは、なぜ無いかだけ。
+    return { label: SOURCE.meiji, head: MEIJI_NONE[meiji && meiji.none] ?? "", sub: "", 断り: 粗さ,
+             出した: [] };
   };
 
   // 「なぜそう言える？」の行が、区分名の代わりに出す字（Owner 決定 3）。
@@ -282,6 +322,6 @@
   //   ⚠ **所要時間は出さない**（実測していない。⚠ 歩く速さも道のりも知らない）。
   const 距離の字 = (m) => m >= 1000 ? `${(m / 1000).toFixed(1)}km` : `${Math.round(m / 10) * 10}m`;
 
-  g.KonjakuAnswer = { SOURCE, BORDER, 距離の字, MEIJI_NONE, PAST_IN_TERRAIN, lines, WHY_READ, WHERE, WHERE_STILL, whereFailed, RECORD_KINDS, recordKind, RECORD_NOTE, HAZARD,
+  g.KonjakuAnswer = { SOURCE, BORDER, 距離の字, MEIJI_NONE, meijiNone, COARSE_NOTE, PAST_IN_TERRAIN, lines, WHY_READ, WHERE, WHERE_STILL, whereFailed, RECORD_KINDS, recordKind, RECORD_NOTE, HAZARD,
                       GROUND, 確率の字 };
 })(typeof window === "undefined" ? globalThis : window);

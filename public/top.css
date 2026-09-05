@@ -268,6 +268,10 @@ body{
 .sub{margin:var(--gap-sub) 0 0; font-size:var(--text-xs); line-height:1.5; color:var(--ink-2)}
 .sub b{color:var(--ink); font-weight:700}
 .sub[hidden]{display:none}
+/* 答えの限界。答えのすぐ下に、注記の濃さで置く。
+   答えと同じ強さにしない。だが読めなくもしない（消すのと同じになる）。 */
+.note{margin:var(--gap-sub) 0 0; font-size:var(--text-xs2); color:var(--ink-3); line-height:1.5}
+.note[hidden]{display:none}
 
 /* 空中写真の年代。
    利用者役 3 名とも「見たい」と答え、3 名とも「どこで見るのか分からない」と続けた。

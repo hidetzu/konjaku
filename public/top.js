@@ -30,6 +30,7 @@
   const kickText = $("kickText"), nameEl = $("name"), glossEl = $("gloss"), legendEl = $("legend");
   const moreBtn = $("more"), sheet = $("sheet"), sheetList = $("sheetList"), sheetState = $("sheetState");
   const subEl = $("sub"), whyEl = $("why"), glossSrcEl = $("glossSrc");
+  const glossNoteEl = $("glossNote");
   const erasLabel = $("erasLabel"), erasLabelText = $("erasLabelText");
   const meijiEl = $("meiji"), meijiRow = $("meijiRow");
   const photoEl = $("photo"), photoRow = $("photoRow");
@@ -461,11 +462,12 @@
     const v = await 地形の約束;
     if (seq !== askSeq) return;   // ⚠ **古い結果で上書きしない**
     hereName = null;
-    答え.terrain = null; 答え.meiji = undefined;
+    答え.terrain = null; 答え.meiji = undefined; 答え.広い区分 = false;
     drawSave();            // 判定が出るまで保存させない
     drawShare();           // 同上。開いた人が何も読めない URL を配らせない
     setEra(null);          // 場所が変わったら、前の場所の写真を残さない
     subEl.textContent = ""; subEl.hidden = true;
+    glossNoteEl.textContent = ""; glossNoteEl.hidden = true;
     glossSrcEl.textContent = ""; glossSrcEl.hidden = true;
     erasLabel.hidden = true;
     erasEl.hidden = true; erasEl.innerHTML = "";
@@ -488,6 +490,8 @@
     }
     hereName = v.value;
     答え.terrain = v.value;
+    // 詳細版が無い土地では、広い区分で答えている（verify.js が fine で持ち回る）。
+    答え.広い区分 = !v.fine;
     drawSave();
     drawShare();
     askMeiji(seq, 明治期の約束);
@@ -522,15 +526,18 @@
   //   ここでは字を書かない。何を渡すかだけ決める（.claude/rules/domain.md）。
   //   明治期が来ていないうちは描かない。描くと、来た瞬間に見出しが差し替わる。
   //   実測 2026-08-31: 明治期は地形分類の 0〜30ms 後。待っても、待ち時間はほぼ増えない。
-  const 答え = { terrain: null, meiji: undefined };
+  const 答え = { terrain: null, meiji: undefined, 広い区分: false };
   function drawAnswer() {
     if (!答え.terrain || 答え.meiji === undefined) return;
-    const { label, head, sub, 出した } = KonjakuAnswer.lines(答え, { 区分名を添える: true });
+    const { label, head, sub, 断り, 出した } = KonjakuAnswer.lines(答え, { 区分名を添える: true });
     glossSrcEl.textContent = label;
     glossSrcEl.hidden = !label;
     glossEl.textContent = head;
     subEl.textContent = sub;
     subEl.hidden = !sub;
+    // 答えの限界。字は answer.js が持つ（ここでは書かない）。
+    glossNoteEl.textContent = 断り;
+    glossNoteEl.hidden = !断り;
     drawWhySources(new Set(出した));
   }
 

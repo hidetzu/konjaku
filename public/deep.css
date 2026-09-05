@@ -36,6 +36,9 @@ body{
 .ans__src[hidden]{display:none}
 .ans__sub{margin:var(--gap-sub) 0 0; font-size:var(--text-sm); line-height:1.6; color:var(--ink-2)}
 .ans__sub[hidden]{display:none}
+/* 答えの限界。答えのすぐ下に、注記の濃さで置く。 */
+.note{margin:var(--gap-sub) 0 0; font-size:var(--text-xs); line-height:1.6; color:var(--ink-3)}
+.note[hidden]{display:none}
 .term{margin:var(--gap-sub) 0 0; font-size:var(--text-xs); color:var(--ink-3)}
 .term[hidden]{display:none}
 
