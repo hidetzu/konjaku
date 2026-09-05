@@ -81,11 +81,10 @@
 //   printf ''                     | node .claude/hooks/telemetry.mjs; echo "exit=$?"
 import { appendFileSync, mkdirSync, rmdirSync, readFileSync, writeFileSync, renameSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { execFileSync } from "node:child_process";
 // ⚠ **置き場所は `.claude/telemetry-dir.mjs` の 1 か所**（2026-08-24 に寄せた）。
 //   ⚠ **前は、⚠ 書く側と読む側が別々に同じ字を持っていた。**
 //   ⚠ **片方だけ変えても、⚠ 検査は 1 件も落ちなかった**（⚠ 実証済み）。
-import { telemetryDir, projectRoot } from "../telemetry-dir.mjs";
+import { telemetryDir, projectRoot, repoOf } from "../telemetry-dir.mjs";
 
 const LOCK_MS = 300;      // ⚠ 索引の取り合いを待つ上限。⚠ **超えたら鍵無しで進む**（止めない）
 const KEEP_TASKS = 500;   // ⚠ 索引に残す Task の数。⚠ 古いものから落とす（際限なく太らせない）
@@ -134,20 +133,14 @@ try {
   // ---- Task の見分け（⚠ **プロンプトから読み取れるものだけ**） ----
   // ⚠ **裸の番号は、移行すると別の Issue を指す**（`CLAUDE.md` §9）。
   //   ⚠ **だから記録には必ずリポジトリ名を付ける。**付けられないときだけ番号のまま残す。
-  const repoOf = () => {
-    try {
-      const url = execFileSync("git", ["config", "--get", "remote.origin.url"],
-        { cwd: ROOT, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
-      const m = /(?:[:/])([^/:]+)\/([^/]+?)(?:\.git)?$/.exec(url);
-      return m ? `${m[1]}/${m[2]}` : null;
-    } catch { return null; }
-  };
+  // ⚠ **repo の見分けは `../telemetry-dir.mjs` の 1 か所**（⚠ 2026-09-05 に出した）。
+  //   ⚠ **PR の番号を記録する側（`../tools/decision.mjs`）が、⚠ 同じ問いに答え始めた。**
   const issueOf = (text) => {
     const q = /([\w.-]+\/[\w.-]+)#(\d+)/.exec(text);       // owner/repo#N ならそのまま
     if (q) return `${q[1]}#${q[2]}`;
     const b = /(?:^|[^\w#])#(\d+)\b/.exec(text);           // 裸の #N は repo を足して名前つきに
     if (!b) return null;
-    const repo = repoOf();
+    const repo = repoOf(ROOT);
     return repo ? `${repo}#${b[1]}` : `#${b[1]}`;
   };
   // ⚠ **Skill の名前が書かれていたら、それを採る。**⚠ 書かれていなければ issue の有無で決める。
