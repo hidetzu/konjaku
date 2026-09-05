@@ -14,6 +14,12 @@
 //     読めない        ⚠ タイルを取れなかった（⚠ こちらの都合でも相手の都合でもありうる）
 //
 // ⚠ **判定そのものは `public/border.js` の 1 か所。**⚠ ここには書かない。
+//
+// ⚠ **測った結果**（2026-09-05。`docs/adr/0092` の追記）:
+//   ⚠ **上限 600m は、⚠ 31 点で 1 度も効かなかった**（⚠ 最大 283m）。
+//   ⚠ **「出ない土地の割合」は、⚠ この道具では測れない。**
+//     ⚠ **24 地点は手で選んでいて都市に偏り、⚠ 無作為に打つと海と山が大半になる。**
+//     ⚠ **どちらも、⚠ 利用者に対する出現率ではない**（⚠ 分母が違う）。
 import "../public/border.js";
 
 const NAT = "https://maps.gsi.go.jp/xyz/experimental_landformclassification1";
@@ -75,6 +81,58 @@ const 場所 = [
   ["山間・上高地", 36.2500, 137.6320], ["離島・小笠原", 27.0940, 142.1910],
   ["離島・佐渡", 38.0180, 138.3680], ["山間・十津川", 34.0640, 135.7900],
 ];
+
+// ⚠ **無作為に点を打つ口**（2026-09-05）。⚠ **上の 24 地点は都市に偏っている。**
+//   ⚠ **上限 600m が効く土地を、⚠ 1 度も見ていない可能性がある。**
+//
+// ⚠ **これは「利用者が見る割合」ではない**（⚠ 海も山も同じ確率で当たる）。
+//   ⚠ **答えられるのは「区分が在る点で、⚠ 境目までが何 m か」だけ。**
+//   ⚠ **標本の枠が無い**（⚠ `muni.json` に座標が無く、⚠ 碑は z8 タイル単位）。
+//
+// ⚠ **同じ種なら同じ点が出る**（⚠ 再現できる。`CLAUDE.md` §6）。
+const 種から = (seed) => { let x = seed >>> 0;
+  return () => { x ^= x << 13; x ^= x >>> 17; x ^= x << 5; return (x >>> 0) / 4294967296; }; };
+
+// ⚠ **日本のだいたいの矩形**（⚠ 陸だけではない。⚠ 海に当たれば「足元が無い」になる）
+const 矩形 = { 南: 24.0, 北: 45.6, 西: 123.0, 東: 146.0 };
+
+if (process.argv.some((a) => a.startsWith("--random"))) {
+  const N = Number(process.argv.find((a) => a.startsWith("--random"))?.split("=")[1] ?? 40);
+  const 種 = Number(process.argv.find((a) => a.startsWith("--seed"))?.split("=")[1] ?? 20260905);
+  const 乱 = 種から(種);
+  console.log(`⚠ 無作為に点を打つ（experimental_landformclassification1・z${Z}・3×3 タイル・上限 ${上限m}m）`);
+  console.log(`⚠ 測った日 ${new Date().toISOString().slice(0, 10)} ／ ⚠ 種 ${種} ／ ⚠ 区分が在る点を ${N} 件そろえる`);
+  console.log("⚠ **これは「利用者が見る割合」ではない。**⚠ 海も山も同じ確率で当たる");
+  console.log("⚠ **答えられるのは「区分が在る点で、⚠ 境目までが何 m か」だけ**\n");
+  const 距離 = [], 数 = {};
+  let 打った = 0, 在る = 0;
+  while (在る < N && 打った < N * 12) {
+    打った++;
+    const lat = 矩形.南 + 乱() * (矩形.北 - 矩形.南);
+    const lon = 矩形.西 + 乱() * (矩形.東 - 矩形.西);
+    const r = await 調べる(lon, lat);
+    if (r.state === "足元が無い" || r.state === "読めない") { 数[r.state] = (数[r.state] ?? 0) + 1; continue; }
+    在る++;
+    数[r.state] = (数[r.state] ?? 0) + 1;
+    const m = r.m ?? r.近いm ?? null;
+    if (m != null) 距離.push(m);
+    console.log(`${String(在る).padStart(3)}  ${lat.toFixed(4)},${lon.toFixed(4)}  ${String(r.state).padEnd(12)}`
+      + ` ${m != null ? `${String(m).padStart(4)}m` : "  —  "}  ${r.toCode ?? ""}`);
+    // ⚠ **相手先を叩きすぎない**（⚠ 1 点で 9 枚読む）
+    await new Promise((f) => setTimeout(f, 200));
+  }
+  console.log(`\n⚠ 打った点 ${打った} ／ ⚠ 区分が在った点 ${在る}`);
+  for (const [k, v] of Object.entries(数).sort((a, b) => b[1] - a[1]))
+    console.log(`  ${k.padEnd(12)} ${String(v).padStart(3)} 件`);
+  if (距離.length) {
+    距離.sort((a, b) => a - b);
+    const p = (q) => 距離[Math.min(距離.length - 1, Math.floor(距離.length * q))];
+    console.log(`\n⚠ 境目までの距離（⚠ ${距離.length} 件。⚠ 実際に観測した値を出す。⚠ 補間しない）`);
+    console.log(`  最小 ${距離[0]}m ／ 中央 ${p(0.5)}m ／ p90 ${p(0.9)}m ／ 最大 ${距離[距離.length - 1]}m`);
+    console.log(`  ⚠ 上限 ${上限m}m を超えたもの: ${距離.filter((x) => x > 上限m).length} 件`);
+  }
+  process.exit(0);
+}
 
 console.log(`⚠ 境目（experimental_landformclassification1・z${Z}・3×3 タイル・上限 ${上限m}m）`);
 console.log(`⚠ 測った日 ${new Date().toISOString().slice(0, 10)} ／ ⚠ 標本 ${場所.length} 地点`);
