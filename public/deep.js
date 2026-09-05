@@ -12,7 +12,7 @@
   const $ = (id) => document.getElementById(id);
   const { esc } = window.KonjakuEsc ?? { esc: (s) => s };
   const backEl = $("back"), placeEl = $("place"), glossEl = $("gloss"), termEl = $("term");
-  const glossSrcEl = $("glossSrc"), glossSubEl = $("glossSub");
+  const glossSrcEl = $("glossSrc"), glossSubEl = $("glossSub"), glossNoteEl = $("glossNote");
   const monSec = $("monSec"), monLead = $("monLead"), monEl = $("mon"), monCite = $("monCite");
   const whySec = $("whySec"), whyEl = $("why");
   const groundSec = $("groundSec"), groundH = $("groundH"), groundScope = $("groundScope");
@@ -91,10 +91,13 @@
     const meiji = (!m || m.state === Konjaku.STATE.UNREACHABLE) ? { none: "unreachable" }
                 : m.state === Konjaku.STATE.ABSENT ? { none: "absent" }
                 : !m.value ? { none: "noClass" } : { value: m.value };
-    const { label, head, sub } = KonjakuAnswer.lines({ terrain: t.value, meiji });
+    const { label, head, sub, 断り } =
+      KonjakuAnswer.lines({ terrain: t.value, meiji, 広い区分: !t.fine });
     glossSrcEl.textContent = label; glossSrcEl.hidden = !label;
     glossEl.textContent = head;
     glossSubEl.textContent = sub; glossSubEl.hidden = !sub;
+    // 答えの限界。字は answer.js が持つ（ここでは書かない）。
+    glossNoteEl.textContent = 断り; glossNoteEl.hidden = !断り;
     termEl.textContent = `国土地理院の区分：${t.value}`;
     drawTime(lon, lat);
     drawWhy(t);

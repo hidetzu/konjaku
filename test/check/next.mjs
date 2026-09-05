@@ -469,27 +469,66 @@ else {
           fails.push(`${区分}: 見出しは地形分類なのに、⚠ 明治期の出典を名乗っている: ${r.label}`);
       }
 
-      // ⚠ **③ 昔の根拠が無いときは、⚠ なぜ無いかを状態ごとに言い分ける**（`docs/adr/0056`）。
-      //   ⚠ **1 文にまとめない**（2026-08-31。Owner 判断）。⚠ 「取れなかった」と「無い」は別のこと。
+      // ⚠ **③ 昔の根拠が無いとき。**
+      //   ⚠ **2026-09-06 に順番を入れ替えた**（Owner 判断。hidetzu/konjaku#495）。
+      //   ⚠ **前は「なぜ無いか」を見出しにしていた。**⚠ **地形分類は読めていて 2 行目に出ていたのに、
+      //     ⚠ いちばん大きい字が「含んでいません」だった。**
+      //   ⚠ **実測（2026-09-06・利用者役 3 名。⚠ 実在の利用者ではない）**:
+      //     ⚠ **3/3 が「サイト全体がこの場所に対応していない」と読み、⚠ 2 名が「閉じそうになった」。**
+      //     ⚠ **順を入れ替えた案を、⚠ 3 名とも 1 位に選んだ。**
+      //   ⚠ **無いことは消していない**（`CLAUDE.md` §1）。⚠ **主語を付けて、⚠ 答えの下へ移した。**
       const 状態 = ["absent", "noClass", "unreachable"];
-      const 出た = 状態.map((none) => A.lines({ terrain: "低地", meiji: { none } }).head);
+
+      // ⚠ **③-1 地形分類が読めているなら、⚠ そちらが見出し。**
+      for (const none of 状態) {
+        const r = A.lines({ terrain: "低地", meiji: { none } });
+        if (r.head === A.MEIJI_NONE[none])
+          fails.push(`${none}: 地形分類が読めているのに、⚠ 無いことを見出しにしている: ${r.head}`);
+        if (!r.head.includes(W.groundGloss("低地")))
+          fails.push(`${none}: 見出しが地形分類の答えになっていない: ${r.head}`);
+        if (r.label !== A.SOURCE.terrain)
+          fails.push(`${none}: 見出しは地形分類なのに、⚠ 別の出典を名乗っている: ${JSON.stringify(r.label)}`);
+        // ⚠ **無いことは、⚠ 断りへ移しただけ。**⚠ **消していないこと**（掟 §1）
+        if (!r.断り) fails.push(`${none}: 無いことを、⚠ どこにも書いていない`);
+        // ⚠ **主語を書く。**⚠ **ラベルが「いまの地形」に変わるので、
+        //   ⚠ 「この地図」のままだと、⚠ 背景に見えている地図のことだと読まれる**
+        //   （⚠ 実測 2026-09-06: 利用者役 3/3 が、⚠ サイト全体のことだと最初に読んだ）。
+        if (!r.断り.includes(A.SOURCE.meiji))
+          fails.push(`${none}: 断りが、⚠ 何の資料の話か名乗っていない: ${r.断り}`);
+      }
+      // ⚠ **3 つの状態を、⚠ 断りでも言い分ける**（`docs/adr/0056`。⚠ 1 文にまとめない）
+      const 断りたち = 状態.map((none) => A.lines({ terrain: "低地", meiji: { none } }).断り);
+      if (new Set(断りたち).size !== 状態.length)
+        fails.push(`3 つの状態が同じ断りになっている: ${断りたち.join(" ／ ")}`);
+
+      // ⚠ **③-2 地形分類も読めていないなら、⚠ 言えるのは「なぜ無いか」だけ。**
+      const 出た = 状態.map((none) => A.lines({ terrain: null, meiji: { none } }).head);
       for (const [i, none] of 状態.entries()) {
         if (出た[i] !== A.MEIJI_NONE[none])
           fails.push(`${none}: MEIJI_NONE の字を使っていない: ${出た[i]}`);
         if (!出た[i]) fails.push(`${none}: 見出しが空（⚠ 何も言わないと、⚠ 何も起きていないように見える）`);
+        const r = A.lines({ terrain: null, meiji: { none } });
+        if (r.label !== A.SOURCE.meiji)
+          fails.push(`${none}: 何の資料の話か名乗っていない: ${JSON.stringify(r.label)}`);
+        // ⚠ **ここはラベルが主語を引き受ける**ので、⚠ 字の中で「明治期の」を繰り返さない
+        if (r.head.includes(A.SOURCE.meiji))
+          fails.push(`${none}: 見出しが出典名を抱えている（⚠ ラベルと二重）: ${r.head}`);
       }
       if (new Set(出た).size !== 状態.length)
         fails.push(`3 つの状態が同じ字になっている: ${出た.join(" ／ ")}`);
-      // ⚠ **無いときも、⚠ 出典を名乗る。**⚠ **主語はラベルが引き受ける**ので、
-      //   ⚠ 字の中で「明治期の」を繰り返さない（2026-08-31。Owner 指示）。
-      for (const none of 状態) {
-        const r = A.lines({ terrain: "低地", meiji: { none } });
-        if (r.label !== A.SOURCE.meiji)
-          fails.push(`${none}: 何の資料の話か名乗っていない: ${JSON.stringify(r.label)}`);
-        if (r.head.includes(A.SOURCE.meiji))
-          fails.push(`${none}: 見出しが出典名を抱えている（⚠ ラベルと二重）: ${r.head}`);
-        // ⚠ **無いことも、⚠ 分かることを消さない**（`CLAUDE.md` §4-1）。⚠ 2 行目が引き受ける。
-        if (!r.sub) fails.push(`${none}: 無いと言うだけで、⚠ 分かることを出していない`);
+
+      // ⚠ **③-3 広い区分で答えたことを言う**（hidetzu/konjaku#495）。
+      //   ⚠ **詳細版が無い土地では、⚠ 判定が広域版へ落ちている。**⚠ **黙ると、⚠ 詳細版と同じ確かさに読める。**
+      {
+        const 粗 = A.lines({ terrain: "低地", meiji: { value: "田" }, 広い区分: true });
+        const 細 = A.lines({ terrain: "低地", meiji: { value: "田" }, 広い区分: false });
+        if (!粗.断り) fails.push("広い区分で答えたことを、⚠ どこにも書いていない");
+        if (細.断り) fails.push(`詳細版で答えているのに、⚠ 広い区分だと言っている: ${細.断り}`);
+        // ⚠ **`⚠` を付けない**（⚠ `⚠` は災害リスク専用。`CLAUDE.md` §4-1）
+        if (/⚠/.test(粗.断り)) fails.push(`断りに ⚠ が入っている（⚠ 災害リスク専用）: ${粗.断り}`);
+        // ⚠ **できないことから書き始めない**（`CLAUDE.md` §4-1）
+        if (/^(まだ|整備|対応)/.test(A.COARSE_NOTE))
+          fails.push(`広い区分の断りが、⚠ できないことから始まっている: ${A.COARSE_NOTE}`);
       }
       // ⚠ **否定された動作で言わない**（2026-08-31。Owner 指示）。
       //   ⚠ **「作られていません」は「まだ作っていない」「壊れている」に読まれた**
@@ -506,8 +545,13 @@ else {
 
       // ⚠ **⑤ `top.js` が字を書いていないこと。**⚠ **3 状態すべてを `answer.js` から引く。**
       const TOP = readFileSync(join(NEXT, "top.js"), "utf8");
-      for (const 字 of [...Object.values(A.MEIJI_NONE), ...Object.values(A.SOURCE)])
+      for (const 字 of [...Object.values(A.MEIJI_NONE), ...Object.values(A.SOURCE), A.COARSE_NOTE])
         if (TOP.includes(字)) fails.push(`top.js が answer.js の字を書き写している: ${字}`);
+      // ⚠ **断りを画面へ出しているか**（⚠ 返しても描かなければ、⚠ 限界が消える）
+      if (!/glossNoteEl\.textContent\s*=\s*断り/.test(TOP))
+        fails.push("top.js が、⚠ answer.js の返す断りを画面へ入れていない（⚠ 限界が消える）");
+      if (!readFileSync(join(NEXT, "index.html"), "utf8").includes('id="glossNote"'))
+        fails.push("index.html に断りの置き場が無い");
       for (const none of 状態)
         if (!TOP.includes(`"${none}"`)) fails.push(`top.js が ${none} の状態を作っていない`);
       // ⚠ **深掘り画面も、⚠ 同じ規則で見出しを決める**（2026-08-31。Owner 指示）。
@@ -520,8 +564,12 @@ else {
         fails.push("deep.js が出典ラベルを描いていない");
       // ⚠ **「言えないとき」の字を、⚠ 自前で持たない。**
       //   ⚠ **2026-08-31 に踏んだ**: ⚠ **トップだけ言い直したら、⚠ deep.js が古い字のまま残った。**
-      for (const 字 of Object.values(A.MEIJI_NONE))
+      for (const 字 of [...Object.values(A.MEIJI_NONE), A.COARSE_NOTE])
         if (DEEP.includes(字)) fails.push(`deep.js が answer.js の字を書き写している: ${字}`);
+      if (!/glossNoteEl\.textContent\s*=\s*断り/.test(DEEP))
+        fails.push("deep.js が、⚠ answer.js の返す断りを画面へ入れていない（⚠ 限界が消える）");
+      if (!readFileSync(join(NEXT, "deep.html"), "utf8").includes('id="glossNote"'))
+        fails.push("deep.html に断りの置き場が無い");
       if (/この地域では、この資料が作られていません|この場所には区分がありません/.test(DEEP))
         fails.push("deep.js が「言えないとき」の字を自前で持っている（⚠ 片方だけ古くなる）");
       if (!readFileSync(join(NEXT, "deep.html"), "utf8").includes('id="glossSrc"'))
