@@ -111,6 +111,25 @@
     <p class="ground__note" id="groundNote"></p>
   </section>
 
+  <!-- この先で、土地が変わる（2026-09-05。v0.3.0）。
+       読んだ人が、この答えを足で確かめられる唯一の場所。
+       この地点そのものの話なので、分離の線（sec--around）より上に置く。
+       ⚠ 出すのは 1 地点だけ。別の場所を探す画面にはしない。
+       ⚠ 地形分類が無い土地では、節ごと出さない（2026-09-05）。 -->
+  <section class="sec border" id="borderSec" hidden>
+    <h2><svg class="sec__icon" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M1.5 11c2-3 4-1 5.5-3.5S10.5 3 14.5 4"/><path d="M1.5 14.5h13"/></svg><span id="borderH"></span></h2>
+    <p class="border__line" id="borderLine"></p>
+    <p class="border__go">
+      <span class="border__dir" id="borderDir" aria-hidden="true"></span>
+      <span class="border__body">
+        <span class="border__to" id="borderTo"></span>
+        <span class="border__far" id="borderFar"></span>
+      </span>
+    </p>
+    <p class="border__note" id="borderNote"></p>
+    <p class="why__from" id="borderFrom"></p>
+  </section>
+
   <section class="sec" id="nearSec" hidden>
     <h2><svg class="sec__icon" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M2 2h12v12H2z"/><path d="M6 2v12M10 2v12M2 6h12M2 10h12"/><circle cx="8" cy="8" r="1.6" fill="currentColor" stroke="none"/></svg><span>この一帯は、どうだったか</span></h2>
     <div class="around" id="around" hidden>
@@ -168,6 +187,7 @@
 <script src="./words.js"></script>
 <script src="./answer.js"></script>
 <script src="./ground.js"></script>
+<script src="./border.js"></script>
 <script src="./monument.js"></script>
 <script src="./swale.js"></script>
 <script src="./verify.js"></script>

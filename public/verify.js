@@ -419,6 +419,67 @@
     return { state: OK, url, code: null };
   }
 
+  // ---- 区分が変わるところ（境目）----
+  // 「この土地は昔なんだったか」を読んだ人が、次に足で確かめられる唯一の場所
+  //   （2026-09-05。v0.3.0）。
+  //
+  // ⚠ **ここは取ってくるだけ。** どこが境目かは public/border.js が決める。
+  //   ⚠ **新しいデータを作らない。** 地形分類は既にベクトル（面）なので、縁がそのまま境目。
+  //
+  // ⚠ **3×3 タイルまでしか読まない。** その外は「読んでいない」であって「無い」ではない。
+  //   ⚠ 読んだ範囲を border.js へ渡し、あちらに言い分けさせる（掟の一行目）。
+  const 境目のZ = LFC_FINE;   // z16。広域版（z13）は面が粗すぎて「歩く」に使えない
+
+  // 端数まで要るタイル座標。tileOf は整数に丸めるので、ここでは使えない
+  const 生タイル = (lon, lat, z) => {
+    const r = lat * Math.PI / 180;
+    return { x: ((lon + 180) / 360) * 2 ** z,
+             y: (1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * 2 ** z };
+  };
+
+  async function border(lon, lat) {
+    const base = { key: "border", label: "区分が変わるところ", method: "readVector",
+      caveat: "国土地理院の提供実験（ベクトルタイル）。予告なく止まる可能性がある" };
+    const B = global.KonjakuBorder;
+    if (!B) return { ...base, ok: false, state: UNREACHABLE, value: null,
+      note: "境目の判定を読み込めませんでした" };
+
+    const z = 境目のZ, t = 生タイル(lon, lat, z);
+    const cx = Math.floor(t.x), cy = Math.floor(t.y);
+    const features = [];
+    let 読めた = 0, 落ちた = false;
+    for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) {
+      const url = `${LFC}/${LFC_NAT}/${z}/${cx + dx}/${cy + dy}.geojson`;
+      const res = await geojson(url);
+      if (res.state === OK) { 読めた++; features.push(...(res.json?.features ?? [])); }
+      else if (res.state === UNREACHABLE) 落ちた = true;
+      // ABSENT（404）は「そこにタイルが無い」。読めたことにも、落ちたことにもしない
+    }
+    // 1 枚も読めず、しかも落ちたなら、こちらは何も言えない
+    if (!読めた && 落ちた)
+      return { ...base, ok: false, state: UNREACHABLE, value: null,
+        note: "この土地の区分を、いま読み込めませんでした" };
+
+    // 見えている範囲＝点から 3×3 の外周までの最短。ここを超えたら「読んでいない」
+    const タイルm = B.タイル幅m(lat, z);
+    const 見えている範囲m = Math.min(
+      (t.x - cx + 1) * タイルm, (cx + 2 - t.x) * タイルm,
+      (t.y - cy + 1) * タイルm, (cy + 2 - t.y) * タイルm);
+
+    const r = B.境目(features, lon, lat, { 見えている範囲m });
+    if (r.state !== "ok")
+      return { ...base, ok: false, state: ABSENT, value: null, why: r.state,
+        evidence: { zoom: z, tiles: 読めた } };
+
+    let tbl = null;
+    try { tbl = await table(); } catch { /* 対照表が無くても、距離と方角は言える */ }
+    return { ...base, ok: true, state: OK,
+      value: tbl?.codes?.[r.toCode] ?? null,
+      from: tbl?.codes?.[r.code] ?? null,
+      m: r.m, deg: r.deg, 方角: r.方角,
+      evidence: { zoom: z, tiles: 読めた, code: r.code, toCode: r.toCode } };
+  }
+
   async function landform(lon, lat) {
     const base = { key: "landform", label: "地形分類", method: "readVector",
       caveat: "国土地理院の提供実験（ベクトルタイル）。予告なく止まる可能性がある" };
@@ -947,6 +1008,6 @@
   }
 
   global.Konjaku = { GSI, SWALE, ERAS, LATEST, AREA, tileOf, loadImage, classify, isWatery,
-    landform, meiji, swaleArea, swalePixel, elevation, photos, facts, narrate, badges, suggestions,
+    landform, border, meiji, swaleArea, swalePixel, elevation, photos, facts, narrate, badges, suggestions,
     STATE: { OK, ABSENT, UNREACHABLE }, TIMEOUT_MS };
 })(window);
