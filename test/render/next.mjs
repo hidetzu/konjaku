@@ -14,7 +14,11 @@
 //
 // ⚠ **道具は `test/render/lib.mjs` の 1 か所**（⚠ ここで持ち直さない）。
 
+import { readFileSync } from "node:fs";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import { NEXT_BASE, must } from "./lib.mjs";
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 // ⚠ **合言葉の口は、⚠ 本物を呼ぶ**（⚠ 偽なのは D1 だけ）。
 //   ⚠ **静的に読む。**⚠ **動的に読むと、⚠ `render-scope` が「読んでいない」と見なし、
 //   ⚠ この 2 つを触っても実描画が回らない**（2026-08-30 に踏んだ）。
@@ -3770,6 +3774,165 @@ for (const [名, viewport] of [["PC", PCな幅], ["スマホ", SP], ["いちば�
            + ` ／ 板 ${並び[3].w}x${並び[3].h} ／ 開き直して ${後.いま}`;
     },
   });
+}
+
+// ⚠ **この先で、土地が変わる**（2026-09-05。`docs/adr/0092`）。
+//
+// ⚠ **相手（地理院）がいま何を返すかは主張しない**（`CLAUDE.md` §9）。
+//   ⚠ **面はこちらで作る。**⚠ **見るのは「その面から、⚠ 何をどう書くか」。**
+//
+// ⚠ **実測（2026-09-04・24 地点）**: ⚠ **出せる 17 地点（71%）／ 足元が無い 7 地点（29%）。**
+//   ⚠ **距離は 9〜283m・中央値 100m。**⚠ **「歩いて向かう場所」ではない。**
+//   ⚠ **数はここに書かない。**⚠ **走者（`scripts/survey-border.mjs`）が出す。**
+{
+  // ⚠ **z16 のタイルを、⚠ 3×3 ぶん同じ中身で返す。**⚠ **面は経緯度でそのまま持つ。**
+  //   ⚠ **西半分が「氾濫平野」、⚠ 東半分が「台地」。**⚠ **境目は経度 lon0。**
+  const 面を返す = (page, lon0, 西, 東) => page.route(
+    (u) => u.hostname === "maps.gsi.go.jp" && /landformclassification1/.test(u.pathname),
+    (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({
+      type: "FeatureCollection",
+      features: [西, 東].filter(Boolean).map((code, i) => ({
+        type: "Feature", properties: { code },
+        geometry: { type: "Polygon", coordinates: [i === 0
+          ? [[lon0 - .02, -90], [lon0, -90], [lon0, 90], [lon0 - .02, 90], [lon0 - .02, -90]]
+          : [[lon0, -90], [lon0 + .02, -90], [lon0 + .02, 90], [lon0, 90], [lon0, -90]]] },
+      })),
+    }) }));
+
+  // ⚠ **`landform.json` の実物から借りる**（⚠ 区分名をここに書き写さない）。
+  const 表 = JSON.parse(readFileSync(join(ROOT, "public/data/landform.json"), "utf8"));
+  // ⚠ **無い名前を渡したら、⚠ その場で落とす。**⚠ **黙って undefined を面へ入れない**
+  //   （⚠ 実際に踏んだ: ⚠ 「氾濫平野」は無く、⚠ 実物は「氾濫平野・海岸平野」だった。
+  //    ⚠ code が undefined になり、⚠ 面が 1 つも立たず、⚠ 30 秒待って落ちた）。
+  const コード = (名) => {
+    const c = Object.entries(表.codes).find(([, v]) => v === 名)?.[0];
+    if (!c) throw new Error(`landform.json に「${名}」という区分が無い（⚠ 名前を書き写さない）`);
+    return c;
+  };
+  const 西の名 = "氾濫平野・海岸平野", 東の名 = "台地･段丘";
+
+  for (const [名, viewport] of [["PC", PCな幅], ["スマホ", SP], ["いちばん狭い幅", { width: 320, height: 640 }]]) {
+    CASES.push({
+      name: `${名}の「この先で、土地が変わる」は、⚠ 1 地点だけを出す`,
+      path: `/deep?${KASUKABE}`, origin: NEXT_BASE, viewport,
+      async setup(page) {
+        // ⚠ **調べる点より 0.001 度（約 90m）東に境目を置く**
+        await 面を返す(page, 139.7523 + 0.001, コード(西の名), コード(東の名));
+      },
+      async check(page) {
+        await 待つ(page, () => !document.getElementById("borderSec")?.hidden, "この先で土地が変わる");
+        const r = await page.evaluate(() => {
+          const s = document.getElementById("borderSec");
+          const 見 = (id) => (document.getElementById(id)?.textContent ?? "").trim();
+          const 的 = document.getElementById("borderDir").getBoundingClientRect();
+          return {
+            見出し: 見("borderH"), 文: 見("borderLine"), 方角: 見("borderDir"),
+            行き先: 見("borderTo"), 距離: 見("borderFar"),
+            断り: 見("borderNote"), 出典: 見("borderFrom"),
+            // ⚠ **1 地点だけ。**⚠ **押せる導線を持たない**（⚠ 探索画面にしない）
+            行き先の数: s.querySelectorAll("[id='borderTo']").length,
+            押せる: s.querySelectorAll("a, button, input").length,
+            一覧: s.querySelectorAll("ul, ol, li").length,
+            印: `${Math.round(的.width)}x${Math.round(的.height)}`,
+            横あふれ: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+          };
+        });
+        // ⚠ **字は製品から借りる**（⚠ ここに書き写さない）
+        const W = await page.evaluate(() => globalThis.KonjakuAnswer.BORDER);
+        must(r.見出し === W.見出し, `見出しが違う: 「${r.見出し}」`);
+        must(!/地面/.test(r.見出し), `見出しが「地面」と言っている: 「${r.見出し}」`);
+        must(r.文.includes(西の名) && r.文.includes(東の名),
+          `どこからどこへ変わるかを言っていない: 「${r.文}」`);
+        // ⚠ **距離と方角は出す。**⚠ **所要時間は出さない**（⚠ 実測していない）
+        must(/へ\s*\d+m$/.test(r.距離), `距離と方角の形が違う: 「${r.距離}」`);
+        for (const 悪 of [/徒歩/, /\d+\s*分/, /所要/])
+          must(!悪.test(r.距離 + r.文 + r.断り), `所要時間を出している: 「${r.距離}」`);
+        must(r.断り === W.断り, `断りが違う: 「${r.断り}」`);
+        must(/国土地理院/.test(r.出典), `出典を名乗っていない: 「${r.出典}」`);
+        // ⚠ **ガードレール**（2026-09-05。Owner 判断）
+        must(r.行き先の数 === 1, `行き先が ${r.行き先の数} 個ある（⚠ 1 地点だけ）`);
+        must(r.押せる === 0, `押せるものが ${r.押せる} 個ある（⚠ ここは行き先ではない）`);
+        must(r.一覧 === 0, `一覧になっている（⚠ 探索画面にしない）`);
+        must(!r.横あふれ, "画面が横にあふれている");
+        return `${r.見出し}｜「${r.文}」／ ${r.行き先} ${r.距離}（印 ${r.印}）／ 押せる 0・一覧 0`;
+      },
+    });
+  }
+
+  // ⚠ **出せないときは、⚠ 節ごと出さない**（2026-09-05。Owner 判断）。
+  //   ⚠ **出せない理由を書くと、⚠ できないことから書き始めることになる**（掟 §4-1）。
+  //
+  // ⚠ **404 / 500 では測れない**（2026-09-05 に踏んだ）。
+  //   ⚠ **地形分類そのものが読めないので、⚠ `/deep` は判定の前で止まる。**
+  //   ⚠ **`drawBorder` に届かない。**⚠ **わざと「境目はありません」と書かせても素通りした。**
+  //   ⚠ **だから、⚠ 判定は出るが境目だけ出せない形で突く。**
+  {
+    const 表2 = JSON.parse(readFileSync(join(ROOT, "public/data/landform.json"), "utf8"));
+    const 一色 = (名) => Object.entries(表2.codes).find(([, v]) => v === 名)?.[0];
+    CASES.push({
+      name: "見えている範囲に別の区分が無いとき、⚠ 節ごと出さない",
+      path: `/deep?${KASUKABE}`, origin: NEXT_BASE, viewport: SP,
+      async setup(page) {
+        // ⚠ **どのタイルも、⚠ 同じ区分 1 つで埋める。**⚠ **足元は読めるが、⚠ 境目は無い。**
+        await page.route(
+          (u) => u.hostname === "maps.gsi.go.jp" && /landformclassification1/.test(u.pathname),
+          (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({
+            type: "FeatureCollection",
+            features: [{ type: "Feature", properties: { code: 一色("氾濫平野・海岸平野") },
+              geometry: { type: "Polygon",
+                coordinates: [[[-180, -90], [180, -90], [180, 90], [-180, 90], [-180, -90]]] } }],
+          }) }));
+      },
+      async check(page) {
+        // ⚠ **判定が出ていること。**⚠ **ここが出ないなら、⚠ この検査は境目を見ていない。**
+        await 待つ(page, () => (document.getElementById("gloss")?.textContent ?? "").trim().length > 2, "判定");
+        await page.waitForTimeout(2500);
+        const r = await page.evaluate(() => ({
+          判定: (document.getElementById("gloss")?.textContent ?? "").trim(),
+          区分: (document.getElementById("term")?.textContent ?? "").trim(),
+          出ている: !document.getElementById("borderSec")?.hidden,
+          全部の字: document.body.innerText,
+        }));
+        must(r.区分.includes("氾濫平野・海岸平野"),
+          `足元の区分が読めていない（⚠ この検査が境目を見ていない）: 「${r.区分}」`);
+        must(!r.出ている, "別の区分が無いのに、⚠ 節が出ている");
+        // ⚠ **「無い」と言わない**（掟の一行目）。⚠ **見えている範囲の外は読んでいない。**
+        for (const 悪 of ["境目はありません", "変わる場所はありません", "見つかりませんでした",
+                          "変わりません"])
+          must(!r.全部の字.includes(悪), `「${悪}」と書いている（⚠ 読んでいないだけ）`);
+        return `判定は出る（${r.区分}）／ 節は出ない（⚠ 出せない理由も書かない）`;
+      },
+    });
+  }
+
+  // ⚠ **地形分類そのものが無い土地**（⚠ 山間・離島。⚠ 実測 24 地点中 7 地点）。
+  //   ⚠ **ここでは `/deep` が判定の前で止まる。**⚠ **境目の分岐までは届かない。**
+  //   ⚠ **だから、⚠ この 2 件が見ているのは「節が出ていないこと」だけ**（⚠ 上のほうが本体）。
+  for (const [名, 応答] of [
+    ["この資料の対象範囲の外", { status: 404, body: "" }],
+    ["読み込めなかった", { status: 500, body: "" }],
+  ]) {
+    CASES.push({
+      name: `この先で土地が変わるが${名}とき、⚠ 節ごと出さない`,
+      path: `/deep?${KASUKABE}`, origin: NEXT_BASE, viewport: SP,
+      async setup(page) {
+        await page.route(
+          (u) => u.hostname === "maps.gsi.go.jp" && /landformclassification1/.test(u.pathname),
+          (r) => r.fulfill({ status: 応答.status, contentType: "application/json", body: 応答.body }));
+      },
+      async check(page) {
+        await page.waitForTimeout(4000);
+        const r = await page.evaluate(() => ({
+          出ている: !document.getElementById("borderSec")?.hidden,
+          全部の字: document.body.innerText,
+        }));
+        must(!r.出ている, "出せないのに、⚠ 節が出ている");
+        for (const 悪 of ["境目はありません", "変わる場所はありません", "見つかりませんでした"])
+          must(!r.全部の字.includes(悪), `「${悪}」と書いている`);
+        return "節を出さない（⚠ 出せない理由も書かない）";
+      },
+    });
+  }
 }
 
 // ⚠ **この一帯の地盤と揺れ**（2026-09-02。`docs/adr/0088`）。

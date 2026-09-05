@@ -248,6 +248,29 @@
     ],
   };
 
-  g.KonjakuAnswer = { SOURCE, MEIJI_NONE, PAST_IN_TERRAIN, lines, WHY_READ, WHERE, WHERE_STILL, whereFailed, RECORD_KINDS, recordKind, RECORD_NOTE, HAZARD,
+  // ---- 区分が変わるところ（2026-09-05。v0.3.0）----
+  // ⚠ **「次に歩く」とは言わない。** 実測（2026-09-04・17 地点）で 9〜283m・中央値 100m。
+  //   ⚠ 多くの土地で、境目はすぐそこにある。「歩いて向かう場所」ではない。
+  //   ⚠ **9m でも 283m でも嘘にならない言い方にする**（2026-09-05。Owner 判断）。
+  //
+  // ⚠ **ここは Display。** 距離と方角の数は Domain（border.js）が出す。ここは字だけ。
+  const BORDER = {
+    // ⚠ **「地面」とは言わない。** 変わった先が「水部」のことがある（実測: 春日部 20m 北東）。
+    //   ⚠ そこは地面ではない。「地面が変わる」と書くと、そこが陸だと読まれる。
+    見出し: "この先で、土地が変わる",
+    // ⚠ **「確かめられる」までにする。** 何が見えるかは言えない（現地を見ていない）。
+    文: (from, to) => `${from}から、${to}に変わります`,
+    的: (方角, 距離) => `${方角}へ ${距離}`,
+    // ⚠ **地図の上の区分の境目**であって、現地の見た目の境目ではない。
+    //   ⚠ ここを落とすと「行けば何か見える」と読まれる。
+    断り: "地図の上で区分が変わる場所です。現地の見た目が変わるとは限りません。",
+    出典: "出典 国土地理院「地形分類（ベクトルタイル提供実験）」",
+  };
+
+  // 距離の書き方。⚠ **10m 単位まで。**⚠ 1km を超えたら km。
+  //   ⚠ **所要時間は出さない**（実測していない。⚠ 歩く速さも道のりも知らない）。
+  const 距離の字 = (m) => m >= 1000 ? `${(m / 1000).toFixed(1)}km` : `${Math.round(m / 10) * 10}m`;
+
+  g.KonjakuAnswer = { SOURCE, BORDER, 距離の字, MEIJI_NONE, PAST_IN_TERRAIN, lines, WHY_READ, WHERE, WHERE_STILL, whereFailed, RECORD_KINDS, recordKind, RECORD_NOTE, HAZARD,
                       GROUND, 確率の字 };
 })(typeof window === "undefined" ? globalThis : window);

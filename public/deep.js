@@ -17,6 +17,9 @@
   const whySec = $("whySec"), whyEl = $("why");
   const groundSec = $("groundSec"), groundH = $("groundH"), groundScope = $("groundScope");
   const groundEl = $("ground"), groundFrom = $("groundFrom"), groundNote = $("groundNote");
+  const borderSec = $("borderSec"), borderH = $("borderH"), borderLine = $("borderLine");
+  const borderDir = $("borderDir"), borderTo = $("borderTo"), borderFar = $("borderFar");
+  const borderNote = $("borderNote"), borderFrom = $("borderFrom");
   const nearSec = $("nearSec"), nearLead = $("nearLead"), yearsEl = $("years");
   const nearNote = $("nearNote"), nearFrom = $("nearFrom");
   const readSec = $("readSec"), readEl = $("read");
@@ -96,10 +99,37 @@
     drawWhy(t);
     drawElev(lon, lat, t);
     drawGround(lon, lat);
+    drawBorder(lon, lat);
     drawAround(lon, lat);
     drawNear(lon, lat);
     drawRead(lon, lat, t);
     drawMonuments(lon, lat);
+  }
+
+  // この先で、土地が変わる（2026-09-05。v0.3.0）。
+  //   読んだ答えを、足で確かめられる唯一の場所。出すのは 1 地点だけ。
+  //
+  //   ⚠ 「次に歩く」とは言わない。実測（2026-09-04・17 地点）で 9〜283m・中央値 100m。
+  //     多くの土地で、境目はすぐそこにある。歩いて向かう場所ではない。
+  //   ⚠ 地形分類が無い土地では、節ごと出さない（2026-09-05）。
+  //     出せない理由を書くと、できないことから書き始めることになる。
+  //   ⚠ 所要時間は出さない。実測していない（歩く速さも道のりも知らない）。
+  async function drawBorder(lon, lat) {
+    borderSec.hidden = true;
+    const W = KonjakuAnswer.BORDER;
+    const r = await Konjaku.border(lon, lat).catch(() => null);
+    // 読めなかったときも、節ごと出さない。ここは補助であって、答えではない。
+    //   ⚠ 「取れなかった」を「無い」と書かないので、そもそも何も書かない
+    if (!r?.ok || !r.value || !r.from) return;
+
+    borderH.textContent = W.見出し;
+    borderLine.textContent = W.文(r.from, r.value);
+    borderDir.textContent = r.方角;
+    borderTo.textContent = r.value;
+    borderFar.textContent = W.的(r.方角, KonjakuAnswer.距離の字(r.m));
+    borderNote.textContent = W.断り;
+    borderFrom.textContent = W.出典;
+    borderSec.hidden = false;
   }
 
   // 近くに残る災害の記録（自然災害伝承碑）。

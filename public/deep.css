@@ -274,3 +274,25 @@ body{
 .mon__info{margin:var(--gap-row) 0 0; font-size:.875rem; line-height:1.75; color:var(--ink-2)}
 .mon__cite{margin:var(--gap-block) 0 0; font-size:.8125rem; color:var(--ink-3)}
 .mon__cite[hidden]{display:none}
+
+/* この先で、土地が変わる。
+   押せる見た目にしない。ここは「行き先」ではなく「そこに在るという事実」。
+   実際に押せる導線は持たない（別の場所を探す画面にしないため）。 */
+.border__line{margin:0 0 var(--gap-sub); color:var(--ink-2)}
+.border__go:not([hidden]){
+  display:flex; align-items:center; gap:var(--gap-row);
+  margin:0; padding:var(--pad-sm);
+  border:1px solid var(--line); border-radius:.75rem;
+}
+/* [hidden] を打ち消さないこと。class と属性は詳細度が同じで、あとに書いたほうが勝つ。
+   実際に踏んだ（2 度目）: hidden を付けても消えず、既存の検査が捕まえた。 */
+.border__dir:not([hidden]){
+  flex:0 0 auto; display:flex; align-items:center; justify-content:center;
+  width:2.75rem; height:2.75rem; border-radius:50%;
+  background:var(--surface-2); color:var(--ink-2);
+  font-size:.8125rem; font-weight:700;
+}
+.border__body:not([hidden]){display:flex; flex-direction:column; gap:2px; min-width:0}
+.border__to{font-weight:700}
+.border__far{font-size:.8125rem; color:var(--ink-3); font-variant-numeric:tabular-nums}
+.border__note{margin:var(--gap-sub) 0 0; font-size:.8125rem; color:var(--ink-3)}
