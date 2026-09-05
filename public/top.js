@@ -43,7 +43,9 @@
   //     （`CLAUDE.md` §3「Runtime 依存を増やさない」）。
   const GSI = Konjaku.GSI;
   const TILE = 256;
-  const Z = 16;   // ⚠ 地形分類の詳細版が在る縮尺（`verify.js` の LFC_FINE と揃える）
+  // ⚠ **地形分類の詳細版が在る縮尺。**⚠ **`verify.js` の口が持つ**（hidetzu/konjaku#494）。
+  //   ⚠ **前はここに 16 と直に書き、⚠ コメントで「揃える」と言っていた**（⚠ 揃わなくなりうる印）。
+  const Z = Konjaku.landformTiles.FINE;
 
   // ⚠ **タイル座標 ↔ 経緯度**。⚠ `verify.js` の `tileOf` は整数タイルしか返さないので、
   //   ⚠ **小数で持つ**（⚠ 地図を滑らかに動かすため）。⚠ 判定を頼むときは `verify.js` へ渡す。
@@ -73,7 +75,7 @@
 
   // ---- 描く ----
   const layers = [];   // ⚠ 下から: 地理院の淡色地図 → 地形分類（自然）→ 地形分類（人工）
-  for (const src of ["pale", "experimental_landformclassification1", "experimental_landformclassification2"]) {
+  for (const src of ["pale", Konjaku.landformTiles.NAT, Konjaku.landformTiles.ART]) {
     const el = document.createElement("div");
     el.className = "layer";
     el.style.cssText = "position:absolute;inset:0;overflow:hidden";
@@ -198,15 +200,17 @@
   const face = document.createElement("canvas");
   face.style.cssText = "position:absolute;inset:0;width:100%;height:100%;opacity:.42;pointer-events:none";
   map.appendChild(face);
-  const geoCache = new Map();
-
-  async function geo(url) {
-    if (!geoCache.has(url)) {
-      geoCache.set(url, fetch(url, { signal: AbortSignal.timeout(Konjaku.TIMEOUT_MS) })
-        .then((r) => r.status === 404 ? { features: [] } : r.ok ? r.json() : Promise.reject(new Error(String(r.status))))
-        .catch(() => null));   // ⚠ **落ちても画面を止めない**（`.claude/rules/javascript.md`）
-    }
-    return geoCache.get(url);
+  // ⚠ **タイルは `verify.js` の口から借りる**（hidetzu/konjaku#494）。
+  //   ⚠ **前はここに自前のキャッシュと URL があり、⚠ 点の判定と同じタイルを 2 回引いていた**
+  //     （⚠ 実測 2026-09-06: / 豊洲 6/30 本・軽井沢 9/43 本が同じ URL）。
+  //   ⚠ **落ちても画面を止めない**（`.claude/rules/javascript.md`）。
+  //   ⚠ **404 は「そこに区分が無い」。**⚠ **読めなかったのとは分ける**（掟 §1）。
+  const LF = Konjaku.landformTiles;
+  async function geo(layer, z, x, y) {
+    const r = await LF.tile(layer, z, x, y);
+    if (r.state === Konjaku.STATE.OK) return r.json;
+    if (r.state === Konjaku.STATE.ABSENT) return { features: [] };
+    return null;
   }
 
   // 画面に映る区分と、その面積。凡例が使う。
@@ -239,8 +243,8 @@
     //   ⚠ **`verify.js` は 2 つを別の項目として持っている**（⚠ `value` と `artificial`）。
     //   ⚠ **画面も分ける。**⚠ **人工地形をどう見せるかは、⚠ この縦切りでは決めていない。**
     for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) {
-      for (const src of ["experimental_landformclassification1"]) {
-        const j = await geo(`https://maps.gsi.go.jp/xyz/${src}/${Z}/${x}/${y}.geojson`);
+      for (const src of [LF.NAT]) {
+        const j = await geo(src, Z, x, y);
         if (seq !== drawSeq || era) return;   // ⚠ 待っているうちに写真へ切り替わることがある
         if (!j) continue;
         for (const f of j.features ?? []) {
@@ -263,6 +267,42 @@
           }
         }
       }
+    }
+    // ⚠ 試作（案A）: 詳細版が 1 面も取れなかったら、広域版で塗る
+    if (!tally.size) {
+      const nC = 2 ** LF.COARSE, W = TILE * (2 ** Z);
+      const lon2t = (lo) => Math.floor((lo + 180) / 360 * nC);
+      const lat2t = (la) => Math.floor((1 - Math.log(Math.tan(la * Math.PI / 180)
+        + 1 / Math.cos(la * Math.PI / 180)) / Math.PI) / 2 * nC);
+      const px2lonL = (X) => X / W * 360 - 180;
+      const px2latL = (Y) => Math.atan(Math.sinh(Math.PI * (1 - 2 * Y / W))) * 180 / Math.PI;
+      const tx0 = lon2t(px2lonL(left)), tx1 = lon2t(px2lonL(left + w));
+      const ty0 = lat2t(px2latL(top)), ty1 = lat2t(px2latL(top + h));
+      for (let x = Math.min(tx0, tx1); x <= Math.max(tx0, tx1); x++)
+        for (let y = Math.min(ty0, ty1); y <= Math.max(ty0, ty1); y++) {
+          const j = await geo(LF.NAT, LF.COARSE, x, y);
+          if (seq !== drawSeq || era) return;
+          if (!j) continue;
+          for (const f of j.features ?? []) {
+            const nm = tbl.codes[String(f.properties?.code ?? "")];
+            if (!nm || !f.geometry) continue;
+            g.fillStyle = paint(nm);
+            tally.set(nm, (tally.get(nm) ?? 0) + area(f.geometry));
+            const polys = f.geometry.type === "Polygon" ? [f.geometry.coordinates]
+              : f.geometry.type === "MultiPolygon" ? f.geometry.coordinates : [];
+            for (const pp of polys) {
+              g.beginPath();
+              for (const ring of pp) {
+                ring.forEach(([lo, la], i) => {
+                  const px = lon2px(lo) - left, py = lat2px(la) - top;
+                  i ? g.lineTo(px, py) : g.moveTo(px, py);
+                });
+                g.closePath();
+              }
+              g.fill("evenodd");
+            }
+          }
+        }
     }
     if (seq !== drawSeq) return;
     seen = tally;

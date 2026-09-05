@@ -3649,6 +3649,35 @@ CASES.push({
   },
 });
 
+// ⚠ **同じタイルを 2 回引かない**（hidetzu/konjaku#494）。
+//
+// ⚠ **実測（2026-09-06・本番 `87a35cc`）**: ⚠ **点の判定と地図の面の塗りが、⚠ 別々のキャッシュで
+//   ⚠ 同じタイルを引いていた。**⚠ **/ 豊洲 6 / 30 本・軽井沢 9 / 43 本が同じ URL だった。**
+//   ⚠ **0〜356ms 差で 2 回。**⚠ **相手先は国土地理院。**⚠ **こちらの都合で 2 割よけいに叩いていた。**
+//
+// ⚠ **静的検査は「口が 1 つか」を見る。**⚠ **ここが見るのは「本当に減ったか」。**
+//   ⚠ **口をまとめてもキャッシュを共有しなければ、⚠ 重複は残る**（⚠ 静的検査では見えない）。
+CASES.push({
+  name: "地形分類のタイルを、⚠ 同じ URL で 2 回引かない",
+  path: `/?${TOYOSU}`, origin: NEXT_BASE, viewport: SP,
+  async check(page) {
+    const 本 = [];
+    page.on("request", (r) => {
+      if (/experimental_landformclassification/.test(r.url())) 本.push(r.url());
+    });
+    await waitAnswer(page); await waitEras(page);
+    // ⚠ **塗りが落ち着くのを待つ**（⚠ 器ではなく、⚠ 本数が増えなくなること）
+    let 前 = -1;
+    for (let i = 0; i < 20 && 本.length !== 前; i++) { 前 = 本.length; await page.waitForTimeout(700); }
+    const 重 = 本.length - new Set(本).size;
+    must(本.length > 0, "地形分類のタイルを 1 本も引いていない（⚠ この検査が何も見ていない）");
+    must(重 === 0,
+      `同じタイルを 2 回引いている: ${重} 本 / 全 ${本.length} 本`
+      + `（例 ${[...new Set(本.filter((u, i) => 本.indexOf(u) !== i))][0] ?? ""}）`);
+    return `地形分類 ${本.length} 本・同じ URL 0 本`;
+  },
+});
+
 // ⚠ **検索の候補を押したら、⚠ 窓の字も、⚠ 選んだ場所になること**（2026-09-06。Owner が見つけた）。
 //
 // ⚠ **実測（2026-09-06・本番 `4a2188c`）**: ⚠ **「静岡市」と打って「静岡市役所」を選んでも、

@@ -1895,4 +1895,62 @@ else {
           + "（⚠ 時間切れと失敗の返し方も、⚠ そこが持つ）");
   }
 
+  // ⚠ **㉗ 地形分類のベクトルタイルを取る口も 1 か所**（hidetzu/konjaku#494）。
+  //
+  // ⚠ **実測（2026-09-06・`87a35cc`）**: ⚠ **入口が 2 か所あった。**
+  //   ⚠ **`verify.js` は点の判定、⚠ `top.js` は地図の面の塗り。**⚠ **キャッシュも別だった。**
+  //   ⚠ **同じ URL が 2 回ずつ外へ出ていた**（⚠ / 豊洲 6/30 本・軽井沢 9/43 本）。
+  //   ⚠ **`top.js` のコメントが「`verify.js` の LFC_FINE と揃える」と書いていた**
+  //     （⚠ **揃わなくなりうる、という印そのもの**）。
+  //
+  // ⚠ **実際に食い違っていた**: ⚠ **軽井沢は詳細版が無く広域版へ落ちるので、
+  //   ⚠ 文章は「いまの地形は 低地」と答えるのに、⚠ 地図は 0 画素だった。**
+  {
+    const 欠け = [];
+    const 口 = "verify.js";
+    // ⚠ **コメントを先に落とす**（`CLAUDE.md` §5）。⚠ **落とさないと、⚠ 説明の字を拾う。**
+    const 素 = (f) => readFileSync(join(NEXT, f), "utf8")
+      .replace(BLOCK_COMMENT, " ").replace(HEAD_COMMENT, "");
+
+    // ⚠ **タイルの URL を組み立てているのは、⚠ 口だけ**
+    const 組む = [];
+    for (const f of readdirSync(NEXT).filter((x) => /\.js$/.test(x))) {
+      if (f === 口) continue;
+      for (const m of 素(f).matchAll(/experimental_landformclassification\d?/g))
+        組む.push(`${f}: ${m[0]}`);
+    }
+    if (組む.length)
+      欠け.push(`レイヤ名を、⚠ 口の外に書いている: ${[...new Set(組む)].join(" ／ ")}`);
+
+    // ⚠ **配信元を組み立てているのも、⚠ 口だけ**
+    //   ⚠ **レイヤ名を消しただけでは足りない**（⚠ ホストと縮尺だけでも URL は作れる）。
+    const 宛先 = [];
+    for (const f of readdirSync(NEXT).filter((x) => /\.js$/.test(x))) {
+      if (f === 口) continue;
+      if (/maps\.gsi\.go\.jp\/xyz/.test(素(f))) 宛先.push(f);
+    }
+    if (宛先.length)
+      欠け.push(`タイルの配信元を、⚠ 口の外で組み立てている: ${宛先.join(" ／ ")}`);
+
+    // ⚠ **縮尺も口が持つ**（⚠ 画面が 16 を直に書かない）
+    const top = 素("top.js");
+    // ⚠ **口の `tile()` を実際に呼んでいること。**⚠ **名前が在るだけでは通さない**
+    //   （⚠ 実際に素通りした。⚠ `Konjaku.landformTiles.FINE` が別の行に在るだけで通った）。
+    if (!/(?:LF|Konjaku\.landformTiles)\.tile\(/.test(top))
+      欠け.push("top.js が口の tile() を呼んでいない（⚠ 別の口で引いている）");
+    if (/const Z = 1[0-9]\b/.test(top))
+      欠け.push("top.js が縮尺を直に書いている（⚠ 口の FINE から取る）");
+
+    // ⚠ **口が、⚠ 詳細版と広域版の両方を名乗ること**（⚠ 落ちる先を 1 か所で決める）
+    const v = 素(口);
+    for (const k of ["FINE", "COARSE", "NAT", "ART"])
+      if (!new RegExp(`landformTiles[\\s\\S]{0,400}${k}\\s*:`).test(v))
+        欠け.push(`${口} の口が ${k} を持っていない`);
+
+    欠け.length
+      ? bad(`地形分類のタイルを取る口が 1 か所になっていない: ${欠け.join(" ／ ")}`)
+      : ok("地形分類のベクトルタイルを取る口は verify.js の 1 か所"
+          + "（⚠ 縮尺とレイヤ名も、⚠ そこが持つ）");
+  }
+
 }
