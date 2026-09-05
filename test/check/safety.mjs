@@ -61,9 +61,11 @@ head("1.6 計測の貯め先");
   else if (w.includes("PLACEHOLDER"))
     bad("wrangler.jsonc の database_id が PLACEHOLDER のまま（`npx wrangler d1 create konjaku` で作った id を入れる）");
   else ok("D1 の設定がある");
-  existsSync(join(ROOT, "migrations", "0001_tick.sql"))
-    ? ok("migrations がある")
-    : bad("migrations/0001_tick.sql が無い");
+  // ⚠ **計測の表は 2026-09-06 に作り直した**（`docs/adr/0102`）。
+  //   ⚠ **`0001_tick.sql` は残す**（⚠ β のデータが入っている）。⚠ **書く側が無いだけ。**
+  existsSync(join(ROOT, "migrations", "0003_events.sql"))
+    ? ok("計測の表（migrations/0003_events.sql）がある")
+    : bad("migrations/0003_events.sql が無い（⚠ 計測が貯まらない）");
 }
 
 // ⚠ ここまで worker.js は **構文しか見ていなかった**。
@@ -71,65 +73,90 @@ head("1.6 計測の貯め先");
 //   一度も通っていない（ブラウザが何を送るかは見ているが、受け側は見ていない）。
 //   つまり「何を数えるか」の判定は、**どの検査からも実行されていなかった**。
 //   読む前に落とす処理を入れたので、ここで実際に呼ぶ。
-head("1.7 計測の受け口（/t を実際に呼ぶ）");
+head("1.7 計測の受け口（/api/events を実際に呼ぶ）");
+// ⚠ **ここまで `worker.js` は構文しか見ていなかった。**
+//   ⚠ **実描画は計測の口を横取りするので、⚠ 本物の Worker を一度も通らない。**
+//   ⚠ **つまり「何を数えるか」の判定は、⚠ どの検査からも実行されていなかった**（2026-08-15）。
+//
+// ⚠ **2026-09-06 に、⚠ 口を `/t` から `/api/events` へ作り直した**（`docs/adr/0102`）。
+//   ⚠ **主張は同じ**（⚠ 列挙の外は数えない・⚠ 読む前に落とす・⚠ よそから数えない）。
+//   ⚠ **足したのは 2 つ**: ⚠ **座標を送りつけても入らないこと**と、
+//     ⚠ **画面側と受け側の一覧がずれていないこと。**
 {
   const mod = await import(join(ROOT, "worker.js")).catch((e) => { bad(`worker.js を読めない: ${e.message}`); return null; });
-  if (mod?.default?.fetch) {
+  const EV = await import(join(ROOT, "events.js")).catch(() => null);
+  if (!EV) bad("events.js を読めない（⚠ この検査が何も見ていない）");
+  if (mod?.default?.fetch && EV) {
     const ORIGIN = "https://konjaku.hidetzu.work";
-    // D1 の代わり。書き込もうとした中身をそのまま溜める
+    // ⚠ **D1 の代わり。**⚠ **書き込もうとした中身をそのまま溜める。**
     const writes = [];
     const env = { DB: { prepare: (sql) => ({ bind: (...a) => ({ run: async () => { writes.push({ sql, a }); } }) }) } };
-    // ⚠ 本物と同じ形で投げる。Content-Length を自分で付けないと、
-    //   この検査だけが通って本番で落ちる（逆も同じ）
     const post = async (body, opt = {}) => {
       writes.length = 0;
       const headers = { Origin: opt.origin ?? ORIGIN };
       if (!opt.noLength) headers["Content-Length"] = String(opt.len ?? new TextEncoder().encode(body).length);
-      // ⚠ GET に body は付けられない（undici が投げる）。メソッドを変える検査では外す
       const method = opt.method ?? "POST";
-      const req = new Request(`${ORIGIN}/t`,
+      const req = new Request(`${ORIGIN}/api/events`,
         method === "GET" || method === "HEAD" ? { method, headers } : { method, body, headers });
       const res = await mod.default.fetch(req, env);
-      return { status: res.status, wrote: writes.length };
+      return { status: res.status, wrote: writes.length, 行: writes[0]?.a ?? null };
     };
+    const 本文 = (o) => JSON.stringify({ referrer: "direct", ...o });
 
-    // ① 実際に送っている本文が、全部数えられること。
-    //   一覧は worker.js から取り出す（ここに書き写すと、同じ問いに答える実装が2つになる）。
-    // ⚠ **コメントを先に落とす。** 落とさないと、EVENTS の中のコメントに書いてある
-    //   `"後で"`（「使われなければ後で消す」の説明）を本文の一覧として拾い、
-    //   「/t が数えていない本文がある: 後で」で落ちる。実際に踏んだ（2026-08-15）。
-    //   CLAUDE.md §5 が「コメントを先に落とす」と書いているのは、これで何度目か。
-    const wsrc = (await readFile(join(ROOT, "worker.js"), "utf8"))
-      // ⚠ **`//` は、⚠ `https://` を巻き込まない形で落とす**（2026-08-24）。
-      //   ⚠ **いまは worker.js の URL がコメント行の中なので実害は無い**（⚠ 実測: 差 0 文字）。
-      //   ⚠ **URL を 1 行足された瞬間に、⚠ その行の残りが検査の目から消える。**
-      .replace(BLOCK_COMMENT, " ").replace(LINE_COMMENT, "$1");
-    const setOf = (name) => [...(new RegExp(`const ${name} = new Set\\(\\[([\\s\\S]*?)\\]\\)`).exec(wsrc)?.[1] ?? "")
-      .matchAll(/"([^"]+)"/g)].map((m) => m[1]);
-    const EV = setOf("EVENTS"), TG = setOf("TARGETS"), SR = setOf("SOURCES");
-    const legit = [...EV, ...TG.flatMap((t) => [`health:${t}:ok`, `health:${t}:fail`]), ...SR.map((s) => `from:${s}`)];
-    if (!legit.length) bad("worker.js から、受け付ける本文の一覧を取り出せない（この検査が何も見ていない）");
-    else {
-      const miss = [];
-      for (const b of legit) { const r = await post(b); if (r.wrote !== 1) miss.push(b); }
-      miss.length ? bad(`/t が数えていない本文がある: ${miss.join("、")}`)
-                  : ok(`/t が ${legit.length} 種すべてを数える（最長 ${Math.max(...legit.map((x) => x.length))} 文字）`);
+    // ⚠ **① 画面側と受け側の一覧が、⚠ 同じであること。**
+    //   ⚠ **ずれると、⚠ 画面が送っているのに 1 件も入らない**（⚠ β で実際に踏んだ形）。
+    {
+      const 画面 = (await readFile(join(ROOT, "public", "measure.js"), "utf8"))
+        .replace(BLOCK_COMMENT, " ").replace(LINE_COMMENT, "$1");
+      const setOf = (name) => new Set([...(new RegExp(`const ${name} = new Set\\(\\[([\\s\\S]*?)\\]\\)`)
+        .exec(画面)?.[1] ?? "").matchAll(/"([^"]+)"/g)].map((m) => m[1]));
+      const 組 = [["EVENTS", EV.EVENTS], ["SOURCES", EV.SOURCES], ["ENTRIES", EV.ENTRIES], ["PAGES", EV.PAGES]];
+      const ずれ = [];
+      for (const [名, 受] of 組) {
+        const 送 = setOf(名);
+        if (!送.size) { ずれ.push(`${名}: measure.js から取り出せない`); continue; }
+        const 片 = [...送].filter((x) => !受.has(x)).concat([...受].filter((x) => !送.has(x)));
+        if (片.length) ずれ.push(`${名}: ${片.join("、")}`);
+      }
+      ずれ.length
+        ? bad(`画面と受け側で、⚠ 一覧がずれている: ${ずれ.join(" ／ ")}`)
+        : ok(`画面（measure.js）と受け側（events.js）の一覧が同じ（⚠ ${組.map(([n, v]) => `${n} ${v.size}`).join(" / ")}）`);
     }
 
-    // ② 大きい body が、**読まれずに**落ちること（ここが本体）
-    //
-    // ⚠ 「書き込みが 0 だった」では、この主張を検証できない。
-    //   直す前の実装（読み切ってから 48 文字に切る）でも、切った結果は列挙に無いので
-    //   書き込みは 0 になる。**実際に緑のまま通った**（2026-08-15）。
-    //   見たいのは結果ではなく「body に手を付けたかどうか」なので、
-    //   body を流れにして、引かれたかどうかを記録する。
-    //   ⚠ body を ReadableStream にして「引かれたか」を見る手は使えない。
-    //     undici は Request を作った時点で、こちらの処理と関係なく流れを引く
-    //     （実測: 構築直後は false、1tick 後に true）。それでは何も切り分けられない。
-    //     見るのは **`req.text()` が呼ばれたかどうか**。主張はそれそのもの。
-    const big = "judged.ok" + "A".repeat(100_000);
+    // ⚠ **② 列挙にある本文が、⚠ 全部数えられること。**
     {
-      const real = new Request(`${ORIGIN}/t`, { method: "POST", body: big,
+      const miss = [];
+      for (const e of EV.EVENTS) {
+        const r = await post(本文({ event_type: e, session_id: "0123456789abcdef", metadata: { page: "map" } }));
+        if (r.wrote !== 1) miss.push(e);
+      }
+      miss.length ? bad(`/api/events が数えていないイベントがある: ${miss.join("、")}`)
+                  : ok(`/api/events が ${EV.EVENTS.size} 種すべてを数える`);
+    }
+
+    // ⚠ **③ 座標を送りつけても、⚠ 1 つも入らないこと**（⚠ ここが「案A」の本体）。
+    {
+      const r = await post(本文({ event_type: "map_opened", latitude: 35.6553, longitude: 139.7967,
+        prefecture: "東京都", user_agent: "Mozilla/5.0" }));
+      const 入った = JSON.stringify(r.行 ?? []);
+      r.wrote === 1 && !/35\.6553|139\.7967|東京都|Mozilla/.test(入った)
+        ? ok("座標・都道府県・user-agent を送りつけても、⚠ 表に入らない")
+        : bad(`送りつけたものが表に入っている: ${入った}`);
+    }
+
+    // ⚠ **④ 生の流入元は入らない**（⚠ 列挙の名前だけ）
+    {
+      const r = await post(本文({ event_type: "page_load", referrer: "https://example.com/secret" }));
+      r.wrote === 0 ? ok("列挙に無い流入元は数えない（⚠ 生の URL は入らない）")
+                    : bad("生の流入元を数えてしまう");
+    }
+
+    // ⚠ **⑤ 大きい本文を、⚠ 読まずに落とすこと**（⚠ ここが本体）。
+    //   ⚠ **「書き込みが 0 だった」では、⚠ この主張を検証できない**（⚠ 読み切ってから捨てても 0）。
+    //   ⚠ **見るのは `req.text()` が呼ばれたかどうか。**
+    {
+      const big = JSON.stringify({ event_type: "page_load", referrer: "direct", pad: "A".repeat(100_000) });
+      const real = new Request(`${ORIGIN}/api/events`, { method: "POST", body: big,
         headers: { Origin: ORIGIN, "Content-Length": String(new TextEncoder().encode(big).length) } });
       let readBody = false;
       const spy = new Proxy(real, {
@@ -148,20 +175,30 @@ head("1.7 計測の受け口（/t を実際に呼ぶ）");
         ? ok(`大きい本文（${big.length} 文字）に手を付けずに落とす（204・書き込み 0）`)
         : bad(`大きい本文を読んでいる（req.text() を呼んだ: ${readBody} / status ${res.status} / 書き込み ${writes.length}）`);
     }
-    // ⚠ Content-Length を詐称しても、切り詰めた結果が列挙に無ければ数えない
-    const r2 = await post(big, { len: 9 });
-    r2.wrote === 0
-      ? ok("Content-Length を偽っても、列挙に無い本文は数えない")
-      : bad("Content-Length を偽ると数えてしまう");
-    // ③ Content-Length が無いもの（chunked）も落ちること
-    const r3 = await post("judged.ok", { noLength: true });
-    r3.wrote === 0
-      ? ok("Content-Length が無い本文は落ちる")
-      : bad("Content-Length が無くても数えてしまう（ヘッダを付けなければ素通り）");
-    // ④ 既にある約束（Origin・メソッド・列挙外）も、ここで一度に見ておく
-    const r4 = await post("judged.ok", { origin: "https://evil.example.com" });
-    const r5 = await post("judged.ok", { method: "GET" });
-    const r6 = await post("judged.nope");
+
+    // ⚠ **⑥ 上限が、⚠ 実際に送る本文より短くないこと**（⚠ 短いと静かに数えなくなる）。
+    {
+      const 最長 = JSON.stringify({
+        event_type: [...EV.EVENTS].reduce((a, b) => (a.length >= b.length ? a : b)),
+        session_id: "0".repeat(36), referrer: [...EV.SOURCES].reduce((a, b) => (a.length >= b.length ? a : b)),
+        entry_point: [...EV.ENTRIES].reduce((a, b) => (a.length >= b.length ? a : b)),
+        metadata: { page: [...EV.PAGES].reduce((a, b) => (a.length >= b.length ? a : b)) },
+      });
+      const 長さ = new TextEncoder().encode(最長).length;
+      長さ <= EV.MAX_BODY
+        ? ok(`いちばん長い本文は ${長さ} バイト（⚠ 上限 ${EV.MAX_BODY}）`)
+        : bad(`上限（${EV.MAX_BODY}）より長い本文を送る形になっている（${長さ} バイト）`);
+      const r = await post(最長);
+      r.wrote === 1 ? ok("いちばん長い本文も数える") : bad("いちばん長い本文が数えられない");
+    }
+
+    // ⚠ **⑦ 既にある約束**（⚠ Content-Length・Origin・メソッド・列挙外）
+    const r3 = await post(本文({ event_type: "page_load" }), { noLength: true });
+    r3.wrote === 0 ? ok("Content-Length が無い本文は落ちる")
+                   : bad("Content-Length が無くても数えてしまう（ヘッダを付けなければ素通り）");
+    const r4 = await post(本文({ event_type: "page_load" }), { origin: "https://evil.example.com" });
+    const r5 = await post(本文({ event_type: "page_load" }), { method: "GET" });
+    const r6 = await post(本文({ event_type: "nope" }));
     r4.wrote === 0 && r4.status === 204 ? ok("よそのオリジンからは数えない（204）") : bad("よそのオリジンから数えてしまう");
     r5.status === 405 ? ok("POST 以外は 405") : bad(`POST 以外が ${r5.status}`);
     r6.wrote === 0 ? ok("列挙に無い本文は数えない") : bad("列挙に無い本文を数えてしまう");
