@@ -3649,6 +3649,86 @@ CASES.push({
   },
 });
 
+// ⚠ **詳細版が無い土地でも、⚠ 地図が答えと同じことを言う**（hidetzu/konjaku#494。Owner 判断）。
+//
+// ⚠ **実測（2026-09-06・本番 `87a35cc`）**: ⚠ **軽井沢は詳細版（z16）が 404 で、⚠ 広域版（z13）に面が在る。**
+//   ⚠ **判定は広域版へ落ちて区分を答えるのに、⚠ 地図は 0 画素だった。**
+// ⚠ **利用者役 3 名のうち 1 名が、⚠ 文章のほうを疑った**（⚠ 実在の利用者ではない）:
+//   ⚠ 「地図に無いのに、⚠ どこから低地だと言っているんだろう」。
+//
+// ⚠ **豊洲（詳細版が在る土地）は、⚠ 変わっていないことも見る。**⚠ **落ちる先を足しただけ。**
+for (const [名, ll, 詳細版] of [
+  ["詳細版が無い土地（軽井沢）", "ll=36.3428,138.6350", false],
+  ["詳細版が在る土地（豊洲）", TOYOSU, true],
+]) {
+  CASES.push({
+    name: `${名}で、⚠ 地図が答えと同じことを言う`,
+    path: `/?${ll}`, origin: NEXT_BASE, viewport: SP,
+    async check(page) {
+      await waitAnswer(page);
+      // ⚠ **器ではなく、⚠ 塗りが落ち着くのを待つ**（`CLAUDE.md` §9）
+      await page.waitForFunction(() => {
+        const c = document.querySelector("canvas");
+        if (!c) return false;
+        const d = c.getContext("2d").getImageData(0, 0, c.width, c.height).data;
+        let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 8) n++;
+        const 前 = globalThis.__塗り ?? -1; globalThis.__塗り = n;
+        return n === 前 && n > 0;
+      }, null, { timeout: 30000, polling: 1200 })
+        .catch(() => { throw new Error("地図が 1 画素も塗られないまま 30 秒たった"); });
+      const r = await page.evaluate(() => {
+        const c = document.querySelector("canvas");
+        const d = c.getContext("2d").getImageData(0, 0, c.width, c.height).data;
+        let 塗り = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 8) 塗り++;
+        const li = [...document.querySelectorAll("#legend li")];
+        return { 塗り, 凡例: li.map((e) => e.textContent.trim()),
+                 見えている: li.length > 0 && li[0].checkVisibility(),
+                 段: new Set(li.map((e) => Math.round(e.getBoundingClientRect().top))).size,
+                 二行目: document.getElementById("sub").textContent.trim() };
+      });
+      must(r.塗り > 0, "地図が 1 画素も塗られていない（⚠ 答えは区分を言っているのに）");
+      // ⚠ **凡例は初期画面に出る**（⚠ 色の意味が無いと、⚠ 3/3 が緑を「森」と読んだ）
+      must(r.見えている, "凡例が初期画面に出ていない（⚠ 色の意味が分からない）");
+      must(r.凡例.length >= 2, `凡例が ${r.凡例.length} 行しかない`);
+      // ⚠ **足元の区分が、⚠ 必ず 1 つ目**（⚠ 自分の立っているところが分からなくなる）
+      must(/（ここ）$/.test(r.凡例[0]), `凡例の 1 つ目が足元ではない: ${r.凡例[0]}`);
+      // ⚠ **答えの 2 行目に出ている区分が、⚠ 凡例にも在る**（⚠ 文章と地図が同じことを言う）
+      const 足元 = r.凡例[0].replace("（ここ）", "");
+      must(r.二行目.includes(足元),
+        `答えと凡例が違う区分を言っている: 凡例「${足元}」／ 2 行目「${r.二行目}」`);
+      return `塗り ${r.塗り} 画素・凡例 ${r.段} 段 ${JSON.stringify(r.凡例)}`;
+    },
+  });
+}
+
+// ⚠ **いちばん狭い幅では、⚠ 凡例が 1 段に収まる**（2026-09-06。Owner 判断）。
+//   ⚠ **3 種だと 2 段になり、⚠ 板が 47%・見える地図が 177px まで落ちる**（⚠ 実測 320×640・軽井沢）。
+//   ⚠ **数は CSS の 1 か所が決める**（`#legend::before`）。⚠ **ここは、⚠ 結果が 1 段かを見る。**
+CASES.push({
+  name: "いちばん狭い幅で、⚠ 凡例が 1 段に収まる",
+  path: "/?ll=36.3428,138.6350", origin: NEXT_BASE, viewport: { width: 320, height: 640 },
+  async check(page) {
+    await waitAnswer(page);
+    await 待つ(page, () => document.querySelectorAll("#legend li").length > 0, "凡例");
+    await page.waitForTimeout(2500);
+    const r = await page.evaluate(() => {
+      const li = [...document.querySelectorAll("#legend li")];
+      const c = document.getElementById("card").getBoundingClientRect();
+      const bar = document.getElementById("bar").getBoundingClientRect();
+      return { 段: new Set(li.map((e) => Math.round(e.getBoundingClientRect().top))).size,
+               字: li.map((e) => e.textContent.trim()),
+               板: Math.round(c.height), 割合: Math.round(c.height / innerHeight * 100),
+               地図: Math.round(c.top - bar.bottom),
+               横あふれ: document.documentElement.scrollWidth > document.documentElement.clientWidth };
+    });
+    must(r.段 === 1, `凡例が ${r.段} 段になっている: ${JSON.stringify(r.字)}`);
+    must(!r.横あふれ, "画面が横にあふれている");
+    // ⚠ **板が画面の半分を超えない**（⚠ 地図が主役。`docs/adr/0064`）
+    must(r.割合 <= 50, `板が画面の ${r.割合}% を占めている（⚠ 地図が ${r.地図}px しかない）`);
+    return `凡例 1 段 ${JSON.stringify(r.字)}・板 ${r.板}px(${r.割合}%)・地図 ${r.地図}px`;
+  },
+});
+
 // ⚠ **同じタイルを 2 回引かない**（hidetzu/konjaku#494）。
 //
 // ⚠ **実測（2026-09-06・本番 `87a35cc`）**: ⚠ **点の判定と地図の面の塗りが、⚠ 別々のキャッシュで
@@ -4373,8 +4453,13 @@ for (const [名, viewport, 畳む] of [
       // ⚠ **狭い幅は畳む**
       must(!r.開いている, "狭い幅なのに、⚠ 板が開いている");
       must(r.押す口, "畳んだのに、⚠ 開く口が無い");
-      must(!r.年代 && !r.凡例 && !r.なぜ,
-        `畳んだのに中身が出ている（年代 ${r.年代} 凡例 ${r.凡例} なぜ ${r.なぜ}）`);
+      // ⚠ **凡例は、⚠ 2026-09-06 に畳む側から外した**（Owner 判断。hidetzu/konjaku#494）。
+      //   ⚠ **地図を色で塗るのに、⚠ 色の意味が初期画面に無かった。**
+      //   ⚠ **利用者役 3 名（実在の利用者ではない）の 3/3 が、⚠ 緑を「森・公園・緑地」と読んだ。**
+      //   ⚠ **だから、⚠ ここでは「出ていること」を求める**（⚠ 前は「出ていないこと」を求めていた）。
+      must(!r.年代 && !r.なぜ,
+        `畳んだのに中身が出ている（年代 ${r.年代} なぜ ${r.なぜ}）`);
+      must(r.凡例, "畳んだら凡例まで消えた（⚠ 地図の色の意味が分からなくなる）");
       // ⚠ **畳んだ意味があること。**⚠ **板が画面の半分を超えない。**
       must(r.割合 <= 45, `畳んでも板が画面の ${r.割合}% を占めている`);
       const 閉 = r.板;
@@ -4383,7 +4468,7 @@ for (const [名, viewport, 畳む] of [
       await page.click(".fold__sum");
       await page.waitForTimeout(400);
       const 開 = await 見る();
-      must(開.開いている && 開.年代 && 開.凡例 && 開.なぜ,
+      must(開.開いている && 開.年代 && 開.なぜ,
         "押しても開かない（⚠ 押しても何も起きない導線になっている）");
       must(開.板 > 閉, `押しても板が伸びない（${閉} → ${開.板}）`);
       must(!開.横あふれ, "開いたら、画面が横にあふれた");
@@ -4406,8 +4491,9 @@ for (const [名, viewport, 畳む] of [
       //   ⚠ **`閉` を測った時点では、⚠ 「この先で、土地が変わる」の 1 行がまだ来ていない**
       //     （⚠ 相手先から返るのを待っている）。⚠ **あとから来ると 25px 増える。**
       //   ⚠ **それを「畳めていない」と読んで落ちた。**⚠ **高さは、⚠ 畳んだかどうかの証拠にならない。**
-      must(!後.年代 && !後.凡例 && !後.なぜ,
-        `場所を変えたのに中身が出たまま（年代 ${後.年代} 凡例 ${後.凡例} なぜ ${後.なぜ}）`);
+      // ⚠ **凡例は畳む側ではない**（2026-09-06。hidetzu/konjaku#494。⚠ 上と同じ理由）。
+      must(!後.年代 && !後.なぜ,
+        `場所を変えたのに中身が出たまま（年代 ${後.年代} なぜ ${後.なぜ}）`);
       must(後.板 < 開.板 - 50,
         `場所を変えたのに板が縮んでいない（開 ${開.板}px → ${後.板}px）`);
       return `閉 ${閉}px(${r.割合}%)・地図 ${r.地図}px → 開 ${開.板}px → 動かすと ${後.板}px（⚠ 中身は畳まれている）`;

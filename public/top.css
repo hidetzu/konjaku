@@ -81,6 +81,14 @@ body{
    top.js は、この印を読むだけ（getComputedStyle の content）。 */
 .fold::before{content:"fold"; display:none}
 @media (min-width:700px){ .fold::before{content:"open"} }
+
+/* 凡例に出す区分の数。幅で変わるので、幅の数はここ 1 か所が持つ
+   （.fold::before と同じやり方。JavaScript は読むだけ）。
+   いちばん狭い幅で 3 種にすると凡例が 2 段になり、板が画面の 47%・
+   見える地図が 177px まで落ちる。2 種なら 1 段で 44% / 201px
+   （実測 2026-09-06・320×640・軽井沢）。3 つ目は「ほか n 種を見る」に回る。 */
+#legend::before{content:"2"; display:none}
+@media (min-width:344px){ #legend::before{content:"3"} }
 .fold__sum{
   display:flex; align-items:center; gap:var(--gap-sub);
   min-height:var(--tap); margin:var(--gap-sub) 0 0;
