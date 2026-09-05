@@ -25,7 +25,7 @@
 // ⚠ **道具は `test/check/lib.mjs` の 1 か所**（⚠ ここで持ち直さない）。
 
 import { readFile, readdir } from "node:fs/promises";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { ROOT, PUB, ok, bad, warn, head, src , BLOCK_COMMENT, HTML_COMMENT, HEAD_COMMENT, LINE_COMMENT, dropComment } from "./lib.mjs";
 
@@ -377,4 +377,37 @@ import { ROOT, PUB, ok, bad, warn, head, src , BLOCK_COMMENT, HTML_COMMENT, HEAD
           + `${[...生きている].join(" ／ ")}。⚠ **いま在るが、⚠ 消えても誰も気づけない**`)
       : ok(`追跡ファイルは、⚠ 追跡していない場所を指していない`
           + `（⚠ もう読めないと分かっているもの ${失われた.size} 件は、⚠ 理由つきで一覧に在る）`);
+}
+
+// ⚠ **規則が、⚠ 実在しない画面の話をしていないか**（2026-09-05 に踏んだ）。
+//
+// ⚠ **`.claude/rules/domain.md` は「`/peel` は…」と書き続けていた。**
+//   ⚠ **`/peel` は 2026-09-01 に降ろしている**（`docs/adr/0080`）。⚠ **4 日間、⚠ 誰も気づかなかった。**
+// ⚠ **古くなった規則は、⚠ コードより強く誤誘導する**（`CLAUDE.md` §5）。
+//
+// ⚠ **見るのは `MUST` / `SHOULD` の行だけ。**⚠ **経緯の説明は残ってよい**
+//   （⚠ 「`/peel` はもう無い」と書くために、⚠ その名前が要る）。
+{
+  head("規則が、実在しない画面を指していないか");
+  const 画面 = new Set();
+  for (const f of readdirSync(join(ROOT, "public")))
+    if (f.endsWith(".html")) 画面.add(`/${f.replace(/\.html$/, "")}`);
+  画面.add("/");   // ⚠ index.html は `/` で指す
+
+  const 漏れ = [];
+  const 規則 = join(ROOT, ".claude/rules");
+  for (const f of readdirSync(規則)) {
+    if (!f.endsWith(".md")) continue;
+    const 行 = readFileSync(join(規則, f), "utf8").split("\n");
+    行.forEach((l, i) => {
+      // ⚠ **決めごとの行だけ**（⚠ `- MUST:` `- SHOULD:` `- MAY:` `- AVOID:`）
+      if (!/^\s*-\s*(MUST NOT|MUST|SHOULD NOT|SHOULD|MAY|AVOID)\s*:/.test(l)) return;
+      for (const m of l.matchAll(/`(\/[a-z][\w-]*)`/g))
+        if (!画面.has(m[1])) 漏れ.push(`${f}:${i + 1} ${m[1]}`);
+    });
+  }
+  漏れ.length
+    ? bad(`規則が、⚠ 実在しない画面を決めごとにしている: ${漏れ.join(" ／ ")}`
+        + "（⚠ **古くなった規則は、⚠ コードより強く誤誘導する**。`CLAUDE.md` §5）")
+    : ok(`規則の決めごとは、⚠ いま在る画面だけを指している（⚠ ${画面.size} 枚）`);
 }
