@@ -42,13 +42,13 @@
 /* 帯は道具であって、読ませる場所ではない。
    太字を帯の幅いっぱいに置くと、答えの 1 文と太さで競う。
    名前だけ太字にして、続きは注記の濃さへ落とす（2026-08-31。字は 1 文字も変えていない）。 */
-.brand__title{font-size:.875rem; font-weight:700}
+.brand__title{font-size:var(--text-sm2); font-weight:700}
 /* 印と名前は 1 つのまとまり、添え書きはその説明。
    間を同じにすると 3 つが等間隔に並び、印が名前から離れて見える。
    印→名前 6px に対して、名前→添え書きは 8px（--gap-row）。 */
 .brand__tag{
   margin-left:var(--gap-row);
-  font-size:.75rem; font-weight:400; color:var(--ink-3);
+  font-size:var(--text-xs2); font-weight:400; color:var(--ink-3);
 }
 a.brand__name:hover{color:var(--action)}
 .brand__name:focus-visible{outline:2px solid var(--action); outline-offset:2px}
@@ -101,7 +101,7 @@ a.brand__name:hover{color:var(--action)}
 }
 .menu__item{
   display:flex; align-items:center; min-height:var(--tap);
-  padding:0 var(--pad-md); font-size:.875rem; color:var(--ink); text-decoration:none;
+  padding:0 var(--pad-md); font-size:var(--text-sm2); color:var(--ink); text-decoration:none;
   border-bottom:1px solid var(--line);
 }
 .menu__item:last-child{border-bottom:0}
@@ -156,7 +156,7 @@ a.brand__name:hover{color:var(--action)}
   display:flex; align-items:center; gap:var(--gap-row);
   min-height:var(--tap); padding:0 var(--pad-md);
   background:none; border:0; border-bottom:1px solid var(--line);
-  font:inherit; font-size:.875rem; color:var(--ink); text-align:left; cursor:pointer;
+  font:inherit; font-size:var(--text-sm2); color:var(--ink); text-align:left; cursor:pointer;
 }
 .theme__item:last-child{border-bottom:0}
 .theme__item:hover{background:var(--bg)}

@@ -4181,6 +4181,58 @@ for (const [名, viewport, 畳む] of [
   });
 }
 
+// ⚠ **調べている点の印が、⚠ 答えの板に隠れないこと**（2026-09-05。hidetzu/konjaku#456）。
+//
+// ⚠ **once 隠れていた**（⚠ 2026-09-01・360×640 で -47px）。
+//   ⚠ **`docs/adr/0091` で板を畳んで、⚠ +27px まで戻った。**⚠ **測って Close した。**
+// ⚠ **だが余裕は縮んでいる。**⚠ **実測（2026-09-05・本番）**:
+//     ⚠ **板 240〜270px ／ 地図の半分 320px。**⚠ **差は 50〜80px。**
+//   ⚠ **`layoutAim()` は「地図の半分」を上限にしている。**
+//   ⚠ **板がそれを超えると、⚠ 印は縦中央で止まり、⚠ そこから先は隠れる。**
+// ⚠ **板をあと 50px 伸ばしたら止まる形にする**（⚠ 規則だけでは約束にしかならない）。
+for (const [名, viewport] of [
+  ["いちばん背の低い幅", { width: 360, height: 640 }],
+  ["いちばん狭い幅", { width: 320, height: 640 }],
+  ["スマホ", SP],
+]) {
+  CASES.push({
+    name: `${名}で、⚠ 調べている点の印が答えの板に隠れない`,
+    path: `/?${KASUKABE}`, origin: NEXT_BASE, viewport,
+    async check(page) {
+      await waitAnswer(page);
+      // ⚠ **板が落ち着くのを待つ**（⚠ 年代・凡例・境目が後から来て高さが変わる）
+      await page.waitForFunction(() => {
+        const h = Math.round(document.getElementById("card").getBoundingClientRect().height);
+        const 前 = globalThis.__板 ?? -1;
+        globalThis.__板 = h;
+        return h === 前 && h > 0;
+      }, null, { timeout: 30000, polling: 1200 }).catch(() => {});
+      const r = await page.evaluate(() => {
+        const me = document.querySelector(".me"), lab = document.querySelector(".me-label");
+        const c = document.getElementById("card").getBoundingClientRect();
+        const m = document.getElementById("map").getBoundingClientRect();
+        const R = (e) => e && e.checkVisibility()
+          ? { 上: Math.round(e.getBoundingClientRect().top), 下: Math.round(e.getBoundingClientRect().bottom) }
+          : null;
+        return { 印: R(me), 字: R(lab),
+          板上: Math.round(c.top), 板高: Math.round(c.height),
+          地図の半分: Math.round(m.height / 2) };
+      });
+      must(r.印, "調べている点の印が出ていない（⚠ この検査が何も見ていない）");
+      must(r.字, "現在地の字が出ていない（⚠ 色と位置だけで言わない）");
+      // ⚠ **印も字も、⚠ 板より上に居ること**
+      must(r.印.下 <= r.板上, `印が板に隠れている（印の下端 ${r.印.下} ／ 板の上端 ${r.板上}）`);
+      must(r.字.上 <= r.板上, `現在地の字が板に隠れている（字の上端 ${r.字.上} ／ 板の上端 ${r.板上}）`);
+      // ⚠ **板が「地図の半分」を超えたら、⚠ 印は追いてこられない**（`layoutAim` の上限）。
+      //   ⚠ **超える前に止める。**⚠ **超えてからでは、⚠ 隠れた状態で気づくことになる。**
+      must(r.板高 < r.地図の半分,
+        `板が地図の半分を超えている（板 ${r.板高}px ／ 半分 ${r.地図の半分}px）`
+        + "。⚠ これを超えると、⚠ 印は縦中央で止まり、⚠ 板に隠れる");
+      return `印 ${r.板上 - r.印.下}px ／ 字 ${r.板上 - r.字.上}px ／ 板 ${r.板高}px（半分 ${r.地図の半分}px）`;
+    },
+  });
+}
+
 // ⚠ **散歩中の画面（`/`）にも、⚠ 1 行だけ出す**（2026-09-05。Owner 判断）。
 //
 // ⚠ **`/deep` は詳しい提示、⚠ `/` は気づきだけ。**⚠ **見出しは足さない。**
