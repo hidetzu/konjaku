@@ -388,6 +388,26 @@
     }
   }
 
+  // ⚠ 地形分類のベクトルタイルを読む口は、ここ 1 か所（hidetzu/konjaku#494）。
+  //
+  // なぜ要るか（実測 2026-09-06・`87a35cc`）:
+  //   点の判定（ここ）と、地図の面の塗り（top.js）が、別々に同じタイルを引いていた。
+  //   キャッシュも別だったので、同じ URL が 2 回ずつ外へ出ていた
+  //   （/ 豊洲 6/30 本・軽井沢 9/43 本）。
+  //   縮尺とレイヤ名も 2 か所にあり、top.js のコメントが
+  //   「verify.js の LFC_FINE と揃える」と書いていた（＝揃わなくなりうる印）。
+  //
+  // 実際に食い違っていた: 軽井沢は詳細版（z16）が無く広域版（z13）に落ちるので、
+  //   文章は「いまの地形は 低地」と答えるのに、地図は 0 画素だった。
+  //
+  // 返す形は geojson() と同じ（{ state, json, status }）。
+  //   404 は ABSENT。「そこに区分が無い」であって「読めなかった」ではない。
+  const landformTiles = {
+    NAT: LFC_NAT, ART: LFC_ART, FINE: LFC_FINE, COARSE: LFC_COARSE,
+    url: (layer, z, x, y) => `${LFC}/${layer}/${z}/${x}/${y}.geojson`,
+    tile: (layer, z, x, y) => geojson(`${LFC}/${layer}/${z}/${x}/${y}.geojson`),
+  };
+
   // 交差数判定。外側リングに入り、かつどの穴にも入らないものだけを採る
   function inRing(px, py, ring) {
     let hit = false;
@@ -1013,6 +1033,7 @@
   }
 
   global.Konjaku = { GSI, SWALE, ERAS, LATEST, AREA, tileOf, loadImage, classify, isWatery,
-    landform, border, meiji, swaleArea, swalePixel, elevation, photos, facts, narrate, badges, suggestions,
+    landform, landformTiles, border, meiji, swaleArea, swalePixel, elevation, photos, facts, narrate,
+    badges, suggestions,
     STATE: { OK, ABSENT, UNREACHABLE }, TIMEOUT_MS };
 })(window);
