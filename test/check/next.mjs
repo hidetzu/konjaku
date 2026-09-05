@@ -1797,4 +1797,42 @@ else {
           + "⚠ 字は answer.js が持ち、⚠ 判定は border.js の 1 か所（⚠ 3 通りを言い分ける）");
   }
 
+  // ---- ⚠ ㉕ 文字の大きさが、⚠ 段の外へ散っていないか ----
+  // ⚠ **色は `theme.css` の 1 か所に集まったが、⚠ 文字は直書きのままだった**
+  //   （hidetzu/konjaku#455）。⚠ **実測（2026-09-05）**: ⚠ **15 種・143 か所。**
+  //   ⚠ **4 日で上位 4 つが +23 か所増えていた**（⚠ 放っておくと増え続ける）。
+  //
+  // ⚠ **上位 5 つだけを段にした**（2026-09-05。Owner 判断）。⚠ **117 か所を寄せた。**
+  //   ⚠ **残りの 26 か所は直書きのまま。**⚠ **そこは落とさない**（⚠ 決めた範囲の外）。
+  //   ⚠ **見た目は 1px も変えていない**（⚠ 14 画面・1829 要素を前後で突き合わせた）。
+  //
+  // ⚠ **見るのは 2 つ。**⚠ **段が在ること。**⚠ **段に在る値を、⚠ 直書きで書かないこと。**
+  {
+    const 欠け = [];
+    const theme = readFileSync(join(NEXT, "theme.css"), "utf8");
+    // ⚠ **段は `theme.css` の 1 か所**（⚠ 色と同じ形）
+    const 段 = {};
+    for (const m of theme.matchAll(/--text-([\w-]+)\s*:\s*([^;]+);/g)) 段[`--text-${m[1]}`] = m[2].trim();
+    if (Object.keys(段).length < 5)
+      欠け.push(`文字の段が ${Object.keys(段).length} 個しかない（⚠ 5 段と決めてある）`);
+
+    // ⚠ **段に在る値を、⚠ 直書きで書かない**（⚠ 段の外に同じ値が生えたら落とす）
+    const 値の名 = new Map(Object.entries(段).map(([k, v]) => [v, k]));
+    const 直書き = [];
+    for (const f of readdirSync(NEXT).filter((x) => x.endsWith(".css"))) {
+      const src = readFileSync(join(NEXT, f), "utf8").replace(BLOCK_COMMENT, " ");
+      for (const m of src.matchAll(/font-size:\s*([^;}\s]+)/g)) {
+        const v = m[1].trim();
+        if (値の名.has(v)) 直書き.push(`${f}: font-size:${v}（⚠ var(${値の名.get(v)}) にする）`);
+      }
+    }
+    if (直書き.length)
+      欠け.push(`段に在る値を、⚠ 直書きしている: ${[...new Set(直書き)].join(" ／ ")}`);
+
+    欠け.length
+      ? bad(`文字の大きさが段の外へ散っている: ${欠け.join(" ／ ")}`)
+      : ok(`文字の大きさは、⚠ ${Object.keys(段).length} 段が theme.css の 1 か所にあり、`
+          + "⚠ 段に在る値を直書きしていない（⚠ 段の外の値は、⚠ まだ直書きのまま）");
+  }
+
 }

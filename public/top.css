@@ -30,7 +30,7 @@ body{
 #find{flex:1;display:flex}
 #q{
   flex:1; min-width:0; min-height:var(--tap);
-  padding:0 var(--pad-md); font:inherit; font-size:.9375rem;
+  padding:0 var(--pad-md); font:inherit; font-size:var(--text-sm);
   background:var(--surface); color:var(--ink);
   border:1px solid var(--line-strong); border-radius:.75rem;
   box-shadow:0 1px 6px color-mix(in srgb, var(--shadow) 10%, transparent);
@@ -63,7 +63,7 @@ body{
 #hits button{
   display:block; width:100%; min-height:var(--tap);
   padding:var(--pad-sm) var(--pad-md); text-align:left;
-  font:inherit; font-size:.875rem; color:var(--ink);
+  font:inherit; font-size:var(--text-sm2); color:var(--ink);
   background:none; border:0; cursor:pointer;
 }
 #hits button:hover,#hits button:focus-visible{background:var(--bg);outline:none}
@@ -85,11 +85,11 @@ body{
   display:flex; align-items:center; gap:var(--gap-sub);
   min-height:var(--tap); margin:var(--gap-sub) 0 0;
   list-style:none; cursor:pointer;
-  font-size:.8125rem; font-weight:700; color:var(--action);
+  font-size:var(--text-xs); font-weight:700; color:var(--action);
 }
 .fold__sum::-webkit-details-marker{display:none}
 /* 開いているかを、字でも示す。色と位置だけで言わない。 */
-.fold__sum::after{content:"▾"; font-size:.75rem}
+.fold__sum::after{content:"▾"; font-size:var(--text-xs2)}
 .fold[open] .fold__sum::after{content:"▴"}
 .fold__sum:focus-visible{outline:2px solid var(--action); outline-offset:2px}
 @media (min-width:700px){
@@ -110,7 +110,7 @@ body{
   margin:0 0 var(--gap-row); padding:var(--gap-sub) var(--gap-sub);
   pointer-events:none;
   background:var(--surface); border-radius:.5rem;
-  font-size:.75rem; line-height:1.5; color:var(--ink-2); text-align:center;
+  font-size:var(--text-xs2); line-height:1.5; color:var(--ink-2); text-align:center;
   box-shadow:0 1px 6px color-mix(in srgb, var(--shadow) 10%, transparent);
 }
 .steps__sep{color:var(--ink-3)}
@@ -179,7 +179,7 @@ body{
 }
 .kick{
   display:flex; align-items:center; justify-content:space-between; gap:var(--gap-sub);
-  margin:0 0 var(--gap-sub); font-size:.75rem; color:var(--ink-3);
+  margin:0 0 var(--gap-sub); font-size:var(--text-xs2); color:var(--ink-3);
   min-height:var(--tap);           /* 保存の的が入る */
 }
 /* 点と字は 1 つにまとめる。まとめないと space-between が 3 つに割れる。
@@ -192,7 +192,7 @@ body{
 /* 断りの行。名乗りの下に置き、折り返す（切らない）。
    ⚠ 危険の印（⚠）は使わない。あれは災害リスクに使っている。 */
 .kick__note{
-  margin:0 0 var(--gap-sub); font-size:.75rem; line-height:1.6; color:var(--ink-2);
+  margin:0 0 var(--gap-sub); font-size:var(--text-xs2); line-height:1.6; color:var(--ink-2);
 }
 .kick__note[hidden]{display:none}
 
@@ -211,7 +211,7 @@ body{
   flex:0 1 auto; min-width:0; min-height:var(--tap); padding:0 .75rem;
   display:flex; align-items:center; gap:.375rem;
   border:1px solid var(--line-strong); border-radius:.5rem; background:transparent;
-  font:inherit; font-size:.8125rem; font-weight:700; color:var(--action); cursor:pointer;
+  font:inherit; font-size:var(--text-xs); font-weight:700; color:var(--action); cursor:pointer;
 }
 .share[hidden]{display:none}
 .share > span:last-child{overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
@@ -226,7 +226,7 @@ body{
   flex:none; min-height:var(--tap); padding:0 .75rem;
   display:flex; align-items:center; gap:.375rem;
   border:1px solid var(--line-strong); border-radius:.5rem; background:transparent;
-  font:inherit; font-size:.8125rem; font-weight:700; color:var(--action); cursor:pointer;
+  font:inherit; font-size:var(--text-xs); font-weight:700; color:var(--action); cursor:pointer;
 }
 .save[hidden]{display:none}
 .save[aria-pressed="true"]{border-color:var(--action); background:var(--action); color:var(--action-ink)}
@@ -257,7 +257,7 @@ body{
 
 /* 明治期と写真の有無を 1 行で言う。詳しくは「なぜそう言える？」の中。
    無いものは書かない。取れなかったものも書かない（それは中で言う）。 */
-.sub{margin:var(--gap-sub) 0 0; font-size:.8125rem; line-height:1.5; color:var(--ink-2)}
+.sub{margin:var(--gap-sub) 0 0; font-size:var(--text-xs); line-height:1.5; color:var(--ink-2)}
 .sub b{color:var(--ink); font-weight:700}
 .sub[hidden]{display:none}
 
@@ -281,7 +281,7 @@ body{
 /* チップの見出し。押す前に「これは何か」を言う。
    印は飾りで、字が読めれば意味は通る。 */
 .eras__label{
-  margin:0 0 var(--gap-sub); font-size:.75rem; color:var(--ink-3);
+  margin:0 0 var(--gap-sub); font-size:var(--text-xs2); color:var(--ink-3);
   display:flex; align-items:center; gap:.375rem;
 }
 .eras__label[hidden]{display:none}
@@ -301,7 +301,7 @@ body{
 }
 /* 年は 2 行に割る。1 行だと「1936–42」が 76px 要り、7 つで画面に収まらない。
    割っても、撮影年の幅はそのまま読める（短くして「’36」にはしない）。 */
-.era__y{font-size:.8125rem}
+.era__y{font-size:var(--text-xs)}
 .era__t{font-size:.625rem; color:var(--ink-3)}
 .era[aria-pressed="true"]{border-color:var(--action); color:var(--action); font-weight:700}
 .era[aria-pressed="true"] .era__t{color:var(--action)}
@@ -312,7 +312,7 @@ body{
 .era-back{
   margin-top:var(--gap-row); width:100%; min-height:var(--tap);
   border:1px solid var(--line-strong); border-radius:.5rem; background:transparent;
-  color:var(--action); font:inherit; font-size:.8125rem; font-weight:700; cursor:pointer;
+  color:var(--action); font:inherit; font-size:var(--text-xs); font-weight:700; cursor:pointer;
 }
 .era-back[hidden]{display:none}
 .era-back:focus-visible{outline:2px solid var(--action); outline-offset:2px}
@@ -328,13 +328,13 @@ body{
 .why{margin-top:var(--gap-row)}
 .why__sum{
   min-height:var(--tap); display:flex; align-items:center; list-style:none;
-  color:var(--action); font-size:.8125rem; font-weight:700; cursor:pointer;
+  color:var(--action); font-size:var(--text-xs); font-weight:700; cursor:pointer;
 }
 .why__sum::-webkit-details-marker{display:none}
 .why__sum::after{content:" ▾"; color:var(--ink-3); font-weight:400}
 .why[open] .why__sum::after{content:" ▴"}
 .why__rows{margin:var(--gap-row) 0 0; display:flex; flex-direction:column; gap:var(--gap-row)}
-.why__row{display:flex; gap:var(--gap-row); font-size:.8125rem; line-height:1.5}
+.why__row{display:flex; gap:var(--gap-row); font-size:var(--text-xs); line-height:1.5}
 .why__row[hidden]{display:none}
 .why__k{flex:0 0 5.5rem; color:var(--ink-3)}
 .why__v{flex:1; min-width:0; margin:0; color:var(--ink-2)}
@@ -361,7 +361,7 @@ body{
    押せる形にはしておく。押しても何も起きない導線を置かないため。 */
 .why__more{
   display:flex; align-items:center; min-height:var(--tap);
-  margin-top:var(--gap-row); font-size:.8125rem; font-weight:700;
+  margin-top:var(--gap-row); font-size:var(--text-xs); font-weight:700;
   color:var(--action); text-decoration:none;
 }
 .why__more:focus-visible{outline:2px solid var(--action); outline-offset:2px}
@@ -389,16 +389,16 @@ body{
   padding:var(--pad-md); box-shadow:0 4px 20px color-mix(in srgb, var(--shadow) 20%, transparent);
 }
 .take[hidden]{display:none}
-.take h2{margin:0; font-size:1rem}
-.take__body{margin:var(--gap-sub) 0 0; font-size:.8125rem; color:var(--ink-2); line-height:1.6}
+.take h2{margin:0; font-size:var(--text-body)}
+.take__body{margin:var(--gap-sub) 0 0; font-size:var(--text-xs); color:var(--ink-2); line-height:1.6}
 .take__list{margin:var(--gap-row) 0 0; padding:0; list-style:none; max-height:30vh; overflow-y:auto}
 .take__list li{
   display:flex; justify-content:space-between; gap:var(--gap-row);
-  padding:var(--gap-sub) 0; border-bottom:1px solid var(--line); font-size:.8125rem;
+  padding:var(--gap-sub) 0; border-bottom:1px solid var(--line); font-size:var(--text-xs);
 }
 .take__list li:last-child{border-bottom:0}
 .take__list .n{color:var(--ink); font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
-.take__list .g{flex:none; color:var(--ink-3); font-size:.75rem}
+.take__list .g{flex:none; color:var(--ink-3); font-size:var(--text-xs2)}
 .take__act{display:flex; gap:var(--gap-row); margin-top:var(--gap-row)}
 /* display を持つ規則には、[hidden] の打ち消しが要る。
    このファイルは規則ごとに書く作りで、書き忘れると hidden が効かない。
@@ -406,7 +406,7 @@ body{
    「この端末に足す」が残っていて、もう一度押せた。 */
 .take__act[hidden]{display:none}
 .take__yes,.take__no{
-  flex:1; min-height:var(--tap); border-radius:.5rem; font:inherit; font-size:.8125rem;
+  flex:1; min-height:var(--tap); border-radius:.5rem; font:inherit; font-size:var(--text-xs);
   font-weight:700; cursor:pointer;
 }
 .take__yes{border:1px solid var(--action); background:var(--action); color:var(--action-ink)}
@@ -462,7 +462,7 @@ body{
 #more{
   display:block; width:100%; min-height:var(--tap);
   margin:var(--gap-row) 0 0; padding:0 var(--pad-md);
-  font:inherit; font-size:.8125rem; font-weight:700;
+  font:inherit; font-size:var(--text-xs); font-weight:700;
   color:var(--action); background:none;
   border:2px solid var(--action); border-radius:.625rem;
   cursor:pointer;
@@ -480,14 +480,14 @@ body{
 }
 #sheet[hidden]{display:none}
 #sheet header{display:flex;align-items:center;justify-content:space-between;margin-bottom:var(--gap-row)}
-#sheet h2{margin:0;font-size:.9375rem}
+#sheet h2{margin:0;font-size:var(--text-sm)}
 #sheet .close{
-  min-width:var(--tap); min-height:var(--tap); font-size:1rem;
+  min-width:var(--tap); min-height:var(--tap); font-size:var(--text-body);
   background:none; border:0; color:var(--ink-2); cursor:pointer;
 }
 #sheet ul{margin:0;padding:0;list-style:none}
 #sheet li{display:flex;align-items:center;gap:.5rem;padding:.4375rem 0;
-  border-bottom:1px solid var(--line);font-size:.8125rem}
+  border-bottom:1px solid var(--line);font-size:var(--text-xs)}
 #sheet li:last-child{border-bottom:0}
 #sheet li.here{color:var(--action);font-weight:700}
 #sheet i{width:.875rem;height:.875rem;border-radius:.1875rem;border:1px solid color-mix(in srgb, var(--shadow) 16%, transparent);flex:none}
@@ -495,7 +495,7 @@ body{
 /* 未整備は、土地の区分ではない。データの状態。区分一覧に混ぜない。 */
 #sheet .state{
   margin:var(--gap-row) 0 0; padding-top:var(--gap-row);
-  border-top:1px dashed var(--line); font-size:.75rem; color:var(--ink-3); line-height:1.5;
+  border-top:1px dashed var(--line); font-size:var(--text-xs2); color:var(--ink-3); line-height:1.5;
 }
 
 /* ---- 広い幅 ----
@@ -556,7 +556,7 @@ body{
 .edge:not([hidden]){
   display:flex; align-items:center; gap:var(--gap-sub);
   margin:var(--gap-sub) 0 0;
-  font-size:.8125rem; color:var(--ink-3);
+  font-size:var(--text-xs); color:var(--ink-3);
 }
 /* 折り返す。⚠ 切って「…」にしない（⚠ 区分名が消えると、何に変わるか分からなくなる）。
    ⚠ 実測（2026-09-05・320px）: いちばん長い区分名でも 2 行に収まる。 */

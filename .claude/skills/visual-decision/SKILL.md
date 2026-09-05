@@ -181,7 +181,7 @@ node scripts/visual-decision.mjs --compose --title="…" --cond="…" --note="�
 - MUST: ⚠ **判断とその理由を、⚠ PR 本文かコメントに残す**（⚠ 「Owner が絵で確かめた」まで書く）。
 - MUST: ⚠ **同じ条件で撮り直して、⚠ 直ったことを見せる。**
 - MUST NOT: ⚠ **絵を根拠に「検査した」と言わない。**⚠ **絵は判断材料。**⚠ **主張を守るのは検査。**
-- SHOULD: ⚠ **結果を 1 つだけ記録する**（2026-09-05。`docs/adr/0096`）。⚠ **PR ができてから。**
+- SHOULD: ⚠ **結果を 1 つだけ記録する**（2026-09-05。`docs/adr/0097`）。⚠ **PR ができてから。**
 
   ```bash
   node .claude/tools/decision.mjs --pr=<番号> --outcome=即決     # ⚠ 迷った ／ 後で戻した
