@@ -27,7 +27,7 @@
        内側の余白ではなく最小の幅で足す。余白で足すと、字の頭が本文からずれる。 */
     display:inline-flex; align-items:center;
     min-height:var(--tap); min-width:var(--tap);
-    color:var(--ink-3); text-decoration:none; font-size:.8125rem;
+    color:var(--ink-3); text-decoration:none; font-size:var(--text-xs);
   }
   .foot__link:hover{color:var(--action)}
   .foot__link:focus-visible{outline:2px solid var(--action); outline-offset:2px}

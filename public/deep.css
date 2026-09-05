@@ -22,21 +22,21 @@ body{
 
 .back{
   display:inline-flex; align-items:center; min-height:var(--tap);
-  color:var(--action); font-size:.875rem; font-weight:700; text-decoration:none;
+  color:var(--action); font-size:var(--text-sm2); font-weight:700; text-decoration:none;
 }
 .back:focus-visible{outline:2px solid var(--action); outline-offset:2px}
 
 #head{border-bottom:1px solid var(--line); padding-bottom:var(--gap-block)}
-.place{margin:0; font-size:.8125rem; color:var(--ink-3)}
+.place{margin:0; font-size:var(--text-xs); color:var(--ink-3)}
 /* 答えは主。区分名は出典の言葉として添える（散歩中の画面と同じ決め方）。 */
 .ans{margin:var(--gap-sub) 0 0; font-size:1.75rem; line-height:1.4; color:var(--ink); font-weight:700}
 /* 答えの出典と、いまの地形。散歩中の画面と同じ並びにする。 */
 .ans__src{margin:var(--gap-sub) 0 0; font-size:.6875rem; letter-spacing:.06em;
           line-height:1.5; color:var(--ink-3)}
 .ans__src[hidden]{display:none}
-.ans__sub{margin:var(--gap-sub) 0 0; font-size:.9375rem; line-height:1.6; color:var(--ink-2)}
+.ans__sub{margin:var(--gap-sub) 0 0; font-size:var(--text-sm); line-height:1.6; color:var(--ink-2)}
 .ans__sub[hidden]{display:none}
-.term{margin:var(--gap-sub) 0 0; font-size:.8125rem; color:var(--ink-3)}
+.term{margin:var(--gap-sub) 0 0; font-size:var(--text-xs); color:var(--ink-3)}
 .term[hidden]{display:none}
 
 .sec{margin-top:2rem}
@@ -52,7 +52,7 @@ body{
 }
 .sec__kind{
   margin:0 0 var(--gap-sub);
-  font-size:.75rem; line-height:1.6; color:var(--ink-3);
+  font-size:var(--text-xs2); line-height:1.6; color:var(--ink-3);
 }
 /* 節の見出し。7.8 画面ぶんを上から読むので、節の切れ目が目印になる必要がある。
    実測（2026-09-02・本番・豊洲・375×667）: 見出しは 12px・--ink-3 で、
@@ -73,7 +73,7 @@ body{
 /* どう変わったか。この画面の主役。
    明治期の地図 → 空中写真の年代 → いま を、時の流れの向きに並べる。
    1 枚ずつ切り替えるのではなく、並べる。切り替えると、前の絵を覚えていないと比べられない。 */
-.time__lead{margin:0 0 var(--gap-block); font-size:1rem; color:var(--ink)}
+.time__lead{margin:0 0 var(--gap-block); font-size:var(--text-body); color:var(--ink)}
 /* 8 枚を並べる。⚠ 縮めるのは「読む量を減らす」ためではなく、⚠ 1 画面に入る枚数を増やして
    ⚠ 見くらべられるようにするため。⚠ 枚数は減らさない（根拠を削らない）。
    実測（2026-09-02・375×667）: 9rem だと 2 列 4 行で 1,329px、6.5rem だと 3 列 3 行。 */
@@ -101,16 +101,16 @@ body{
   border:2px solid var(--pin-ring); background:var(--action);
   box-shadow:0 0 0 1px color-mix(in srgb, var(--shadow) 35%, transparent);
 }
-.frame__y{margin:var(--gap-sub) 0 0; font-size:.875rem; font-weight:700; color:var(--ink)}
-.frame__t{margin:0; font-size:.75rem; color:var(--ink-3); line-height:1.5}
+.frame__y{margin:var(--gap-sub) 0 0; font-size:var(--text-sm2); font-weight:700; color:var(--ink)}
+.frame__t{margin:0; font-size:var(--text-xs2); color:var(--ink-3); line-height:1.5}
 .frame--none .frame__win{border-style:dashed}
-.time__note{margin:var(--gap-block) 0 0; font-size:.75rem; color:var(--ink-3); line-height:1.7}
+.time__note{margin:var(--gap-block) 0 0; font-size:var(--text-xs2); color:var(--ink-3); line-height:1.7}
 
 /* 成因と、起こりうること。国土地理院の記述をそのまま出す。要約しない。 */
 .why__item + .why__item{margin-top:var(--gap-block)}
-.why__k{margin:0; font-size:.8125rem; font-weight:700; color:var(--ink)}
-.why__v{margin:var(--gap-sub) 0 0; font-size:1rem; line-height:1.9}
-.why__from{margin:var(--gap-sub) 0 0; font-size:.75rem; color:var(--ink-3)}
+.why__k{margin:0; font-size:var(--text-xs); font-weight:700; color:var(--ink)}
+.why__v{margin:var(--gap-sub) 0 0; font-size:var(--text-body); line-height:1.9}
+.why__from{margin:var(--gap-sub) 0 0; font-size:var(--text-xs2); color:var(--ink-3)}
 .why__none{color:var(--ink-3)}
 /* 災害の話。⚠ は災害リスク専用の印なので、在庫や対応状況には使わない。 */
 .why--risk{border-left:3px solid var(--evidence); padding-left:var(--pad-md)}
@@ -119,11 +119,11 @@ body{
    範囲と断りは、必ず見える段に置く。小さくはするが、読めなくはしない。
    4 段は縦に並べる。帯グラフにしない（既存の帯は「実測の割合」に使っており、
    同じ見た目で「見込み（推定）」を出すと、実測と推定が同じ強さで並ぶ）。 */
-.ground__scope{margin:0 0 var(--gap-block); font-size:.8125rem; line-height:1.7; color:var(--ink-3)}
+.ground__scope{margin:0 0 var(--gap-block); font-size:var(--text-xs); line-height:1.7; color:var(--ink-3)}
 .ground__list{margin:var(--gap-row) 0 0; padding:0; list-style:none}
 .ground__list li{
   display:flex; justify-content:space-between; align-items:baseline;
-  padding:var(--gap-sub) 0; border-bottom:1px solid var(--line); font-size:.9375rem;
+  padding:var(--gap-sub) 0; border-bottom:1px solid var(--line); font-size:var(--text-sm);
 }
 .ground__list li:last-child{border-bottom:0}
 .ground__k{color:var(--ink-2); flex:none}
@@ -152,7 +152,7 @@ body{
 }
 /* 1.0 の目印。塗りの上に来るので、地の色で切って見せる（線を足すより読める）。 */
 /* 目盛りの読み方。⚠ 出典ではないので、出典の名前（.why__from）を借りない。 */
-.scale__note{margin:var(--gap-sub) 0 0; font-size:.75rem; line-height:1.7; color:var(--ink-3)}
+.scale__note{margin:var(--gap-sub) 0 0; font-size:var(--text-xs2); line-height:1.7; color:var(--ink-3)}
 .scale::after{
   content:""; position:absolute; top:0; bottom:0;
   left:calc(var(--base) * 100%); width:2px; background:var(--surface);
@@ -161,10 +161,10 @@ body{
    節はまとめない（原典の並びを崩さない）。押せるものなので 44px を割らない。 */
 .why__to{
   display:inline-flex; align-items:center; min-height:var(--tap);
-  margin-top:var(--gap-row); font-size:.9375rem; color:var(--action);
+  margin-top:var(--gap-row); font-size:var(--text-sm); color:var(--action);
 }
 /* 低い値を「安全」と読ませないための断り。削らない。 */
-.ground__note{margin:var(--gap-row) 0 0; font-size:.75rem; line-height:1.7; color:var(--ink-3)}
+.ground__note{margin:var(--gap-row) 0 0; font-size:var(--text-xs2); line-height:1.7; color:var(--ink-3)}
 /* 公式のハザードマップへ渡す道。押せるものなので 44px を割らず、輪郭を持つ
    （押せることが分からないと、押されない。--line-strong は情報を持つ枠）。
    外へ出る道なので、この節のいちばん下に置く。 */
@@ -174,26 +174,26 @@ body{
   min-height:var(--tap); border:1px solid var(--line-strong);
   color:var(--ink); text-decoration:none;
 }
-.hazard__k{color:var(--action); font-weight:700; font-size:.9375rem}
-.hazard__v{color:var(--ink-3); font-size:.75rem; line-height:1.7}
+.hazard__k{color:var(--action); font-weight:700; font-size:var(--text-sm)}
+.hazard__v{color:var(--ink-3); font-size:var(--text-xs2); line-height:1.7}
 .hazard[hidden]{display:none}
 
 /* まわり ── この一帯について、公式資料から言えること。
    散歩中は 1 件だけ出している。帰宅後は全部出す。読み物なので年表として読める。
    ⚠ この地点の記録ではない。そこは散歩中と同じく、いちばん先に言う。 */
-.near__lead{margin:0; font-size:1rem; color:var(--ink)}
+.near__lead{margin:0; font-size:var(--text-body); color:var(--ink)}
 /* この一帯の明治期。点ではなく面で数える。
    点は「ここは何だったか」、面は「まわりはどうだったか」。混ぜない。
    割合には、必ず分母（範囲の広さと、数えた画素）を添える。 */
 .around{margin:var(--gap-block) 0 0}
-.around__lead{margin:0; font-size:1rem; color:var(--ink)}
+.around__lead{margin:0; font-size:var(--text-body); color:var(--ink)}
 .shares{margin:var(--gap-row) 0 0; padding:0; list-style:none}
-.shares li{display:flex; align-items:center; gap:var(--gap-row); padding:.1875rem 0; font-size:.9375rem}
+.shares li{display:flex; align-items:center; gap:var(--gap-row); padding:.1875rem 0; font-size:var(--text-sm)}
 .shares .bar{flex:none; width:8rem; height:.5rem; border-radius:999px; background:var(--surface-2); overflow:hidden}
 .shares .bar i{display:block; height:100%; background:var(--evidence)}
 .shares .pc{flex:none; width:3rem; text-align:right; font-variant-numeric:tabular-nums; color:var(--ink)}
 .shares .nm{flex:1; min-width:0; color:var(--ink-2)}
-.around__note{margin:var(--gap-row) 0 0; font-size:.75rem; color:var(--ink-3); line-height:1.7}
+.around__note{margin:var(--gap-row) 0 0; font-size:var(--text-xs2); color:var(--ink-3); line-height:1.7}
 
 .years{margin:2rem 0 0; padding:0; list-style:none}
 /* 出来事の種類が読み取れるようにする。印は年の左の細い列（年と同じ行なので縦は増えない）。
@@ -201,7 +201,7 @@ body{
    実測（2026-09-03・375×667・豊洲・記録 10 件）は Issue に書く。 */
 .rec{
   display:flex; gap:var(--gap-row); padding:var(--gap-row) 0;
-  border-bottom:1px solid var(--line); font-size:.9375rem; line-height:1.7;
+  border-bottom:1px solid var(--line); font-size:var(--text-sm); line-height:1.7;
 }
 .rec:last-child{border-bottom:0}
 /* 印の列。縦の線でつないで、年表であることを見せる */
@@ -225,11 +225,11 @@ body{
 .rec__kind{
   display:inline-block; margin-right:var(--gap-row); padding:0 var(--pad-sm);
   border:1px solid var(--line); border-radius:999px;
-  font-size:.75rem; color:var(--ink-3); vertical-align:.05em;
+  font-size:var(--text-xs2); color:var(--ink-3); vertical-align:.05em;
 }
 /* 散歩中に出している 1 件。どれを最初に見たかが分かるようにする */
 .rec.shown .rec__t::after{
-  content:"　散歩中に出した 1 件"; font-size:.75rem; color:var(--ink-3); font-weight:400;
+  content:"　散歩中に出した 1 件"; font-size:var(--text-xs2); color:var(--ink-3); font-weight:400;
 }
 /* 年表の読み方。⚠ 本文に埋めず、囲って分ける。
    ⚠ の印は災害リスクに使っているので、この箱では使わない。
@@ -237,42 +237,42 @@ body{
 .near__note{
   margin:var(--gap-block) 0 0; padding:var(--pad-md);
   border:1px solid var(--line-strong); background:var(--surface-2);
-  font-size:.8125rem; color:var(--ink-2); line-height:1.7;
+  font-size:var(--text-xs); color:var(--ink-2); line-height:1.7;
   display:flex; flex-direction:column; gap:var(--gap-sub);
 }
-.note__k{color:var(--ink); font-size:.875rem}
+.note__k{color:var(--ink); font-size:var(--text-sm2)}
 .note__list{display:flex; flex-direction:column; gap:var(--gap-sub)}
 .note__row{display:flex; gap:var(--gap-row)}
 .note__row::before{content:"・"; flex:none; color:var(--ink-3)}
-.near__from{margin:var(--gap-sub) 0 0; font-size:.75rem; color:var(--ink-3)}
+.near__from{margin:var(--gap-sub) 0 0; font-size:var(--text-xs2); color:var(--ink-3)}
 .near__from a{color:var(--ink-2)}
 
 /* 標高。散歩中は出さないと決めてある（ADR 0059。その 1 行に紙面を割く値打ちが
    無かった）。帰宅後は前提が違う。「なぜ液状化のリスクがあるのか」に直接効く。 */
-.elev{margin:var(--gap-block) 0 0; font-size:1rem; color:var(--ink)}
+.elev{margin:var(--gap-block) 0 0; font-size:var(--text-body); color:var(--ink)}
 .elev .v{font-variant-numeric:tabular-nums; font-weight:700}
-.elev .from{display:block; margin-top:var(--gap-sub); font-size:.75rem; color:var(--ink-3)}
+.elev .from{display:block; margin-top:var(--gap-sub); font-size:var(--text-xs2); color:var(--ink-3)}
 
 /* 読んだもの。本当に読んだのかを、読んだ人が確かめられるようにする。
    読み物としては重いので、いちばん下に置く。 */
-.read{margin:0; font-size:.8125rem; line-height:1.7}
+.read{margin:0; font-size:var(--text-xs); line-height:1.7}
 .read > div{display:flex; gap:var(--gap-row); padding:.1875rem 0}
 .read dt{flex:0 0 7rem; color:var(--ink-3); margin:0}
 .read dd{flex:1; min-width:0; margin:0; color:var(--ink-2); overflow-wrap:anywhere}
 .read a{color:var(--ink-2)}
 
 /* 近くに残る災害の記録。出典の字をそのまま出すので、行が長くなる。 */
-.mon__lead{margin:0 0 var(--gap-row); font-size:.9375rem; line-height:1.6; color:var(--ink-2)}
+.mon__lead{margin:0 0 var(--gap-row); font-size:var(--text-sm); line-height:1.6; color:var(--ink-2)}
 .mon{margin:0; padding:0; list-style:none; display:flex; flex-direction:column; gap:var(--gap-block)}
 .mon[hidden]{display:none}
 .mon__item{margin:0; padding-top:var(--gap-row); border-top:1px solid var(--line)}
 .mon__item:first-child{padding-top:0; border-top:0}
 .mon__where{margin:0; font-size:.6875rem; letter-spacing:.06em; color:var(--ink-3)}
 .mon__name{margin:var(--gap-sub) 0 0; font-size:1.0625rem; font-weight:700; line-height:1.5; color:var(--ink)}
-.mon__what{margin:var(--gap-sub) 0 0; font-size:.9375rem; line-height:1.6; color:var(--ink-2)}
-.mon__built{margin:var(--gap-sub) 0 0; font-size:.8125rem; color:var(--ink-3)}
-.mon__info{margin:var(--gap-row) 0 0; font-size:.875rem; line-height:1.75; color:var(--ink-2)}
-.mon__cite{margin:var(--gap-block) 0 0; font-size:.8125rem; color:var(--ink-3)}
+.mon__what{margin:var(--gap-sub) 0 0; font-size:var(--text-sm); line-height:1.6; color:var(--ink-2)}
+.mon__built{margin:var(--gap-sub) 0 0; font-size:var(--text-xs); color:var(--ink-3)}
+.mon__info{margin:var(--gap-row) 0 0; font-size:var(--text-sm2); line-height:1.75; color:var(--ink-2)}
+.mon__cite{margin:var(--gap-block) 0 0; font-size:var(--text-xs); color:var(--ink-3)}
 .mon__cite[hidden]{display:none}
 
 /* この先で、土地が変わる。
@@ -290,12 +290,12 @@ body{
   flex:0 0 auto; display:flex; align-items:center; justify-content:center;
   width:2.75rem; height:2.75rem; border-radius:50%;
   background:var(--surface-2); color:var(--ink-2);
-  font-size:.8125rem; font-weight:700;
+  font-size:var(--text-xs); font-weight:700;
 }
 .border__body:not([hidden]){display:flex; flex-direction:column; gap:2px; min-width:0}
 .border__to{font-weight:700}
-.border__far{font-size:.8125rem; color:var(--ink-3); font-variant-numeric:tabular-nums}
-.border__note{margin:var(--gap-sub) 0 0; font-size:.8125rem; color:var(--ink-3)}
+.border__far{font-size:var(--text-xs); color:var(--ink-3); font-variant-numeric:tabular-nums}
+.border__note{margin:var(--gap-sub) 0 0; font-size:var(--text-xs); color:var(--ink-3)}
 
 /* この画面の目次。
    狭い幅は本文の先頭に横並び。広い幅は柱の右へ出して、読みながら見えるようにする。
@@ -304,12 +304,12 @@ body{
   display:block; margin:0 0 var(--gap-block); padding:var(--pad-md);
   border:1px solid var(--line); border-radius:.75rem; background:var(--surface);
 }
-.toc__k{margin:0 0 var(--gap-sub); font-size:.75rem; font-weight:700; color:var(--ink-3)}
+.toc__k{margin:0 0 var(--gap-sub); font-size:var(--text-xs2); font-weight:700; color:var(--ink-3)}
 .toc__l:not([hidden]){margin:0; padding:0; list-style:none;
   display:flex; flex-wrap:wrap; gap:var(--gap-sub) var(--gap-row)}
 .toc__l a{
   display:flex; align-items:center; min-height:var(--tap);
-  font-size:.8125rem; color:var(--action); text-decoration:none;
+  font-size:var(--text-xs); color:var(--action); text-decoration:none;
 }
 .toc__l a:focus-visible{outline:2px solid var(--action); outline-offset:2px}
 
