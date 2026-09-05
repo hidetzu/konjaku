@@ -1531,13 +1531,21 @@ else {
         欠け.push("開いた状態を localStorage に覚えている（⚠ 覚えないと決めてある）");
 
       // ⚠ **畳む側**（⚠ 立ち止まって読むもの）
-      for (const id of ["erasLabel", "eras", "eraNote", "eraBack", "why", "legend", "more"])
+      // ⚠ **`legend` は、⚠ 2026-09-06 に畳む側から外した**（Owner 判断。⚠ 絵を並べて決めた）。
+      //   ⚠ **地図を色で塗るのに、⚠ 色の意味が初期画面に無かった。**
+      //   ⚠ **利用者役 3 名（実在の利用者ではない）に色だけの画面を見せたら、
+      //     ⚠ 3/3 が緑を「森・公園・緑地」と読んだ。**⚠ **1 名は「間違って覚えるくらいなら
+      //     ⚠ 色がないほうがまし」と言った。**
+      //   ⚠ **払う分は測ってある**（⚠ 320×640・軽井沢: 板 38% → 44%、見える地図 235 → 201px）。
+      //   ⚠ **`more`（ほか n 種を見る）は畳んだまま。**⚠ **押して読むものなので、⚠ 側が違う。**
+      for (const id of ["erasLabel", "eras", "eraNote", "eraBack", "why", "more"])
         if (!new RegExp(`id="${id}"`).test(中))
           欠け.push(`${id} が畳む器の外にある（⚠ 初期表示で地図を圧迫する）`);
       // ⚠ **畳まない側**（⚠ 散歩中に、⚠ 数秒で要るもの）
       for (const [id, なに] of [
         ["gloss", "答え"], ["glossSrc", "出典"], ["sub", "2 行目（成り立ち）"],
         ["kickText", "名乗り（どこの話か）"], ["save", "保存"], ["steps", "3 手の帯"],
+        ["legend", "凡例（地図の色の意味）"],
       ]) {
         if (!new RegExp(`id="${id}"`).test(html)) { 欠け.push(`${なに}（#${id}）が無い`); continue; }
         if (new RegExp(`id="${id}"`).test(中)) 欠け.push(`${なに}（#${id}）まで畳んでいる`);
@@ -1549,6 +1557,14 @@ else {
     //   ⚠ **実際に一度 `matchMedia("(min-width:700px)")` と書いて、⚠ ここで落ちている。**
     if (!/\.fold::before\s*\{[^}]*content\s*:/.test(css))
       欠け.push("畳むかどうかを CSS（.fold::before）が決めていない");
+    // ⚠ **凡例に出す数も同じ形**（2026-09-06。hidetzu/konjaku#494）。
+    //   ⚠ **一度 `innerWidth < 344` と JavaScript に書いて、⚠ 幅の数が 2 か所になった。**
+    if (!/#legend::before\s*\{[^}]*content\s*:/.test(css))
+      欠け.push("凡例に出す数を CSS（#legend::before）が決めていない");
+    if (!/@media\s*\(min-width:\s*\d+px\)[\s\S]{0,200}#legend::before\s*\{[^}]*content\s*:/.test(css))
+      欠け.push("凡例の数が幅で変わる指定（@media の #legend::before）が無い");
+    if (/getComputedStyle\([^)]*legend[^)]*"::before"\)/.test(js) === false)
+      欠け.push("JavaScript が #legend::before を読んでいない（⚠ 数を自分で決めている）");
     if (!/@media\s*\(min-width:\s*700px\)[\s\S]{0,200}\.fold::before\s*\{[^}]*content\s*:\s*"open"/.test(css))
       欠け.push("広い幅で畳まない指定（.fold::before の content:\"open\"）が無い");
     // ⚠ **`clientWidth` は見ない**（⚠ 地図の器の寸法に使っており、⚠ 幅の分岐ではない）。
