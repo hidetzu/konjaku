@@ -210,10 +210,25 @@ try {
   //   ⚠ **1 Turn に何度も来るので、⚠ ここを重くしない。**
   // ⚠ **道具の中身は持たない。**⚠ **名前と id と、⚠ かかった時間だけ**
   //   （⚠ `tool_input` には、⚠ ファイルの中身も命令も入っている）。
+  // ⚠ **PR を作る・merge する命令かどうか**（2026-09-05。hidetzu/konjaku#471 の 7b）。
+  //   ⚠ **命令の字は持たない。**⚠ **その場で判定して、⚠ ラベルだけ残す**（⚠ `ask_inline` と同じ形）。
+  //   ⚠ **観測しているのは「その命令が通ったこと」まで。**
+  //     ⚠ **PR が本当にできたかは見ていない**（⚠ 命令が失敗しても `PostToolUse` は来る）。
+  //     ⚠ **だから名前を `pr_command` にする。**⚠ **`pr_created` とは書かない。**
+  const PR命令 = (input) => {
+    const c = String(input?.command ?? "");
+    if (!c) return null;
+    if (/\bgh\s+pr\s+merge\b/.test(c)) return "merge";
+    if (/\bgh\s+pr\s+create\b/.test(c)) return "create";
+    return null;
+  };
+
   if (道具) {
     put("events.jsonl", {
       ts, event, session_id: sid, prompt_id: IN.prompt_id ?? null,
       tool_name: IN.tool_name ?? null,
+      // ⚠ **`PostToolUse` のときだけ見る**（⚠ 通らなかった命令を数えない）
+      pr_command: event === "PostToolUse" ? PR命令(IN.tool_input) : null,
       // ⚠ **これで Pre と Post を突き合わせる。**⚠ **両方に入っている**（⚠ 2026-09-05 実測）
       tool_use_id: IN.tool_use_id ?? null,
       // ⚠ **Post のときだけ在る**（⚠ 無いことに意味がある）

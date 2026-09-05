@@ -351,6 +351,76 @@ const E = await import(pathToFileURL(join(ROOT, TOOL)).href);
   if (/last_assistant_message\s*[,}]/.test(素.replace(/const reply[^\n]*\n/, "")))
     欠け.push("telemetry.mjs が返答の本文を記録に載せている");
 
+  // ⚠ **Task 単位（7a / 7b）**（2026-09-05。hidetzu/konjaku#471。Owner 指示）。
+  {
+    let P = null;
+    try { P = (await import("../../.claude/tools/telemetry-eval.mjs")).perTaskOf; }
+    catch (e) { 欠け.push(`perTaskOf を読めない: ${e.message}`); }
+    if (!P) 欠け.push("perTaskOf を読めていない（⚠ この検査が何も見ていない）");
+    else {
+      const 行 = [
+        // ⚠ T1: ⚠ 手が入らず、⚠ PR まで通った
+        { event: "UserPromptSubmit", ts: "2026-09-05T10:00:00", session_id: "s", prompt_id: "p1", task_id: "T1" },
+        { event: "PreToolUse", ts: "2026-09-05T10:01:00", session_id: "s", prompt_id: "p1", tool_name: "Bash", tool_use_id: "a1" },
+        { event: "PostToolUse", ts: "2026-09-05T10:02:00", session_id: "s", prompt_id: "p1", tool_name: "Bash", tool_use_id: "a1", pr_command: "create" },
+        { event: "Stop", ts: "2026-09-05T10:03:00", session_id: "s", prompt_id: "p1", task_id: "T1", ask_inline: false },
+        // ⚠ T2: ⚠ Slack で聞いた（⚠ 手が入った）
+        { event: "UserPromptSubmit", ts: "2026-09-05T11:00:00", session_id: "s", prompt_id: "p2", task_id: "T2" },
+        { event: "OwnerAsk", ts: "2026-09-05T11:01:00", session_id: "s", outcome: "answered", waited_ms: 30000 },
+        { event: "Stop", ts: "2026-09-05T11:02:00", session_id: "s", prompt_id: "p2", task_id: "T2", ask_inline: false },
+        // ⚠ T3: ⚠ 道具が止まった（⚠ 手が入った）
+        { event: "UserPromptSubmit", ts: "2026-09-05T12:00:00", session_id: "s", prompt_id: "p3", task_id: "T3" },
+        { event: "PreToolUse", ts: "2026-09-05T12:01:00", session_id: "s", prompt_id: "p3", tool_name: "Bash", tool_use_id: "a2" },
+        { event: "Stop", ts: "2026-09-05T12:02:00", session_id: "s", prompt_id: "p3", task_id: "T3", ask_inline: false },
+        // ⚠ T4: ⚠ 本文で聞いた（⚠ 手が入った）
+        { event: "UserPromptSubmit", ts: "2026-09-05T13:00:00", session_id: "s", prompt_id: "p4", task_id: "T4" },
+        { event: "Stop", ts: "2026-09-05T13:01:00", session_id: "s", prompt_id: "p4", task_id: "T4", ask_inline: true },
+        // ⚠ T5: ⚠ 欄を持たない（⚠ フックを足す前）。⚠ 分母に入れない
+        { event: "UserPromptSubmit", ts: "2026-09-04T09:00:00", session_id: "s", prompt_id: "p5", task_id: "T5" },
+        { event: "Stop", ts: "2026-09-04T09:01:00", session_id: "s", prompt_id: "p5", task_id: "T5" },
+        // ⚠ T6: ⚠ 道具は動いたが、⚠ ask_inline を持つ Stop が無い（⚠ フックを足す前）。
+        //   ⚠ **分母に入れない。**⚠ **この標本が無いと、⚠ 分母を広げても素通りする**（⚠ 実際にした）。
+        { event: "UserPromptSubmit", ts: "2026-09-04T10:00:00", session_id: "s", prompt_id: "p6", task_id: "T6" },
+        { event: "PostToolUse", ts: "2026-09-04T10:01:00", session_id: "s", prompt_id: "p6", tool_name: "Bash", tool_use_id: "a3", pr_command: "create" },
+        { event: "Stop", ts: "2026-09-04T10:02:00", session_id: "s", prompt_id: "p6", task_id: "T6" },
+        // ⚠ T7: ⚠ 手が入った（Slack で聞いた）のに、⚠ PR まで通った。
+        //   ⚠ **7b は 7a の部分集合。**⚠ **この標本が無いと、⚠ 部分集合でなくしても素通りする**（⚠ 実際にした）。
+        { event: "UserPromptSubmit", ts: "2026-09-05T14:00:00", session_id: "s", prompt_id: "p7", task_id: "T7" },
+        { event: "OwnerAsk", ts: "2026-09-05T14:01:00", session_id: "s", outcome: "answered", waited_ms: 20000 },
+        { event: "PostToolUse", ts: "2026-09-05T14:02:00", session_id: "s", prompt_id: "p7", tool_name: "Bash", tool_use_id: "a4", pr_command: "merge" },
+        { event: "Stop", ts: "2026-09-05T14:03:00", session_id: "s", prompt_id: "p7", task_id: "T7", ask_inline: false },
+        // ⚠ session_id を持たない古い OwnerAsk。⚠ 結べない
+        { event: "OwnerAsk", ts: "2026-09-01T09:00:00", outcome: "timeout", waited_ms: 180000 },
+      ];
+      const r = P(行);
+      // ⚠ 1. ⚠ **分母は「3 つとも観測できた Task」だけ**（⚠ T5 を入れない）
+      if (r.観測できた !== 5)
+        欠け.push(`観測できた Task が ${r.観測できた}（5 のはず。⚠ 欄の無い Task を混ぜている）`);
+      // ⚠ 2. ⚠ **手が入らなかったのは T1 だけ**
+      if (r.手が入らなかった !== 1)
+        欠け.push(`手が入らなかった Task が ${r.手が入らなかった}（1 のはず）`);
+      // ⚠ 3. ⚠ **PR まで観測できたのも T1 だけ**
+      if (r.PRまで観測できた !== 1)
+        欠け.push(`PR まで観測できた Task が ${r.PRまで観測できた}（1 のはず）`);
+      // ⚠ 4. ⚠ **結べなかった OwnerAsk を、⚠ 黙って捨てない**
+      if (r.結べなかった_OwnerAsk !== 1)
+        欠け.push(`結べなかった OwnerAsk が ${r.結べなかった_OwnerAsk}（1 のはず。⚠ 黙って捨てている）`);
+      // ⚠ 5. ⚠ **採点しない**（`docs/adr/0036`）
+      const 採点2 = JSON.stringify(r).match(/"(success|failure|quality|score|autonomy|good|bad|rate)[a-z_]*"/gi);
+      if (採点2) 欠け.push(`Task 単位の欄が良し悪しを出している: ${[...new Set(採点2)].join("、")}`);
+    }
+    // ⚠ **書く側が、⚠ 結ぶのに要るものを残しているか**
+    const 素a = readFileSync(join(ROOT, ".claude/hooks/ask-slack.mjs"), "utf8")
+      .replace(BLOCK_COMMENT, " ").replace(HEAD_COMMENT, " ");
+    if (!/session_id:\s*sid/.test(素a))
+      欠け.push("ask-slack.mjs が OwnerAsk に session_id を残していない（⚠ Task へ結べない）");
+    if (!/pr_command/.test(素))
+      欠け.push("telemetry.mjs が pr_command を残していない（⚠ PR まで観測できない）");
+    // ⚠ **命令の字を持たない**（⚠ 判定はフックの中で終える）
+    if (/tool_input:\s*IN\.tool_input/.test(素))
+      欠け.push("telemetry.mjs が道具の中身を記録に載せている");
+  }
+
   欠け.length
     ? bad(`Owner の手の出し方が壊れている: ${欠け.join(" ／ ")}`)
     : ok("Owner の手は、⚠ 止まった道具・⚠ Slack で聞いた・⚠ 本文で聞いた だけを出し、"
