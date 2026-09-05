@@ -426,3 +426,167 @@ const E = await import(pathToFileURL(join(ROOT, TOOL)).href);
     : ok("Owner の手は、⚠ 止まった道具・⚠ Slack で聞いた・⚠ 本文で聞いた だけを出し、"
         + "⚠ 拒否とは言わず、⚠ 欄の無い行を分母に入れず、⚠ 取れないものを名乗る");
 }
+
+// ⚠ **見て決めた決定（⚠ 人が入れた値）**（2026-09-05。Owner 指示）。
+//
+// ⚠ **ここだけ、⚠ 観測ではない値を扱う。**⚠ **だから、⚠ 見るのは 2 つ。**
+//     ⚠ **人が入れた値だと名乗っているか**（⚠ 名乗らないと、⚠ 推定が実測の顔をする。§1）
+//     ⚠ **既存の台帳（Owner の手・Task 単位）を 1 も動かしていないか**（⚠ 定義を濁らせない）
+//
+// ⚠ **字面で見ない。**⚠ **書く口を実際に走らせ、⚠ 読む口の出した数を読む**（`CLAUDE.md` §9）。
+{
+  head("見て決めた決定（⚠ 人が入れた値）");
+  const 欠け = [];
+  const { execFileSync: exD } = await import("node:child_process");
+  const { mkdtempSync, rmSync, writeFileSync, readFileSync: rfD, existsSync: exsD } = await import("node:fs");
+  const { tmpdir } = await import("node:os");
+  const TOOL_D = ".claude/tools/decision.mjs";
+
+  let D = null;
+  try { D = await import(pathToFileURL(join(ROOT, TOOL_D)).href); }
+  catch (e) { 欠け.push(`decision.mjs を読めない: ${e.message}`); }
+  if (!D) 欠け.push("decision.mjs を読めていない（⚠ この検査が何も見ていない）");
+
+  if (D) {
+    // ---- 1. ⚠ 値は 3 つだけ（⚠ 増やさないと決めてある）----
+    const 値 = D.OUTCOMES ?? [];
+    if (JSON.stringify(値) !== JSON.stringify(["即決", "迷った", "後で戻した"]))
+      欠け.push(`値が 3 つではない: ${JSON.stringify(値)}`);
+
+    // ---- 2. ⚠ キーは PR 番号（⚠ 裸の番号のままにしない。`CLAUDE.md` §9）----
+    // ⚠ **番号は組み立てて渡す。**⚠ **`#` と数字を続けて書かない**
+    //   （⚠ この repo の Issue 番号を埋めない、という別の検査が、⚠ ここの字を拾う）。
+    const K = D.prKeyOf;
+    const N = "487";
+    if (K(N, "o/r") !== `o/r#${N}`) 欠け.push(`裸の番号に repo を付けていない: ${K(N, "o/r")}`);
+    if (K(`#${N}`, "o/r") !== `o/r#${N}`) 欠け.push(`井桁つきを読めていない: ${K(`#${N}`, "o/r")}`);
+    if (K(`a/b#${N}`, "o/r") !== `a/b#${N}`) 欠け.push(`repo つきを書き換えている: ${K(`a/b#${N}`, "o/r")}`);
+    // ⚠ **repo を読めないときは番号だけ**（⚠ 落とさない。⚠ 呼んだ側が名乗る）
+    if (K(N, null) !== `#${N}`) 欠け.push(`repo が無いときに番号を残していない: ${K(N, null)}`);
+    if (K("ではない", "o/r") !== null) 欠け.push("番号でないものを通している");
+
+    // ---- 3. ⚠ 最後の行を採る（⚠ **「後で戻した」があとから効く**）----
+    const r = D.decisionsOf([
+      { ts: "1", pr: "o/r#1", outcome: "即決" },
+      { ts: "2", pr: "o/r#2", outcome: "迷った" },
+      { ts: "3", pr: "o/r#1", outcome: "後で戻した" },   // ⚠ あとから書き戻した
+      { ts: "4", pr: "o/r#3", outcome: "よかった" },     // ⚠ 3 つのどれでもない
+      { ts: "5", outcome: "即決" },                      // ⚠ PR を持たない
+    ]);
+    if (r.記録がある_PR !== 3) 欠け.push(`記録がある PR が ${r.記録がある_PR}（3 のはず）`);
+    if (r.値ごと?.即決 !== 0)
+      欠け.push(`即決 が ${r.値ごと?.即決}（0 のはず。⚠ 後で戻した が効いていない）`);
+    if (r.値ごと?.後で戻した !== 1) 欠け.push(`後で戻した が ${r.値ごと?.後で戻した}（1 のはず）`);
+    if (r.値ごと?.迷った !== 1) 欠け.push(`迷った が ${r.値ごと?.迷った}（1 のはず）`);
+    // ⚠ **黙って捨てない**（⚠ 捨てると、⚠ 母数が減ったことに誰も気づけない）
+    if (r.不明 !== 1) 欠け.push(`知らない値が ${r.不明}（1 のはず。⚠ 黙って捨てている）`);
+    if (r.PRが無い行 !== 1) 欠け.push(`PR を持たない行が ${r.PRが無い行}（1 のはず。⚠ 黙って捨てている）`);
+    // ⚠ **人が入れた値だと、⚠ 出力自身が名乗る**
+    if (r.kind !== "entered_by_human") 欠け.push("人が入れた値だと、出力が名乗っていない");
+    // ⚠ **良し悪しを出さない**（`docs/adr/0036`）
+    const 採点 = JSON.stringify(r).match(/"(success|failure|quality|score|autonomy|good|bad|rate)[a-z_]*"/gi);
+    if (採点) 欠け.push(`決定の欄が良し悪しを出している: ${[...new Set(採点)].join("、")}`);
+  }
+
+  // ---- 4. ⚠ 書く口を、⚠ 実際に走らせる ----
+  const dir = mkdtempSync(join(tmpdir(), "konjaku-dec-"));
+  const 走る = (args, env) => {
+    try {
+      const out = exD("node", [join(ROOT, TOOL_D), ...args], {
+        cwd: ROOT, encoding: "utf8", timeout: 20_000,
+        env: { ...process.env, KONJAKU_TELEMETRY_DIR: dir, ...env }, stdio: ["ignore", "pipe", "pipe"],
+      });
+      return { status: 0, out };
+    } catch (e) { return { status: e?.status ?? -1, out: e?.stdout ?? "" }; }
+  };
+  const 行数 = () => {
+    const f = join(dir, "decisions.jsonl");
+    return exsD(f) ? rfD(f, "utf8").split("\n").filter(Boolean).length : 0;
+  };
+  // ⚠ **3 つ以外は書かない。**⚠ **止まってよい**（⚠ これはフックではない）
+  if (走る(["--pr=1", "--outcome=よかった"]).status === 0)
+    欠け.push("3 つ以外の値を受け付けている");
+  if (行数() !== 0) 欠け.push("受け付けなかったのに書いている");
+  // ⚠ **置き場が無いときは、⚠ 作らずに止まる**（⚠ 台帳を 2 つにしない）
+  {
+    const 無い = join(dir, "ここには無い");
+    const s = 走る(["--pr=1", "--outcome=即決"], { KONJAKU_TELEMETRY_DIR: 無い });
+    if (s.status === 0) 欠け.push("記録の置き場が無いのに、書けたことになっている");
+    if (exsD(無い)) 欠け.push("記録の置き場を、勝手に作っている（⚠ 台帳が 2 つになる）");
+  }
+  // ⚠ **書く → あとから書き戻す**（⚠ 通しで、⚠ 最後の値が効くこと）
+  if (走る(["--pr=487", "--outcome=即決"]).status !== 0) 欠け.push("ふつうに書けない");
+  if (走る(["--pr=487", "--outcome=後で戻した"]).status !== 0) 欠け.push("あとから書き戻せない");
+  // ⚠ **書き換えない。**⚠ **足すだけ**（⚠ 前の行が残っていること）
+  if (行数() !== 2) 欠け.push(`書き戻したら行が ${行数()}（2 のはず。⚠ 前の行を書き換えている）`);
+
+  // ---- 5. ⚠ **既存の台帳を動かしていない**（⚠ ここが本命）----
+  //
+  // ⚠ **「Owner の手が入らなかった」は、⚠ フックが書いた事実だけで出す数。**
+  //   ⚠ **人が入れた値が 1 でも混ざったら、⚠ あの数が何の数か言えなくなる。**
+  // ⚠ **決定の記録がある／無い の 2 通りで走らせて、⚠ 同じであることを見る。**
+  {
+    writeFileSync(join(dir, "tasks.jsonl"),
+      `${JSON.stringify({ ts: "x", task_id: "A", task_type: "prompt", grouping: "turn", issue: null,
+        started_at: "2026-09-05T10:00:00+09:00", ended_at: "2026-09-05T10:01:00+09:00",
+        session_ids: ["s1"], turns: 1, result: "unknown" })}\n`);
+    writeFileSync(join(dir, "events.jsonl"),
+      `${JSON.stringify({ ts: "2026-09-05T10:00:00", event: "UserPromptSubmit", session_id: "s1", prompt_id: "p1", task_id: "A" })}\n`
+      + `${JSON.stringify({ ts: "2026-09-05T10:01:00", event: "Stop", session_id: "s1", prompt_id: "p1", task_id: "A", ask_inline: false })}\n`);
+    const 読む = () => {
+      try {
+        return JSON.parse(exD("node", [join(ROOT, TOOL), "--json"], {
+          cwd: ROOT, encoding: "utf8", timeout: 20_000,
+          env: { ...process.env, KONJAKU_TELEMETRY_DIR: dir }, stdio: ["ignore", "pipe", "pipe"] }));
+      } catch (e) { 欠け.push(`Eval が落ちた（status=${e?.status ?? "?"}）`); return null; }
+    };
+    const 決定あり = 読む();
+    // ⚠ **決定の記録を、⚠ いったん外して、⚠ もう一度読む**
+    const 控え = rfD(join(dir, "decisions.jsonl"), "utf8");
+    rmSync(join(dir, "decisions.jsonl"));
+    const 決定なし = 読む();
+    writeFileSync(join(dir, "decisions.jsonl"), 控え);
+
+    if (決定あり && 決定なし) {
+      for (const 欄 of ["owner", "per_task", "overall", "by_type"])
+        if (JSON.stringify(決定あり[欄]) !== JSON.stringify(決定なし[欄]))
+          欠け.push(`決定を記録したら ${欄} が動いた（⚠ 台帳が混ざっている）`);
+      // ⚠ **決定のほうは、⚠ ちゃんと出ていること**（⚠ 動かないことだけ見ると、⚠ 何も出さなくても通る）
+      if (決定あり.decisions?.記録がある_PR !== 1)
+        欠け.push(`決定の記録が ${決定あり.decisions?.記録がある_PR}（1 のはず）`);
+      if (決定あり.decisions?.値ごと?.後で戻した !== 1)
+        欠け.push("最後の行（後で戻した）を採っていない");
+      // ⚠ **無い ≠ 0 件**（`CLAUDE.md` §1）
+      if (決定なし.decisions !== null)
+        欠け.push("決定の記録が無いのに、0 件として出している（⚠ 無い ≠ 0 件）");
+    }
+    // ⚠ **読むだけ**（⚠ Eval を走らせて、⚠ 決定の記録が 1 バイトも変わっていないこと）
+    if (rfD(join(dir, "decisions.jsonl"), "utf8") !== 控え)
+      欠け.push("Eval を走らせたら、決定の記録が変わった（⚠ 読むだけのはず）");
+
+    // ---- 6. ⚠ 人が読む形でも名乗る（⚠ **数のすぐ上で、⚠ 1 つの文の中で**）----
+    //
+    // ⚠ **本文のどこかにあるだけでは足りない**（`CLAUDE.md` §9: ⚠ **別の文を拾って素通りする**）。
+    try {
+      const 文 = exD("node", [join(ROOT, TOOL)], {
+        cwd: ROOT, encoding: "utf8", timeout: 20_000,
+        env: { ...process.env, KONJAKU_TELEMETRY_DIR: dir }, stdio: ["ignore", "pipe", "pipe"] });
+      const 行たち = 文.split("\n");
+      const i = 行たち.findIndex((l) => /^\s*記録がある PR:/.test(l));
+      if (i < 1) 欠け.push("見て決めた決定の節が出ていない");
+      else if (!/人が入れた[^。\n]*観測ではない/.test(行たち[i - 1]))
+        欠け.push(`決定の数のすぐ上で、人が入れた値だと言っていない: ${JSON.stringify(行たち[i - 1])}`);
+      // ⚠ **良し悪しではない、と言っていること**（⚠ 即決が多い＝良い、と読まれる）
+      const 文たち = 文.split(/[。\n]/).map((t) => t.trim()).filter(Boolean);
+      if (!文たち.some((t) => /即決/.test(t) && /良い/.test(t)))
+        欠け.push("即決が良いという意味ではない、と 1 つの文で言っていない");
+    } catch (e) { 欠け.push(`人が読む形で落ちた（status=${e?.status ?? "?"}）`); }
+  }
+  rmSync(dir, { recursive: true, force: true });
+
+  欠け.length
+    ? bad(`見て決めた決定の記録が壊れている: ${欠け.join(" ／ ")}`
+        + `（⚠ 値は 3 つ・⚠ 最後の行を採る・⚠ 人が入れた値だと名乗る・⚠ 既存の台帳を動かさない）`)
+    : ok("見て決めた決定は、⚠ 3 つの値だけを人が入れ、⚠ あとから書き戻せ（前の行は残る）、"
+        + "⚠ 人が入れた値だと名乗り、⚠ 「Owner の手が入らなかった」を 1 も動かさない");
+}

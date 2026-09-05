@@ -29,6 +29,12 @@
 //     success rate ／ failure rate ／ quality score ／ agent score
 //     productivity ／ autonomy ／ PASS・FAIL ／ GOOD・BAD ／ 総合点
 //
+// ⚠ **1 つだけ、⚠ 観測でないものを出す**（2026-09-05）: ⚠ **見て決めた決定の結果。**
+//   ⚠ **人が入れた値**（`./decision.mjs` が書く。⚠ 即決 ／ 迷った ／ 後で戻した の 3 つ）。
+//   ⚠ **別の節に、⚠ 「人が入れた値」と名乗って出す。**⚠ **上の表には 1 つも混ぜない。**
+//   ⚠ **とくに「Owner の手が入らなかった」は、⚠ こちらを 1 バイトも読まない**
+//   （⚠ あれは ⚠ フックが書いた事実だけで出す数。⚠ 人の入力が混ざると、何の数か言えなくなる）。
+//
 // ⚠ **「1 Turn だから優秀」「時間が短いから優秀」も言わない。**
 //   ⚠ **速いのは、⚠ 用事が小さかっただけかもしれない。**⚠ **区別できていない。**
 //
@@ -55,6 +61,11 @@ import { pathToFileURL } from "node:url";
 // ⚠ **置き場所は `../telemetry-dir.mjs` の 1 か所**（⚠ 書く側と同じものを借りる）。
 //   ⚠ **別々に持つと、⚠ 書いた先と読む先が黙ってずれる**（2026-08-24 に実証した）。
 import { telemetryDir } from "../telemetry-dir.mjs";
+// ⚠ **見て決めた決定の台帳は `./decision.mjs` が持つ**（⚠ 値の 3 つも、⚠ 最後の行を採る規則も）。
+//   ⚠ **ここで持ち直さない。**⚠ **借りるだけ**（⚠ 書く側と読む側が別々に字を持つと、黙ってずれる）。
+// ⚠ **これは、⚠ 上の台帳（フックが書いた事実）とは別もの。**⚠ **人が入れた値。**
+//   ⚠ **`ownerOf` / `perTaskOf` は、⚠ こちらを 1 バイトも読まない**（⚠ あちらの定義を濁らせない）。
+import { readDecisions, decisionsOf, OUTCOMES } from "./decision.mjs";
 
 // ⚠ **並べる順は決め打ち。**⚠ **知らない種別は、⚠ そのうしろに足す**
 //   （⚠ 消さない。⚠ **知らないものが増えたことに気づけるように**）。
@@ -288,6 +299,25 @@ export const format = (s) => {
         + "（⚠ session_id を持たない古い記録）");
     L.push("  ⚠ これは「うまくいった数」ではない。⚠ 良し悪しは測っていない");
   }
+
+  // ---- 見て決めた決定（⚠ **人が入れた値**）----
+  // ⚠ **上の 2 つとは別の台帳**（`.claude/telemetry/decisions.jsonl`）。
+  //   ⚠ **上はフックが書いた事実。**⚠ **ここは人が入れた値。**⚠ **同じ表に混ぜない。**
+  if (s.decisions) {
+    const d = s.decisions;
+    L.push("");
+    L.push("見て決めた決定（⚠ 人が入れた値）");
+    // ⚠ **1 つの文の中で結びつける**（`CLAUDE.md` §9: ⚠ **別の文を拾って素通りする**）
+    L.push("  ⚠ 3 つの値は人が入れたもので、観測ではない（⚠ 上の「Owner の手」とは別の台帳）");
+    L.push(`  記録がある PR:        ${d.記録がある_PR}`
+      + "   ⚠ 分母。⚠ 記録していない PR は入っていない");
+    L.push(`  ${OUTCOMES.map((o) => `${o} ${d.値ごと[o]}`).join(" ／ ")}`);
+    if (d.不明) L.push(`  ⚠ 知らない値: ${d.不明}（⚠ 3 つのどれでもない）`);
+    if (d.PRが無い行) L.push(`  ⚠ PR を持たない行: ${d.PRが無い行}`);
+    if (d.読めなかった行) L.push(`  ⚠ 読めなかった行: ${d.読めなかった行}`);
+    L.push("  ⚠ 同じ PR は最後の行を採る（⚠ 「後で戻した」は、あとから書き戻せる）");
+    L.push("  ⚠ 良し悪しは測っていない（⚠ 即決が良い、という意味ではない）");
+  }
   return L.join("\n");
 };
 
@@ -476,6 +506,11 @@ const main = () => {
   const ev = readEvents(dir);
   s.owner = ev.missing ? null : ownerOf(ev.rows);
   s.per_task = ev.missing ? null : perTaskOf(ev.rows);
+  // ⚠ **見て決めた決定は、⚠ 別のファイルから**（⚠ 無くても止まらない）。
+  //   ⚠ **`owner` / `per_task` には 1 バイトも渡さない**（⚠ あちらは観測だけで出す）。
+  const dc = readDecisions(dir);
+  s.decisions = dc.missing ? null
+    : { ...decisionsOf(dc.rows), 読めなかった行: dc.unreadable.length };
   process.stdout.write(process.argv.includes("--json")
     ? `${JSON.stringify(s, null, 2)}\n` : `${format(s)}\n`);
 };
