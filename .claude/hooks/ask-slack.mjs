@@ -96,6 +96,11 @@ const note = (sid, rec) => {
 let mod = null;
 try { mod = await import("../telemetry-dir.mjs"); } catch { /* ⚠ 同上 */ }
 
+// ⚠ **Slack に出す見た目は `ask-slack-view.mjs` の 1 か所。**⚠ **ここでは持たない。**
+//   ⚠ **あちらは何も送らないので、⚠ 検査が Slack へ 1 通も出さずに確かめられる。**
+import { 時間切れの見た目 } from "./ask-slack-view.mjs";
+
+
 try {
   const INPUT = JSON.parse(readFileSync(0, "utf8") || "{}");
   // ⚠ 対象は AskUserQuestion だけ。ほかの道具で止まらない
@@ -233,10 +238,18 @@ try {
   try { ws.close(); } catch { /* 閉じられなくても、もう関係ない */ }
 
   // ---- 時間切れ。⚠ 黙って放置しない。書いた人に「届いていない」を伝える ----
+  //
+  // ⚠ **押しても効かないボタンを、⚠ 残したままにしない**（ADR 0026）。
+  //   ⚠ **実測（2026-08-28〜2026-09-04・65 件）**: ⚠ **26 件（40%）が時間切れだった。**
+  //   ⚠ **その 26 件ぶん、⚠ 押しても何も起きないボタンが Slack に残り続けていた。**
+  //   ⚠ **待ち受けはもう閉じているので、⚠ 押しても本当に何も起きない。**
+  //
+  // ⚠ **スレッドへの投稿はやめ、⚠ 元の投稿を書き換える。**
+  //   ⚠ **同じことを 2 か所に出さない。**⚠ **通知も増やさない**（`chat.update` は鳴らない）。
+  //   ⚠ **終わった話を、⚠ あとから鳴らして知らせても、⚠ できることが無い。**
   if (!result) {
-    await api("chat.postMessage", BOT, { channel: CH, thread_ts: post.ts,
-      text: "⏱ 返事が無かったので、端末で聞いています。"
-          + "（⚠ このスレッドに直接書いても読んでいません。ボタンか「✎ 自由に書く」でお願いします）",
+    await api("chat.update", BOT, { channel: CH, ts: post.ts,
+      text: `${head}\n${plain}`, blocks: 時間切れの見た目(head, questions),
     }).catch(() => {});
     note(INPUT.session_id, { questions: questions.length, options: optionCount, outcome: "timeout",
            waited_ms: Date.now() - askedAt });
