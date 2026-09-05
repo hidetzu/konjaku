@@ -3745,6 +3745,105 @@ CASES.push({
   },
 });
 
+// ⚠ **計測**（2026-09-06。Owner 判断。`docs/adr/0102`）。
+//
+// ⚠ **静的検査は「受け側が何を弾くか」を見る**（`test/check/safety.mjs` 1.7）。
+//   ⚠ **ここが見るのは「画面が実際に何を送るか」。**⚠ **送っていないものは弾きようがない。**
+//
+// ⚠ **いちばん大事なのは、⚠ 座標が 1 つも出ていないこと**（Owner 判断＝案A）。
+//   ⚠ **画面は座標を持っている。**⚠ **持っているものを送らない、というのは検査でしか守れない。**
+const 計測を捕まえる = async (page) => {
+  const 送った = [];
+  await page.route("**/api/events", async (route) => {
+    try { 送った.push(JSON.parse(route.request().postData() ?? "null")); } catch { 送った.push(null); }
+    await route.fulfill({ status: 204, body: "" });
+  });
+  return 送った;
+};
+
+for (const [名, path, 待つの, 要る] of [
+  ["このサイトについて", "/about", null, { event_type: "page_load", page: "about" }],
+  ["深掘り", `/deep?${TOYOSU}`, null, { event_type: "deep_accessed", page: "deep" }],
+]) {
+  CASES.push({
+    name: `${名}を開くと、⚠ 計測が 1 本だけ飛ぶ`,
+    path, origin: NEXT_BASE, viewport: SP,
+    async check(page) {
+      const 送った = await 計測を捕まえる(page);
+      await page.goto(`${NEXT_BASE}${path}`, { waitUntil: "domcontentloaded" });
+      await page.waitForTimeout(待つの ?? 4000);
+      const 該当 = 送った.filter((b) => b && b.event_type === 要る.event_type);
+      must(該当.length === 1,
+        `${要る.event_type} が ${該当.length} 本（⚠ 1 本のはず）: ${JSON.stringify(送った)}`);
+      const b = 該当[0];
+      must(b.metadata?.page === 要る.page, `画面の名前が違う: ${JSON.stringify(b.metadata)}`);
+      must(typeof b.session_id === "string" && b.session_id, "訪問の印が入っていない");
+      must(typeof b.referrer === "string" && b.referrer, "流入元が入っていない");
+      return `${要る.event_type}・画面 ${b.metadata.page}・流入元 ${b.referrer}`;
+    },
+  });
+}
+
+CASES.push({
+  // ⚠ **案A の本体**（2026-09-06。Owner 判断）。⚠ **座標は 1 つも送らない。**
+  //   ⚠ **画面は座標を持っているので、⚠ 「送っていない」は検査でしか守れない。**
+  //   ⚠ **一通り操作してから、⚠ 送った本文を全部見る。**
+  name: "計測に、⚠ 座標も町名も user-agent も入らない",
+  path: `/?${TOYOSU}`, origin: NEXT_BASE, viewport: SP,
+  async check(page) {
+    const 送った = await 計測を捕まえる(page);
+    await page.goto(`${NEXT_BASE}/?${TOYOSU}`, { waitUntil: "domcontentloaded" });
+    await waitAnswer(page);
+    // ⚠ **押せるものを一通り押す**（⚠ 送る口を全部通す）
+    await ひらく(page);
+    await 待つ(page, () => !document.getElementById("save").hidden, "保存");
+    await page.locator("#save").click();
+    await page.waitForTimeout(2500);
+    must(送った.length > 0, "計測が 1 本も飛んでいない（⚠ この検査が何も見ていない）");
+    must(送った.every((b) => b !== null), "読めない本文を送っている");
+
+    // ⚠ **座標・町名・user-agent が、⚠ どこにも入っていないこと**
+    const 全部 = JSON.stringify(送った);
+    // ⚠ **豊洲の座標そのもの**（⚠ 桁を落として送るのも許さない）
+    for (const 印 of [/35\.65/, /139\.79/, /豊洲/, /Mozilla/, /latitude/, /longitude/, /user_agent/])
+      must(!印.test(全部), `計測に ${印} が入っている: ${全部.slice(0, 300)}`);
+    // ⚠ **鍵も、⚠ 決めた 5 つだけ**（⚠ 何でも入る器にしない）
+    const 鍵 = new Set(送った.flatMap((b) => Object.keys(b)));
+    const 余り = [...鍵].filter((k) =>
+      !["event_type", "session_id", "referrer", "entry_point", "metadata"].includes(k));
+    must(!余り.length, `決めていない鍵を送っている: ${余り.join("、")}`);
+    // ⚠ **metadata も `page` だけ**
+    const m鍵 = new Set(送った.flatMap((b) => Object.keys(b.metadata ?? {})));
+    const m余り = [...m鍵].filter((k) => k !== "page");
+    must(!m余り.length, `metadata に決めていない鍵がある: ${m余り.join("、")}`);
+    // ⚠ **同じ訪問なら、⚠ 印は同じ**（⚠ 1 本ごとに作り直していないこと）
+    const 印たち = new Set(送った.map((b) => b.session_id));
+    must(印たち.size === 1, `訪問の印が ${印たち.size} 種ある（⚠ 同じ訪問なのに）`);
+    return `${送った.length} 本（${[...new Set(送った.map((b) => b.event_type))].join(" / ")}）`
+      + `・座標 0・鍵は決めた 5 つだけ`;
+  },
+});
+
+CASES.push({
+  // ⚠ **計測が落ちても、⚠ 画面は止まらない**（`.claude/rules/javascript.md`）。
+  //   ⚠ **計測のために利用者を待たせない。**⚠ **数えられなかっただけ。**
+  name: "計測が落ちても、⚠ 画面は動く",
+  path: `/?${TOYOSU}`, origin: NEXT_BASE, viewport: SP,
+  setup: (page) => page.route("**/api/events", (r) => r.abort()),
+  async check(page) {
+    await waitAnswer(page); await waitEras(page);
+    const r = await page.evaluate(() => ({
+      答え: document.getElementById("gloss").textContent.trim(),
+      年代: document.querySelectorAll(".era").length,
+      保存が出る: !document.getElementById("save").hidden,
+    }));
+    must(r.答え.length > 2, `計測が落ちたら、答えも出なくなった: ${r.答え}`);
+    must(r.年代 > 0, "計測が落ちたら、年代が出なくなった");
+    must(r.保存が出る, "計測が落ちたら、保存が出なくなった");
+    return `答え「${r.答え}」・年代 ${r.年代}・保存も出る`;
+  },
+});
+
 // ⚠ **同じタイルを 2 回引かない**（hidetzu/konjaku#494）。
 //
 // ⚠ **実測（2026-09-06・本番 `87a35cc`）**: ⚠ **点の判定と地図の面の塗りが、⚠ 別々のキャッシュで

@@ -443,6 +443,11 @@
   畳み直す();
   // ⚠ **凡例に出す数も幅で変わるので、⚠ 一緒に引き直す**（⚠ 回したときに数が古いまま残らない）。
   addEventListener("resize", () => { 畳み直す(); drawLegend(); });
+  // ⚠ **押したときだけ数える。**⚠ **`toggle` では数えない**
+  //   （⚠ 幅が変わると `畳み直す()` が自分で開け閉めするので、⚠ 人が押していないのに数える）。
+  fold.querySelector(".fold__sum").addEventListener("click", () => {
+    if (!fold.open) Konjaku計測.起こす("detail_view");   // ⚠ これから開くとき
+  });
 
   // ---- 足元を調べる ----
   let askSeq = 0;
@@ -502,6 +507,8 @@
     //   消しはしない。国土地理院の区分名を名乗れないと、何を根拠に言っているか分からなくなる。
     drawAnswer();
     drawLegend();
+    // ⚠ **足元の判定が出た。**⚠ **その場所は送らない。**⚠ **出どころだけ送る。**
+    Konjaku計測.起こす("map_opened", { 入口: 出どころ });
     drawEdge(lon, lat);
   }
 
@@ -772,6 +779,8 @@
   }
 
   shareBtn.addEventListener("click", async () => {
+    // ⚠ **押したことだけ数える。**⚠ **どこを共有したかは送らない。**
+    Konjaku計測.起こす("shared");
     const url = shareUrl();
     if (!url) return;                       // 座標が読めない。黙る（押せる形にもしていない）
     // 端末の共有の口。無いブラウザがある
@@ -876,6 +885,8 @@
   saveBtn.addEventListener("click", async () => {
     const lon = px2lon(cx), lat = px2lat(cy);
     const hit = KonjakuSaved.findAt(saved, lon, lat);
+    // ⚠ **足したときだけ数える**（⚠ 外したときは数えない）。⚠ **場所は送らない。**
+    if (!hit) Konjaku計測.起こす("save_place");
     if (hit) {
       saved = KonjakuSaved.remove(saved, lon, lat);
     } else {
@@ -998,6 +1009,11 @@
     出どころ = "search";
     hits.hidden = true; q.blur(); moved();
   });
+
+  // ---- 計測 ----
+  //   ⚠ **何を送るかは `measure.js` が決める。**⚠ ここは「いつ起きたか」だけ。
+  //   ⚠ **座標も町名も送らない**（`docs/adr/0102`）。
+  Konjaku計測.起こす("page_load", { page: "map" });
 
   draw(); ask();
 })();
