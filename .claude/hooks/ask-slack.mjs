@@ -52,7 +52,6 @@ import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
 
 const WAIT_MS = 180_000;          // ⚠ 上限。これを超えて待たない
-const FREE = "__free__";          // 「✎ 自由に書く」の目印
 const bail = (why) => { if (why) process.stderr.write(`ask-slack: ${why}\n`); process.exit(0); };
 
 // ---- ⚠ 人に聞いたことを、⚠ 1 行だけ残す（hidetzu/konjaku#367。ADR 0044）----
@@ -98,7 +97,7 @@ try { mod = await import("../telemetry-dir.mjs"); } catch { /* ⚠ 同上 */ }
 
 // ⚠ **Slack に出す見た目は `ask-slack-view.mjs` の 1 か所。**⚠ **ここでは持たない。**
 //   ⚠ **あちらは何も送らないので、⚠ 検査が Slack へ 1 通も出さずに確かめられる。**
-import { 時間切れの見た目 } from "./ask-slack-view.mjs";
+import { 時間切れの見た目, 聞くときの見た目, optionsOf, FREE } from "./ask-slack-view.mjs";
 
 
 try {
@@ -153,21 +152,9 @@ try {
   };
 
   // ---- 質問ごとに、選択肢のボタンと「✎ 自由に書く」を並べる ----
-  // ⚠ ボタンの文字は 75 字まで。切って表示するが、**採用するのは切る前の全文**
-  const optionsOf = (q) => (q.options ?? [])
-    .map((o) => (typeof o === "string" ? o : o?.label)).filter(Boolean);
-  const blocks = [{ type: "section", text: { type: "mrkdwn", text: head } }];
-  questions.forEach((q, qi) => {
-    blocks.push({ type: "section", text: { type: "mrkdwn",
-      text: `*${q.header ? `[${q.header}] ` : ""}${q.question ?? ""}*` } });
-    const els = optionsOf(q).slice(0, 4).map((label, oi) => ({
-      type: "button", action_id: `q${qi}_o${oi}`, value: `${qi}:${oi}`,
-      text: { type: "plain_text", text: label.slice(0, 75) },
-    }));
-    els.push({ type: "button", action_id: `q${qi}_free`, value: `${qi}:${FREE}`,
-      text: { type: "plain_text", text: "✎ 自由に書く" } });
-    blocks.push({ type: "actions", block_id: `a${qi}`, elements: els });
-  });
+  // ⚠ **見た目は ask-slack-view.mjs の 1 か所。**⚠ ここでは持たない。
+  //   ⚠ **あちらは何も送らないので、⚠ 検査が Slack へ 1 通も出さずに確かめられる。**
+  const blocks = 聞くときの見た目(head, questions);
 
   const post = await api("chat.postMessage", BOT, { channel: CH, text: `${head}\n${plain}`, blocks });
   if (!post.ok) { note(INPUT.session_id, { questions: questions.length, options: 0, outcome: "unavailable", waited_ms: 0 });

@@ -25,3 +25,34 @@ export const 時間切れの見た目 = (head, questions) => [
     text: "⏱ 返事が無かったので、端末で聞きました。"
         + "（このスレッドに書いても読んでいません）" }] },
 ];
+
+// 「✎ 自由に書く」の目印。⚠ ここと ask-slack.mjs で 2 か所に持たない。
+export const FREE = "__free__";
+
+// 選択肢の字。⚠ 文字列でも {label} でも受ける。
+export const optionsOf = (q) => (q?.options ?? [])
+  .map((o) => (typeof o === "string" ? o : o?.label)).filter(Boolean);
+
+// 聞いているときの見た目。
+//
+// ⚠ **時間切れの見た目と対になる。**⚠ **こちらは押せる。**⚠ **あちらは押せない。**
+//   ⚠ **2 つを同じ場所に置くと、⚠ 片方だけ直したときに気づける。**
+// ⚠ **ボタンの文字は 75 字まで**（⚠ Slack の上限）。⚠ **切って表示するが、
+//   ⚠ 採用するのは切る前の全文**（⚠ 押された値は `qi:oi` で戻る）。
+// ⚠ **1 つの質問につき、⚠ 選択肢は 4 つまで**（⚠ Slack の actions は 5 要素まで。
+//   ⚠ 残り 1 つを「✎ 自由に書く」に使う）。
+export const 聞くときの見た目 = (head, questions) => {
+  const blocks = [{ type: "section", text: { type: "mrkdwn", text: String(head ?? "") } }];
+  (questions ?? []).forEach((q, qi) => {
+    blocks.push({ type: "section", text: { type: "mrkdwn",
+      text: `*${q?.header ? `[${q.header}] ` : ""}${q?.question ?? ""}*` } });
+    const els = optionsOf(q).slice(0, 4).map((label, oi) => ({
+      type: "button", action_id: `q${qi}_o${oi}`, value: `${qi}:${oi}`,
+      text: { type: "plain_text", text: label.slice(0, 75) },
+    }));
+    els.push({ type: "button", action_id: `q${qi}_free`, value: `${qi}:${FREE}`,
+      text: { type: "plain_text", text: "✎ 自由に書く" } });
+    blocks.push({ type: "actions", block_id: `a${qi}`, elements: els });
+  });
+  return blocks;
+};

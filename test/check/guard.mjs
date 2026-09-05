@@ -537,6 +537,41 @@ head("計測が、作業を止めない");
   try { V = await import("../../.claude/hooks/ask-slack-view.mjs"); }
   catch (e) { 欠け.push(`見た目を読めない: ${e.message}`); }
 
+  // ⚠ **聞いているときは、⚠ 押せるものが在る**（⚠ 時間切れの見た目と対になる）。
+  //   ⚠ **片方だけ直したときに気づけるよう、⚠ 2 つを同じ場所で見る。**
+  if (V?.聞くときの見た目) {
+    const a = V.聞くときの見た目("頭", [
+      { header: "確認", question: "押しますか", options: [{ label: "はい" }, { label: "いいえ" }] },
+      { question: "消しますか", options: ["A", "B", "C", "D", "E", "F"] },
+      // ⚠ **長い字を 1 つ入れておく。**⚠ **短い字だけだと、⚠ 切り詰めを外しても素通りする**
+      //   （⚠ 実際に素通りした）。⚠ **Slack の上限は 75 字。⚠ 超えると投稿ごと落ちる。**
+      { question: "長い選択肢", options: ["あ".repeat(120)] },
+    ]);
+    // ⚠ **数を書き写さない。**⚠ **渡した質問の数と突き合わせる**
+    //   （⚠ 標本を足したら「2 組しかない」で落ちた。⚠ 検査が標本に縛られていた）。
+    const 問い = 3;
+    const 組 = a.filter((x) => x.type === "actions");
+    if (組.length !== 問い)
+      欠け.push(`質問 ${問い} つに対して、押せるものが ${組.length} 組しかない`);
+    else {
+      // ⚠ **Slack の actions は 5 要素まで。**⚠ **選択肢 4 つ ＋「✎ 自由に書く」**
+      for (const [i, g] of 組.entries())
+        if (g.elements.length > 5) 欠け.push(`${i} 番目の押せるものが ${g.elements.length} 個（⚠ 上限 5）`);
+      // ⚠ **「✎ 自由に書く」は必ず在る**（⚠ 選択肢に無い答えを塞がない）
+      if (!組.every((g) => g.elements.some((e) => /自由に書く/.test(e.text?.text ?? ""))))
+        欠け.push("聞くときの見た目に「✎ 自由に書く」が無い");
+      // ⚠ **ボタンの字は 75 字まで**（⚠ Slack の上限。⚠ 超えると投稿ごと落ちる）
+      const 長い = 組.flatMap((g) => g.elements).filter((e) => (e.text?.text ?? "").length > 75);
+      if (長い.length) 欠け.push(`ボタンの字が 75 字を超えている（${長い.length} 個）`);
+    }
+    // ⚠ **問いは残す。**⚠ **header があれば添える**
+    const 字 = JSON.stringify(a);
+    for (const q of ["押しますか", "消しますか", "[確認]"])
+      if (!字.includes(q)) 欠け.push(`聞くときの見た目から「${q}」が消えている`);
+  } else {
+    欠け.push("聞くときの見た目を読めていない（⚠ この検査が何も見ていない）");
+  }
+
   if (!V?.時間切れの見た目) {
     欠け.push("時間切れの見た目を読めていない（⚠ この検査が何も見ていない）");
   } else {
@@ -561,9 +596,9 @@ head("計測が、作業を止めない");
   //   ⚠ **借りているだけでは足りない。**⚠ **`chat.update` に渡していることまで見る。**
   const 素 = (await readFile(join(ROOT, ".claude/hooks/ask-slack.mjs"), "utf8"))
     .replace(BLOCK_COMMENT, " ").replace(HEAD_COMMENT, " ");
-  if (!/時間切れの見た目/.test(素))
-    欠け.push("ask-slack.mjs が、時間切れの見た目を使っていない");
-  else if (!/chat\.update[\s\S]{0,200}時間切れの見た目/.test(素))
+  for (const 名 of ["時間切れの見た目", "聞くときの見た目"])
+    if (!new RegExp(名).test(素)) 欠け.push(`ask-slack.mjs が、${名}を使っていない`);
+  if (!/chat\.update[\s\S]{0,200}時間切れの見た目/.test(素))
     欠け.push("時間切れの見た目を、⚠ chat.update に渡していない（⚠ 元の投稿が変わらない）");
   // ⚠ **通知を増やさない**（⚠ 終わった話を、⚠ あとから鳴らして知らせても、⚠ できることが無い）
   const 時間切れの節 = 素.slice(素.indexOf("if (!result)"), 素.indexOf("if (!result)") + 400);
