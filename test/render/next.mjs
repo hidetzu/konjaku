@@ -4173,6 +4173,100 @@ for (const [名, viewport, 畳む] of [
   });
 }
 
+// ⚠ **連絡先**（2026-09-05。Owner 判断。`docs/adr/0094`）。
+//
+// ⚠ **GitHub は公開の場で、⚠ アカウントが要る。**⚠ **それが困る用件のために、⚠ メールを置く。**
+// ⚠ **常時出る案内は 4 本のまま**（⚠ 増やしていない）。⚠ **`/about` に節を作った。**
+for (const [名, viewport] of [["PC", PCな幅], ["スマホ", SP], ["いちばん狭い幅", { width: 320, height: 640 }]]) {
+  CASES.push({
+    name: `${名}の連絡先は、⚠ 公開でよいかで分かれている`,
+    path: "/about", origin: NEXT_BASE, viewport,
+    async check(page) {
+      const r = await page.evaluate(() => {
+        const 節 = [...document.querySelectorAll(".about__sec")]
+          .find((s) => s.querySelector(".about__h2")?.textContent.trim() === "連絡先");
+        if (!節) return { 無い: true };
+        const 札 = [...節.querySelectorAll(".cards__i")].map((li) => ({
+          見出し: li.querySelector(".cards__k")?.textContent.trim() ?? "",
+          字: li.textContent.replace(/\s+/g, " ").trim(),
+          行き先: [...li.querySelectorAll("a")].map((a) => a.getAttribute("href")),
+        }));
+        const 的 = [...節.querySelectorAll("a")].map((a) => {
+          const q = a.getBoundingClientRect();
+          return { 字: a.textContent.trim(), w: Math.round(q.width), h: Math.round(q.height) };
+        });
+        return {
+          札, 的,
+          // ⚠ **常時出る案内を増やしていないこと**（⚠ ここが今回の要）
+          帯: document.querySelectorAll(".menu__item").length,
+          下: document.querySelectorAll(".foot__link").length,
+          横あふれ: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+        };
+      });
+      must(!r.無い, "/about に連絡先の節が無い");
+      must(r.札.length === 2, `連絡先が ${r.札.length} 個（⚠ 2 個と決めてある）`);
+      const 公開 = r.札.find((x) => x.行き先.some((h) => /github\.com/.test(h ?? "")));
+      const 非公開 = r.札.find((x) => x.行き先.some((h) => /^mailto:/.test(h ?? "")));
+      must(公開, "公開の場（GitHub）への行き先が無い");
+      must(非公開, "メールの行き先が無い");
+      // ⚠ **公開でよいかが、⚠ その札の中で分かること**（⚠ 隣の札の字を当てにしない）
+      must(/公開の場/.test(公開.字) && /誰でも読め/.test(公開.字),
+        `GitHub の側に、⚠ 公開だという断りが無い: 「${公開.字.slice(0, 60)}」`);
+      must(/公開の場に書きたくない/.test(非公開.字),
+        `メールの側に、⚠ 使い分けが書かれていない: 「${非公開.字.slice(0, 60)}」`);
+      // ⚠ **扱いは `/privacy` が持つ**（⚠ ここで約束を増やさない）
+      must(非公開.行き先.some((h) => /privacy/.test(h ?? "")), "メールの扱いの行き先が無い");
+      // ⚠ **常時出る案内を増やしていない**（2026-09-05。Owner 判断で案 C を採った）
+      must(r.帯 === 4, `名乗りのメニューが ${r.帯} 本ある（⚠ 4 本のまま、と決めてある）`);
+      must(!r.横あふれ, "画面が横にあふれている");
+      const 切れ = r.的.filter((t) => t.w <= 0);
+      must(!切れ.length, `連絡先のリンクが出ていない: ${切れ.map((t) => t.字).join(" ")}`);
+      return `${r.札.map((x) => x.見出し).join(" ／ ")}（⚠ 帯 ${r.帯} 本・下 ${r.下} 本のまま）`
+        + ` ／ 的 ${r.的.map((t) => `${t.w}x${t.h}`).join(" ")}`;
+    },
+  });
+}
+
+// ⚠ **メールを受け取ることを、⚠ プライバシーポリシーが黙っていないか。**
+//   ⚠ **「ここに書いていないことは、していません」と言っている**ので、⚠ 書かないと嘘になる。
+CASES.push({
+  name: "プライバシーポリシーが、⚠ メールを受け取ることを言う",
+  path: "/privacy", origin: NEXT_BASE, viewport: SP,
+  async check(page) {
+    const r = await page.evaluate(() => {
+      const 節 = [...document.querySelectorAll(".about__sec")]
+        .find((s) => /メール/.test(s.querySelector(".about__h2")?.textContent ?? ""));
+      return {
+        要約: [...document.querySelectorAll(".about__sumItem")].map((x) => x.textContent.replace(/\s+/g, " ").trim()),
+        節: 節 ? 節.textContent.replace(/\s+/g, " ").trim() : null,
+        メール: [...document.querySelectorAll('a[href^="mailto:"]')].map((a) => a.getAttribute("href")),
+      };
+    });
+    must(r.節, "/privacy に、⚠ メールの扱いの節が無い");
+    must(r.要約.some((x) => /メール/.test(x)), "冒頭の要約が、⚠ メールに触れていない");
+    // ⚠ **何が届くか・何に使うか・渡さないこと**（⚠ 3 つとも要る）
+    for (const [何, 印] of [["何が届くか", /本文/], ["アドレスが届くこと", /アドレス/],
+                            // ⚠ **返信だけとは限らないので、⚠ 狭く言わない**（2026-09-05。Owner 指示）
+                            ["何に使うか", /対応のため/],
+                            // ⚠ **実測（2026-09-05）**: ⚠ MX は route1〜3.mx.cloudflare.net。
+                            //   ⚠ **配送は Cloudflare を経由する。**⚠ **目的で限る言い方にする。**
+                            ["渡さないこと", /第三者/], ["目的で限ること", /対応以外の目的/],
+                            ["配送を経由する相手", /Cloudflare/],
+                            ["配送に伴うこと", /避けられません/]])
+      must(印.test(r.節), `メールの節に「${何}」が無い: 「${r.節.slice(0, 80)}」`);
+    // ⚠ **消すと言い切らない**（⚠ いつ消すかを決めていない。掟 §1）
+    for (const 嘘 of ["すぐ消します", "自動で消えます", "保存しません"])
+      must(!r.節.includes(嘘), `メールについて言い切っている: ${嘘}`);
+    // ⚠ **狭い言い方を残さない**（2026-09-05。Owner 指示）
+    for (const 狭い of ["返信のためだけ", "第三者へ渡しません"])
+      must(!r.節.includes(狭い), `メールについて、⚠ 狭い言い方が残っている: ${狭い}`);
+    must(r.メール.length >= 1, "/privacy から、⚠ そのアドレスへ行けない");
+    return `要約 ${r.要約.length} 点（⚠ メールを含む）／ 節あり ／ ${r.メール[0]}`;
+  },
+});
+
+// ⚠ **読み物の出口。**
+
 // ⚠ **読み物の出口。**⚠ **押して、⚠ 本当にトップへ着くところまで見る**
 //   （⚠ 字と href だけなら静的検査が見ている。⚠ ここは着くかを見る）。
 for (const [名, viewport] of [["PC", PCな幅], ["スマホ", SP]]) {
