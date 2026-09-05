@@ -1835,4 +1835,64 @@ else {
           + "⚠ 段に在る値を直書きしていない（⚠ 段の外の値は、⚠ まだ直書きのまま）");
   }
 
+  // ⚠ **㉖ 静的に配っているものを取る口は 1 か所**（hidetzu/konjaku#99）。
+  //
+  // ⚠ **実測（2026-09-05・`172a680`）**: ⚠ **7 か所 / 4 ファイルで取っていた。**
+  //   ⚠ **時間切れを持っていたのは 2 本だけ。**
+  //   ⚠ **失敗したときの返し方も `null` / 例外 / `{ok:false}` とばらばらだった。**
+  //
+  // ⚠ **ばらばらだと、⚠ 「取れなかった」を「無い」に化けさせる経路が口の数だけ増える**
+  //   （掟 §1）。⚠ **実際に踏んでいる**（2026-08-29。⚠ 資料を読めなくしても、
+  //   ⚠ 画面は資料が無い場所とまったく同じだった）。
+  //
+  // ⚠ **外へ出る取得は、⚠ ここでは見ない**（⚠ 地理院・J-SHIS・受け渡しの API は別のスライス）。
+  {
+    const 欠け = [];
+    const 口 = "static-json.js";
+    if (!existsSync(join(NEXT, 口))) 欠け.push(`${口} が無い（⚠ この検査が何も見ていない）`);
+
+    // ⚠ **配り物へ `fetch(` を直に向けている場所が無いこと。**
+    //   ⚠ **コメントを先に落とす**（`CLAUDE.md` §5。⚠ 落とさないと、⚠ 説明の字を拾う）。
+    const 直 = [];
+    for (const f of readdirSync(NEXT).filter((x) => /\.(js|html)$/.test(x))) {
+      if (f === 口) continue;
+      const src = readFileSync(join(NEXT, f), "utf8")
+        .replace(BLOCK_COMMENT, " ").replace(HEAD_COMMENT, "");
+      for (const m of src.matchAll(/fetch\(\s*[`"'][^`"']*data\//g))
+        直.push(`${f}: ${m[0].trim()}`);
+    }
+    if (直.length) 欠け.push(`配り物を直に取りに行っている: ${直.join(" ／ ")}`);
+
+    // ⚠ **口を読み込んでいる画面が、⚠ 口を使う相手より先に読んでいること。**
+    //   ⚠ **classic script は上から順に走る。**⚠ **後ろだと、⚠ 使う側から見えない。**
+    for (const [html, 使う] of [["index.html", ["verify.js", "top.js"]],
+                                ["deep.html", ["verify.js", "deep.js"]]]) {
+      const src = readFileSync(join(NEXT, html), "utf8");
+      const 位置 = (n) => src.indexOf(`./${n}"`);
+      if (位置(口) < 0) { 欠け.push(`${html} が ${口} を読み込んでいない`); continue; }
+      for (const n of 使う)
+        if (位置(n) >= 0 && 位置(n) < 位置(口))
+          欠け.push(`${html} が ${n} を ${口} より先に読んでいる（⚠ 使う側から見えない）`);
+    }
+
+    // ⚠ **口が、⚠ 「無い」を返さないこと**（⚠ 返す形は 2 つだけ）。
+    //   ⚠ **`absent` を返せるようにすると、⚠ 配信の失敗が「無い」に化ける道ができる。**
+    if (existsSync(join(NEXT, 口))) {
+      const src = readFileSync(join(NEXT, 口), "utf8")
+        .replace(BLOCK_COMMENT, " ").replace(HEAD_COMMENT, "");
+      const 状態 = new Set([...src.matchAll(/state:\s*"(\w+)"/g)].map((m) => m[1]));
+      if (!状態.has("ok") || !状態.has("unreachable"))
+        欠け.push(`${口} が ok / unreachable を返していない（⚠ 返す形が違う）`);
+      if (状態.has("absent"))
+        欠け.push(`${口} が absent を返している（⚠ 配信の失敗を「無い」に化けさせない）`);
+      if (!/AbortSignal\.timeout/.test(src))
+        欠け.push(`${口} が時間切れを持っていない（⚠ 揃える先がここ）`);
+    }
+
+    欠け.length
+      ? bad(`静的に配っているものを取る口が 1 か所になっていない: ${欠け.join(" ／ ")}`)
+      : ok("静的に配っているものを取る口は static-json.js の 1 か所"
+          + "（⚠ 時間切れと失敗の返し方も、⚠ そこが持つ）");
+  }
+
 }

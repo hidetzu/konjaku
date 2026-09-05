@@ -362,9 +362,11 @@
   let tableP = null;
   function table() {
     // 相手先ではなく自分の配信物。落ちたらこちらの不備なので、失敗を覚えない。
-    if (!tableP) tableP = fetch("./data/landform.json", { signal: AbortSignal.timeout(TIMEOUT_MS) })
-      .then((r) => { if (!r.ok) throw new Error(`landform.json ${r.status}`); return r.json(); })
-      .catch((e) => { tableP = null; throw e; });
+    // 取りに行くのは static-json.js の 1 か所（hidetzu/konjaku#99）。時間切れもそこが持つ。
+    if (!tableP) tableP = global.KonjakuStatic.取る("./data/landform.json").then((r) => {
+      if (r.state !== "ok") { tableP = null; throw new Error(`landform.json ${r.why}`); }
+      return r.data;
+    });
     return tableP;
   }
 

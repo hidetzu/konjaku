@@ -311,10 +311,11 @@
   //   どう見せるかは決めていない。
   let tableP = null;
   function table() {
-    if (!tableP) tableP = fetch("./data/landform.json")
-      .then((r) => r.ok ? r.json() : null)
-      .then((j) => {
-        if (!j) return null;
+    // 取りに行くのは static-json.js の 1 か所（hidetzu/konjaku#99）。時間切れもそこが持つ。
+    if (!tableP) tableP = KonjakuStatic.取る("./data/landform.json")
+      .then((r) => {
+        if (r.state !== "ok") { tableP = null; return null; }
+        const j = r.data;
         // いまも水域である区分。verify.js の isWatery は「水に由来する」を答えるので、
         //   そのうち「いまも水」をここで分ける。6 語を書き写さないため isWatery は残す。
         const いまも水 = new Set(["水部", "湖", "河川敷･浜"]);
@@ -324,8 +325,7 @@
             : "#7fc4e8";
         }
         return j;
-      })
-      .catch(() => { tableP = null; return null; });
+      });
     return tableP;
   }
 
@@ -613,10 +613,12 @@
   //     画面は資料が無い場所とまったく同じだった。掟 §1「取得できなかった ≠ 存在しなかった」。
   let areaP = null;
   function areas() {
-    if (!areaP) areaP = fetch("./data/area-record.json")
-      .then((r) => r.ok ? r.json().then((data) => ({ ok: true, data }))
-                        : { ok: false, data: null })
-      .catch(() => { areaP = null; return { ok: false, data: null }; });
+    // 取りに行くのは static-json.js の 1 か所（hidetzu/konjaku#99）。
+    //   読めなかったら覚えない。次に開いたときは、もう一度取りに行く。
+    if (!areaP) areaP = KonjakuStatic.取る("./data/area-record.json").then((r) => {
+      if (r.state !== "ok") { areaP = null; return { ok: false, data: null }; }
+      return { ok: true, data: r.data };
+    });
     return areaP;
   }
   async function showArea(lon, lat) {
@@ -759,8 +761,11 @@
   //   作るのは scripts/build-muni.mjs。重なる名前にだけ都道府県が足してある。
   let muniP = null;
   function muniTable() {
-    if (!muniP) muniP = fetch("./data/muni.json", { signal: AbortSignal.timeout(Konjaku.TIMEOUT_MS) })
-      .then((r) => r.ok ? r.json() : null).catch(() => { muniP = null; return null; });
+    // 取りに行くのは static-json.js の 1 か所（hidetzu/konjaku#99）。時間切れもそこが持つ。
+    if (!muniP) muniP = KonjakuStatic.取る("./data/muni.json").then((r) => {
+      if (r.state !== "ok") { muniP = null; return null; }
+      return r.data;
+    });
     return muniP;
   }
 
