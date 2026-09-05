@@ -4305,6 +4305,120 @@ for (const [名, viewport, 畳む] of [
   });
 }
 
+// ⚠ **深掘り画面の目次**（2026-09-05。hidetzu/konjaku#457。Owner 判断＝案A）。
+//
+// ⚠ **実測（2026-09-05・本番）**: ⚠ **節 7 個・320×640 で 9.0 画面ぶん。**
+// ⚠ **広い幅は柱の右へ出す。**⚠ **狭い幅は本文の先頭へ落とす。**
+//   ⚠ **位置は `--read`（柱の幅）から出す。**⚠ **数を 2 か所に持たない。**
+for (const [名, viewport, 固定] of [
+  ["PC", { width: 1280, height: 800 }, true],
+  ["いちばん狭い幅", { width: 320, height: 640 }, false],
+]) {
+  CASES.push({
+    name: `${名}の深掘り画面は、⚠ 目次から節へ飛べる`,
+    path: `/deep?${TOYOSU}`, origin: NEXT_BASE, viewport,
+    // ⚠ **動きを止めている人の設定で測る**（`ui-ux-review` §3）。
+    //   ⚠ **なめらかに送っている最中に節が伸びると、⚠ 飛び先がずれる**（⚠ 実際にずれた）。
+    //   ⚠ **止めれば一息で着く。**⚠ **止めている人が居るのも事実。**
+    setup: (page) => page.emulateMedia({ reducedMotion: "reduce" }),
+    async check(page) {
+      await 待つ(page, () => {
+        const n = document.getElementById("toc");
+        return n && !n.hidden && n.querySelectorAll("a").length >= 2;
+      }, "目次");
+      // ⚠ **節が出そろうのを待つ**（⚠ 器ではなく結果。⚠ 増えなくなったら落ち着いたとみなす）
+      await page.waitForFunction(() => {
+        const n = document.querySelectorAll("article > section.sec:not([hidden])").length;
+        const 前 = globalThis.__節 ?? -1;
+        globalThis.__節 = n;
+        return n === 前 && n >= 3;
+      }, null, { timeout: 30000, polling: 1500 }).catch(() => {});
+      const r = await page.evaluate(() => {
+        const n = document.getElementById("toc"), d = document.getElementById("doc");
+        const q = n.getBoundingClientRect(), dd = d.getBoundingClientRect();
+        const a = [...n.querySelectorAll("a")];
+        const 節 = [...document.querySelectorAll("article > section.sec")].filter((s) => !s.hidden);
+        return {
+          位置: getComputedStyle(n).position,
+          // ⚠ **柱と重ならない**（⚠ 固定にしたときだけ意味がある）
+          重なり: getComputedStyle(n).position === "fixed"
+            && !(q.right <= dd.left || q.left >= dd.right),
+          // ⚠ **出せる節と、⚠ 目次の数が合う**（⚠ 隠れた節へ飛ばさない）
+          目次: a.map((x) => x.textContent.trim()),
+          行き先: a.map((x) => x.getAttribute("href")),
+          節: 節.map((s) => `#${s.id}`),
+          見出し: 節.map((s) => (s.querySelector("h2")?.textContent ?? "").trim()),
+          的: Math.min(...a.map((x) => Math.round(x.getBoundingClientRect().height))),
+          横あふれ: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+        };
+      });
+      must(r.重なり === false, "目次が本文の柱と重なっている");
+      must(固定 ? r.位置 === "fixed" : r.位置 !== "fixed",
+        `${名}なのに位置が ${r.位置}`);
+      // ⚠ **飛び先は、⚠ 出せる節だけ**（⚠ 押しても何も起きない導線を置かない。ADR 0026）
+      must(JSON.stringify(r.行き先) === JSON.stringify(r.節),
+        `飛び先が、⚠ 出せる節と合っていない: ${r.行き先.join(" ")} ／ 節 ${r.節.join(" ")}`);
+      // ⚠ **字は見出しから借りる**（⚠ 2 か所で別の字にしない）
+      must(JSON.stringify(r.目次) === JSON.stringify(r.見出し),
+        `目次の字が、⚠ 見出しと違う: ${r.目次.join(" ／ ")}`);
+      must(r.的 >= 44, `目次の的が ${r.的}px（⚠ 44 を割っている）`);
+      must(!r.横あふれ, "画面が横にあふれている");
+
+      // ⚠ **押して、⚠ 本当にその節へ行くところまで見る**（⚠ 字と href だけでは足りない）
+      const 先 = r.行き先[r.行き先.length - 1];
+      await page.click(`#toc a[href="${先}"]`);
+      // ⚠ **送り終わるのを待つ。**⚠ **器ではなく、⚠ 結果を待つ**（`CLAUDE.md` §9）。
+      //   ⚠ **「画面の上に来る」とは主張しない。**⚠ **いちばん下の節は、⚠ それ以上送れない**
+      //     （⚠ 実際に踏んだ: ⚠ `#readSec` が y=271 で、⚠ それが下限だった）。
+      //   ⚠ **主張は「その節の頭が画面に入る」。**⚠ **押した結果が見えること。**
+      await page.waitForFunction((sel) => {
+        const s = document.querySelector(sel);
+        if (!s) return false;
+        const y = s.getBoundingClientRect().top;
+        return y > -50 && y < innerHeight - 50;
+      }, 先, { timeout: 30000 })
+        .catch(async () => {
+          const y = await page.evaluate((sel) =>
+            Math.round(document.querySelector(sel).getBoundingClientRect().top), 先);
+          throw new Error(`${先} へ飛んだのに、⚠ その節の頭が画面に入っていない（y=${y}）`);
+        });
+      const 着 = await page.evaluate((sel) => {
+        const s = document.querySelector(sel);
+        return { y: Math.round(s.getBoundingClientRect().top), 見える: s.checkVisibility() };
+      }, 先);
+      must(着.見える, `${先} へ飛んだのに、⚠ その節が見えていない`);
+      return `${r.目次.length} 節（${r.位置}）／ 重なり 0 ／ 的 ${r.的}px ／ ${先} へ着いた`;
+    },
+  });
+}
+
+// ⚠ **節が 1 つしか出ないときは、⚠ 目次を出さない**（⚠ 飛ぶ先が無い）。
+CASES.push({
+  name: "深掘り画面で、⚠ 飛ぶ先が無いときは目次を出さない",
+  path: `/deep?${TOYOSU}`, origin: NEXT_BASE, viewport: SP,
+  async setup(page) {
+    // ⚠ **節を隠す**（⚠ 相手先を止めるのではなく、⚠ 画面の状態を作る）
+    await page.addInitScript(() => addEventListener("DOMContentLoaded", () => {
+      const 消す = () => {
+        const 節 = [...document.querySelectorAll("article > section.sec")];
+        for (const s of 節.slice(1)) if (!s.hidden) s.hidden = true;
+      };
+      setInterval(消す, 200);
+    }));
+  },
+  async check(page) {
+    await 待つ(page, () => (document.getElementById("gloss")?.textContent ?? "").trim().length > 2, "判定");
+    await page.waitForTimeout(3000);
+    const r = await page.evaluate(() => ({
+      出ている: !document.getElementById("toc")?.hidden,
+      節: [...document.querySelectorAll("article > section.sec")].filter((s) => !s.hidden).length,
+    }));
+    must(r.節 <= 1, `節が ${r.節} 個出ている（⚠ この検査が目次を見ていない）`);
+    must(!r.出ている, "飛ぶ先が無いのに、⚠ 目次が出ている");
+    return `節 ${r.節} 個 ／ 目次は出ない`;
+  },
+});
+
 // ⚠ **連絡先**（2026-09-05。Owner 判断。`docs/adr/0094`）。
 //
 // ⚠ **GitHub は公開の場で、⚠ アカウントが要る。**⚠ **それが困る用件のために、⚠ メールを置く。**
