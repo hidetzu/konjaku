@@ -115,13 +115,13 @@ if (arg("compose")) {
   const html = `<title>${esc(arg("title", "見て決める"))}</title><style>
     body{margin:0;background:#eceff3;color:#1b2028;padding:22px;
       font:14px/1.75 system-ui,-apple-system,sans-serif}
-    h1{font-size:17px;margin:0 0 4px} .sub{font-size:13px;color:hidetzu/konjaku#525c6b;margin:0 0 18px}
+    h1{font-size:17px;margin:0 0 4px} .sub{font-size:13px;color:#525c6b;margin:0 0 18px}
     table{border-collapse:collapse;width:100%} th,td{padding:8px;vertical-align:top}
-    th.lab{text-align:left;font-size:13px;color:hidetzu/konjaku#525c6b;white-space:nowrap;width:1%}
+    th.lab{text-align:left;font-size:13px;color:#525c6b;white-space:nowrap;width:1%}
     th.col{font-size:13px;text-align:left}
-    th.col.a{color:#0b62ab} th.col.b{color:hidetzu/konjaku#525c6b}
+    th.col.a{color:#0b62ab} th.col.b{color:#525c6b}
     img{max-width:100%;display:block;border-radius:8px;box-shadow:0 1px 6px rgba(0,0,0,.18)}
-    .note{margin:18px 0 0;font-size:13px;color:hidetzu/konjaku#525c6b} b{color:#1b2028}
+    .note{margin:18px 0 0;font-size:13px;color:#525c6b} b{color:#1b2028}
   </style>
   <h1>${esc(arg("title", "見て決める"))}</h1>
   <p class="sub">${esc(arg("cond", ""))}</p>
