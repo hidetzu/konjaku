@@ -296,3 +296,37 @@ body{
 .border__to{font-weight:700}
 .border__far{font-size:.8125rem; color:var(--ink-3); font-variant-numeric:tabular-nums}
 .border__note{margin:var(--gap-sub) 0 0; font-size:.8125rem; color:var(--ink-3)}
+
+/* この画面の目次。
+   狭い幅は本文の先頭に横並び。広い幅は柱の右へ出して、読みながら見えるようにする。
+   [hidden] を打ち消さないこと。class と属性は詳細度が同じで、あとに書いたほうが勝つ。 */
+.toc:not([hidden]){
+  display:block; margin:0 0 var(--gap-block); padding:var(--pad-md);
+  border:1px solid var(--line); border-radius:.75rem; background:var(--surface);
+}
+.toc__k{margin:0 0 var(--gap-sub); font-size:.75rem; font-weight:700; color:var(--ink-3)}
+.toc__l:not([hidden]){margin:0; padding:0; list-style:none;
+  display:flex; flex-wrap:wrap; gap:var(--gap-sub) var(--gap-row)}
+.toc__l a{
+  display:flex; align-items:center; min-height:var(--tap);
+  font-size:.8125rem; color:var(--action); text-decoration:none;
+}
+.toc__l a:focus-visible{outline:2px solid var(--action); outline-offset:2px}
+
+/* 広い幅では、柱の右の余白へ。
+   位置は --read（柱の幅）から出す。数を 2 か所に持たない。
+   幅の境目だけは media query なので数で書く（CSS は media で var() を使えない）。
+   38rem の柱 ＋ 目次 16rem ＋ 間 が両側に収まる幅を境目にしている。 */
+@media (min-width:1180px){
+  .toc:not([hidden]){
+    position:fixed;
+    top:calc(2.75rem + env(safe-area-inset-top) + 2rem);
+    left:calc(50% + var(--read) / 2 + var(--gap-block));
+    width:16rem; margin:0;
+    max-height:calc(100vh - 8rem); overflow:auto;
+  }
+  .toc__l:not([hidden]){flex-direction:column; gap:0}
+}
+@media (prefers-reduced-motion: no-preference){
+  html{scroll-behavior:smooth}
+}

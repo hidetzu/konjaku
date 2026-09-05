@@ -17,6 +17,7 @@
   const whySec = $("whySec"), whyEl = $("why");
   const groundSec = $("groundSec"), groundH = $("groundH"), groundScope = $("groundScope");
   const groundEl = $("ground"), groundFrom = $("groundFrom"), groundNote = $("groundNote");
+  const tocSec = $("toc"), tocL = $("tocL");
   const borderSec = $("borderSec"), borderH = $("borderH"), borderLine = $("borderLine");
   const borderDir = $("borderDir"), borderTo = $("borderTo"), borderFar = $("borderFar");
   const borderNote = $("borderNote"), borderFrom = $("borderFrom");
@@ -100,11 +101,46 @@
     drawElev(lon, lat, t);
     drawGround(lon, lat);
     drawBorder(lon, lat);
+    drawToc();
     drawAround(lon, lat);
     drawNear(lon, lat);
     drawRead(lon, lat, t);
     drawMonuments(lon, lat);
   }
+
+  // この画面の目次。
+  //   節が 7 つ・6〜9 画面ぶんあるので、飛べるようにする（実測 2026-09-05・本番）。
+  //   字は節の見出しから借りる。2 か所で別の字にしない。
+  //   出せる節だけを並べる。hidden の節へ飛ばすと、押しても何も起きない。
+  //   節が 1 つしか出ないなら、目次そのものを出さない（飛ぶ先が無い）。
+  //   節は非同期で出てくるので、そのつど作り直す。
+  function drawToc() {
+    const 節 = [...document.querySelectorAll("article > section.sec")]
+      .filter((s) => !s.hidden && s.id && s.querySelector("h2"));
+    tocL.innerHTML = "";
+    if (節.length < 2) { if (!tocSec.hidden) tocSec.hidden = true; return; }
+    for (const s of 節) {
+      const li = document.createElement("li");
+      const a = document.createElement("a");
+      a.href = `#${s.id}`;
+      a.textContent = (s.querySelector("h2").textContent || "").trim();
+      li.append(a);
+      tocL.append(li);
+    }
+    if (tocSec.hidden) tocSec.hidden = false;
+  }
+
+  // 節は非同期で出てくる（地盤・境目・碑は、相手先から返ってから）。
+  //   1 度だけ作ると、そのとき隠れていた節が目次に入らない。実際にそうなった。
+  //   hidden が変わったら作り直す。器ではなく、結果を見る。
+  //
+  //   見るのは節だけ。目次そのものも #doc の中に在るので、
+  //   自分の hidden を変えたら自分を呼び直して止まらなくなる。実際に止まらなくなった。
+  new MutationObserver((ms) => {
+    if (ms.some((m) => m.target instanceof Element
+      && m.target.matches("article > section.sec"))) drawToc();
+  }).observe(document.getElementById("doc"),
+    { subtree: true, attributes: true, attributeFilter: ["hidden"] });
 
   // この先で、土地が変わる（2026-09-05。v0.3.0）。
   //   読んだ答えを、足で確かめられる唯一の場所。出すのは 1 地点だけ。
