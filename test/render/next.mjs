@@ -449,6 +449,74 @@ CASES.push(
   },
 );
 
+// ⚠ **文字を大きくしても、⚠ 押せるもの同士が重ならないこと**（`ui-ux-review` §3）。
+//   ⚠ **4 画面で使い回す**（2026-09-05。hidetzu/konjaku#313）。
+//   ⚠ **前は最初の画面にしか無かった。**⚠ **深掘り・このサイトについて・控えは 1 度も見ていなかった。**
+//   ⚠ **hidetzu/konjaku#313 は「隣が伸びたら重なる形を画面から無くす」。**
+//     ⚠ **実測（2026-09-05）: 位置を固定値で決める規則は 12 → 2 に減っていた**（⚠ どちらも 1px）。
+//     ⚠ **対象は消えたが、⚠ 見張りが 1 画面にしか無い。**
+//     ⚠ **次に固定値を足したとき、⚠ 他の画面では誰も気づけない。**
+//
+// ⚠ **これはページの中で走る**（⚠ 外の変数に頼らない。⚠ 頼ると渡した先で落ちる）。
+function 詰まりを測る() {
+    // ⚠ **`checkVisibility()` は `overflow` の切り取りを見ない**（2026-09-03 に踏んだ）。
+    //   ⚠ **板は中で送るので、⚠ 送られて外へ出たものが「見えている」ままになる。**
+    //   ⚠ **実測: 板 238–560 のとき、⚠ `.kick` が 68–112 と読め、⚠ 検索窓と重なって見えた。**
+    //   ⚠ **実際には板に切り取られていて、⚠ 画面には出ていない。**
+    // ⚠ **なので、⚠ 送る器の矩形で切ってから測る。**⚠ **切ったら消えるものは、⚠ 数えない。**
+    // ⚠ **切り取られない置き方がある**（⚠ わざと重ねたら素通りして、⚠ ここで気づいた）。
+    //   ⚠ **`fixed` は、⚠ 送る器に切り取られない。**⚠ **`absolute` は、⚠ 基準になった祖先までしか切られない。**
+    //   ⚠ **全部を切ると、⚠ 本当に重なっているものまで「切り取られている」ことにしてしまう。**
+    const 切った矩形 = (e) => {
+      const 置き方 = getComputedStyle(e).position;
+      const q = e.getBoundingClientRect();
+      let b = { left: q.left, right: q.right, top: q.top, bottom: q.bottom,
+                width: q.width, height: q.height };
+      if (置き方 === "fixed") return b.width > 0 && b.height > 0 ? b : null;
+      for (let a = e.parentElement; a; a = a.parentElement) {
+        const o = getComputedStyle(a);
+        // ⚠ **`absolute` は、⚠ 位置の基準にならない祖先には切り取られない**
+        const 基準になれる = o.position !== "static";
+        if (置き方 === "absolute" && !基準になれる) continue;
+        if (o.overflowX !== "visible" || o.overflowY !== "visible") {
+          const c = a.getBoundingClientRect();
+          b = { left: Math.max(b.left, c.left), right: Math.min(b.right, c.right),
+                top: Math.max(b.top, c.top), bottom: Math.min(b.bottom, c.bottom) };
+          b.width = b.right - b.left; b.height = b.bottom - b.top;
+          if (b.width <= 0 || b.height <= 0) return null;
+        }
+        // ⚠ **基準を 1 つ越えたら、⚠ そこから先は通常の流れと同じに切られる**
+        if (置き方 === "fixed" || (置き方 === "absolute" && 基準になれる)) break;
+      }
+      return b;
+    };
+    const 押せる = [...document.querySelectorAll("button, a, summary, input")]
+      .filter((e) => e.checkVisibility() && 切った矩形(e));
+    const 小さい = 押せる.map((e) => {
+      const b = e.getBoundingClientRect();
+      return { 字: (e.textContent || e.id || e.tagName).trim().slice(0, 10),
+               w: Math.round(b.width), h: Math.round(b.height) };
+    }).filter((t) => t.w > 0 && (t.w < 44 || t.h < 44));
+    // ⚠ **重なりも、⚠ 切ったあとの矩形で見る**（⚠ 切り取られた部分は、⚠ 誰とも重ならない）
+    const 箱 = 押せる.map((e) => ({ e, r: 切った矩形(e) })).filter((x) => x.r.width > 0);
+    const 重なり = [];
+    for (let i = 0; i < 箱.length; i++) for (let j = i + 1; j < 箱.length; j++) {
+      const a = 箱[i].r, c = 箱[j].r;
+      if (箱[i].e.contains(箱[j].e) || 箱[j].e.contains(箱[i].e)) continue;
+      if (!(a.right <= c.left || a.left >= c.right || a.bottom <= c.top || a.top >= c.bottom))
+        重なり.push(`${(箱[i].e.textContent || 箱[i].e.id).trim().slice(0, 8)} × ${(箱[j].e.textContent || 箱[j].e.id).trim().slice(0, 8)}`);
+    }
+  return { 押せるもの: 押せる.length, 小さい, 重なり,
+           横あふれ: document.documentElement.scrollWidth > document.documentElement.clientWidth };
+}
+
+// ⚠ **文字を大きくする**（⚠ 端末の文字サイズ設定に相当）。⚠ **4 画面で同じ手で当てる。**
+const 文字を大きく = (page) => page.addInitScript(() => addEventListener("DOMContentLoaded", () => {
+  const s = document.createElement("style");
+  s.textContent = "html{font-size:20px}";
+  document.head.append(s);
+}));
+
 CASES.push({
   // ⚠ **文字を大きくして壊れない**（`ui-ux-review` §3）。⚠ **v0.1.0 では 1 度も見ていなかった。**
   //   ⚠ **実際に踏んだ**（2026-08-29。⚠ この検査を書いていて見つけた）:
@@ -461,81 +529,91 @@ CASES.push({
   //   ⚠ **これも同じ日に踏んだ**（⚠ 無い不具合を「在る」と報告しかけた）。
   name: "文字を大きくしても、重ならず・はみ出さず・44×44 を割らない",
   path: `/?${TOYOSU}`, origin: NEXT_BASE, viewport: { width: 320, height: 640 },
-  setup: (page) => page.addInitScript(() => addEventListener("DOMContentLoaded", () => {
-    const s = document.createElement("style");
-    s.textContent = "html{font-size:20px}";   // ⚠ 端末の文字サイズ設定に相当
-    document.head.append(s);
-  })),
+  setup: 文字を大きく,
   async check(page) {
     await waitAnswer(page); await waitEras(page);
     // ⚠ **いちばん高くなる状態で測る。**⚠ 畳んだままだと、⚠ 伸びたときの重なりを見られない
     await ひらく(page);
     await page.locator(".why__sum").click();
     await page.waitForTimeout(500);
-    const r = await page.evaluate(() => {
-      // ⚠ **`checkVisibility()` は `overflow` の切り取りを見ない**（2026-09-03 に踏んだ）。
-      //   ⚠ **板は中で送るので、⚠ 送られて外へ出たものが「見えている」ままになる。**
-      //   ⚠ **実測: 板 238–560 のとき、⚠ `.kick` が 68–112 と読め、⚠ 検索窓と重なって見えた。**
-      //   ⚠ **実際には板に切り取られていて、⚠ 画面には出ていない。**
-      // ⚠ **なので、⚠ 送る器の矩形で切ってから測る。**⚠ **切ったら消えるものは、⚠ 数えない。**
-      // ⚠ **切り取られない置き方がある**（⚠ わざと重ねたら素通りして、⚠ ここで気づいた）。
-      //   ⚠ **`fixed` は、⚠ 送る器に切り取られない。**⚠ **`absolute` は、⚠ 基準になった祖先までしか切られない。**
-      //   ⚠ **全部を切ると、⚠ 本当に重なっているものまで「切り取られている」ことにしてしまう。**
-      const 切った矩形 = (e) => {
-        const 置き方 = getComputedStyle(e).position;
-        const q = e.getBoundingClientRect();
-        let b = { left: q.left, right: q.right, top: q.top, bottom: q.bottom,
-                  width: q.width, height: q.height };
-        if (置き方 === "fixed") return b.width > 0 && b.height > 0 ? b : null;
-        for (let a = e.parentElement; a; a = a.parentElement) {
-          const o = getComputedStyle(a);
-          // ⚠ **`absolute` は、⚠ 位置の基準にならない祖先には切り取られない**
-          const 基準になれる = o.position !== "static";
-          if (置き方 === "absolute" && !基準になれる) continue;
-          if (o.overflowX !== "visible" || o.overflowY !== "visible") {
-            const c = a.getBoundingClientRect();
-            b = { left: Math.max(b.left, c.left), right: Math.min(b.right, c.right),
-                  top: Math.max(b.top, c.top), bottom: Math.min(b.bottom, c.bottom) };
-            b.width = b.right - b.left; b.height = b.bottom - b.top;
-            if (b.width <= 0 || b.height <= 0) return null;
-          }
-          // ⚠ **基準を 1 つ越えたら、⚠ そこから先は通常の流れと同じに切られる**
-          if (置き方 === "fixed" || (置き方 === "absolute" && 基準になれる)) break;
-        }
-        return b;
-      };
-      const 押せる = [...document.querySelectorAll("button, a, summary, input")]
-        .filter((e) => e.checkVisibility() && 切った矩形(e));
-      const 小さい = 押せる.map((e) => {
-        const b = e.getBoundingClientRect();
-        return { 字: (e.textContent || e.id || e.tagName).trim().slice(0, 10),
-                 w: Math.round(b.width), h: Math.round(b.height) };
-      }).filter((t) => t.w > 0 && (t.w < 44 || t.h < 44));
-      // ⚠ **重なりも、⚠ 切ったあとの矩形で見る**（⚠ 切り取られた部分は、⚠ 誰とも重ならない）
-      const 箱 = 押せる.map((e) => ({ e, r: 切った矩形(e) })).filter((x) => x.r.width > 0);
-      const 重なり = [];
-      for (let i = 0; i < 箱.length; i++) for (let j = i + 1; j < 箱.length; j++) {
-        const a = 箱[i].r, c = 箱[j].r;
-        if (箱[i].e.contains(箱[j].e) || 箱[j].e.contains(箱[i].e)) continue;
-        if (!(a.right <= c.left || a.left >= c.right || a.bottom <= c.top || a.top >= c.bottom))
-          重なり.push(`${(箱[i].e.textContent || 箱[i].e.id).trim().slice(0, 8)} × ${(箱[j].e.textContent || 箱[j].e.id).trim().slice(0, 8)}`);
-      }
+    const r = await page.evaluate(詰まりを測る);
+    const 板 = await page.evaluate(() => {
       const card = document.getElementById("card").getBoundingClientRect();
       const bar = document.getElementById("bar").getBoundingClientRect();
-      return { 板: Math.round(card.height), 押せるもの: 押せる.length,
+      return { 高さ: Math.round(card.height),
                画面外へ出た分: Math.round(Math.max(0, card.bottom - innerHeight)),
-               バーに掛かった分: Math.round(Math.max(0, bar.bottom - card.top)),
-               横あふれ: document.documentElement.scrollWidth > document.documentElement.clientWidth,
-               小さい, 重なり };
+               バーに掛かった分: Math.round(Math.max(0, bar.bottom - card.top)) };
     });
     must(!r.重なり.length, `文字を大きくしたら、押せるもの同士が重なった: ${r.重なり.join(" / ")}`);
     must(!r.小さい.length, `文字を大きくしたら、44×44 を割った: ${r.小さい.map((t) => `${t.字} ${t.w}x${t.h}`).join(" / ")}`);
-    must(r.画面外へ出た分 === 0, `板が画面の下へ ${r.画面外へ出た分}px はみ出している`);
-    must(r.バーに掛かった分 === 0, `板が検索窓に ${r.バーに掛かった分}px 掛かっている（⚠ 場所を探せなくなる）`);
+    must(板.画面外へ出た分 === 0, `板が画面の下へ ${板.画面外へ出た分}px はみ出している`);
+    must(板.バーに掛かった分 === 0, `板が検索窓に ${板.バーに掛かった分}px 掛かっている（⚠ 場所を探せなくなる）`);
     must(!r.横あふれ, "画面が横にあふれている");
-    return `板 ${r.板}px・押せるもの ${r.押せるもの} 個・重なり 0・44 割れ 0・はみ出し 0`;
+    return `板 ${板.高さ}px・押せるもの ${r.押せるもの} 個・重なり 0・44 割れ 0・はみ出し 0`;
   },
 });
+
+// ⚠ **同じことを、⚠ 残りの画面でも見る**（2026-09-05。hidetzu/konjaku#313）。
+//
+// ⚠ **測ったこと（2026-09-05・本番・`bccaa7f`）**: ⚠ **4 画面 × 3 幅（320 / 375 / 1280）で
+//   ⚠ 文字を 20px にして、⚠ 重なり 0・横あふれ 0。**⚠ **いまは壊れていない。**
+// ⚠ **壊れていなくても残す**（`CLAUDE.md` §2）。⚠ **次に固定値を足したら、⚠ ここで止まる。**
+//
+// ⚠ **44×44 は、⚠ ここでは主張しない。**
+//   ⚠ **深掘りと このサイトについて には、⚠ 本文の中に混ざったリンクが在る**
+//     （⚠ 実測 375×667・文字 16px: 深掘り 5 本・このサイトについて 4 本）。
+//   ⚠ **これは文字を大きくしたから起きたのではない。**⚠ **前から在る。**
+//   ⚠ **この変更の責任にしない**（`ui-ux-review` §3）。⚠ **数は返す字に出す。**
+for (const [名, path, viewport, 待ち] of [
+  // ⚠ **深掘りの広い幅は、⚠ 目次を柱の右へ「固定で」置いている**（`docs/adr/0095`）。
+  //   ⚠ **これが、⚠ hidetzu/konjaku#313 の言う「隣が伸びたら重なる形」に最も近い。**
+  ["深掘り・広い幅", `/deep?${TOYOSU}`, { width: 1280, height: 800 }, "節"],
+  ["深掘り・いちばん狭い幅", `/deep?${TOYOSU}`, { width: 320, height: 640 }, "節"],
+  ["このサイトについて", "/about", { width: 320, height: 640 }, null],
+  ["控えの一覧", "/saved", { width: 320, height: 640 }, null],
+]) {
+  CASES.push({
+    name: `${名}は、⚠ 文字を大きくしても重ならず・はみ出さない`,
+    path, origin: NEXT_BASE, viewport,
+    setup: 文字を大きく,
+    async check(page) {
+      if (待ち === "節") {
+        // ⚠ **器ではなく、⚠ 節が出そろうのを待つ**（⚠ 増えなくなったら落ち着いたとみなす）
+        await page.waitForFunction(() => {
+          const n = document.querySelectorAll("article > section.sec:not([hidden])").length;
+          const 前 = globalThis.__節 ?? -1;
+          globalThis.__節 = n;
+          return n === 前 && n >= 3;
+        }, null, { timeout: 30000, polling: 1500 })
+          .catch(() => { throw new Error("節が出そろわないまま 30 秒たった"); });
+      } else {
+        await 待つ(page, () => document.querySelectorAll("a").length >= 3, "行き先");
+      }
+      const r = await page.evaluate(詰まりを測る);
+      // ⚠ **名乗りの帯が、⚠ 中身にかぶっていないこと。**
+      //   ⚠ **押せるもの同士の重なりだけでは、⚠ これは見えない**（2026-09-05 に実際に素通りした）。
+      //   ⚠ **帯の高さは `2.75rem`。**⚠ **中身の上端を px で決めると、⚠ 文字を大きくしたとき帯が下りてくる。**
+      //   ⚠ **これが hidetzu/konjaku#313 の言う事故そのもの**（⚠ 「隣が伸びたら重なる」）。
+      //   ⚠ **葉だけ見る**（⚠ 親は子を含んで大きいので、⚠ どの器も帯に触れてしまう）。
+      const 帯 = await page.evaluate(() => {
+        const b = document.querySelector(".brand").getBoundingClientRect();
+        const かぶり = [...document.querySelectorAll("body *")].filter((e) => {
+          if (e.closest(".brand") || e.children.length || !e.checkVisibility()) return false;
+          const q = e.getBoundingClientRect();
+          return q.width > 0 && q.height > 0 && q.top < b.bottom && q.bottom > b.top;
+        }).map((e) => (e.textContent || e.tagName).trim().slice(0, 16));
+        return { 下端: Math.round(b.bottom), かぶり };
+      });
+      must(!r.重なり.length,
+        `文字を大きくしたら、押せるもの同士が重なった: ${r.重なり.join(" / ")}`);
+      must(!帯.かぶり.length,
+        `文字を大きくしたら、名乗りの帯が中身にかぶった: ${帯.かぶり.join(" / ")}`);
+      must(!r.横あふれ, "文字を大きくしたら、画面が横にあふれた");
+      return `押せるもの ${r.押せるもの} 個・重なり 0・帯のかぶり 0（下端 ${帯.下端}px）・横あふれ なし`
+        + (r.小さい.length ? `（⚠ 44 割れ ${r.小さい.length} 本は本文中のリンク。⚠ 前から在る）` : "");
+    },
+  });
+}
 
 CASES.push(
   {
