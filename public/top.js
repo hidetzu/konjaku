@@ -923,9 +923,17 @@
     const b = e.target.closest("button[data-i]");
     if (!b) return;
     // places.js が返す行は ll（[lon, lat]）を持つ。応答の生の形ではない。
-    const c = hits._list?.[+b.dataset.i]?.ll;
+    const 行 = hits._list?.[+b.dataset.i];
+    const c = 行?.ll;
     if (!c) return;
     cx = lon2px(c[0]); cy = lat2px(c[1]);
+    // 選んだ候補の字を、窓へ戻す。
+    //   前は打った字のままだった（実測 2026-09-06・本番: 「静岡市」と打って
+    //   「静岡市役所」を選んでも、窓は「静岡市」のまま。地図だけが市役所へ動いた）。
+    //   窓の字といまの場所が食い違うと、もう一度 Enter を押したときに
+    //   選んだはずの場所ではなく、8 件の一覧へ戻る。
+    //   字はここで作らない。候補に出ていたものを、そのまま入れる。
+    if (行.title) q.value = 行.title;
     出どころ = "search";
     hits.hidden = true; q.blur(); moved();
   });
