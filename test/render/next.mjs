@@ -4167,8 +4167,136 @@ for (const [名, viewport, 畳む] of [
       await 待つ(page, () => !document.getElementById("fold").open, "場所を変えたあとの畳み直し")
         .catch(() => { throw new Error("場所が変わっても開いたまま（⚠ 前の場所の続きが残る）"); });
       const 後 = await 見る();
-      must(後.板 <= 閉 + 8, `場所を変えたのに板が畳まれていない（${後.板}px）`);
-      return `閉 ${閉}px(${r.割合}%)・地図 ${r.地図}px → 開 ${開.板}px → 動かすと ${後.板}px`;
+      // ⚠ **畳まれていることを、⚠ 中身で見る**（2026-09-05 に直した）。
+      //   ⚠ **前は「板の高さが 閉 + 8px 以内」で見ていた。**
+      //   ⚠ **`閉` を測った時点では、⚠ 「この先で、土地が変わる」の 1 行がまだ来ていない**
+      //     （⚠ 相手先から返るのを待っている）。⚠ **あとから来ると 25px 増える。**
+      //   ⚠ **それを「畳めていない」と読んで落ちた。**⚠ **高さは、⚠ 畳んだかどうかの証拠にならない。**
+      must(!後.年代 && !後.凡例 && !後.なぜ,
+        `場所を変えたのに中身が出たまま（年代 ${後.年代} 凡例 ${後.凡例} なぜ ${後.なぜ}）`);
+      must(後.板 < 開.板 - 50,
+        `場所を変えたのに板が縮んでいない（開 ${開.板}px → ${後.板}px）`);
+      return `閉 ${閉}px(${r.割合}%)・地図 ${r.地図}px → 開 ${開.板}px → 動かすと ${後.板}px（⚠ 中身は畳まれている）`;
+    },
+  });
+}
+
+// ⚠ **散歩中の画面（`/`）にも、⚠ 1 行だけ出す**（2026-09-05。Owner 判断）。
+//
+// ⚠ **`/deep` は詳しい提示、⚠ `/` は気づきだけ。**⚠ **見出しは足さない。**
+// ⚠ **実測（2026-09-05）**: ⚠ **板 +25px ／ 見える地図 -25px。**
+//   ⚠ **出せない土地では ±0px**（⚠ 行ごと出さない）。
+//   ⚠ **面はこちらで作る**（⚠ 相手がいま何を返すかは主張しない。`CLAUDE.md` §9）。
+{
+  const 表3 = JSON.parse(readFileSync(join(ROOT, "public/data/landform.json"), "utf8"));
+  const コード3 = (名) => {
+    const c = Object.entries(表3.codes).find(([, v]) => v === 名)?.[0];
+    if (!c) throw new Error(`landform.json に「${名}」が無い`);
+    return c;
+  };
+  const 西3 = "氾濫平野・海岸平野", 東3 = "台地･段丘";
+  const 面を返す3 = (page, lon0) => page.route(
+    (u) => u.hostname === "maps.gsi.go.jp" && /landformclassification1/.test(u.pathname),
+    (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({
+      type: "FeatureCollection",
+      features: [[コード3(西3), 0], [コード3(東3), 1]].map(([code, i]) => ({
+        type: "Feature", properties: { code },
+        geometry: { type: "Polygon", coordinates: [i === 0
+          ? [[lon0 - .02, -90], [lon0, -90], [lon0, 90], [lon0 - .02, 90], [lon0 - .02, -90]]
+          : [[lon0, -90], [lon0 + .02, -90], [lon0 + .02, 90], [lon0, 90], [lon0, -90]]] },
+      })),
+    }) }));
+
+  for (const [名, viewport] of [["スマホ", SP], ["いちばん狭い幅", { width: 320, height: 640 }]]) {
+    CASES.push({
+      name: `${名}の散歩中の画面は、⚠ この先で土地が変わることを 1 行で言う`,
+      path: `/?${KASUKABE}`, origin: NEXT_BASE, viewport,
+      async setup(page) { await 面を返す3(page, 139.7523 + 0.001); },
+      async check(page) {
+        await waitAnswer(page);
+        await 待つ(page, () => !document.getElementById("edge")?.hidden, "この先で土地が変わる 1 行");
+        const r = await page.evaluate(() => {
+          const e = document.getElementById("edge"), t = document.getElementById("edgeText");
+          const c = document.getElementById("card").getBoundingClientRect();
+          const 欄 = document.getElementById("bar").getBoundingClientRect();
+          return {
+            字: t.textContent.trim(),
+            行: Math.round(e.getBoundingClientRect().height),
+            板: Math.round(c.height), 地図: Math.round(c.top - 欄.bottom),
+            // ⚠ **押せる導線を持たない**（⚠ ここは「行き先」ではない）
+            押せる: e.querySelectorAll("a, button, input").length,
+            // ⚠ **見出しを足さない**（⚠ 板は畳んだばかり。⚠ 段を増やさない）
+            見出し: e.querySelectorAll("h1, h2, h3, h4, h5, h6").length,
+            // ⚠ **切って「…」にしない**（⚠ 区分名が消えると、何に変わるか分からない）
+            切れ: t.scrollWidth > t.clientWidth + 1,
+            // ⚠ **畳んだ状態のまま**（⚠ この行は畳む側に入れていない）
+            開いている: !!document.getElementById("fold")?.open,
+            横あふれ: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+          };
+        });
+        const W = await page.evaluate(() => globalThis.KonjakuAnswer.BORDER);
+        // ⚠ **1 行だけで意味が通ること**（⚠ 見出しが無い）
+        must(r.字.includes(東3), `変わった先を言っていない: 「${r.字}」`);
+        must(/土地/.test(r.字), `何が変わるかを言っていない: 「${r.字}」`);
+        must(/[東西南北]/.test(r.字), `方角が無い: 「${r.字}」`);
+        must(/\d/.test(r.字), `距離が無い: 「${r.字}」`);
+        // ⚠ **所要時間は出さない**（⚠ 実測していない）
+        for (const 悪 of [/徒歩/, /\d+\s*分/]) must(!悪.test(r.字), `所要時間を出している: 「${r.字}」`);
+        must(r.押せる === 0, `押せるものが ${r.押せる} 個ある（⚠ ここは行き先ではない）`);
+        must(r.見出し === 0, `見出しが ${r.見出し} 個ある（⚠ 足さないと決めてある）`);
+        must(!r.切れ, `1 行が切れている: 「${r.字}」`);
+        // ⚠ **いちばん長い区分名でも切れないこと。**⚠ **短い標本だけだと素通りする**
+        //   （⚠ 実際に素通りした。⚠ `landform.json` から、⚠ いちばん長い名前を借りる）。
+        const 長い = await page.evaluate(async () => {
+          const 表 = await fetch("./data/landform.json").then((r) => r.json());
+          const 名 = [...new Set(Object.values(表.codes))].sort((a, b) => b.length - a.length)[0];
+          const t = document.getElementById("edgeText");
+          t.textContent = globalThis.KonjakuAnswer.BORDER.一行("南東", "1.2km", 名);
+          return { 名, 字: t.textContent,
+            切れ: t.scrollWidth > t.clientWidth + 1,
+            行: Math.round(document.getElementById("edge").getBoundingClientRect().height),
+            横あふれ: document.documentElement.scrollWidth > document.documentElement.clientWidth };
+        });
+        must(!長い.切れ, `いちばん長い区分名で切れる: 「${長い.字}」`);
+        must(!長い.横あふれ, `いちばん長い区分名で横にあふれる: 「${長い.字}」`);
+        must(!r.開いている, "板が開いている（⚠ この行は畳む側ではない）");
+        must(!r.横あふれ, "画面が横にあふれている");
+        return `「${r.字}」／ 行 ${r.行}px ／ 板 ${r.板}px ／ 地図 ${r.地図}px`
+          + ` ／ 長い名（${長い.名}）でも 切れ 0・${長い.行}px`;
+      },
+    });
+  }
+
+  // ⚠ **出せない土地では、⚠ 行ごと出さない**（⚠ 板を伸ばさない）。
+  //   ⚠ **判定は出るが境目だけ出せない形で突く**（⚠ 404 では判定の前で止まる）。
+  CASES.push({
+    name: "散歩中の画面で、⚠ 別の区分が無いときは 1 行ごと出さない",
+    path: `/?${KASUKABE}`, origin: NEXT_BASE, viewport: SP,
+    async setup(page) {
+      await page.route(
+        (u) => u.hostname === "maps.gsi.go.jp" && /landformclassification1/.test(u.pathname),
+        (r) => r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({
+          type: "FeatureCollection",
+          features: [{ type: "Feature", properties: { code: コード3(西3) },
+            geometry: { type: "Polygon",
+              coordinates: [[[-180, -90], [180, -90], [180, 90], [-180, 90], [-180, -90]]] } }],
+        }) }));
+    },
+    async check(page) {
+      await waitAnswer(page);
+      await page.waitForTimeout(3000);
+      const r = await page.evaluate(() => ({
+        出ている: !document.getElementById("edge")?.hidden,
+        区分: (document.getElementById("gloss")?.textContent ?? "").trim(),
+        板: Math.round(document.getElementById("card").getBoundingClientRect().height),
+        全部の字: document.body.innerText,
+      }));
+      must(r.区分.length > 2, "判定が出ていない（⚠ この検査が 1 行を見ていない）");
+      must(!r.出ている, "別の区分が無いのに、⚠ 1 行が出ている");
+      // ⚠ **「無い」と言わない**（掟の一行目）
+      for (const 悪 of ["境目はありません", "変わりません", "見つかりませんでした"])
+        must(!r.全部の字.includes(悪), `「${悪}」と書いている`);
+      return `判定は出る ／ 1 行は出ない（板 ${r.板}px）`;
     },
   });
 }

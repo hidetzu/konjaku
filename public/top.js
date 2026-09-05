@@ -380,6 +380,7 @@
   //   ⚠ 広い幅は畳まない。圧迫していないので、開いたまま出す。
   //   ⚠ 覚えない。場所が変わったら閉じる。前の場所の続きを開いたままにしない。
   //   ⚠ 幅の数はここに書かない。CSS の 1 か所（.fold::before）が決め、ここは読むだけ。
+  const edgeEl = $("edge"), edgeText = $("edgeText");
   const fold = $("fold");
   const 畳み直す = () => {
     const 印 = getComputedStyle(fold, "::before").content;
@@ -443,6 +444,24 @@
     //   消しはしない。国土地理院の区分名を名乗れないと、何を根拠に言っているか分からなくなる。
     drawAnswer();
     drawLegend();
+    drawEdge(lon, lat);
+  }
+
+  // この先で、土地が変わる（1 行）。深掘り画面と同じ判定を使う。
+  //   ここは答えではなく、答えを足で確かめる場所。出すのは 1 地点だけ。
+  //   出せない土地では、行ごと出さない。出せない理由も書かない。
+  //   古い結果で、いまの画面を上書きしない（.claude/rules/javascript.md）。
+  let 境目の番 = 0;
+  async function drawEdge(lon, lat) {
+    const 番 = ++境目の番;
+    edgeEl.hidden = true;
+    const r = await Konjaku.border(lon, lat).catch(() => null);
+    if (番 !== 境目の番) return;
+    if (!r?.ok || !r.value || !r.from) return;
+    // 字は answer.js が持つ。ここでは何を渡すかだけ決める。
+    edgeText.textContent = KonjakuAnswer.BORDER.一行(
+      r.方角, KonjakuAnswer.距離の字(r.m), r.value);
+    edgeEl.hidden = false;
   }
 
   // 見出しと 2 行目。問いへの近さ順（answer.js の lines が字を決める）。

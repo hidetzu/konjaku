@@ -128,6 +128,9 @@
     <p class="ans__src" id="glossSrc" hidden></p>
     <p class="ans" id="gloss">　</p>
     <p class="sub" id="sub"></p>
+    <!-- この先で、土地が変わる。1 行だけ。深掘り画面と同じ判定を使う。
+         出せない土地では出さない（行ごと消す）。押せる導線は持たない。 -->
+    <p class="edge" id="edge" hidden><span class="edge__t" id="edgeText"></span></p>
 
     <!-- 散歩中は、答えと保存だけあれば足りる。写真・根拠・凡例は、押してから出す。
          実測（2026-09-03・375x667）: 板が画面の 57%、見える地図は 130px しかなかった
@@ -219,6 +222,7 @@
 <script src="./answer.js"></script>
 <script src="./swale.js"></script>
 <script src="./verify.js"></script>
+<script src="./border.js"></script>
 <script src="./land.js"></script>
 <!-- places.js は、読み込んだ時点で gsi-address-search.js の TIMEOUT_MS を読む。
      先に置くと undefined になり、ページのスクリプトが丸ごと止まる。順を変えない。 -->
