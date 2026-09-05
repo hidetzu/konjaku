@@ -449,6 +449,86 @@ CASES.push(
   },
 );
 
+// ⚠ **配り物を 1 つずつ落として、⚠ 「無い」と言わないこと**（hidetzu/konjaku#99）。
+//
+// ⚠ **口を 1 つにしたので、⚠ 落ちたときの言い方も 1 か所で決まる。**
+//   ⚠ **決まったこと自体は、⚠ 静的検査が見る**（`test/check/next.mjs` ㉖）。
+//   ⚠ **ここが見るのは、⚠ 画面が何と言うか。**
+//
+// ⚠ **掟 §1 そのもの**: ⚠ **取得できなかった ≠ 存在しなかった。**
+//   ⚠ **実際に踏んでいる**（2026-08-29。⚠ 周辺の資料を読めなくしても、
+//   ⚠ 画面は資料が無い場所とまったく同じだった）。
+for (const [名, path, 塞ぐ, sel, ms] of [
+  ["この近くに残る災害の記録", `/deep?${TOYOSU}`, "**/data/monument/**", "#monSec", 3000],
+  ["この一帯は、どうだったか", `/deep?${TOYOSU}`, "**/data/area-record.json", "#nearSec", 3000],
+]) {
+  CASES.push({
+    name: `${名}を読めないとき、⚠ 「無い」と言わない`,
+    path, origin: NEXT_BASE, viewport: SP,
+    setup: (page) => page.route(塞ぐ, (r) => r.abort()),
+    async check(page) {
+      // ⚠ **器ではなく、⚠ 結果の字を待つ**（`CLAUDE.md` §9）
+      await page.waitForFunction((s) => {
+        const e = document.querySelector(s);
+        return e && !e.hidden && e.innerText.trim().length > 20;
+      }, sel, { timeout: 30000 })
+        .catch(() => { throw new Error(`${sel} の字が出ないまま 30 秒たった`); });
+      await page.waitForTimeout(ms);
+      const 字 = await page.evaluate((s) => document.querySelector(s).innerText.trim(), sel);
+      must(/読み込めませんでした/.test(字), `読めなかったことを言っていない: ${字.slice(0, 80)}`);
+      must(/分かっていません/.test(字), `在るかどうかが分からない、と言っていない: ${字.slice(0, 80)}`);
+      // ⚠ **「無い」と言わない**（掟 §1）
+      must(!/ありません。|は無い|残っていません|見つかりませんでした/.test(字),
+        `読めなかったのに「無い」と言っている: ${字.slice(0, 120)}`);
+      return `「${字.split("\n").pop().trim().slice(0, 40)}…」`;
+    },
+  });
+}
+
+CASES.push({
+  // ⚠ **対照表（`landform.json`）が読めないと、⚠ 区分の名前を引けない。**
+  //   ⚠ **そのとき「分類できていません」と言うと、⚠ 分類が無い土地と見分けられない**
+  //     （⚠ 実際に、⚠ 出しているのは別の字。⚠ ここで固定する）。
+  name: "区分の対照表を読めないとき、⚠ 「分類が無い」と言わない",
+  path: `/?${TOYOSU}`, origin: NEXT_BASE, viewport: SP,
+  setup: (page) => page.route("**/data/landform.json", (r) => r.abort()),
+  async check(page) {
+    await 待つ(page, () => (document.getElementById("gloss")?.textContent ?? "").trim().length > 2,
+      "判定");
+    await page.waitForTimeout(1500);
+    const 字 = await page.evaluate(() => document.getElementById("gloss").textContent.trim());
+    must(/調べられません/.test(字), `読めなかったことを言っていない: ${字}`);
+    // ⚠ **「分類できていません」は、⚠ 資料に区分が無い土地の字**（`docs/adr/0056`）。
+    //   ⚠ **読めなかったときに、⚠ その字を出さない。**
+    must(!/分類できていません/.test(字), `読めなかったのに「分類が無い」と言っている: ${字}`);
+    return `「${字}」`;
+  },
+});
+
+CASES.push({
+  // ⚠ **市区町村の表は、⚠ 保存の瞬間に 1 回だけ読む。**
+  //   ⚠ **補助データが 1 つ取れないだけで、⚠ 保存を止めない**（`.claude/rules/javascript.md`）。
+  name: "市区町村の表を読めなくても、⚠ 保存は止まらない",
+  path: `/?${TOYOSU}`, origin: NEXT_BASE, viewport: SP,
+  setup: (page) => page.route("**/data/muni.json", (r) => r.abort()),
+  async check(page) {
+    await waitAnswer(page);
+    await 待つ(page, () => !document.getElementById("save").hidden, "保存");
+    await page.locator("#save").click();
+    await 待つ(page,
+      () => document.getElementById("save").getAttribute("aria-pressed") === "true", "保存ずみ");
+    await page.waitForTimeout(1500);
+    const r = await page.evaluate(() => {
+      const 控え = JSON.parse(localStorage.getItem("konjaku-next-saved-v1") ?? "[]");
+      return { 件数: 控え.length, 名: 控え[0]?.name ?? null,
+               座標: Number.isFinite(控え[0]?.lon) && Number.isFinite(控え[0]?.lat) };
+    });
+    must(r.件数 === 1, `表が読めないと保存できなくなっている（控え ${r.件数} 件）`);
+    must(r.座標, "控えに座標が無い（⚠ 戻れない）");
+    return `控え 1 件・名前は ${r.名 === null ? "null" : `「${r.名}」`}・座標は在る`;
+  },
+});
+
 // ⚠ **文字を大きくしても、⚠ 押せるもの同士が重ならないこと**（`ui-ux-review` §3）。
 //   ⚠ **4 画面で使い回す**（2026-09-05。hidetzu/konjaku#313）。
 //   ⚠ **前は最初の画面にしか無かった。**⚠ **深掘り・このサイトについて・控えは 1 度も見ていなかった。**

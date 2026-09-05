@@ -184,7 +184,10 @@
   async function drawMonuments(lon, lat) {
     monSec.hidden = true;
     monEl.innerHTML = ""; monCite.hidden = true;
-    const 取る = (p) => fetch(p).then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))));
+    // 取りに行くのは static-json.js の 1 か所（hidetzu/konjaku#99）。時間切れもそこが持つ。
+    //   monument.js は「拒まれたら unreachable」で組んであるので、その形のまま渡す。
+    const 取る = (p) => KonjakuStatic.取る(p)
+      .then((r) => (r.state === "ok" ? r.data : Promise.reject(new Error(r.why))));
     const r = await KonjakuMonument.nearby(lon, lat, 取る).catch(() => ({ state: "unreachable", items: [] }));
     monSec.hidden = false;
     const km = (m) => (m < 1000 ? `${Math.round(m / 10) * 10}m` : `${(m / 1000).toFixed(1)}km`);
@@ -468,11 +471,9 @@
   };
   async function drawNear(lon, lat) {
     nearSec.hidden = true;
-    let j = null;
-    try {
-      const r = await fetch("./data/area-record.json");
-      j = r.ok ? await r.json() : null;
-    } catch { j = null; }
+    // 取りに行くのは static-json.js の 1 か所（hidetzu/konjaku#99）。時間切れもそこが持つ。
+    const got = await KonjakuStatic.取る("./data/area-record.json");
+    const j = got.state === "ok" ? got.data : null;
     if (!j) {
       // 読めなかった。黙ると、その地域の資料が無い場所と見分けられない（掟 §1）
       nearSec.hidden = false;
