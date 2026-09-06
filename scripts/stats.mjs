@@ -1,100 +1,119 @@
-// 共有率を出す。掟: 唯一の指標は共有率 で決めた唯一の指標。
+// 計測を読む（2026-09-06。Owner 判断）。
 //
-//   npm run stats            直近30日
-//   npm run stats -- 90      直近90日
+// ⚠ **手元から wrangler を叩いて、⚠ 集計を出すだけ。**
+//   ⚠ **git に数字は上がらない**（⚠ 出すのは画面へ。⚠ 残したいときは `--out=tmp/…`）。
+//   ⚠ **新しい鍵も、⚠ 新しい口も作らない**（⚠ Owner の wrangler ログインをそのまま使う）。
+//   ⚠ **だから「Owner だけが見られる」は、⚠ Cloudflare の権限がそのまま守る。**
 //
-// D1 に貯めているので、いつ見ても消えていない（Workers Logs は保持3日だった）。
-// 数えているのは「その日に何が何回起きたか」だけで、誰が・どこを調べたかは持っていない。
+// ⚠ **ダッシュボードは作らない**（2026-09-06。Owner 判断）。
+//   ⚠ **本番の Worker に読み出しの口を足すと、⚠ 攻撃面と Runtime 依存が増える**
+//     （`CLAUDE.md` §3）。⚠ **見る人 1 人・週 1 回には重い。**
+//
+// ## 使い方
+//
+//   npm run stats                    ⚠ 直近 14 日
+//   npm run stats -- --days=30       ⚠ 期間を変える
+//   npm run stats -- --out=tmp/x.txt ⚠ 画面と同じものを書き出す（⚠ tmp/ は追跡外）
+//   npm run stats -- --sql           ⚠ 打つ SQL を出すだけ（⚠ 叩かない）
+//
+// ⚠ **出さないもの: リピーター率。**⚠ **訪問の印は 1 日で消えるので、⚠ 測れない**
+//   （`docs/adr/0102`）。⚠ **測れないものを出さない**（`CLAUDE.md` §1）。
 import { execFileSync } from "node:child_process";
+import { writeFileSync, mkdirSync } from "node:fs";
+import { dirname } from "node:path";
 
-const days = Number(process.argv[2] ?? 30);
-const sql = (q) => {
-  const out = execFileSync("npx", ["wrangler", "d1", "execute", "konjaku",
-    "--remote", "--json", "--command", q], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
-  return JSON.parse(out)[0]?.results ?? [];
+const arg = (k, d = null) => {
+  const a = process.argv.find((x) => x.startsWith(`--${k}=`));
+  return a ? a.slice(k.length + 3) : (process.argv.includes(`--${k}`) ? true : d);
+};
+const DAYS = Number(arg("days", 14));
+const OUT = arg("out", null);
+const SQL_ONLY = arg("sql", false);
+const DB = "konjaku";
+
+// ⚠ **問いごとに 1 本。**⚠ **1 つの SQL に詰め込まない**（⚠ 何を見ているか読めなくなる）。
+const 問い = [
+  {
+    見出し: "1. 日ごとの本数",
+    説明: "その日に何が何回起きたか。⚠ 人数ではない（同じ人が 5 回でも 5 と出る）",
+    sql: `SELECT created_at AS 日, event_type AS 出来事, COUNT(*) AS n
+          FROM events_simple WHERE created_at >= date('now', '-${DAYS} days')
+          GROUP BY 1, 2 ORDER BY 1 DESC, n DESC`,
+  },
+  {
+    見出し: "2. どこから来たか",
+    説明: "?from= があればそれ、無ければ来た相手を列挙の名前へ畳んだもの",
+    sql: `SELECT created_at AS 日, referrer AS 流入元,
+                 COUNT(DISTINCT session_id) AS 訪問, COUNT(*) AS 本数
+          FROM events_simple WHERE created_at >= date('now', '-${DAYS} days')
+          GROUP BY 1, 2 ORDER BY 1 DESC, 訪問 DESC`,
+  },
+  {
+    見出し: "3. どこまで進んだか（訪問の数）",
+    説明: "⚠ 端末をまたぐと別の訪問になる。⚠ スマホで調べて PC で深掘りは、2 つに割れる",
+    sql: `SELECT referrer AS 流入元,
+                 COUNT(DISTINCT session_id) AS 訪問,
+                 COUNT(DISTINCT CASE WHEN event_type='map_opened'    THEN session_id END) AS 調べた,
+                 COUNT(DISTINCT CASE WHEN event_type='detail_view'   THEN session_id END) AS くわしく,
+                 COUNT(DISTINCT CASE WHEN event_type='deep_accessed' THEN session_id END) AS 深掘り,
+                 COUNT(DISTINCT CASE WHEN event_type='save_place'    THEN session_id END) AS 保存,
+                 COUNT(DISTINCT CASE WHEN event_type='shared'        THEN session_id END) AS 共有
+          FROM events_simple WHERE created_at >= date('now', '-${DAYS} days')
+          GROUP BY 1 ORDER BY 訪問 DESC`,
+  },
+  {
+    見出し: "4. どの入口から場所が決まったか",
+    説明: "⚠ link は共有リンクで開かれたもの。⚠ 仮説（スマホ → 共有 → PC）はここに出る",
+    sql: `SELECT created_at AS 日, event_type AS 出来事, entry_point AS 入口, COUNT(*) AS n
+          FROM events_simple
+          WHERE created_at >= date('now', '-${DAYS} days') AND entry_point IS NOT NULL
+          GROUP BY 1, 2, 3 ORDER BY 1 DESC, n DESC`,
+  },
+  {
+    見出し: "5. どの画面が開かれたか",
+    説明: "page_load の metadata から",
+    sql: `SELECT created_at AS 日, json_extract(metadata, '$.page') AS 画面, COUNT(*) AS n
+          FROM events_simple
+          WHERE created_at >= date('now', '-${DAYS} days') AND metadata IS NOT NULL
+          GROUP BY 1, 2 ORDER BY 1 DESC, n DESC`,
+  },
+];
+
+const 表にする = (rows) => {
+  if (!rows.length) return "  （0 件）";
+  const 列 = Object.keys(rows[0]);
+  const 幅 = 列.map((k) => Math.max([...k].length * 2,
+    ...rows.map((r) => String(r[k] ?? "-").length)));
+  const 行 = (v) => "  " + 列.map((k, i) => String(v[k] ?? "-").padEnd(幅[i])).join("  ");
+  return [行(Object.fromEntries(列.map((k) => [k, k]))),
+          "  " + 幅.map((w) => "-".repeat(w)).join("  "),
+          ...rows.map(行)].join("\n");
 };
 
-const num = (n) => String(n).padStart(6);
-let rows;
-try {
-  rows = sql(`SELECT day, event, n FROM tick WHERE day >= date('now', '-${days} day') ORDER BY day`);
-} catch (e) {
-  console.error("D1 を読めませんでした。wrangler login は済んでいますか。");
-  console.error(String(e.stderr ?? e.message).split("\n").slice(0, 4).join("\n"));
-  process.exit(1);
+const 打つ = (sql) => {
+  const out = execFileSync("npx", ["--yes", "wrangler", "d1", "execute", DB, "--remote", "--json",
+    "--command", sql.replace(/\s+/g, " ")], { encoding: "utf8", maxBuffer: 1 << 24 });
+  // ⚠ **`--json` でも前後に飾りが混じることがある。**⚠ **`[` から後ろだけ読む。**
+  const i = out.indexOf("[");
+  if (i < 0) throw new Error(`wrangler の返りを読めない: ${out.slice(0, 200)}`);
+  return JSON.parse(out.slice(i))[0]?.results ?? [];
+};
+
+const 束 = [`計測（直近 ${DAYS} 日 ／ ${new Date().toISOString().slice(0, 10)} 時点）`, ""];
+for (const q of 問い) {
+  if (SQL_ONLY) { 束.push(`-- ${q.見出し}`, q.sql.replace(/\s+/g, " "), ""); continue; }
+  束.push(q.見出し, `  ${q.説明}`, "");
+  try { 束.push(表にする(打つ(q.sql))); }
+  catch (e) { 束.push(`  ⚠ 読めなかった: ${String(e.message).slice(0, 200)}`); }
+  束.push("");
 }
-
-const byDay = new Map();
-for (const r of rows) {
-  if (!byDay.has(r.day)) byDay.set(r.day, {});
-  byDay.get(r.day)[r.event] = r.n;
+if (!SQL_ONLY) {
+  // ⚠ **測っていないことを、⚠ 出さない**（`CLAUDE.md` §1）。
+  束.push("⚠ 出していないもの",
+    "  リピーター率  訪問の印は 1 日で消えるので、⚠ 「昨日も来た人」は数えられない",
+    "  どこを調べたか  座標も町名も残していない",
+    "  何時に見たか    日までしか持っていない", "");
 }
-
-const total = {};
-for (const d of byDay.values()) for (const [k, v] of Object.entries(d)) total[k] = (total[k] ?? 0) + v;
-
-// 分母は「判定が出た回数」。出せなかった回（none / fail）は、共有しようがないので入れない。
-const judged = (total["judged.ok"] ?? 0) + (total["judged.coarse"] ?? 0);
-const shared = total["shared"] ?? 0;
-const saved  = total["saved"] ?? 0;
-
-console.log(`\n直近 ${days} 日\n`);
-console.log("  日付        判定  うち粗  出ない  読めず  共有  保存  年代  3D  音声");
-for (const [day, d] of [...byDay].sort()) {
-  console.log(`  ${day}  ${num(d["judged.ok"] ?? 0)}${num(d["judged.coarse"] ?? 0)}`
-    + `${num(d["judged.none"] ?? 0)}${num(d["judged.fail"] ?? 0)}`
-    + `${num(d["shared"] ?? 0)}${num(d["saved"] ?? 0)}`
-    + `${num(d["era.moved"] ?? 0)}${num(d["open.peel"] ?? 0)}${num(d["open.speak"] ?? 0)}`);
-}
-
-const moved = total["era.moved"] ?? 0;
-
-console.log(`\n  判定が出た      ${judged}`);
-console.log(`  共有            ${shared}`);
-console.log(`  画像として保存   ${saved}`);
-console.log(`  年代を動かした   ${moved}`);
-console.log(`  3Dを開いた       ${total["open.peel"] ?? 0}`);
-console.log(`  読み上げた       ${total["open.speak"] ?? 0}`);
-if (judged < 100) {
-  // 0/3 と 0/100 は別のこと。少ない分母で率を読むと、そこから先の判断が全部ずれる
-  console.log(`\n  ⚠ 判定が ${judged} 件。100件たまるまで共有率は読まない（掟: 判定が100件たまるまで共有率を読まない）`);
-} else {
-  console.log(`\n  共有率 ${(shared / judged * 100).toFixed(1)}%  （共有 ÷ 判定が出た回数）`);
-  console.log(`  保存も含めると ${((shared + saved) / judged * 100).toFixed(1)}%`);
-}
-
-// 時間を動かす体験が触られているか（掟: 中間を語らない。中間は見せる）。
-// ⚠ 率で読むのは判定が100件たまってから。ここも 0/3 と 0/100 は別のこと。
-//   ただし「1件も動かされていない」は件数のうちから意味があるので、そこだけは先に言う。
-if (judged >= 100) {
-  console.log(`\n  年代を動かした割合 ${(moved / judged * 100).toFixed(1)}%  （動かした回数 ÷ 判定）`);
-} else if (judged > 0 && moved === 0) {
-  console.log(`\n  ⚠ 判定 ${judged} 件のうち、年代を動かしたのは 0 回。`);
-  console.log(`    帯が押せると気づかれていない可能性がある（率以前の問題）`);
-}
-
-// 流入の出所。⚠ 判定が30件に届かないうちは、共有率より先にこちらを見る。
-// 分母が足りないなら、それは「面白くない」ではなく「人が来ていない」問題。
-// 「面白くなかった」のか「そもそも誰も来ていない」のかは、まったく別の問題。
-const from = Object.entries(total).filter(([k]) => k.startsWith("from:"));
-if (from.length) {
-  console.log(`\n  流入の出所（?from= を付けたリンク）`);
-  for (const [k, v] of from.sort((a, b) => b[1] - a[1]))
-    console.log(`    ${k.slice(5).padEnd(10)} ${num(v)}`);
-} else if (judged < 30) {
-  console.log(`\n  流入の出所: まだ1件も無い。?from= を付けたリンクをどこにも貼っていない`);
-}
-
-// 依存の生死。共有率がゼロだったとき「面白くなかった」のか「壊れていた」のかを分ける
-const h = sql(`SELECT target, SUM(ok) ok, SUM(fail) fail FROM health
-               WHERE day >= date('now', '-${days} day') GROUP BY target`);
-if (h.length) {
-  console.log(`\n  依存の生死（読めた / 読めなかった）`);
-  for (const r of h) {
-    const t = r.ok + r.fail;
-    const bad = t ? (r.fail / t * 100) : 0;
-    console.log(`    ${String(r.target).padEnd(10)} ${num(r.ok)} / ${num(r.fail)}`
-      + (bad >= 5 ? `   ⚠ ${bad.toFixed(1)}% 落ちている` : ""));
-  }
-}
-console.log();
+const 文 = 束.join("\n");
+console.log(文);
+if (OUT) { mkdirSync(dirname(OUT), { recursive: true }); writeFileSync(OUT, 文 + "\n"); console.log(`⚠ 書き出した: ${OUT}`); }

@@ -14,6 +14,7 @@
     "check-search": "node test/search-check.mjs",
     "check-repository": "node test/repository-check.mjs",
     "render": "node test/render.mjs",
+    "stats": "node scripts/stats.mjs",
     "survey": "node scripts/survey.mjs",
     "cost": "node scripts/cost.mjs",
     "stats": "node scripts/stats.mjs",

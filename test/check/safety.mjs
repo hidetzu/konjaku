@@ -205,6 +205,47 @@ head("1.7 計測の受け口（/api/events を実際に呼ぶ）");
   } else if (mod) bad("worker.js が default.fetch を出していない");
 }
 
+// ---------- 1.8 計測を読む口（npm run stats） ----------
+head("1.8 計測を読む口（npm run stats）");
+// ⚠ **ダッシュボードは作らないと決めた**（2026-09-06。Owner 判断。`docs/adr/0102`）。
+//   ⚠ **本番の Worker に読み出しの口を足すと、⚠ 攻撃面と Runtime 依存が増える。**
+//   ⚠ **かわりに、⚠ 手元から wrangler を叩く 1 本だけを持つ。**
+//
+// ⚠ **ここが見るのは 3 つ。**⚠ **叩いた結果は見ない**（⚠ 認証が要るし、⚠ 本番の DB を検査が触らない）。
+{
+  const 欠け = [];
+  const P = join(ROOT, "scripts", "stats.mjs");
+  if (!existsSync(P)) 欠け.push("scripts/stats.mjs が無い");
+  else {
+    // ⚠ **コメントを先に落とす**（`CLAUDE.md` §5）。⚠ **落とさないと、⚠ 説明の字を拾う。**
+    const src = (await readFile(P, "utf8")).replace(BLOCK_COMMENT, " ").replace(LINE_COMMENT, "$1");
+    const pkg = JSON.parse(await readFile(join(ROOT, "package.json"), "utf8"));
+
+    // ⚠ **① `npm run stats` で呼べること**
+    if (pkg.scripts?.stats !== "node scripts/stats.mjs")
+      欠け.push(`package.json の stats が違う: ${JSON.stringify(pkg.scripts?.stats)}`);
+
+    // ⚠ **② 書き込まないこと**（⚠ 読む口が、⚠ 黙って表を変えない）
+    for (const 語 of ["INSERT", "UPDATE", "DELETE", "DROP", "ALTER", "CREATE"])
+      if (new RegExp(`\\b${語}\\b`).test(src)) 欠け.push(`stats.mjs が ${語} を持っている（⚠ 読むだけの口）`);
+
+    // ⚠ **③ 測っていないものを出さないこと**（`CLAUDE.md` §1）。
+    //   ⚠ **訪問の印は 1 日で消えるので、⚠ リピーター率は出せない。**
+    //   ⚠ **「出していないもの」を、⚠ 出力そのものが名乗ること。**
+    if (/リピーター率/.test(src) && !/出していないもの/.test(src))
+      欠け.push("リピーター率に触れているのに、⚠ 出せないことを名乗っていない");
+    if (!/リピーター率/.test(src))
+      欠け.push("⚠ 出せないもの（リピーター率）を、⚠ どこにも書いていない");
+
+    // ⚠ **④ git に数字を残さないこと**（⚠ 既定の書き出し先を持たない）
+    if (/writeFileSync\([^)]*(docs|public|test)\//.test(src))
+      欠け.push("stats.mjs が、⚠ 追跡される場所へ書き出している");
+  }
+  欠け.length
+    ? bad(`計測を読む口が決めたとおりでない: ${欠け.join(" ／ ")}`)
+    : ok("計測を読む口は npm run stats の 1 本（⚠ 読むだけ・⚠ 出せないものを名乗る・⚠ git に数字を残さない）");
+}
+
 // ---------- 7. 外部から来た文字列を HTML として実行させない ----------
 head("7. 外部から来た文字列");
 // 実際に踏んだ（2026-08-15）。配信物は一切変えず、応答だけ差し替えて広島を開くと、
