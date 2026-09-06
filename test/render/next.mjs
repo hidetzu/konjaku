@@ -3825,6 +3825,62 @@ CASES.push({
 });
 
 CASES.push({
+  // ⚠ **画面が送った本文を、⚠ 本物の受け口がそのまま数えるか**（2026-09-06）。
+  //
+  // ⚠ **ここが空いていた。**⚠ **実描画は `page.route` で横取りして 204 を返すので、
+  //   ⚠ 本物の受け口を 1 度も通っていない。**⚠ **静的検査は本物の Worker を呼ぶが、
+  //   ⚠ そこへ渡す本文は検査が書いたもので、⚠ 画面が送ったものではない。**
+  // ⚠ **つまり「画面が送る形」と「受け口が受ける形」がずれても、⚠ どちらも緑だった。**
+  //   ⚠ **本番で 1 件も入らない、という壊れ方が通る。**
+  //
+  // ⚠ **本番の D1 を検査が触ることはできない**ので、⚠ **偽の DB へ書かせて、⚠ 書かれた行を見る。**
+  name: "画面が送った本文を、⚠ 本物の受け口がそのまま数える",
+  path: `/?${TOYOSU}`, origin: NEXT_BASE, viewport: SP,
+  async check(page) {
+    const 送った = await 計測を捕まえる(page);
+    await page.goto(`${NEXT_BASE}/?${TOYOSU}`, { waitUntil: "domcontentloaded" });
+    await waitAnswer(page);
+    await ひらく(page);
+    await 待つ(page, () => !document.getElementById("save").hidden, "保存");
+    await page.locator("#save").click();
+    await page.waitForTimeout(2500);
+    must(送った.length > 0, "計測が 1 本も飛んでいない（⚠ この検査が何も見ていない）");
+
+    // ⚠ **本物の Worker へ、⚠ 画面が送ったとおりの形で渡す**（⚠ Origin も Content-Length も本物と同じ）
+    const 行 = [];
+    const env = { DB: { prepare: (sql) => ({ bind: (...a) => ({ run: async () => { 行.push({ sql, a }); } }) }) } };
+    const 落ちた = [];
+    for (const b of 送った) {
+      行.length = 0;
+      const body = JSON.stringify(b);
+      const res = await WORKER_NEXT.fetch(new Request(`${NEXT_BASE}/api/events`, {
+        method: "POST", body,
+        headers: { Origin: NEXT_BASE, "Content-Type": "application/json",
+                   "Content-Length": String(new TextEncoder().encode(body).length) },
+      }), env);
+      if (行.length !== 1 || res.status !== 204)
+        落ちた.push(`${b.event_type}（status ${res.status} / 書き込み ${行.length}）`);
+    }
+    must(!落ちた.length,
+      `画面が送った本文を、⚠ 受け口が数えていない: ${落ちた.join(" ／ ")}`);
+
+    // ⚠ **書かれた行にも、⚠ 座標が入っていないこと**（⚠ 送る側と受け側の両方で見る）
+    行.length = 0;
+    const 最後 = JSON.stringify(送った[送った.length - 1]);
+    await WORKER_NEXT.fetch(new Request(`${NEXT_BASE}/api/events`, {
+      method: "POST", body: 最後,
+      headers: { Origin: NEXT_BASE, "Content-Type": "application/json",
+                 "Content-Length": String(new TextEncoder().encode(最後).length) },
+    }), env);
+    const 書かれた = JSON.stringify(行[0]?.a ?? []);
+    for (const 印 of [/35\.65/, /139\.79/, /豊洲/, /Mozilla/])
+      must(!印.test(書かれた), `書かれた行に ${印} が入っている: ${書かれた}`);
+    return `${送った.length} 本とも、⚠ 本物の受け口が 1 行ずつ数えた`
+      + `（${[...new Set(送った.map((b) => b.event_type))].join(" / ")}）`;
+  },
+});
+
+CASES.push({
   // ⚠ **計測が落ちても、⚠ 画面は止まらない**（`.claude/rules/javascript.md`）。
   //   ⚠ **計測のために利用者を待たせない。**⚠ **数えられなかっただけ。**
   name: "計測が落ちても、⚠ 画面は動く",
