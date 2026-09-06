@@ -205,6 +205,81 @@ head("1.7 計測の受け口（/api/events を実際に呼ぶ）");
   } else if (mod) bad("worker.js が default.fetch を出していない");
 }
 
+// ---------- 1.8 計測を読む口（npm run stats） ----------
+head("1.8 計測を読む口（npm run stats）");
+// ⚠ **ダッシュボードは作らないと決めた**（2026-09-06。Owner 判断。`docs/adr/0102`）。
+//   ⚠ **本番の Worker に読み出しの口を足すと、⚠ 攻撃面と Runtime 依存が増える。**
+//   ⚠ **かわりに、⚠ 手元から wrangler を叩く 1 本だけを持つ。**
+//
+// ⚠ **ここが見るのは 3 つ。**⚠ **叩いた結果は見ない**（⚠ 認証が要るし、⚠ 本番の DB を検査が触らない）。
+{
+  const 欠け = [];
+  const P = join(ROOT, "scripts", "stats.mjs");
+  if (!existsSync(P)) 欠け.push("scripts/stats.mjs が無い");
+  else {
+    // ⚠ **コメントを先に落とす**（`CLAUDE.md` §5）。⚠ **落とさないと、⚠ 説明の字を拾う。**
+    const src = (await readFile(P, "utf8")).replace(BLOCK_COMMENT, " ").replace(LINE_COMMENT, "$1");
+    const pkg = JSON.parse(await readFile(join(ROOT, "package.json"), "utf8"));
+
+    // ⚠ **① `npm run stats` で呼べること**
+    if (pkg.scripts?.stats !== "node scripts/stats.mjs")
+      欠け.push(`package.json の stats が違う: ${JSON.stringify(pkg.scripts?.stats)}`);
+
+    // ⚠ **② 書き込まないこと**（⚠ 読む口が、⚠ 黙って表を変えない）
+    for (const 語 of ["INSERT", "UPDATE", "DELETE", "DROP", "ALTER", "CREATE"])
+      if (new RegExp(`\\b${語}\\b`).test(src)) 欠け.push(`stats.mjs が ${語} を持っている（⚠ 読むだけの口）`);
+
+    // ⚠ **③ 測っていないものを出さないこと**（`CLAUDE.md` §1）。
+    //   ⚠ **訪問の印は 1 日で消えるので、⚠ リピーター率は出せない。**
+    //   ⚠ **「出していないもの」を、⚠ 出力そのものが名乗ること。**
+    if (/リピーター率/.test(src) && !/出していないもの/.test(src))
+      欠け.push("リピーター率に触れているのに、⚠ 出せないことを名乗っていない");
+    if (!/リピーター率/.test(src))
+      欠け.push("⚠ 出せないもの（リピーター率）を、⚠ どこにも書いていない");
+
+    // ⚠ **④ git に数字を残さないこと**（⚠ 既定の書き出し先を持たない）
+    if (/writeFileSync\([^)]*(docs|public|test)\//.test(src))
+      欠け.push("stats.mjs が、⚠ 追跡される場所へ書き出している");
+  }
+    // ⚠ **⑤ 表の幅が、⚠ 見た目で揃うこと**（2026-09-06。⚠ 実際にずれた）。
+    //   ⚠ **字数で数えると、⚠ 日本語の見出しだけ短く見積もる。**
+    //   ⚠ **目でしか分からない不具合なので、⚠ 数で固定する。**
+    //   ⚠ **`import` しても本体が走らないこと**も、⚠ ここで一緒に確かめる
+    //     （⚠ 走ると、⚠ 検査が本番の DB を叩きに行く。⚠ 実際に踏んだ）。
+    // ⚠ **`import` しても本体が走らないこと。**
+    //   ⚠ **走ると、⚠ 検査が本番の D1 を叩きに行く**（`.claude/rules/testing.md`
+    //     「演習が、世界を変えてはいけない」）。⚠ **実際に踏んだ**（2026-09-06）。
+    //   ⚠ **「読めた」では見えない。**⚠ **走ったかどうかを見る**（⚠ 何か出力したか）。
+    //   ⚠ **一度この主張を持たずに壊して、⚠ 素通りさせた。**⚠ **落ちなかったので足した。**
+    const 出た = [];
+    const 元 = console.log;
+    console.log = (...a) => { 出た.push(a.join(" ")); };
+    const M = await import(P).catch((e) => { 欠け.push(`stats.mjs を読めない: ${e.message}`); return null; });
+    console.log = 元;
+    if (出た.length)
+      欠け.push(`import しただけで本体が走った（⚠ ${出た.length} 行出した。⚠ 本番の D1 を叩きに行く）`);
+    if (M && !M.__test) 欠け.push("stats.mjs が __test を出していない（⚠ 幅を確かめられない）");
+    else if (M) {
+      const { 見た目の幅, 表にする } = M.__test;
+      if (見た目の幅("出来事") !== 6) 欠け.push(`日本語を 2 幅で数えていない: 出来事 → ${見た目の幅("出来事")}`);
+      if (見た目の幅("page_load") !== 9) 欠け.push(`半角を 1 幅で数えていない: page_load → ${見た目の幅("page_load")}`);
+      // ⚠ **見出しと罫線と中身の 3 行が、⚠ 同じ見た目の幅であること**
+      // ⚠ **末尾の余白は落とさない。**⚠ **落とすと、⚠ 最後の列だけ短く見える**
+      //   （⚠ 見出し `n` が 1 幅・中身 `14` が 2 幅。⚠ 見た目はずれていない）。
+      //   ⚠ **一度そう書いて、⚠ この検査が嘘の不具合を報告した**（2026-09-06）。
+      const 行 = 表にする([{ 日: "2026-09-06", 出来事: "page_load", n: 14 }]).split("\n");
+      const 幅たち = [...new Set(行.map(見た目の幅))];
+      if (行.length !== 3) 欠け.push(`表が 3 行になっていない（${行.length} 行）`);
+      else if (幅たち.length !== 1) 欠け.push(`表の幅が揃っていない: ${行.map(見た目の幅).join(" / ")}`);
+      if (!/（0 件）/.test(表にする([]))) 欠け.push("0 件のときに、⚠ そう言っていない");
+    }
+
+  欠け.length
+    ? bad(`計測を読む口が決めたとおりでない: ${欠け.join(" ／ ")}`)
+    : ok("計測を読む口は npm run stats の 1 本"
+        + "（⚠ 読むだけ・⚠ 出せないものを名乗る・⚠ git に数字を残さない・⚠ 表の幅が揃う）");
+}
+
 // ---------- 7. 外部から来た文字列を HTML として実行させない ----------
 head("7. 外部から来た文字列");
 // 実際に踏んだ（2026-08-15）。配信物は一切変えず、応答だけ差し替えて広島を開くと、
