@@ -79,12 +79,18 @@ const 問い = [
   },
 ];
 
+// ⚠ **見た目の幅で数える。**⚠ **日本語は 2 幅**（⚠ 字数で数えると、⚠ 見出しと中身がずれる。
+//   ⚠ 実際にずれた: 2026-09-06。⚠ 「出来事」を 6 幅と数えて、⚠ 罫線だけ短かった）。
+const 見た目の幅 = (s) => [...String(s)]
+  .reduce((n, c) => n + (/[\u1100-\u115F\u2E80-\uA4CF\uAC00-\uD7A3\uF900-\uFAFF\uFE30-\uFE6F\uFF00-\uFF60\uFFE0-\uFFE6]/.test(c) ? 2 : 1), 0);
+const 詰める = (s, w) => String(s) + " ".repeat(Math.max(0, w - 見た目の幅(s)));
+
 const 表にする = (rows) => {
   if (!rows.length) return "  （0 件）";
   const 列 = Object.keys(rows[0]);
-  const 幅 = 列.map((k) => Math.max([...k].length * 2,
-    ...rows.map((r) => String(r[k] ?? "-").length)));
-  const 行 = (v) => "  " + 列.map((k, i) => String(v[k] ?? "-").padEnd(幅[i])).join("  ");
+  const 幅 = 列.map((k) => Math.max(見た目の幅(k),
+    ...rows.map((r) => 見た目の幅(r[k] ?? "-"))));
+  const 行 = (v) => "  " + 列.map((k, i) => 詰める(v[k] ?? "-", 幅[i])).join("  ");
   return [行(Object.fromEntries(列.map((k) => [k, k]))),
           "  " + 幅.map((w) => "-".repeat(w)).join("  "),
           ...rows.map(行)].join("\n");
@@ -99,21 +105,32 @@ const 打つ = (sql) => {
   return JSON.parse(out.slice(i))[0]?.results ?? [];
 };
 
-const 束 = [`計測（直近 ${DAYS} 日 ／ ${new Date().toISOString().slice(0, 10)} 時点）`, ""];
-for (const q of 問い) {
-  if (SQL_ONLY) { 束.push(`-- ${q.見出し}`, q.sql.replace(/\s+/g, " "), ""); continue; }
-  束.push(q.見出し, `  ${q.説明}`, "");
-  try { 束.push(表にする(打つ(q.sql))); }
-  catch (e) { 束.push(`  ⚠ 読めなかった: ${String(e.message).slice(0, 200)}`); }
-  束.push("");
+// ⚠ **検査から呼べるようにする**（⚠ 幅の計算は、⚠ 目でしか分からないので数で固定する）。
+//   ⚠ **叩く側（wrangler）は呼ばない。**⚠ **本番の DB を検査が触らない。**
+export const __test = { 見た目の幅, 詰める, 表にする };
+
+// ⚠ **直に走らせたときだけ、⚠ 実際に叩く。**
+//   ⚠ **`import` しただけで wrangler を呼ばない**（⚠ 検査が本番の DB を触りに行く）。
+//   ⚠ **実際に踏んだ**（2026-09-06。⚠ 検査から読もうとして、⚠ 本体が走った）。
+const 直に走らせた = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop());
+if (直に走らせた) {
+
+  const 束 = [`計測（直近 ${DAYS} 日 ／ ${new Date().toISOString().slice(0, 10)} 時点）`, ""];
+  for (const q of 問い) {
+    if (SQL_ONLY) { 束.push(`-- ${q.見出し}`, q.sql.replace(/\s+/g, " "), ""); continue; }
+    束.push(q.見出し, `  ${q.説明}`, "");
+    try { 束.push(表にする(打つ(q.sql))); }
+    catch (e) { 束.push(`  ⚠ 読めなかった: ${String(e.message).slice(0, 200)}`); }
+    束.push("");
+  }
+  if (!SQL_ONLY) {
+    // ⚠ **測っていないことを、⚠ 出さない**（`CLAUDE.md` §1）。
+    束.push("⚠ 出していないもの",
+      "  リピーター率  訪問の印は 1 日で消えるので、⚠ 「昨日も来た人」は数えられない",
+      "  どこを調べたか  座標も町名も残していない",
+      "  何時に見たか    日までしか持っていない", "");
+  }
+  const 文 = 束.join("\n");
+  console.log(文);
+  if (OUT) { mkdirSync(dirname(OUT), { recursive: true }); writeFileSync(OUT, 文 + "\n"); console.log(`⚠ 書き出した: ${OUT}`); }
 }
-if (!SQL_ONLY) {
-  // ⚠ **測っていないことを、⚠ 出さない**（`CLAUDE.md` §1）。
-  束.push("⚠ 出していないもの",
-    "  リピーター率  訪問の印は 1 日で消えるので、⚠ 「昨日も来た人」は数えられない",
-    "  どこを調べたか  座標も町名も残していない",
-    "  何時に見たか    日までしか持っていない", "");
-}
-const 文 = 束.join("\n");
-console.log(文);
-if (OUT) { mkdirSync(dirname(OUT), { recursive: true }); writeFileSync(OUT, 文 + "\n"); console.log(`⚠ 書き出した: ${OUT}`); }
