@@ -10,7 +10,16 @@
 //   「聞けない」になってはいけない。→ **何が起きても exit 0**。
 //   答えが取れなかったときは何も出さない＝いつもどおり端末で聞く形に落ちる。
 //
-// ⚠ **待つのは上限つき。** 既定 3 分。Hook 自体の既定 timeout は 600 秒なので、その内側。
+// ⚠ **待つのは上限つき。** 既定 5 分（2026-09-08 に 3 分から伸ばした。hidetzu/konjaku#475）。
+//   ⚠ **`.claude/settings.json` の Hook の timeout（330 秒）より内側**
+//     （⚠ 外側だと Hook ごと先に切られ、⚠ 時間切れの一言もスレッドに返らない。
+//      ⚠ **この関係は `test/check/guard.mjs` が突き合わせる**）。
+//   ⚠ **実測（2026-08-28 〜 2026-09-07・84 件。`.claude/telemetry/events.jsonl` の OwnerAsk）**:
+//     ⚠ **時間切れ 44 件（52%）／ ボタン 24 件 ／ 自由記述 16 件。**
+//     ⚠ **答えが返った回だけで見ると 中央 32.7 秒・最大 157.3 秒**（⚠ 上限 180 秒のすぐ手前）。
+//     ⚠ **上限に張り付いた回は 33 件。**⚠ **そのうち何件が「あと少しで答えられた」かは分からない**
+//       （⚠ 人が居なかったのか、⚠ 答えにくかったのかを区別する記録が無い。`CLAUDE.md` §1）。
+//   ⚠ **伸ばすと、⚠ 誰も居ないときの待ちも伸びる**（⚠ その間セッションは止まる）。
 //
 // 受け取り方は 2 つ。**どちらもチャンネルにいる人しか触れない**ので、
 // 誰が答えられるかは Slack のチャンネル設定で決める（こちらに許可リストを持たない）。
@@ -37,7 +46,7 @@
 //   node .claude/hooks/slack-doctor.mjs                  設定を見る（何も投稿しない）
 //   node .claude/hooks/slack-doctor.mjs --post --modal    ボタンとモーダルを実地で試す
 //
-//   # ⚠ Hook として通しで試す（実際に Slack へ 1 通出て、3 分待つ）
+//   # ⚠ Hook として通しで試す（実際に Slack へ 1 通出て、5 分待つ）
 //   echo '{"tool_name":"AskUserQuestion","cwd":"'"$PWD"'","session_id":"t","tool_input":{"questions":[
 //     {"question":"どちらにしますか？","header":"方針","options":[{"label":"案A"},{"label":"案B"}]}]}}' \
 //     | node .claude/hooks/ask-slack.mjs; echo "exit=$?"
@@ -51,7 +60,7 @@ import { join, dirname, basename } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
 
-const WAIT_MS = 180_000;          // ⚠ 上限。これを超えて待たない
+const WAIT_MS = 300_000;          // ⚠ 上限。これを超えて待たない（⚠ settings.json の timeout の内側）
 const bail = (why) => { if (why) process.stderr.write(`ask-slack: ${why}\n`); process.exit(0); };
 
 // ---- ⚠ 人に聞いたことを、⚠ 1 行だけ残す（hidetzu/konjaku#367。ADR 0044）----

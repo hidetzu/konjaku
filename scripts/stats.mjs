@@ -31,6 +31,42 @@ const OUT = arg("out", null);
 const SQL_ONLY = arg("sql", false);
 const DB = "konjaku";
 
+// ⚠ **訪問の入口**（2026-09-08。`docs/adr/0103`）。
+//
+// ⚠ **`referrer` 列が持っているのは「その画面を開いた直前の出どころ」で、⚠ 訪問の入口ではない。**
+//   ⚠ **流入元は画面ごとに読み込み時 1 回決まる**（`public/measure-send.js`）。⚠ **判定は
+//     「その URL の `?from=`」と「`document.referrer` のホスト名」だけ**（`public/measure.js`）。
+//   ⚠ **サイト内リンクは `?from=` を運ばない**ので、⚠ **`about?from=app-village` から地図へ進むと、
+//     ⚠ 2 行目からは `konjaku` になる**（⚠ 実測 2026-09-08）。
+//
+// ⚠ **行のまま流入元で束ねると、⚠ 同じ訪問が 2 つの流入元へ割れる。**
+//   ⚠ **`app-village` の行は「訪問 1・調べた 0・深掘り 0」に見える。**
+//   ⚠ **「app-village から来た人は誰も地図を使っていない」と読める**（`CLAUDE.md` §1
+//     「観測されていない ≠ 存在しなかった」）。⚠ **数え落としではなく、⚠ 嘘になる。**
+//
+// ⚠ **だから、⚠ 訪問（`session_id`）の最初の行の `referrer` を、⚠ その訪問の入口とする。**
+//   ⚠ **記録の側は変えない**（⚠ 列の意味は「その画面の直前の出どころ」のまま。
+//     ⚠ 送る側で畳むと、⚠ 同じ列に 2 つの意味が混ざる期間ができる）。
+//   ⚠ **これは既にある行にも遡って効く。**
+//
+// ⚠ **定義はここ 1 か所**（`CLAUDE.md` §3。⚠ **問いごとに書くと、⚠ 片方だけ古くなる**）。
+// ⚠ **印を置けなかった行（`session_id` が無い）は結べない。**⚠ **問い 6 が本数を名乗る。**
+//   ⚠ **黙って落とすと、⚠ 落とした分だけ全体が小さく見える**（`CLAUDE.md` §1）。
+//   ⚠ **下の `IS NOT NULL` は、⚠ 消しても答えは変わらない**（⚠ 守っているのは `JOIN` のほう。
+//     ⚠ `NULL` は結ばれない）。⚠ **書いてあるのは意図。**⚠ **わざと消して確かめた。**
+//
+// ⚠ **SQL の中に `--` のコメントを書かない**（⚠ 実際に踏んだ。2026-09-08）。
+//   ⚠ **`打つ()` が `\s+` を 1 つの空白へ潰して 1 行にするので、⚠ `--` から後ろが全部消える。**
+//   ⚠ **「incomplete input」とだけ言われる。**⚠ **説明は、⚠ この JavaScript 側のコメントに書く。**
+const 入口 = `WITH 訪問の入口 AS (
+                 SELECT session_id, referrer FROM (
+                   SELECT session_id, referrer,
+                          ROW_NUMBER() OVER (PARTITION BY session_id ORDER BY id) AS 番
+                   FROM events_simple
+                   WHERE created_at >= date('now', '-${DAYS} days') AND session_id IS NOT NULL
+                 ) WHERE 番 = 1
+               )`;
+
 // ⚠ **問いごとに 1 本。**⚠ **1 つの SQL に詰め込まない**（⚠ 何を見ているか読めなくなる）。
 const 問い = [
   {
@@ -41,24 +77,28 @@ const 問い = [
           GROUP BY 1, 2 ORDER BY 1 DESC, n DESC`,
   },
   {
-    見出し: "2. どこから来たか",
-    説明: "?from= があればそれ、無ければ来た相手を列挙の名前へ畳んだもの",
-    sql: `SELECT created_at AS 日, referrer AS 流入元,
-                 COUNT(DISTINCT session_id) AS 訪問, COUNT(*) AS 本数
-          FROM events_simple WHERE created_at >= date('now', '-${DAYS} days')
+    見出し: "2. どこから来たか（⚠ 訪問の入口で結ぶ）",
+    説明: "?from= があればそれ、無ければ来た相手を列挙の名前へ畳んだもの。⚠ 2 行目以降が konjaku に化けても、入口のまま数える",
+    sql: `${入口}
+          SELECT e.created_at AS 日, i.referrer AS 流入元,
+                 COUNT(DISTINCT e.session_id) AS 訪問, COUNT(*) AS 本数
+          FROM events_simple e JOIN 訪問の入口 i ON i.session_id = e.session_id
+          WHERE e.created_at >= date('now', '-${DAYS} days')
           GROUP BY 1, 2 ORDER BY 1 DESC, 訪問 DESC`,
   },
   {
     見出し: "3. どこまで進んだか（訪問の数）",
-    説明: "⚠ 端末をまたぐと別の訪問になる。⚠ スマホで調べて PC で深掘りは、2 つに割れる",
-    sql: `SELECT referrer AS 流入元,
-                 COUNT(DISTINCT session_id) AS 訪問,
-                 COUNT(DISTINCT CASE WHEN event_type='map_opened'    THEN session_id END) AS 調べた,
-                 COUNT(DISTINCT CASE WHEN event_type='detail_view'   THEN session_id END) AS くわしく,
-                 COUNT(DISTINCT CASE WHEN event_type='deep_accessed' THEN session_id END) AS 深掘り,
-                 COUNT(DISTINCT CASE WHEN event_type='save_place'    THEN session_id END) AS 保存,
-                 COUNT(DISTINCT CASE WHEN event_type='shared'        THEN session_id END) AS 共有
-          FROM events_simple WHERE created_at >= date('now', '-${DAYS} days')
+    説明: "⚠ 流入元は訪問の入口。⚠ 端末をまたぐと別の訪問になる。⚠ スマホで調べて PC で深掘りは、2 つに割れる",
+    sql: `${入口}
+          SELECT i.referrer AS 流入元,
+                 COUNT(DISTINCT e.session_id) AS 訪問,
+                 COUNT(DISTINCT CASE WHEN e.event_type='map_opened'    THEN e.session_id END) AS 調べた,
+                 COUNT(DISTINCT CASE WHEN e.event_type='detail_view'   THEN e.session_id END) AS くわしく,
+                 COUNT(DISTINCT CASE WHEN e.event_type='deep_accessed' THEN e.session_id END) AS 深掘り,
+                 COUNT(DISTINCT CASE WHEN e.event_type='save_place'    THEN e.session_id END) AS 保存,
+                 COUNT(DISTINCT CASE WHEN e.event_type='shared'        THEN e.session_id END) AS 共有
+          FROM events_simple e JOIN 訪問の入口 i ON i.session_id = e.session_id
+          WHERE e.created_at >= date('now', '-${DAYS} days')
           GROUP BY 1 ORDER BY 訪問 DESC`,
   },
   {
@@ -76,6 +116,14 @@ const 問い = [
           FROM events_simple
           WHERE created_at >= date('now', '-${DAYS} days') AND metadata IS NOT NULL
           GROUP BY 1, 2 ORDER BY 1 DESC, n DESC`,
+  },
+  {
+    見出し: "6. 印を置けなかった行（⚠ 2 と 3 に入っていない分）",
+    説明: "端末の中に印を置けないと（プライベートモードなど）、⚠ 訪問として結べない。⚠ ここに出る分は、上の 2 つに出ていない",
+    sql: `SELECT created_at AS 日, referrer AS 行の出どころ, event_type AS 出来事, COUNT(*) AS 本数
+          FROM events_simple
+          WHERE created_at >= date('now', '-${DAYS} days') AND session_id IS NULL
+          GROUP BY 1, 2, 3 ORDER BY 1 DESC, 本数 DESC`,
   },
 ];
 
@@ -107,7 +155,7 @@ const 打つ = (sql) => {
 
 // ⚠ **検査から呼べるようにする**（⚠ 幅の計算は、⚠ 目でしか分からないので数で固定する）。
 //   ⚠ **叩く側（wrangler）は呼ばない。**⚠ **本番の DB を検査が触らない。**
-export const __test = { 見た目の幅, 詰める, 表にする };
+export const __test = { 見た目の幅, 詰める, 表にする, 入口, 問い };
 
 // ⚠ **直に走らせたときだけ、⚠ 実際に叩く。**
 //   ⚠ **`import` しただけで wrangler を呼ばない**（⚠ 検査が本番の DB を触りに行く）。
@@ -128,7 +176,8 @@ if (直に走らせた) {
     束.push("⚠ 出していないもの",
       "  リピーター率  訪問の印は 1 日で消えるので、⚠ 「昨日も来た人」は数えられない",
       "  どこを調べたか  座標も町名も残していない",
-      "  何時に見たか    日までしか持っていない", "");
+      "  何時に見たか    日までしか持っていない",
+      "  印の無い行の道のり  ⚠ 訪問として結べないので、⚠ 2 と 3 には出ない（⚠ 本数だけ 6 に出る）", "");
   }
   const 文 = 束.join("\n");
   console.log(文);

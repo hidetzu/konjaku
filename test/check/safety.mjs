@@ -20,6 +20,7 @@
 
 import { readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { join } from "node:path";
 import { ROOT, PUB, ok, bad, head, htmlFiles, jsFiles, src , BLOCK_COMMENT, LINE_COMMENT } from "./lib.mjs";
 
@@ -278,6 +279,107 @@ head("1.8 計測を読む口（npm run stats）");
     ? bad(`計測を読む口が決めたとおりでない: ${欠け.join(" ／ ")}`)
     : ok("計測を読む口は npm run stats の 1 本"
         + "（⚠ 読むだけ・⚠ 出せないものを名乗る・⚠ git に数字を残さない・⚠ 表の幅が揃う）");
+}
+
+// ---------- 1.9 計測の集計が、⚠ 訪問の入口で結ぶこと ----------
+head("1.9 計測の集計（訪問の入口）");
+// ⚠ **これは実際に踏んだ**（2026-09-08。`docs/adr/0103`）。
+//
+// ⚠ **流入元は画面ごとに読み込み時 1 回決まり、⚠ サイト内リンクは `?from=` を運ばない。**
+//   ⚠ **`about?from=app-village` → 地図 → 深掘り は `app-village / konjaku / konjaku` になる。**
+//   ⚠ **行のまま `referrer` で束ねると、⚠ `app-village` は「訪問 1・調べた 0・深掘り 0」に見える。**
+//   ⚠ **「app-village から来た人は誰も地図を使っていない」と読める**（`CLAUDE.md` §1）。
+//
+// ⚠ **字面では見えない**（⚠ `session_id` を含む SQL かどうかを見ても、⚠ 意味は分からない）。
+//   ⚠ **だから、⚠ 実物のスキーマと実物の SQL を、⚠ 実際に走らせて答えを見る。**
+//   ⚠ **本番の D1 は触らない**（⚠ 手元の `:memory:`。`.claude/rules/testing.md`「演習が、世界を変えてはいけない」）。
+//
+// ⚠ **子プロセスで走らせる。**⚠ **`node:sqlite` は Node 22 ではフラグ越しだから**
+//   （⚠ CI は Node 22・⚠ 手元は 25。⚠ **「手元に入っているものを、⚠ CI にもあると思わない」**）。
+{
+  const 日 = new Date().toISOString().slice(0, 10);   // ⚠ 表と同じく UTC の日
+  const P = join(ROOT, "scripts", "stats.mjs");
+  const 道のり = [
+    // ⚠ **1 人が about（app-village）→ 地図 → 深掘り と進んだ形。**⚠ **2 行目から konjaku になる。**
+    [日, "app-village", "s1", "page_load", null, JSON.stringify({ page: "about" })],
+    [日, "konjaku", "s1", "page_load", null, JSON.stringify({ page: "map" })],
+    [日, "konjaku", "s1", "map_opened", "default", null],
+    [日, "konjaku", "s1", "deep_accessed", null, JSON.stringify({ page: "deep" })],
+    // ⚠ **もう 1 人は直接来て、地図まで**（⚠ 入口が混ざらないことを見る）
+    [日, "direct", "s2", "page_load", null, JSON.stringify({ page: "map" })],
+    [日, "direct", "s2", "map_opened", "here", null],
+    // ⚠ **印を置けなかった 1 本**（⚠ 訪問として結べない。⚠ 黙って消えないこと）
+    [日, "app-village", null, "page_load", null, JSON.stringify({ page: "about" })],
+  ];
+
+  const コード = `
+    const { DatabaseSync } = require("node:sqlite");
+    const { readFileSync } = require("node:fs");
+    (async () => {
+      const [statsURL, schemaPath, 行] = process.argv.slice(-3);
+      process.argv = [process.argv[0]];   // 読み込んだだけで本体が走らないように（本番の D1 を叩きに行く）
+      const { __test } = await import(statsURL);
+      const d = new DatabaseSync(":memory:");
+      d.exec(readFileSync(schemaPath, "utf8"));
+      const ins = d.prepare("INSERT INTO events_simple"
+        + " (created_at, referrer, session_id, event_type, entry_point, metadata)"
+        + " VALUES (?, ?, ?, ?, ?, ?)");
+      for (const r of JSON.parse(行)) ins.run(...r);
+      const 出 = [];
+      for (const q of __test.問い) 出.push({ 見出し: q.見出し, 行: d.prepare(q.sql.replace(/\\s+/g, " ")).all() });
+      process.stdout.write(JSON.stringify(出));
+    })().catch((e) => { process.stderr.write(String((e && e.stack) || e)); process.exit(1); });
+  `;
+  const 引数 = [P.startsWith("/") ? "file://" + P : P, join(ROOT, "migrations", "0003_events.sql"), JSON.stringify(道のり)];
+  const 走る = (flags) => spawnSync(process.execPath, [...flags, "-e", コード, ...引数],
+    { encoding: "utf8", maxBuffer: 1 << 24 });
+  let r = 走る(["--experimental-sqlite"]);
+  // ⚠ **フラグが要らない版では、⚠ 未知の option として弾かれることがある。**⚠ **そのときは無しで。**
+  if (r.status !== 0 && /bad option|not allowed|Error: unknown/i.test(String(r.stderr))) r = 走る([]);
+
+  if (r.status !== 0) {
+    // ⚠ **落ちた理由を、⚠ 主張の失敗にすり替えない**（`CLAUDE.md` §9）。⚠ **そのまま出す。**
+    bad(`集計の SQL を走らせられなかった: ${String(r.stderr).slice(0, 300)}`);
+  } else {
+    const 出 = JSON.parse(r.stdout);
+    const 引く = (番) => 出.find((x) => x.見出し.startsWith(番 + "."))?.行 ?? null;
+
+    // ⚠ **① 道のりが、⚠ 入口（app-village）のまま数えられること**
+    const 進み = 引く(3);
+    const av = 進み?.find((x) => x.流入元 === "app-village");
+    if (!進み) bad("問い 3（どこまで進んだか）が見つからない");
+    else if (!av) bad(`app-village の行が出ていない: ${JSON.stringify(進み)}`);
+    else if (av.訪問 === 1 && av.調べた === 1 && av.深掘り === 1)
+      ok("about?from=app-village から地図・深掘りへ進んだ 1 訪問が、⚠ app-village のまま数えられる");
+    else bad(`入口で結べていない（app-village: 訪問 ${av.訪問} / 調べた ${av.調べた} / 深掘り ${av.深掘り}）`
+      + "（⚠ 2 行目から konjaku に化けた分が、⚠ 別の流入元として割れている）");
+
+    // ⚠ **② 途中で化けた `konjaku` が、⚠ 別の訪問として立たないこと**
+    //   ⚠ **①だけだと、⚠ 「両方に数える」形でも通ってしまう**（⚠ 訪問が二重になる）。
+    const kon = 進み?.find((x) => x.流入元 === "konjaku");
+    kon ? bad(`サイト内から来た行が、⚠ 別の訪問として立っている（konjaku: 訪問 ${kon.訪問}）`)
+        : ok("サイト内で開いた 2 行目以降は、⚠ 別の流入元として立たない（⚠ 訪問が二重にならない）");
+
+    // ⚠ **③ 直接来た人が、⚠ app-village に混ざらないこと**（⚠ 全部を 1 つの入口へ寄せていない）
+    const dir = 進み?.find((x) => x.流入元 === "direct");
+    dir && dir.訪問 === 1 && dir.調べた === 1 && dir.深掘り === 0
+      ? ok("直接来た訪問は direct のまま（⚠ 入口が混ざらない）")
+      : bad(`direct の行がおかしい: ${JSON.stringify(dir ?? null)}`);
+
+    // ⚠ **④ 印を置けなかった行が、⚠ 黙って消えないこと**（`CLAUDE.md` §1）。
+    //   ⚠ **結べないものを 0 として出すと、⚠ 全体がその分だけ小さく見える。**
+    const 印なし = 引く(6);
+    印なし?.length === 1 && 印なし[0].本数 === 1
+      ? ok("印を置けなかった行は、⚠ 訪問の表から外し、⚠ 本数として別に名乗る")
+      : bad(`印の無い行を名乗っていない: ${JSON.stringify(印なし)}`);
+
+    // ⚠ **⑤ 日ごとの本数は、⚠ 印の有無に関わらず全部数えること**（⚠ 結べない行も、⚠ 起きたことは起きた）
+    const 本数 = 引く(1);
+    const 合計 = (本数 ?? []).reduce((n, x) => n + x.n, 0);
+    合計 === 道のり.length
+      ? ok(`日ごとの本数は、⚠ 印の無い行も含めて全部数える（${合計} 本）`)
+      : bad(`日ごとの本数が合わない: ${合計} ／ 入れたのは ${道のり.length}`);
+  }
 }
 
 // ---------- 7. 外部から来た文字列を HTML として実行させない ----------
