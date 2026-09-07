@@ -3752,8 +3752,8 @@ CASES.push({
 //
 // ⚠ **いちばん大事なのは、⚠ 座標が 1 つも出ていないこと**（Owner 判断＝案A）。
 //   ⚠ **画面は座標を持っている。**⚠ **持っているものを送らない、というのは検査でしか守れない。**
-const 計測を捕まえる = async (page) => {
-  const 送った = [];
+// ⚠ **控える先を渡せる**（2026-09-07）。⚠ **開く前に足すときは、⚠ 先に器が要る。**
+const 計測を捕まえる = async (page, 送った = []) => {
   await page.route("**/api/events", async (route) => {
     try { 送った.push(JSON.parse(route.request().postData() ?? "null")); } catch { 送った.push(null); }
     await route.fulfill({ status: 204, body: "" });
@@ -3765,12 +3765,21 @@ for (const [名, path, 待つの, 要る] of [
   ["このサイトについて", "/about", null, { event_type: "page_load", page: "about" }],
   ["深掘り", `/deep?${TOYOSU}`, null, { event_type: "deep_accessed", page: "deep" }],
 ]) {
+  // ⚠ **開く前に控え始め、⚠ 1 回しか開かない**（2026-09-07）。
+  //   ⚠ **前は「走者が開く → 控え始める → もう一度開く」だった。**
+  //   ⚠ **1 回目に飛んだぶんは、⚠ 誰も見ていない。**
+  //   ⚠ **CI（`main` の定期実行 2026-09-07 03:53 UTC）で、⚠ `page_load` が 2 本に見えて落ちた。**
+  //     ⚠ **手元では再現しない**（⚠ 実測: 同じ流れ 88 回・`--group=core` 全 143 件・
+  //     ⚠ CPU 20 倍遅く・回線 200ms でも 0 回）。⚠ **なぜ 2 本になったかは、まだ分かっていない。**
+  //   ⚠ **分かっていないので、⚠ 「直した」とは言わない。**⚠ **2 回開くのをやめただけ。**
+  //     ⚠ **こうすると、⚠ 2 本出たときは「1 回開いて 2 本送った」以外に読めなくなる**
+  //     （⚠ 主張はむしろ強くなる）。
+  const 送った = [];
   CASES.push({
     name: `${名}を開くと、⚠ 計測が 1 本だけ飛ぶ`,
     path, origin: NEXT_BASE, viewport: SP,
+    setup: async (page) => { 送った.length = 0; await 計測を捕まえる(page, 送った); },
     async check(page) {
-      const 送った = await 計測を捕まえる(page);
-      await page.goto(`${NEXT_BASE}${path}`, { waitUntil: "domcontentloaded" });
       await page.waitForTimeout(待つの ?? 4000);
       const 該当 = 送った.filter((b) => b && b.event_type === 要る.event_type);
       must(該当.length === 1,
