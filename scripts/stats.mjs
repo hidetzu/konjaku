@@ -111,11 +111,16 @@ const 問い = [
   },
   {
     見出し: "5. どの画面が開かれたか",
-    説明: "page_load の metadata から",
-    sql: `SELECT created_at AS 日, json_extract(metadata, '$.page') AS 画面, COUNT(*) AS n
+    // ⚠ **「page_load の metadata から」と書いていたが、⚠ 事実と違った**（2026-09-08）。
+    //   ⚠ **SQL は `event_type` で絞っていない。**⚠ **画面の名は `deep_accessed` も持つ**
+    //     （`public/deep.js`。⚠ **`/deep` は `page_load` を送っていない**）。
+    //   ⚠ **どの記録から来た名前かを、⚠ 表に出す**（⚠ 説明だけで補わない。`CLAUDE.md` §1）。
+    説明: "画面の名を持つ記録から。⚠ /deep だけは page_load ではなく deep_accessed が名乗る",
+    sql: `SELECT created_at AS 日, json_extract(metadata, '$.page') AS 画面,
+                 event_type AS 出来事, COUNT(*) AS n
           FROM events_simple
           WHERE created_at >= date('now', '-${DAYS} days') AND metadata IS NOT NULL
-          GROUP BY 1, 2 ORDER BY 1 DESC, n DESC`,
+          GROUP BY 1, 2, 3 ORDER BY 1 DESC, n DESC`,
   },
   {
     見出し: "6. 印を置けなかった行（⚠ 2 と 3 に入っていない分）",
