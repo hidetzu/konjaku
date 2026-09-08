@@ -144,6 +144,26 @@ const 表にする = (rows) => {
           ...rows.map(行)].join("\n");
 };
 
+// ⚠ **読めなかったときは、⚠ 理由を先に出す**（2026-09-08。⚠ 実際に踏んだ）。
+//
+// ⚠ **`execFileSync` の `e.message` は、⚠ `Command failed: npx … --command <SQL 全文>` で始まる。**
+//   ⚠ **前から 200 字で切ると、⚠ ほとんどを SQL が占め、⚠ 肝心の理由が押し出される。**
+//   ⚠ **実際に踏んだ**: ⚠ **5 本のうち 1 本目だけ落ちたのに、⚠ 何が起きたのか読めなかった。**
+//
+// ⚠ **見るのは `stderr`**（⚠ wrangler はそちらに理由を書く）。
+//   ⚠ **無ければ、⚠ コマンド行を落とした残り。**⚠ **それも無ければ、⚠ 末尾を出す**
+//     （⚠ 頭はコマンド。⚠ **理由があるとすれば後ろ**）。
+// ⚠ **「読めなかった」と「理由が返っていない」を混ぜない**（`CLAUDE.md` §1）。
+const 読めなかった理由 = (e, 上限 = 300) => {
+  const 行 = `${e?.stderr ?? ""}\n${e?.message ?? ""}`.split("\n")
+    .map((x) => x.trim())
+    .filter((x) => x && !/^Command failed:/.test(x));
+  const 文 = [...new Set(行)].join(" ／ ");
+  if (文) return 文.slice(0, 上限);
+  const 素 = String(e?.message ?? e ?? "");
+  return 素 ? `理由が返っていない（末尾だけ出す）: …${素.slice(-上限)}` : "理由が返っていない";
+};
+
 const 打つ = (sql) => {
   const out = execFileSync("npx", ["--yes", "wrangler", "d1", "execute", DB, "--remote", "--json",
     "--command", sql.replace(/\s+/g, " ")], { encoding: "utf8", maxBuffer: 1 << 24 });
@@ -155,7 +175,7 @@ const 打つ = (sql) => {
 
 // ⚠ **検査から呼べるようにする**（⚠ 幅の計算は、⚠ 目でしか分からないので数で固定する）。
 //   ⚠ **叩く側（wrangler）は呼ばない。**⚠ **本番の DB を検査が触らない。**
-export const __test = { 見た目の幅, 詰める, 表にする, 入口, 問い };
+export const __test = { 見た目の幅, 詰める, 表にする, 入口, 問い, 読めなかった理由 };
 
 // ⚠ **直に走らせたときだけ、⚠ 実際に叩く。**
 //   ⚠ **`import` しただけで wrangler を呼ばない**（⚠ 検査が本番の DB を触りに行く）。
@@ -168,7 +188,7 @@ if (直に走らせた) {
     if (SQL_ONLY) { 束.push(`-- ${q.見出し}`, q.sql.replace(/\s+/g, " "), ""); continue; }
     束.push(q.見出し, `  ${q.説明}`, "");
     try { 束.push(表にする(打つ(q.sql))); }
-    catch (e) { 束.push(`  ⚠ 読めなかった: ${String(e.message).slice(0, 200)}`); }
+    catch (e) { 束.push(`  ⚠ 読めなかった: ${読めなかった理由(e)}`); }
     束.push("");
   }
   if (!SQL_ONLY) {
