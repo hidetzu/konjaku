@@ -3762,8 +3762,11 @@ const 計測を捕まえる = async (page, 送った = []) => {
 };
 
 for (const [名, path, 待つの, 要る] of [
-  ["このサイトについて", "/about", null, { event_type: "page_load", page: "about" }],
-  ["深掘り", `/deep?${TOYOSU}`, null, { event_type: "deep_accessed", page: "deep" }],
+  ["このサイトについて", "/about", null, { event_type: "page_load", page: "about", entry_point: null }],
+  // ⚠ **深掘りも `page_load`**（2026-09-08。`docs/adr/0104`）。
+  //   ⚠ **名前は消したが、⚠ 情報は消していない。**
+  //   ⚠ **共有リンクで開かれたことは `entry_point`（link）が持つ。**⚠ **ここで固定する。**
+  ["深掘り", `/deep?${TOYOSU}`, null, { event_type: "page_load", page: "deep", entry_point: "link" }],
 ]) {
   // ⚠ **開く前に控え始め、⚠ 1 回しか開かない**（2026-09-07）。
   //   ⚠ **前は「走者が開く → 控え始める → もう一度開く」だった。**
@@ -3786,9 +3789,13 @@ for (const [名, path, 待つの, 要る] of [
         `${要る.event_type} が ${該当.length} 本（⚠ 1 本のはず）: ${JSON.stringify(送った)}`);
       const b = 該当[0];
       must(b.metadata?.page === 要る.page, `画面の名前が違う: ${JSON.stringify(b.metadata)}`);
+      // ⚠ **入口は、⚠ 「共有リンクで開かれたか」を持つ唯一の記録**（`docs/adr/0104`）。
+      //   ⚠ **`deep_accessed` を落とすとき、⚠ ここが消えていないことが条件だった。**
+      must(b.entry_point === 要る.entry_point,
+        `入口が違う: ${JSON.stringify(b.entry_point)}（⚠ ${JSON.stringify(要る.entry_point)} のはず）`);
       must(typeof b.session_id === "string" && b.session_id, "訪問の印が入っていない");
       must(typeof b.referrer === "string" && b.referrer, "流入元が入っていない");
-      return `${要る.event_type}・画面 ${b.metadata.page}・流入元 ${b.referrer}`;
+      return `${要る.event_type}・画面 ${b.metadata.page}・入口 ${b.entry_point ?? "なし"}・流入元 ${b.referrer}`;
     },
   });
 }

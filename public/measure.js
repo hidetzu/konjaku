@@ -27,7 +27,10 @@
     "page_load",     // 画面を開いた（metadata.page がどの画面か）
     "map_opened",    // 地図で足元の判定が出た（＝場所を調べた）
     "detail_view",   // 「くわしく見る」を押した
-    "deep_accessed", // 深掘りの画面を開いた
+    // ⚠ **deep_accessed は落とした**（2026-09-08。`docs/adr/0104`）。
+    //   ⚠ **「深掘りの画面を開いた」は page_load（page: deep）で表す。**
+    //   ⚠ **共有リンクで開かれたかどうかは entry_point が持つ**（⚠ 情報は消えていない）。
+    //   ⚠ **2026-09-08 より前の行には deep_accessed が入っている**（⚠ 集計は両方を見る）。
     "save_place",    // 「☆ 保存」を押した
     "shared",        // 「⇱ 送る」を押した
   ]);

@@ -88,13 +88,19 @@ const 問い = [
   },
   {
     見出し: "3. どこまで進んだか（訪問の数）",
+    // ⚠ **深掘りは 2 通りの記録から数える**（2026-09-08。`docs/adr/0104`）。
+    //   ⚠ **いまは `page_load`（page: deep）。**⚠ **2026-09-08 より前は `deep_accessed`。**
+    //   ⚠ **片方だけにすると、⚠ その日を境に深掘りが 0 になる**（⚠ 起きたことが消える。`CLAUDE.md` §1）。
     説明: "⚠ 流入元は訪問の入口。⚠ 端末をまたぐと別の訪問になる。⚠ スマホで調べて PC で深掘りは、2 つに割れる",
     sql: `${入口}
           SELECT i.referrer AS 流入元,
                  COUNT(DISTINCT e.session_id) AS 訪問,
                  COUNT(DISTINCT CASE WHEN e.event_type='map_opened'    THEN e.session_id END) AS 調べた,
                  COUNT(DISTINCT CASE WHEN e.event_type='detail_view'   THEN e.session_id END) AS くわしく,
-                 COUNT(DISTINCT CASE WHEN e.event_type='deep_accessed' THEN e.session_id END) AS 深掘り,
+                 COUNT(DISTINCT CASE WHEN e.event_type='deep_accessed'
+                                       OR (e.event_type='page_load'
+                                           AND json_extract(e.metadata, '$.page')='deep')
+                                     THEN e.session_id END) AS 深掘り,
                  COUNT(DISTINCT CASE WHEN e.event_type='save_place'    THEN e.session_id END) AS 保存,
                  COUNT(DISTINCT CASE WHEN e.event_type='shared'        THEN e.session_id END) AS 共有
           FROM events_simple e JOIN 訪問の入口 i ON i.session_id = e.session_id
@@ -112,10 +118,11 @@ const 問い = [
   {
     見出し: "5. どの画面が開かれたか",
     // ⚠ **「page_load の metadata から」と書いていたが、⚠ 事実と違った**（2026-09-08）。
-    //   ⚠ **SQL は `event_type` で絞っていない。**⚠ **画面の名は `deep_accessed` も持つ**
-    //     （`public/deep.js`。⚠ **`/deep` は `page_load` を送っていない**）。
-    //   ⚠ **どの記録から来た名前かを、⚠ 表に出す**（⚠ 説明だけで補わない。`CLAUDE.md` §1）。
-    説明: "画面の名を持つ記録から。⚠ /deep だけは page_load ではなく deep_accessed が名乗る",
+    //   ⚠ **SQL は `event_type` で絞っていない。**⚠ **どの記録から来た名前かを、⚠ 表に出す**
+    //     （⚠ 説明だけで補わない。`CLAUDE.md` §1）。
+    //   ⚠ **いまは `/deep` も `page_load` が名乗る**（`docs/adr/0104`）。
+    //     ⚠ **2026-09-08 より前の deep は `deep_accessed` が名乗っている**（⚠ 表の 出来事 に出る）。
+    説明: "画面の名を持つ記録から。⚠ 2026-09-08 より前の deep は deep_accessed が名乗っている",
     sql: `SELECT created_at AS 日, json_extract(metadata, '$.page') AS 画面,
                  event_type AS 出来事, COUNT(*) AS n
           FROM events_simple

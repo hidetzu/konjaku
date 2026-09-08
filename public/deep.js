@@ -638,5 +638,5 @@
   // ---- 計測 ----
   //   ⚠ **深掘りを開いたことだけ数える。**⚠ **どこを深掘りしたかは送らない。**
   //   ⚠ **出どころも一緒に送る**（⚠ 共有リンクから来たのか、⚠ 地図から来たのか）。
-  Konjaku計測.起こす("deep_accessed", { page: "deep", 入口: arg.state === "ok" ? "link" : "default" });
+  Konjaku計測.起こす("page_load", { page: "deep", 入口: arg.state === "ok" ? "link" : "default" });
 })();
