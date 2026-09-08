@@ -273,6 +273,40 @@ head("1.8 計測を読む口（npm run stats）");
       if (行.length !== 3) 欠け.push(`表が 3 行になっていない（${行.length} 行）`);
       else if (幅たち.length !== 1) 欠け.push(`表の幅が揃っていない: ${行.map(見た目の幅).join(" / ")}`);
       if (!/（0 件）/.test(表にする([]))) 欠け.push("0 件のときに、⚠ そう言っていない");
+
+      // ⚠ **⑥ 読めなかったときに、⚠ 理由が出ること**（2026-09-08。⚠ 実際に踏んだ）。
+      //   ⚠ **`e.message` は `Command failed: … --command <SQL 全文>` で始まる。**
+      //   ⚠ **前から切ると、⚠ SQL が字数を食い、⚠ 理由が押し出される。**
+      //   ⚠ **「読めなかった」とだけ出ると、⚠ こちらの不具合か相手の都合かを分けられない**
+      //     （`CLAUDE.md` §9。⚠ **落ちた ≠ 狙った理由で落ちた**）。
+      const 理由 = M.__test.読めなかった理由;
+      if (typeof 理由 !== "function") 欠け.push("stats.mjs が 読めなかった理由 を出していない");
+      else {
+        const 長いSQL = "SELECT " + "created_at AS 日, ".repeat(30) + "1";
+        const 頭 = `Command failed: npx --yes wrangler d1 execute konjaku --remote --json --command ${長いSQL}`;
+        const 出 = 理由(Object.assign(new Error(頭), { stderr: "✘ [ERROR] Authentication error [code: 10000]" }));
+        if (!/Authentication error/.test(出))
+          欠け.push(`読めなかった理由に、⚠ 相手が言ったことが出ていない: 「${出.slice(0, 60)}」`);
+        if (/created_at AS 日, created_at AS 日/.test(出))
+          欠け.push(`読めなかった理由が、⚠ SQL で埋まっている: 「${出.slice(0, 60)}」`);
+        // ⚠ **理由そのものが返っていないときに、⚠ 黙らないこと**
+        //   （⚠ 空だと、⚠ 落ちていないように読める）。
+        const 素 = 理由(new Error(頭));
+        if (!素.trim()) 欠け.push("理由が返っていないときに、⚠ 何も言っていない");
+        else if (!/理由が返っていない/.test(素))
+          欠け.push(`理由が無いことを、⚠ そう名乗っていない: 「${素.slice(0, 60)}」`);
+
+        // ⚠ **⑦ 本当に、⚠ 出すところで使っていること。**
+        //   ⚠ **上の 3 つは「関数がどう答えるか」しか見ていない。**
+        //   ⚠ **実際に確かめた（2026-09-08）: ⚠ 関数を残したまま呼び出し側を元へ戻したら、
+        //     ⚠ 上の 3 つは緑のままだった。**⚠ **切り出しただけでは、⚠ 何も直っていない。**
+        // ⚠ **コメントを先に落とす**（`CLAUDE.md` §5。⚠ **落とさないと、⚠ 説明の字を拾う**）。
+        const コード = (await readFile(P, "utf8")).replace(BLOCK_COMMENT, " ").replace(LINE_COMMENT, "$1");
+        const 使った = (コード.match(/読めなかった理由\s*\(/g) ?? []).length;
+        if (使った < 1) 欠け.push("読めなかった理由 を、⚠ 定義しただけで、⚠ 出すところで使っていない");
+        if (/String\(\s*e\.message\s*\)\s*\.slice|e\.message\s*\)\s*\.slice\(\s*0/.test(コード))
+          欠け.push("エラーの本文を、⚠ 前から切っている（⚠ コマンド行に理由が押し出される）");
+      }
     }
 
   欠け.length
