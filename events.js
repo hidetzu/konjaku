@@ -13,7 +13,7 @@
 //   ⚠ **片方だけに頼らない**（⚠ 画面のコードは書き換えられる）。
 //   ⚠ **ずれたら検査が落とす**（`test/check/safety.mjs`）。
 export const EVENTS = new Set([
-  "page_load", "map_opened", "detail_view", "deep_accessed", "save_place", "shared",
+  "page_load", "map_opened", "detail_view", "save_place", "shared",
 ]);
 export const SOURCES = new Set(["app-village", "tsukutta.app", "konjaku", "other", "direct"]);
 export const ENTRIES = new Set(["default", "link", "map", "search", "here"]);

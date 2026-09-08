@@ -338,7 +338,10 @@ head("1.9 計測の集計（訪問の入口）");
     [日, "app-village", "s1", "page_load", null, JSON.stringify({ page: "about" })],
     [日, "konjaku", "s1", "page_load", null, JSON.stringify({ page: "map" })],
     [日, "konjaku", "s1", "map_opened", "default", null],
-    [日, "konjaku", "s1", "deep_accessed", null, JSON.stringify({ page: "deep" })],
+    [日, "konjaku", "s1", "page_load", "link", JSON.stringify({ page: "deep" })],
+    // ⚠ **2026-09-08 より前の形**（`docs/adr/0104`）。⚠ **既にある行を読めなくしない。**
+    [日, "tsukutta.app", "s3", "page_load", null, JSON.stringify({ page: "about" })],
+    [日, "konjaku", "s3", "deep_accessed", "link", JSON.stringify({ page: "deep" })],
     // ⚠ **もう 1 人は直接来て、地図まで**（⚠ 入口が混ざらないことを見る）
     [日, "direct", "s2", "page_load", null, JSON.stringify({ page: "map" })],
     [日, "direct", "s2", "map_opened", "here", null],
@@ -409,20 +412,35 @@ head("1.9 計測の集計（訪問の入口）");
 
     // ⚠ **⑤ 画面の名が、⚠ どの記録から来たか分かること**（2026-09-08。⚠ 実際に踏んだ）。
     //   ⚠ **「page_load の metadata から」と説明していたが、⚠ SQL は `event_type` で絞っていなかった。**
-    //   ⚠ **`/deep` は `page_load` を送らず、⚠ `deep_accessed` が画面の名を持つ**（`public/deep.js`）。
     //   ⚠ **説明で補わず、⚠ 表に出す**（`CLAUDE.md` §1。⚠ **どこから来た数字かを偽らない**）。
+    //   ⚠ **いまは `/deep` も `page_load`。**⚠ **前の形（`deep_accessed`）の行も残っている**
+    //     （`docs/adr/0104`）。⚠ **どちらの行も、⚠ 出どころを名乗ること。**
     {
       const 画面 = 引く(5);
-      const deep = (画面 ?? []).find((x) => x.画面 === "deep");
+      const deep = (画面 ?? []).filter((x) => x.画面 === "deep");
+      const 出どころ = new Set(deep.map((x) => x.出来事));
       if (!画面) bad("問い 5（どの画面が開かれたか）が見つからない");
-      else if (!deep) bad(`deep の行が出ていない: ${JSON.stringify(画面)}`);
-      else if (!("出来事" in deep)) bad("画面の名が、⚠ どの記録から来たかを名乗っていない（⚠ 出来事の列が無い）");
-      else if (deep.出来事 !== "deep_accessed")
-        bad(`deep の出どころが違う: ${deep.出来事}（⚠ page_load ではなく deep_accessed のはず）`);
-      else ok("画面の名は、⚠ どの記録から来たかを名乗る（⚠ deep は deep_accessed から）");
+      else if (!deep.length) bad(`deep の行が出ていない: ${JSON.stringify(画面)}`);
+      else if (deep.some((x) => !("出来事" in x)))
+        bad("画面の名が、⚠ どの記録から来たかを名乗っていない（⚠ 出来事の列が無い）");
+      else if (!出どころ.has("page_load") || !出どころ.has("deep_accessed"))
+        bad(`deep の出どころが割れて見えない: ${[...出どころ].join(" / ")}`
+          + "（⚠ いまの page_load と、⚠ 前の deep_accessed の両方が出るはず）");
+      else ok(`画面の名は、⚠ どの記録から来たかを名乗る（⚠ deep は ${[...出どころ].sort().join(" と ")}）`);
     }
 
-    // ⚠ **⑥ 日ごとの本数は、⚠ 印の有無に関わらず全部数えること**（⚠ 結べない行も、⚠ 起きたことは起きた）
+    // ⚠ **⑥ 前の形（`deep_accessed`）でも、⚠ 深掘りとして数えること**（`docs/adr/0104`）。
+    //   ⚠ **片方だけにすると、⚠ 2026-09-08 を境に深掘りが 0 になる。**
+    //   ⚠ **起きたことが消える**（`CLAUDE.md` §1）。
+    {
+      const 進み2 = 引く(3);
+      const 旧 = 進み2?.find((x) => x.流入元 === "tsukutta.app");
+      旧 && 旧.深掘り === 1
+        ? ok("前の形（deep_accessed）の行も、⚠ 深掘りとして数える")
+        : bad(`前の形の深掘りを数えていない: ${JSON.stringify(旧 ?? null)}`);
+    }
+
+    // ⚠ **⑦ 日ごとの本数は、⚠ 印の有無に関わらず全部数えること**（⚠ 結べない行も、⚠ 起きたことは起きた）
     const 本数 = 引く(1);
     const 合計 = (本数 ?? []).reduce((n, x) => n + x.n, 0);
     合計 === 道のり.length
