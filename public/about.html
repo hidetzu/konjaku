@@ -124,6 +124,40 @@
     </ol>
   </section>
 
+  <!-- 深掘りへの入口。地図で答えが出たあと、その場所に何ができるかを言う。
+       ⚠ 節の名と絵は deep.html から借りる（同じ字を 2 通りに書かない。静的検査が突き合わせる）。
+       ⚠ 常に出るのは「なぜこうなった」だけ。ほかは場所によって出ない（deep.html で hidden）。
+         だから 5 つを無条件に約束しない。常に出るものを先頭へ置く。
+       ⚠ 「対応した場所から順に増やしています」は、この画面が既に使っている言い方。
+         できないことから書き始めない。⚠ は災害リスクに使うので、対応状況には出さない。 -->
+  <section class="about__sec">
+    <h2 class="about__h2">この場所を深掘りする</h2>
+    <p class="about__p">
+      地図で答えが出たら、「この場所をもっと深く読む →」から、
+      選んだ場所だけを続けて読めます。
+    </p>
+    <ul class="cards">
+      <li class="cards__i">
+        <p class="cards__k"><svg class="about__icon" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M1 5h14M1 9h14M1 12.5h14"/><path d="M4 5c2-2 6-2 8 0"/></svg><span>なぜこうなった</span></p>
+      </li>
+      <li class="cards__i">
+        <p class="cards__k"><svg class="about__icon" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M2 5h4v6H2zM7 5h4v6H7zM12 5h2v6h-2z"/><path d="M1 3h14M1 13h14"/></svg><span>どう変わったか</span></p>
+      </li>
+      <li class="cards__i">
+        <p class="cards__k"><svg class="about__icon" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M2 2h12v12H2z"/><path d="M6 2v12M10 2v12M2 6h12M2 10h12"/><circle cx="8" cy="8" r="1.6" fill="currentColor" stroke="none"/></svg><span>この一帯は、どうだったか</span></p>
+      </li>
+      <li class="cards__i">
+        <p class="cards__k"><svg class="about__icon" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M6 14V4a2 2 0 0 1 4 0v10"/><path d="M3.5 14h9"/><path d="M6.8 7h2.4"/></svg><span>この近くに残る災害の記録</span></p>
+      </li>
+      <li class="cards__i">
+        <p class="cards__k"><svg class="about__icon" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M3 2.5h7l3 3v10H3z"/><path d="M9.6 2.5v3.2H13"/><path d="M5.5 9h5M5.5 11.5h5"/></svg><span>この画面が読んだ資料</span></p>
+      </li>
+    </ul>
+    <p class="about__note">
+      読めるものは場所によって変わります。対応した場所から順に増やしています。
+    </p>
+  </section>
+
   <section class="about__sec">
     <h2 class="about__h2">何を読んでいるか</h2>
     <ul class="cards">

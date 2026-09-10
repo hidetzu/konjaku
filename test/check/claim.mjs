@@ -91,6 +91,50 @@ head("名乗り");
     : ok(`/about の名乗りは、画面の問いと揃っている（${title}）`);
 }
 
+// ⚠ **`/about` が挙げる深掘りの節は、⚠ `deep.html` に実在すること**（2026-09-11）。
+//
+// ⚠ **`/about` は外からの入口なので、⚠ ここで約束したものは、⚠ 深掘りで出てこないと嘘になる。**
+//   ⚠ **節の名は `deep.html` から借りている**（⚠ 同じ字を 2 通りに書かない）。
+//   ⚠ **借りたままにする道具が無いと、⚠ `deep` 側の改名に気づけない。**
+//
+// ⚠ **もう 1 つ見る: ⚠ 先頭が「いつでも出る節」であること。**
+//   ⚠ **`deep.html` の節は、⚠ `whySec` 以外すべて `hidden` で始まる**（⚠ 場所によって出ない）。
+//   ⚠ **出ないかもしれないものを先頭に置くと、⚠ 「深掘りするとこれが読める」と読める**
+//     （`CLAUDE.md` §1。⚠ **対応していない場所では、⚠ そのまま嘘になる**）。
+//
+// ⚠ **コメントを先に落とす**（`CLAUDE.md` §5。⚠ **説明に書いた字を、⚠ 検査が拾わないため**）。
+{
+  const 欠け = [];
+  const ab = (await readFile(join(PUB, "about.html"), "utf8")).replace(HTML_COMMENT, " ");
+  const dp = (await readFile(join(PUB, "deep.html"), "utf8")).replace(HTML_COMMENT, " ");
+
+  const 節 = ab.match(/<h2 class="about__h2">この場所を深掘りする<\/h2>([\s\S]*?)<\/section>/);
+  const 挙げた = 節
+    ? [...節[1].matchAll(/<p class="cards__k">[\s\S]*?<span>([\s\S]*?)<\/span>/g)].map((m) => m[1].trim())
+    : [];
+
+  // ⚠ **`deep.html` の側は、⚠ 見出しの字と、⚠ `hidden` で始まるかを一緒に持つ。**
+  //   ⚠ **見出しを JavaScript が入れる節（`groundSec` ほか）は、⚠ 字が空なので入らない。**
+  const 実在 = new Map();
+  for (const m of dp.matchAll(/<section class="sec[^"]*" id="\w+"([^>]*)>([\s\S]*?)<\/section>/g)) {
+    const h = m[2].match(/<h2>([\s\S]*?)<\/h2>/);
+    const 名 = h && h[1].match(/<span[^>]*>([\s\S]*?)<\/span>/);
+    if (名 && 名[1].trim()) 実在.set(名[1].trim(), /\bhidden\b/.test(m[1]));
+  }
+
+  if (!挙げた.length) 欠け.push("/about の「この場所を深掘りする」から、⚠ 挙げている節を読めない（⚠ この検査が何も見ていない）");
+  if (実在.size < 2) 欠け.push(`deep.html の節の見出しを読めない（⚠ 読めたのは ${実在.size} 個）`);
+  for (const 名 of 挙げた)
+    if (!実在.has(名)) 欠け.push(`/about が挙げている「${名}」が、⚠ deep.html に無い（⚠ 借りた字が古い）`);
+  if (挙げた.length && 実在.get(挙げた[0]) === true)
+    欠け.push(`/about の先頭「${挙げた[0]}」は、⚠ 場所によって出ない節（⚠ 出ないものを先に約束している）`);
+
+  欠け.length
+    ? bad(欠け.join(" ／ "))
+    : ok(`/about が挙げる深掘りの ${挙げた.length} 節は、⚠ deep.html に実在する`
+        + `（⚠ 先頭「${挙げた[0]}」は、⚠ いつでも出る節）`);
+}
+
 // ⚠ 名乗りは、実装が実際にやっていることに合わせる。
 //   OGP と title は共有先まで届くので、ここが実装とずれると**共有先で嘘をつく**。
 //   実際にずれていた（2026-08-14）:
