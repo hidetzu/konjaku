@@ -327,3 +327,45 @@ for (const f of htmlFiles) {
     bad(`OGP の生成元と配信画像が食い違っている: ${detail}`);
   }
 }
+
+// ⚠ **索引の正本（`canonical`）と `sitemap.xml` が、⚠ 同じ顔ぶれであること**（2026-09-11）。
+//
+// ⚠ **一覧が 2 か所にある**（⚠ 各 HTML の `canonical` と、⚠ `sitemap.xml` の `<loc>`）。
+//   ⚠ **片方だけ足すと、⚠ 索引に出したい画面と、⚠ 出しているつもりの画面がずれる。**
+//   ⚠ **突き合わせる相手は、⚠ 別の道で得たものにする**（`CLAUDE.md` §9）。
+//
+// ⚠ **`/deep` `/saved` `/take` には置かない。**⚠ **場所や控えが無いと成立しない画面なので、
+//   ⚠ 素の URL を「この画面の正本」と名乗れない。**⚠ **置いていないことも、ここで見る。**
+//
+// ⚠ **`robots.txt` は、⚠ このリポジトリに置かない**（⚠ 配信の側が既に返している）。
+//   ⚠ **だから `sitemap.xml` の在りかは、⚠ `robots.txt` からは知らせていない。**
+//   ⚠ **ここは「置いていない」を主張しない**（⚠ 配信の側の答えは、⚠ こちらの正しさではない）。
+{
+  const 欠け = [];
+  const 正本 = new Map();
+  for (const f of htmlFiles) {
+    const s = src[f].replace(HTML_COMMENT, " ");
+    const c = s.match(/<link rel="canonical" href="([^"]+)">/)?.[1];
+    if (!c) continue;
+    正本.set(f, c);
+    const og = s.match(/og:url"\s+content="([^"]+)"/)?.[1];
+    if (c !== og) 欠け.push(`${f}: 索引の正本と og:url が割れている（${c} ／ ${og}）`);
+  }
+  for (const f of ["deep.html", "saved.html", "take.html"])
+    if (正本.has(f)) 欠け.push(`${f} に索引の正本を置いている（⚠ 場所や控えが無いと成立しない画面）`);
+
+  const sm = (await readFile(join(PUB, "sitemap.xml"), "utf8").catch(() => "")).replace(HTML_COMMENT, " ");
+  if (!sm) 欠け.push("public/sitemap.xml を読めない");
+  const A = [...正本.values()].sort();
+  const B = [...sm.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]).sort();
+  if (!A.length) 欠け.push("索引の正本を持つ画面が 1 つも無い（⚠ この検査が何も見ていない）");
+  if (A.join("\n") !== B.join("\n")) {
+    const 差 = A.filter((x) => !B.includes(x)).map((x) => `sitemap に無い: ${x}`)
+      .concat(B.filter((x) => !A.includes(x)).map((x) => `正本の無い画面を載せている: ${x}`));
+    欠け.push(`索引の正本と sitemap の顔ぶれが違う（正本 ${A.length} ／ sitemap ${B.length}）: ${差.join(" ／ ") || "並びだけ違う"}`);
+  }
+
+  欠け.length
+    ? bad(欠け.join(" ／ "))
+    : ok(`索引の正本と sitemap は同じ顔ぶれ（${A.length} 画面。⚠ /deep /saved /take には置いていない）`);
+}

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- 索引に出したい画面だけを並べる。canonical を持つ画面と同じ顔ぶれ（検査が突き合わせる）。
+
+     lastmod / changefreq / priority は書かない。どれも任意の項目で、
+     手で書くと必ず古くなる。分からないことを、分かっているように書かない。
+
+     ⚠ robots.txt はこのリポジトリに置かない。配信の側が既に返しており、
+       こちらが置くと同じ塊へ連結されて、あちらの拒否を打ち消しうる。
+       だから、この一覧の在りかは robots.txt では知らせない。 -->
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>https://konjaku.hidetzu.work/</loc></url>
+  <url><loc>https://konjaku.hidetzu.work/about</loc></url>
+  <url><loc>https://konjaku.hidetzu.work/privacy</loc></url>
+  <url><loc>https://konjaku.hidetzu.work/terms</loc></url>
+</urlset>
