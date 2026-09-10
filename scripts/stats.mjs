@@ -88,15 +88,19 @@ const 問い = [
   },
   {
     見出し: "3. どこまで進んだか（訪問の数）",
+    // ⚠ **「くわしく」は、⚠ 段に出さない**（2026-09-11。`docs/adr/0105`）。
+    //   ⚠ **`.fold` は 700px 以上だと最初から開いている**（`public/top.css` の `@media`）。
+    //   ⚠ **`detail_view` は押したときだけ飛ぶ**（`public/top.js`）ので、⚠ **広い画面では 1 本も出ない。**
+    //   ⚠ **訪問を分母にして他の段と並べると、⚠ 「読まれなかった」に読める**（`CLAUDE.md` §1）。
+    //   ⚠ **本数は問い 1 に出ている。**⚠ **消してはいない。**⚠ **段として使わないだけ。**
     // ⚠ **深掘りは 2 通りの記録から数える**（2026-09-08。`docs/adr/0104`）。
     //   ⚠ **いまは `page_load`（page: deep）。**⚠ **2026-09-08 より前は `deep_accessed`。**
     //   ⚠ **片方だけにすると、⚠ その日を境に深掘りが 0 になる**（⚠ 起きたことが消える。`CLAUDE.md` §1）。
-    説明: "⚠ 流入元は訪問の入口。⚠ 端末をまたぐと別の訪問になる。⚠ スマホで調べて PC で深掘りは、2 つに割れる",
+    説明: "⚠ 流入元は訪問の入口。⚠ 端末をまたぐと別の訪問になる。⚠ スマホで調べて PC で深掘りは、2 つに割れる。⚠ くわしくは段に出さない（下の「出していないもの」）",
     sql: `${入口}
           SELECT i.referrer AS 流入元,
                  COUNT(DISTINCT e.session_id) AS 訪問,
                  COUNT(DISTINCT CASE WHEN e.event_type='map_opened'    THEN e.session_id END) AS 調べた,
-                 COUNT(DISTINCT CASE WHEN e.event_type='detail_view'   THEN e.session_id END) AS くわしく,
                  COUNT(DISTINCT CASE WHEN e.event_type='deep_accessed'
                                        OR (e.event_type='page_load'
                                            AND json_extract(e.metadata, '$.page')='deep')
@@ -207,6 +211,7 @@ if (直に走らせた) {
     // ⚠ **測っていないことを、⚠ 出さない**（`CLAUDE.md` §1）。
     束.push("⚠ 出していないもの",
       "  リピーター率  訪問の印は 1 日で消えるので、⚠ 「昨日も来た人」は数えられない",
+      "  くわしくの率  ⚠ 広い画面では最初から開いているので、⚠ 押した数を訪問で割れない（⚠ 本数は 1 に出る）",
       "  どこを調べたか  座標も町名も残していない",
       "  何時に見たか    日までしか持っていない",
       "  印の無い行の道のり  ⚠ 訪問として結べないので、⚠ 2 と 3 には出ない（⚠ 本数だけ 6 に出る）", "");
