@@ -4977,6 +4977,9 @@ for (const [名, viewport, 固定] of [
           見出し: 節.map((s) => (s.querySelector("h2")?.textContent ?? "").trim()),
           的: Math.min(...a.map((x) => Math.round(x.getBoundingClientRect().height))),
           横あふれ: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+          // ⚠ **答えと目次の縦位置**（2026-10-01）。⚠ **この画面が答える問いを、⚠ 先に出す。**
+          答えY: Math.round(document.getElementById("gloss").getBoundingClientRect().top),
+          目次Y: Math.round(q.top),
         };
       });
       must(r.重なり === false, "目次が本文の柱と重なっている");
@@ -4990,8 +4993,16 @@ for (const [名, viewport, 固定] of [
         `目次の字が、⚠ 見出しと違う: ${r.目次.join(" ／ ")}`);
       must(r.的 >= 44, `目次の的が ${r.的}px（⚠ 44 を割っている）`);
       must(!r.横あふれ, "画面が横にあふれている");
+      // ⚠ **狭い幅では、⚠ 答えが目次より先に来る**（2026-10-01）。
+      //   ⚠ **前は目次が本文の先頭で、⚠ 答えが y406 ＝ 画面の 61% 下だった**
+      //     （⚠ 実測 375x667・4 地点）。⚠ **最初に目に入るのが、⚠ この画面が答える問いではなかった。**
+      //   ⚠ **広い幅は柱の右へ固定するので、⚠ ここでは見ない**（⚠ 上に在るのが正しい）。
+      if (!固定)
+        must(r.答えY < r.目次Y,
+          `答え y${r.答えY} が、⚠ 目次 y${r.目次Y} より下にある（⚠ 答えを先に出す）`);
 
       // ⚠ **押して、⚠ 本当にその節へ行くところまで見る**（⚠ 字と href だけでは足りない）
+      const 位置の字 = 固定 ? `目次 y${r.目次Y}（柱の右）` : `答え y${r.答えY} → 目次 y${r.目次Y}`;
       const 先 = r.行き先[r.行き先.length - 1];
       await page.click(`#toc a[href="${先}"]`);
       // ⚠ **送り終わるのを待つ。**⚠ **器ではなく、⚠ 結果を待つ**（`CLAUDE.md` §9）。
@@ -5014,7 +5025,7 @@ for (const [名, viewport, 固定] of [
         return { y: Math.round(s.getBoundingClientRect().top), 見える: s.checkVisibility() };
       }, 先);
       must(着.見える, `${先} へ飛んだのに、⚠ その節が見えていない`);
-      return `${r.目次.length} 節（${r.位置}）／ 重なり 0 ／ 的 ${r.的}px ／ ${先} へ着いた`;
+      return `${r.目次.length} 節（${r.位置}）／ ${位置の字} ／ 重なり 0 ／ 的 ${r.的}px ／ ${先} へ着いた`;
     },
   });
 }
