@@ -33,7 +33,18 @@
     //   ⚠ **2026-09-08 より前の行には deep_accessed が入っている**（⚠ 集計は両方を見る）。
     "save_place",    // 「☆ 保存」を押した
     "shared",        // 「⇱ 送る」を押した
+    // ⚠ **「この先で、土地が変わる」の判定が出た**（2026-09-30。hidetzu/konjaku#481）。
+    //   ⚠ **出せたときだけでなく、⚠ 出せなかったときも送る。**⚠ **でないと分母が作れない**
+    //     （⚠ 出せた数しか無いと、⚠ 「何回中の何回か」が言えない。`CLAUDE.md` §1）。
+    //   ⚠ **送るのは 5 通りのどれか、だけ。**⚠ **座標も距離も区分名も送らない。**
+    "border_judged",
   ]);
+
+  // ⚠ **境目の判定**（`public/border.js` の state をそのまま借りる）。
+  //   ⚠ **言い換えない。**⚠ **言い換えると、⚠ 同じ問いに答える名前が 2 つになる**（`CLAUDE.md` §3）。
+  //   ⚠ **`読めなかった` だけは、⚠ こちらの都合ではなく相手の都合**（`verify.js` が UNREACHABLE を返す）。
+  //     ⚠ **これを落とすと、⚠ 分母が縮んで「出せた割合」が高く見える**（掟 §1）。
+  const BORDERS = new Set(["ok", "遠い", "見えない", "足元が無い", "読めなかった"]);
 
   // 画面の名前。metadata.page に入れる。
   const PAGES = new Set(["about", "map", "deep", "saved", "take", "privacy", "terms"]);
@@ -98,19 +109,25 @@
 
   // 送る本文を作る。列挙の外は作らない（null を返す）。
   //   ⚠ ここで弾いても、受け側でもう一度弾く。片方だけに頼らない。
-  const 本文 = ({ event, 訪問ID = null, 流入元: 元 = "direct", 入口 = null, page = null } = {}) => {
+  // ⚠ **`page` と `境目` は、⚠ 同時に入れない**（2026-09-30。hidetzu/konjaku#481）。
+  //   ⚠ **`stats` の「どの画面が開かれたか」は `metadata.page` で引いている。**
+  //   ⚠ **判定の行に `page` を入れると、⚠ 画面を開いた数に混ざる**
+  //     （⚠ `docs/adr/0104` で踏んだのと同じ形）。
+  const 本文 = ({ event, 訪問ID = null, 流入元: 元 = "direct", 入口 = null, page = null, 境目 = null } = {}) => {
     if (!EVENTS.has(event)) return null;
     if (!SOURCES.has(元)) return null;
     if (入口 !== null && !ENTRIES.has(入口)) return null;
     if (page !== null && !PAGES.has(page)) return null;
+    if (境目 !== null && !BORDERS.has(境目)) return null;
+    if (page !== null && 境目 !== null) return null;
     return {
       event_type: event,
       session_id: typeof 訪問ID === "string" && 訪問ID ? 訪問ID : null,
       referrer: 元,
       entry_point: 入口,
-      metadata: page ? { page } : null,
+      metadata: page ? { page } : (境目 ? { border: 境目 } : null),
     };
   };
 
-  g.KonjakuMeasure = { EVENTS, PAGES, ENTRIES, SOURCES, KEY, 流入元, 訪問, 本文 };
+  g.KonjakuMeasure = { EVENTS, PAGES, ENTRIES, SOURCES, BORDERS, KEY, 流入元, 訪問, 本文 };
 })(typeof window === "undefined" ? globalThis : window);

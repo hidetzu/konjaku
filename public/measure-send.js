@@ -26,7 +26,8 @@
 
   // ⚠ **送る。**⚠ **`keepalive` を付ける**（⚠ 画面を離れる操作でも届く）。
   const 起こす = (event, opt = {}) => {
-    const b = M.本文({ event, 訪問ID: 訪問.id, 流入元: 元, 入口: opt.入口 ?? null, page: opt.page ?? null });
+    const b = M.本文({ event, 訪問ID: 訪問.id, 流入元: 元,
+      入口: opt.入口 ?? null, page: opt.page ?? null, 境目: opt.境目 ?? null });
     if (!b) return false;   // ⚠ 列挙の外。⚠ 送らない
     try {
       g.fetch("/api/events", {
