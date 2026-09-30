@@ -24,6 +24,8 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 //   ⚠ この 2 つを触っても実描画が回らない**（2026-08-30 に踏んだ）。
 import { fakeDb } from "../handoff-fake-d1.mjs";
 import WORKER_NEXT from "../../worker.js";
+// ⚠ **判定の一覧は受け側が正本**（⚠ ここで持ち直すと、⚠ 片方だけ古くなる）。
+import { BORDERS } from "../../events.js";
 
 // ⚠ **`?ll=` は緯度,経度の順**（`place-arg.js`）。⚠ **逆に書くと、⚠ 黙って既定の場所になる。**
 const TOYOSU = "ll=35.6553,139.7967";     // ⚠ 旧水部・空中写真 7 年代
@@ -4312,6 +4314,38 @@ for (const [名, viewport] of [["PC", PCな幅], ["スマホ", SP], ["いちば�
   };
   const 西の名 = "氾濫平野・海岸平野", 東の名 = "台地･段丘";
 
+  // ⚠ **どの土地で成立したかを数える**（2026-09-30。hidetzu/konjaku#481）。
+  //   ⚠ **静的検査は「受け側が何を弾くか」を見るだけ。**⚠ **画面が送っていなければ、⚠ 弾きようがない。**
+  //   ⚠ **`page` が混ざっていないことも、⚠ ここで見る**（⚠ 混ざると画面を開いた数に数え込まれる）。
+  {
+    const 送った = [];
+    CASES.push({
+      name: "境目が出たとき、⚠ 判定が 1 本だけ飛ぶ",
+      path: `/deep?${KASUKABE}`, origin: NEXT_BASE, viewport: SP,
+      async setup(page) {
+        送った.length = 0;
+        await 計測を捕まえる(page, 送った);
+        await 面を返す(page, 139.7523 + 0.001, コード(西の名), コード(東の名));
+      },
+      async check(page) {
+        await 待つ(page, () => !document.getElementById("borderSec")?.hidden, "この先で土地が変わる");
+        await page.waitForTimeout(1200);
+        const 該当 = 送った.filter((b) => b && b.event_type === "border_judged");
+        must(該当.length === 1,
+          `判定が ${該当.length} 本（⚠ 1 本のはず）: ${JSON.stringify(送った.map((b) => b?.event_type))}`);
+        const b = 該当[0];
+        must(b.metadata?.border === "ok", `判定が ok でない: ${JSON.stringify(b.metadata)}`);
+        // ⚠ **画面を開いた数に混ざらないこと**（`docs/adr/0104` で踏んだ形）。
+        must(!("page" in (b.metadata ?? {})), `page が混ざっている: ${JSON.stringify(b.metadata)}`);
+        // ⚠ **場所そのものは、⚠ 1 つも出ていないこと。**
+        const 全部 = JSON.stringify(b);
+        for (const 印 of [/35\.\d{3}/, /139\.\d{3}/, /台地/, /氾濫/, /\b90\b/])
+          must(!印.test(全部), `判定に ${印} が入っている: ${全部}`);
+        return `border_judged・判定 ${b.metadata.border}・page なし・流入元 ${b.referrer}`;
+      },
+    });
+  }
+
   for (const [名, viewport] of [["PC", PCな幅], ["スマホ", SP], ["いちばん狭い幅", { width: 320, height: 640 }]]) {
     CASES.push({
       name: `${名}の「この先で、土地が変わる」は、⚠ 1 地点だけを出す`,
@@ -4370,6 +4404,40 @@ for (const [名, viewport] of [["PC", PCな幅], ["スマホ", SP], ["いちば�
   {
     const 表2 = JSON.parse(readFileSync(join(ROOT, "public/data/landform.json"), "utf8"));
     const 一色 = (名) => Object.entries(表2.codes).find(([, v]) => v === 名)?.[0];
+
+    // ⚠ **出せなかったときも数える**（2026-09-30。hidetzu/konjaku#481）。
+    //   ⚠ **ここが分母。**⚠ **出せたときだけ数えると、⚠ 「何回中の何回か」が言えない。**
+    //   ⚠ **節は出ないが、⚠ 判定は飛ぶ。**⚠ **画面に出ないものを数えている、という形。**
+    {
+      const 送った2 = [];
+      CASES.push({
+        name: "境目が出せなかったときも、⚠ 判定は飛ぶ（⚠ これが分母）",
+        path: `/deep?${KASUKABE}`, origin: NEXT_BASE, viewport: SP,
+        async setup(page) {
+          送った2.length = 0;
+          await 計測を捕まえる(page, 送った2);
+          const c = 一色("氾濫平野・海岸平野");
+          await page.route("**/experimental_landformclassification1/**", (route) => route.fulfill({
+            status: 200, contentType: "application/json",
+            body: JSON.stringify({ type: "FeatureCollection", features: [{
+              type: "Feature", properties: { code: c },
+              geometry: { type: "Polygon", coordinates: [[[139.6, 35.9], [139.9, 35.9], [139.9, 36.1], [139.6, 36.1], [139.6, 35.9]]] } }] }),
+          }));
+        },
+        async check(page) {
+          await page.waitForTimeout(5000);
+          const s = await page.evaluate(() => !!document.getElementById("borderSec")?.hidden);
+          must(s, "節が出ている（⚠ 出せないはずの形で突いている）");
+          const 該当 = 送った2.filter((b) => b && b.event_type === "border_judged");
+          must(該当.length === 1,
+            `判定が ${該当.length} 本（⚠ 出せなくても 1 本のはず）: ${JSON.stringify(送った2.map((b) => b?.event_type))}`);
+          const v = 該当[0].metadata?.border;
+          must(BORDERS.has(v), `列挙に無い判定: ${JSON.stringify(該当[0].metadata)}`);
+          must(v !== "ok", `出せていないのに ok と数えている: ${v}`);
+          return `節は出ない ／ 判定は飛ぶ（${v}）`;
+        },
+      });
+    }
     CASES.push({
       name: "見えている範囲に別の区分が無いとき、⚠ 節ごと出さない",
       path: `/deep?${KASUKABE}`, origin: NEXT_BASE, viewport: SP,

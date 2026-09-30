@@ -14,10 +14,17 @@
 //   ⚠ **ずれたら検査が落とす**（`test/check/safety.mjs`）。
 export const EVENTS = new Set([
   "page_load", "map_opened", "detail_view", "save_place", "shared",
+  // ⚠ **「この先で、土地が変わる」の判定が出た**（2026-09-30。hidetzu/konjaku#481）。
+  //   ⚠ **出せたときも、⚠ 出せなかったときも来る**（⚠ 分母を作るため）。
+  "border_judged",
 ]);
 export const SOURCES = new Set(["app-village", "tsukutta.app", "konjaku", "other", "direct"]);
 export const ENTRIES = new Set(["default", "link", "map", "search", "here"]);
 export const PAGES = new Set(["about", "map", "deep", "saved", "take", "privacy", "terms"]);
+// ⚠ **境目の判定**（2026-09-30。hidetzu/konjaku#481）。⚠ **`public/border.js` の state をそのまま。**
+//   ⚠ **出せなかったときも受け取る。**⚠ **でないと「何回中の何回か」が言えない。**
+//   ⚠ **これは場所の性質だが、⚠ 5 通りのどれか、でしかない。**⚠ **座標も距離も区分名も受け取らない。**
+export const BORDERS = new Set(["ok", "遠い", "見えない", "足元が無い", "読めなかった"]);
 
 // ⚠ **本文の上限。**⚠ **読む前に落とす**（⚠ 何 MB 送られても一度メモリに載る形にしない）。
 //   ⚠ **実測（2026-09-06）**: ⚠ **いちばん長い本文は 160 バイト**
@@ -58,6 +65,13 @@ export async function route(req, env, now = Date.now()) {
 
   // ⚠ **metadata は `page` だけ。**⚠ **来た形をそのまま入れない**（⚠ 何でも入る器にしない）。
   const page = body.metadata && PAGES.has(body.metadata.page) ? body.metadata.page : null;
+  const border = body.metadata && BORDERS.has(body.metadata.border) ? body.metadata.border : null;
+  // ⚠ **`page` と `border` は、⚠ 同時に入らない。**⚠ **画面側でも弾いているが、⚠ ここでも弾く**
+  //   （⚠ 画面のコードは書き換えられる）。⚠ **両方あると、⚠ 画面を開いた数に判定が混ざる。**
+  if (page && border) return 黙って終わる();
+  // ⚠ **`page` と `border` は、⚠ 同時に入らない。**⚠ **画面側でも弾いているが、⚠ ここでも弾く**
+  //   （⚠ 画面のコードは書き換えられる）。⚠ **両方あると、⚠ 画面を開いた数に判定が混ざる。**
+
 
   // ⚠ **日まで**（⚠ 何時に見たかは残さない）
   const day = new Date(now).toISOString().slice(0, 10);
@@ -67,7 +81,8 @@ export async function route(req, env, now = Date.now()) {
       "INSERT INTO events_simple (created_at, referrer, session_id, event_type, entry_point, metadata) " +
       "VALUES (?1, ?2, ?3, ?4, ?5, ?6)"
     ).bind(day, body.referrer, sid, body.event_type, entry,
-           page ? JSON.stringify({ page }) : null).run();
+           page ? JSON.stringify({ page })
+                : border ? JSON.stringify({ border }) : null).run();
   } catch (e) {
     // ⚠ 数えられなかったことは残す（Workers Logs）。⚠ 利用者には何も返さない
     console.log(JSON.stringify({ eventError: String(e).slice(0, 200) }));

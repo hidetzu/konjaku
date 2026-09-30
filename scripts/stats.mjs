@@ -130,7 +130,8 @@ const 問い = [
     sql: `SELECT created_at AS 日, json_extract(metadata, '$.page') AS 画面,
                  event_type AS 出来事, COUNT(*) AS n
           FROM events_simple
-          WHERE created_at >= date('now', '-${DAYS} days') AND metadata IS NOT NULL
+          WHERE created_at >= date('now', '-${DAYS} days')
+            AND json_extract(metadata, '$.page') IS NOT NULL
           GROUP BY 1, 2, 3 ORDER BY 1 DESC, n DESC`,
   },
   {
@@ -140,6 +141,24 @@ const 問い = [
           FROM events_simple
           WHERE created_at >= date('now', '-${DAYS} days') AND session_id IS NULL
           GROUP BY 1, 2, 3 ORDER BY 1 DESC, 本数 DESC`,
+  },
+  {
+    見出し: "7. 「この先で、土地が変わる」は、どれだけ出せているか",
+    // ⚠ **分母は、⚠ 深掘りを開いて判定が出た回数**（hidetzu/konjaku#481）。
+    //   ⚠ **全国の土地の割合ではない。**⚠ **実際に開かれた地点の割合**（`CLAUDE.md` §6）。
+    //   ⚠ **前に 2 通り測ったが、⚠ どちらも利用者に対する出現率ではなかった**
+    //     （⚠ 24 地点 29% ／ 480 点 97%。⚠ 分母が違う。`docs/adr/0092`）。
+    //   ⚠ **`読めなかった` を落とさない。**⚠ **落とすと分母が縮んで、⚠ 出せた割合が高く見える。**
+    説明: "⚠ 分母は、深掘りを開いて判定が出た回数（⚠ 全国の土地の割合ではない）。⚠ ok だけが画面に出る",
+    sql: `SELECT json_extract(metadata, '$.border') AS 判定,
+                 COUNT(*) AS 本数,
+                 COUNT(DISTINCT session_id) AS 訪問,
+                 ROUND(100.0 * COUNT(*) / (SELECT COUNT(*) FROM events_simple
+                   WHERE created_at >= date('now', '-${DAYS} days')
+                     AND event_type = 'border_judged'), 1) AS 割合
+          FROM events_simple
+          WHERE created_at >= date('now', '-${DAYS} days') AND event_type = 'border_judged'
+          GROUP BY 1 ORDER BY 本数 DESC`,
   },
 ];
 

@@ -153,10 +153,28 @@
   //   ⚠ 地形分類が無い土地では、節ごと出さない（2026-09-05）。
   //     出せない理由を書くと、できないことから書き始めることになる。
   //   ⚠ 所要時間は出さない。実測していない（歩く速さも道のりも知らない）。
+  // 1 回の深掘りで 1 回だけ数える（⚠ 同じ地点を数え直さない）。
+  //   ⚠ 画面が再描画されても、⚠ 分母が水増しされないようにする。
+  let 数えた = false;
+  const 数える = (判定) => {
+    if (数えた) return;
+    数えた = true;
+    globalThis.Konjaku計測?.起こす("border_judged", { 境目: 判定 });
+  };
+
   async function drawBorder(lon, lat) {
     borderSec.hidden = true;
     const W = KonjakuAnswer.BORDER;
     const r = await Konjaku.border(lon, lat).catch(() => null);
+    // どの土地で成立するかを数える（2026-09-30。hidetzu/konjaku#481）。
+    //   ⚠ 出せたときだけ数えると、分母が作れない。出せなかったときも送る。
+    //   ⚠ 送るのは 5 通りのどれか、だけ。座標も距離も区分名も送らない。
+    //   ⚠ 判定は ok でも区分名が引けないことがある（対照表が読めなかったとき）。
+    //     そのときは画面に何も出ないので、成立したとは数えない。
+    数える(!r ? "読めなかった"
+      : r.ok ? (r.value && r.from ? "ok" : "読めなかった")
+      : (r.why && KonjakuMeasure.BORDERS.has(r.why)) ? r.why
+      : "読めなかった");
     // 読めなかったときも、節ごと出さない。ここは補助であって、答えではない。
     //   ⚠ 「取れなかった」を「無い」と書かないので、そもそも何も書かない
     if (!r?.ok || !r.value || !r.from) return;

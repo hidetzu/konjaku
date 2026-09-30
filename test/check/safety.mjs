@@ -111,7 +111,8 @@ head("1.7 計測の受け口（/api/events を実際に呼ぶ）");
         .replace(BLOCK_COMMENT, " ").replace(LINE_COMMENT, "$1");
       const setOf = (name) => new Set([...(new RegExp(`const ${name} = new Set\\(\\[([\\s\\S]*?)\\]\\)`)
         .exec(画面)?.[1] ?? "").matchAll(/"([^"]+)"/g)].map((m) => m[1]));
-      const 組 = [["EVENTS", EV.EVENTS], ["SOURCES", EV.SOURCES], ["ENTRIES", EV.ENTRIES], ["PAGES", EV.PAGES]];
+      const 組 = [["EVENTS", EV.EVENTS], ["SOURCES", EV.SOURCES], ["ENTRIES", EV.ENTRIES],
+        ["PAGES", EV.PAGES], ["BORDERS", EV.BORDERS]];
       const ずれ = [];
       for (const [名, 受] of 組) {
         const 送 = setOf(名);
@@ -179,18 +180,62 @@ head("1.7 計測の受け口（/api/events を実際に呼ぶ）");
 
     // ⚠ **⑥ 上限が、⚠ 実際に送る本文より短くないこと**（⚠ 短いと静かに数えなくなる）。
     {
-      const 最長 = JSON.stringify({
-        event_type: [...EV.EVENTS].reduce((a, b) => (a.length >= b.length ? a : b)),
-        session_id: "0".repeat(36), referrer: [...EV.SOURCES].reduce((a, b) => (a.length >= b.length ? a : b)),
-        entry_point: [...EV.ENTRIES].reduce((a, b) => (a.length >= b.length ? a : b)),
-        metadata: { page: [...EV.PAGES].reduce((a, b) => (a.length >= b.length ? a : b)) },
+      // ⚠ **`metadata` は `page` か `border` のどちらか一方。**⚠ **長いほうで数える**
+      //   （2026-09-30。⚠ **判定は日本語なので、⚠ `足元が無い` 15 バイト > `privacy` 7 バイト**。
+      //    ⚠ **`page` だけで数えていた頃は、⚠ 上限を 8 バイト低く見積もっていた**）。
+      const 長い = (S) => [...S].reduce((a, b) => (a.length >= b.length ? a : b));
+      const バイト = (x) => new TextEncoder().encode(x).length;
+      const 作る = (metadata) => JSON.stringify({
+        event_type: 長い(EV.EVENTS),
+        session_id: "0".repeat(36), referrer: 長い(EV.SOURCES),
+        entry_point: 長い(EV.ENTRIES),
+        metadata,
       });
-      const 長さ = new TextEncoder().encode(最長).length;
+      const 最長 = [{ page: 長い(EV.PAGES) }, { border: 長い(EV.BORDERS) }]
+        .map(作る).reduce((a, b) => (バイト(a) >= バイト(b) ? a : b));
+      const 長さ = バイト(最長);
       長さ <= EV.MAX_BODY
         ? ok(`いちばん長い本文は ${長さ} バイト（⚠ 上限 ${EV.MAX_BODY}）`)
         : bad(`上限（${EV.MAX_BODY}）より長い本文を送る形になっている（${長さ} バイト）`);
       const r = await post(最長);
       r.wrote === 1 ? ok("いちばん長い本文も数える") : bad("いちばん長い本文が数えられない");
+    }
+
+    // ⚠ **境目の判定を、⚠ 5 通りとも数えること**（2026-09-30。hidetzu/konjaku#481）。
+    //   ⚠ **出せたときだけ数えると、⚠ 分母が作れない**（⚠ 「何回中の何回か」が言えない）。
+    //   ⚠ **`読めなかった` を落とすと、⚠ 分母が縮んで「出せた割合」が高く見える**（`CLAUDE.md` §1）。
+    {
+      const 欠け = [];
+      for (const b of EV.BORDERS) {
+        const r = await post(本文({ event_type: "border_judged",
+          session_id: "0123456789abcdef", metadata: { border: b } }));
+        if (r.wrote !== 1) { 欠け.push(`${b} が入らない`); continue; }
+        // ⚠ **入った字が、⚠ 送った字と同じであること**（⚠ 入ったことだけを見ない）。
+        const 入った = JSON.parse(r.行?.[5] ?? "null");   // ⚠ bind の 6 番目が metadata
+        if (入った?.border !== b) 欠け.push(`${b} が ${JSON.stringify(入った)} として入った`);
+      }
+      欠け.length ? bad(`境目の判定: ${欠け.join(" ／ ")}`)
+                  : ok(`境目の判定を ${EV.BORDERS.size} 通りとも数える（⚠ 出せなかった分も）`);
+    }
+
+    // ⚠ **`page` と `border` を、⚠ 同時に入れないこと。**
+    //   ⚠ **混ざると、⚠ 「どの画面が開かれたか」に判定が数え込まれる**
+    //     （⚠ `docs/adr/0104` で踏んだのと同じ形）。⚠ **画面側でも弾いているが、⚠ ここでも弾く。**
+    {
+      const r = await post(本文({ event_type: "border_judged", session_id: "0123456789abcdef",
+        metadata: { page: "deep", border: "ok" } }));
+      r.wrote === 0 ? ok("page と border が同時に来た本文は、⚠ 数えない")
+                    : bad(`page と border が同時に入った（${r.行?.[5]}）`);
+    }
+
+    // ⚠ **列挙の外の判定は、⚠ 入らないこと**（⚠ 外から好きなラベルを増やせない）。
+    {
+      const r = await post(本文({ event_type: "border_judged", session_id: "0123456789abcdef",
+        metadata: { border: "でたらめ" } }));
+      r.wrote === 1 && r.行?.[5] === null
+        ? ok("列挙の外の判定は、⚠ metadata に入らない（⚠ 行は残るが、⚠ 判定は空）")
+        : r.wrote === 0 ? ok("列挙の外の判定は、⚠ 数えない")
+        : bad(`列挙の外の判定が入った（${r.行?.[5]}）`);
     }
 
     // ⚠ **⑦ 既にある約束**（⚠ Content-Length・Origin・メソッド・列挙外）
