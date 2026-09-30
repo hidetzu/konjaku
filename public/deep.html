@@ -70,14 +70,6 @@
   </header>
 
 <article id="doc">
-  <!-- この画面の目次。節が 7 つ・6〜9 画面ぶんあるので、飛べるようにする。
-       中身は deep.js が作る。節の見出しから字を借りるので、ここには字を書かない。
-       出せる節だけを並べる（hidden の節は入れない）。
-       広い幅では柱の右へ出す。柱の幅は --read の 1 か所が持っており、そこから位置を出す。 -->
-  <nav class="toc" id="toc" hidden aria-labelledby="tocK">
-    <p class="toc__k" id="tocK">この画面の目次</p>
-    <ul class="toc__l" id="tocL"></ul>
-  </nav>
   <header id="head">
     <!-- 直前へ返す道。入口が 3 つある（地図・保存の一覧・共有リンク）ので、
          行き先を名指しできない。同じサイトから来たときだけ「ひとつ前へ」と言う。
@@ -94,6 +86,20 @@
     <p class="note" id="glossNote" hidden></p>
     <p class="term" id="term"></p>
   </header>
+
+  <!-- この画面の目次。節が 7 つ・6〜9 画面ぶんあるので、飛べるようにする。
+       中身は deep.js が作る。節の見出しから字を借りるので、ここには字を書かない。
+       出せる節だけを並べる（hidden の節は入れない）。
+       広い幅では柱の右へ出す。柱の幅は --read の 1 か所が持っており、そこから位置を出す。
+
+       ⚠ 答えの後ろに置く（2026-10-01）。前は本文の先頭で、答えが y406 ＝ 画面の 61% 下だった。
+         最初に目に入るのが目次で、この画面が答える問いではなかった（実測 375x667・4 地点）。
+         広い幅は position:fixed なので、この順は位置に効かない（柱の右のまま）。
+       ⚠ 読み上げと Tab の順も、答えが先になる。 -->
+  <nav class="toc" id="toc" hidden aria-labelledby="tocK">
+    <p class="toc__k" id="tocK">この画面の目次</p>
+    <ul class="toc__l" id="tocL"></ul>
+  </nav>
 
   <!-- 主役は「どう変わったか」。時間の流れを、いちばん先に見せる。 -->
   <section class="sec" id="timeSec" hidden>

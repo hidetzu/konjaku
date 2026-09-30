@@ -301,7 +301,9 @@ body{
 .border__note{margin:var(--gap-sub) 0 0; font-size:var(--text-xs); color:var(--ink-3)}
 
 /* この画面の目次。
-   狭い幅は本文の先頭に横並び。広い幅は柱の右へ出して、読みながら見えるようにする。
+   狭い幅は答えの後ろに横並び。広い幅は柱の右へ出して、読みながら見えるようにする。
+   ⚠ 狭い幅の位置は DOM 順で決まる（deep.html）。ここでは動かさない。
+     前は本文の先頭で、答えが画面の 61% 下だった（2026-10-01 に順を入れ替えた）。
    [hidden] を打ち消さないこと。class と属性は詳細度が同じで、あとに書いたほうが勝つ。 */
 .toc:not([hidden]){
   display:block; margin:0 0 var(--gap-block); padding:var(--pad-md);
