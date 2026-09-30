@@ -183,8 +183,9 @@ head("1.7 計測の受け口（/api/events を実際に呼ぶ）");
       // ⚠ **`metadata` は `page` か `border` のどちらか一方。**⚠ **長いほうで数える**
       //   （2026-09-30。⚠ **判定は日本語なので、⚠ `足元が無い` 15 バイト > `privacy` 7 バイト**。
       //    ⚠ **`page` だけで数えていた頃は、⚠ 上限を 8 バイト低く見積もっていた**）。
-      const 長い = (S) => [...S].reduce((a, b) => (a.length >= b.length ? a : b));
+      // ⚠ **バイトで選ぶ**（⚠ 文字数ではない。⚠ 日本語は 1 文字 3 バイト）。
       const バイト = (x) => new TextEncoder().encode(x).length;
+      const 長い = (S) => [...S].reduce((a, b) => (バイト(a) >= バイト(b) ? a : b));
       const 作る = (metadata) => JSON.stringify({
         event_type: 長い(EV.EVENTS),
         session_id: "0".repeat(36), referrer: 長い(EV.SOURCES),
