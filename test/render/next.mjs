@@ -4954,14 +4954,22 @@ for (const [名, viewport] of [
       await page.waitForTimeout(2000);
       const r = await page.evaluate(() => {
         const 見 = (id) => (document.getElementById(id)?.textContent ?? "").trim();
-        return { 見出し: 見("gloss"), ラベル: 見("glossSrc"), 全文: document.body.innerText };
+        return { 見出し: 見("gloss"), ラベル: 見("glossSrc"), 断り: 見("glossNote"),
+                 全文: document.body.innerText };
       });
       // ⚠ **内部語を出さない**
       must(!/区分を特定できず/.test(r.全文), `内部語が画面に出ている: ${r.見出し}`);
       // ⚠ **読み取れなかったものを「でした」と言い切らない**
       must(!/^ここは [^、]+ でした$/.test(r.見出し),
         `読み取れなかったのに断定している: ${r.見出し}`);
-      return `見出し「${r.見出し}」／ ラベル「${r.ラベル}」`;
+      // ⚠ **読み取れなかったことを、⚠ 黙らない**（2026-10-03。`docs/adr/0109` の残件）。
+      //   ⚠ **前は「昔を名指す区分」のとき、⚠ 画面のどこにも出なかった**（⚠ 豊洲が実際にそう）。
+      //   ⚠ **「無い」と混ぜない。**⚠ **「読み取れませんでした」が出ること。**
+      must(/読み取れませんでした/.test(r.全文),
+        `読み取れなかったことが、⚠ 画面のどこにも出ていない（⚠ 断り「${r.断り}」）`);
+      must(!/この場所の区分はありません/.test(r.全文),
+        `読み取れなかったのに、⚠ 「区分はありません」と書いている`);
+      return `見出し「${r.見出し}」／ 断り「${r.断り}」`;
     },
   });
 }

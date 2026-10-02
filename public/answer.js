@@ -132,8 +132,15 @@
     //   見出しが地形分類の字そのものなので、ラベルもそう名乗る。
     //   ⚠ ここは見出しが説明そのもので、区分名を字として出していない。
     //     だから 出した は空。区分名は「なぜそう言える？」が名乗る（消さない）。
+    // ⚠ **明治期の限界は、⚠ どの見出しでも同じところに置く**（2026-10-03。`docs/adr/0109` の残件）。
+    //   ⚠ **前は、⚠ ここ（昔を名指す区分）だけ断りを出していなかった。**
+    //   ⚠ **読み取れなかったことが、⚠ 画面のどこにも出なかった**（掟 §1）。
+    //   ⚠ **理由はどこにも書かれていなかった**（⚠ `docs/adr/0101` は「変えていない」とだけ）。
+    //   ⚠ **下の枝と同じ字・同じ場所にする。**⚠ **同じ事実を答える判断を 2 通りに分けない。**
+    const 限界 = meijiNone(meiji && meiji.reason, SOURCE.meiji);
     if (PAST_IN_TERRAIN.includes(terrain))
-      return { label: SOURCE.terrain, head: `ここは、${gloss}`, sub: "", 断り: 粗さ, 出した: [] };
+      return { label: SOURCE.terrain, head: `ここは、${gloss}`, sub: "",
+               断り: [限界, 粗さ].filter(Boolean).join("。"), 出した: [] };
 
     // 3 どちらも無い。
     //   2026-09-06 に、ここだけ順番を入れ替えた（Owner 判断。hidetzu/konjaku#495）。
@@ -143,7 +150,6 @@
     //     3/3 が「サイト全体がこの場所に対応していない」と読み、2 名が「閉じそうになった」。
     //     順を入れ替えた案を、3 名とも 1 位に選んだ。
     //   ⚠ 無いことは消さない（CLAUDE.md §1）。主語を付けて、答えの下へ移すだけ。
-    const 限界 = meijiNone(meiji && meiji.reason, SOURCE.meiji);
     if (gloss)
       return { label: SOURCE.terrain,
                head: 区分名を添える ? `ここは ${terrain}（${gloss}）` : `ここは、${gloss}`,
