@@ -19,7 +19,10 @@
   "use strict";
 
   // 版。控えた形が変わったら上げる。⚠ **上げると前の版は読まれない**（混ざらない）
-  const V = "v1";
+  //   ⚠ **v2（2026-10-03。`docs/adr/0109`）**: ⚠ 明治期の返りが変わった
+  //     （⚠ 読み取れないときは value を入れず `unmatched`、⚠ 線型は `line`）。
+  //     ⚠ **上げないと、⚠ 古い控えの「区分を特定できず」が代表回答に戻る。**
+  const V = "v2";
   const PREFIX = "konjaku:land:" + V + ":";
 
   // ⚠ **小数5桁。URL の ll と同じ粒度**（index.html の共有リンク・peel3d.js の遷移が
@@ -105,6 +108,32 @@
 
   const terrain    = (lon, lat) => get("terrain", lon, lat);
   const meijiPoint = (lon, lat) => get("meijiPoint", lon, lat);
+
+  // ⚠ **明治期の読み取りを、⚠ 今昔の語彙へ直す**（2026-10-03。`docs/adr/0109`）。
+  //
+  // ⚠ **ここ 1 か所でやる。**⚠ **前は `/deep` と `/` が、⚠ それぞれ生の返りを解釈していた**
+  //   （⚠ 同じ判断が 2 か所。掟 6）。⚠ **3 か所目もあった**（⚠ 年代を並べる節）。
+  // ⚠ **`verify.js` は事実を返す**（⚠ 読めた／読めない・⚠ 何に分類した・⚠ 線型か）。
+  //   ⚠ **画面は、⚠ ここが返したものを描くだけ。**⚠ **低レイヤーの状態を漏らさない。**
+  //
+  //   kind: "area"       ⚠ 面の分類が読めた。⚠ **代表回答に使えるのはこれだけ**
+  //   kind: "structure"  ⚠ 線型地物（堤防）。⚠ **土地が何だったかの答えではない。**⚠ **捨てない**
+  //   kind: "none"       ⚠ reason: unreachable / absent / unmatched / noClass
+  //
+  // ⚠ **`unmatched` と `noClass` を混ぜない**（掟 §1）。
+  //   ⚠ `unmatched` … 凡例のどの色とも一致しない＝**読み取れなかった**
+  //   ⚠ `noClass`   … その画素に色が無い＝**低湿地に該当しなかったか、取得対象外か**
+  const 明治期の答え = (m) => {
+    const S = g.Konjaku?.STATE ?? {};
+    if (!m || m.state === S.UNREACHABLE) return { kind: "none", reason: "unreachable" };
+    if (m.state === S.ABSENT) return { kind: "none", reason: "absent" };
+    if (m.unmatched) return { kind: "none", reason: "unmatched" };
+    if (!m.value) return { kind: "none", reason: "noClass" };
+    if (m.line) return { kind: "structure", value: m.value };
+    return { kind: "area", value: m.value };
+  };
+  const meijiAnswer = (lon, lat) =>
+    meijiPoint(lon, lat).catch(() => null).then(明治期の答え);
   const elevation  = (lon, lat) => get("elevation", lon, lat);
   const photos     = (lon, lat) => get("photos", lon, lat);
 
@@ -175,6 +204,6 @@
     } catch { /* 消せないだけ */ }
   };
 
-  g.KonjakuLand = { V, PREFIX, key, areaKey, keepable, terrain, meijiPoint, elevation, photos,
-                    meijiArea, facts, forget };
+  g.KonjakuLand = { V, PREFIX, key, areaKey, keepable, terrain, meijiPoint, meijiAnswer,
+                    明治期の答え, elevation, photos, meijiArea, facts, forget };
 })(typeof window === "undefined" ? globalThis : window);

@@ -223,12 +223,17 @@
         note: "低湿地に該当しなかったか、そもそも取得対象外だったかを、このデータからは区別できない" };
     }
     const c = classify(r, gr, b);
-    if (!c) return { ...fact, ok: false, value: "区分を特定できず",
+    // ⚠ **読み取れなかった。**⚠ **「区分が無い」ではない**（掟 §1）。
+    //   ⚠ **以前は value に「区分を特定できず」を入れていた。**⚠ **画面が代表回答として
+    //     「ここは 区分を特定できず でした」と断定していた**（2026-10-03。`docs/adr/0109`）。
+    //   ⚠ **ここは事実だけ返す。**⚠ **今昔の語彙へ直すのは land.js。**
+    if (!c) return { ...fact, ok: false, value: null, unmatched: true,
       note: "凡例のどの色とも一致しない（境界のにじみの可能性）" };
     // 実測では大半が100%だが、境界付近では下がる（大阪此花で71.1%）。
     // 下がっているときは断定を弱める。数値は作らず、実測した割合をそのまま使う。
     const mixed = fact.evidence.agreement != null && fact.evidence.agreement < 0.9;
-    return { ...fact, ok: true, value: c.name, water: !!c.water, mixed,
+    // ⚠ **線型（堤防）かどうかも、⚠ 事実として返す。**⚠ **代表回答に使うかは land.js が決める。**
+    return { ...fact, ok: true, value: c.name, water: !!c.water, line: !!c.line, mixed,
       note: mixed
         ? `周囲は単一の区分ではない（近傍の ${(fact.evidence.agreement*100).toFixed(0)}% がこの区分）。区分の境目にあたる可能性がある`
         : null };
@@ -745,6 +750,12 @@
     } else if (m.none) {
       // ⚠ 字は words.js。共有カード（share.js）が同じ行を描くので、写すと割れる
       out.push({ icon: "—", text: KonjakuWords.meijiBadge(true), key: "meiji", tone: "dim" });
+    } else if (m.unmatched) {
+      // ⚠ **読み取れなかった**（2026-10-03。`docs/adr/0109`）。⚠ **黙らない**（掟 §1）。
+      //   ⚠ **前は value に内部語が入っていたので、⚠ 下の `m.value` の枝でバッジが出ていた。**
+      //   ⚠ **value を入れないようにしたので、⚠ ここで拾う。**
+      //   ⚠ **字は words.js の「判定できません」**（⚠ 「記録なし」と混ぜない。⚠ あちらは 0 件）。
+      out.push({ icon: "—", text: KonjakuWords.meijiBadge(false), key: "meiji", tone: "dim" });
     } else if (m.value) {
       out.push({ icon: m.water ? "🌊" : "🌾", key: "meiji", tone: m.water ? "water" : "land",
         text: `明治期: ${m.value}${m.mixed ? "（境目）" : ""}` });

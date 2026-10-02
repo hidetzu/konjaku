@@ -74,7 +74,8 @@
     // 見出しは「問いへの近さ」順（docs/adr/0075）。散歩中の画面と同じ規則を使う。
     //   同じ場所で、トップは「ここは 田 でした」、ここは「ここは、川や海が…」だった。
     //   land.js が覚えているので、取りに行く回数は増えない。
-    const 明治期の約束 = KonjakuLand.meijiPoint(lon, lat).catch(() => null);
+    // ⚠ 正規化済みを受け取る（2026-10-03。`docs/adr/0109`）。⚠ ここで生の返りを解釈しない
+    const 明治期の約束 = KonjakuLand.meijiAnswer(lon, lat);
     const t = await KonjakuLand.terrain(lon, lat).catch(() => null);
     if (!t || t.state === Konjaku.STATE.UNREACHABLE) {
       glossEl.textContent = "いま、この場所を調べられません";
@@ -87,10 +88,8 @@
       return;
     }
     // 言葉は answer.js / words.js から借りる。ここで書かない（domain.md）
-    const m = await 明治期の約束;
-    const meiji = (!m || m.state === Konjaku.STATE.UNREACHABLE) ? { none: "unreachable" }
-                : m.state === Konjaku.STATE.ABSENT ? { none: "absent" }
-                : !m.value ? { none: "noClass" } : { value: m.value };
+    // ⚠ 何に落とすかは land.js が決めている（掟 6。⚠ 前はここと top.js の 2 か所にあった）
+    const meiji = await 明治期の約束;
     const { label, head, sub, 断り } =
       KonjakuAnswer.lines({ terrain: t.value, meiji, 広い区分: !t.fine });
     glossSrcEl.textContent = label; glossSrcEl.hidden = !label;
@@ -580,9 +579,14 @@
       const px = m.evidence.pixel;   // [x, y, px, py]
       const base = m.evidence.tile.replace(/\/\d+\/\d+\/\d+\.\w+$/, "");
       const z = Number(m.evidence.tile.match(/\/(\d+)\/\d+\/\d+\.\w+$/)?.[1] ?? 16);
+      // ⚠ **ここも断定していた**（2026-10-03。`docs/adr/0109`）。
+      //   ⚠ **読み取れなかったときと、⚠ 線型（堤防）のときに、⚠ 「○○ でした」と書いていた。**
+      //   ⚠ **面の分類のときだけ言い切る。**⚠ **ほかは、なぜ言えないかを字にする。**
+      const a = KonjakuLand.明治期の答え(m);
       枠.push({ 絵: 窓(base, z, px[0], px[1], px[2], px[3], "png"),
                 年: "明治期",
-                説: m.value ? `${m.value} でした` : KonjakuAnswer.MEIJI_NONE.noClass });
+                説: a.kind === "area" ? `${a.value} でした`
+                  : KonjakuAnswer.MEIJI_NONE[a.reason] ?? KonjakuAnswer.MEIJI_NONE.noClass });
     } else if (m?.state === Konjaku.STATE.ABSENT) {
       枠.push({ 絵: null, 年: "明治期", 説: KonjakuAnswer.MEIJI_NONE.absent });
     }
