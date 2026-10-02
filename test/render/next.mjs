@@ -4932,6 +4932,40 @@ for (const [名, viewport] of [
   });
 }
 
+// ⚠ **明治期を読み取れなかったとき、⚠ 断定しない**（2026-10-03。`docs/adr/0109`）。
+//
+// ⚠ **前は「ここは 区分を特定できず でした」と見出しに出ていた**（⚠ 実測で再現した）。
+//   ⚠ **内部語が出るうえ、⚠ 読み取れなかったことを「でした」と言い切っていた**（掟 §1・§4）。
+// ⚠ **凡例のどの色とも一致しない画素**を返して突く（⚠ 不透明。⚠ 透明は別の経路＝該当なし）。
+{
+  const 凡例に無い色 = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAYAAABccqhmAAADG0lEQVR4nO3UoQEAAAiAMP9/Ws8wsLBOYnZ2gab5DgD+GACEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEGQCEHSWaLNR8PerJAAAAAElFTkSuQmCC", "base64");
+  CASES.push({
+    name: "明治期を読み取れないとき、⚠ 断定しない",
+    path: `/deep?${TOYOSU}`, origin: NEXT_BASE, viewport: SP,
+    async setup(page) {
+      await page.route("**/swale/**", (r) =>
+        r.fulfill({ status: 200, contentType: "image/png", body: 凡例に無い色 }));
+    },
+    async check(page) {
+      await 待つ(page, () => {
+        const g = document.getElementById("gloss");
+        return g && g.textContent.trim() && g.textContent.trim() !== "　";
+      }, "答え");
+      await page.waitForTimeout(2000);
+      const r = await page.evaluate(() => {
+        const 見 = (id) => (document.getElementById(id)?.textContent ?? "").trim();
+        return { 見出し: 見("gloss"), ラベル: 見("glossSrc"), 全文: document.body.innerText };
+      });
+      // ⚠ **内部語を出さない**
+      must(!/区分を特定できず/.test(r.全文), `内部語が画面に出ている: ${r.見出し}`);
+      // ⚠ **読み取れなかったものを「でした」と言い切らない**
+      must(!/^ここは [^、]+ でした$/.test(r.見出し),
+        `読み取れなかったのに断定している: ${r.見出し}`);
+      return `見出し「${r.見出し}」／ ラベル「${r.ラベル}」`;
+    },
+  });
+}
+
 // ⚠ **深掘り画面の目次**（2026-09-05。hidetzu/konjaku#457。Owner 判断＝案A）。
 //
 // ⚠ **実測（2026-09-05・本番）**: ⚠ **節 7 個・320×640 で 9.0 画面ぶん。**

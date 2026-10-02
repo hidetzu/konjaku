@@ -435,9 +435,42 @@ else {
     } else {
       const fails = [];
 
+      // ⚠ **⓪ 生の読み取りを、⚠ land.js が 1 か所で正規化していること**
+      //   （2026-10-03。`docs/adr/0109`）。⚠ **5 経路を固定する。**
+      //   ⚠ **前は `/deep` と `/` が、⚠ それぞれ生の返りを解釈していた**（掟 6）。
+      //   ⚠ **そのせいで「ここは 区分を特定できず でした」「ここは 堤防 でした」が出ていた。**
+      {
+        const w = { Konjaku: { STATE: { UNREACHABLE: "unreachable", ABSENT: "absent", OK: "ok" } },
+                    localStorage: { getItem: () => null, setItem: () => {}, removeItem: () => {} } };
+        new Function("window", "module", readFileSync(join(NEXT, "land.js"), "utf8"))(w, undefined);
+        const 正規化 = w.KonjakuLand?.明治期の答え;
+        if (typeof 正規化 !== "function") fails.push("land.js が 明治期の答え を出していない（⚠ この検査が何も見ていない）");
+        else for (const [名, 生, 期待] of [
+          ["面の分類",   { state: "ok", ok: true, value: "泥地" },                  { kind: "area", value: "泥地" }],
+          ["線型",       { state: "ok", ok: true, value: "堤防", line: true },      { kind: "structure", value: "堤防" }],
+          ["読み取れず", { state: "ok", ok: false, value: null, unmatched: true },  { kind: "none", reason: "unmatched" }],
+          ["該当なし",   { state: "ok", ok: true, value: null, none: true },        { kind: "none", reason: "noClass" }],
+          ["資料の外",   { state: "absent", value: "データなし" },                  { kind: "none", reason: "absent" }],
+          ["読み込めず", { state: "unreachable" },                                  { kind: "none", reason: "unreachable" }],
+        ]) {
+          const r = 正規化(生);
+          if (JSON.stringify(r) !== JSON.stringify(期待))
+            fails.push(`正規化（${名}）が ${JSON.stringify(r)}（⚠ ${JSON.stringify(期待)} のはず）`);
+        }
+        // ⚠ **線型と「読み取れず」は、⚠ 代表回答にしない**（⚠ ここが本体）。
+        if (正規化) for (const [名, 生] of [
+          ["線型",       { state: "ok", ok: true, value: "堤防", line: true }],
+          ["読み取れず", { state: "ok", ok: false, value: null, unmatched: true }],
+        ]) {
+          const r = A.lines({ terrain: "台地･段丘", meiji: 正規化(生) });
+          if (/^ここは [^、]+ でした$/.test(r.head))
+            fails.push(`${名} が代表回答になっている: ${r.head}`);
+        }
+      }
+
       // ⚠ **① 明治期に区分があれば、⚠ それが見出し。**
       //   ⚠ **ここが残 3 の本体。**⚠ **春日部は答えを持っていたのに、⚠ 見出しでなかった。**
-      const 春日部 = A.lines({ terrain: "氾濫平野・海岸平野", meiji: { value: "田" } });
+      const 春日部 = A.lines({ terrain: "氾濫平野・海岸平野", meiji: { kind: "area", value: "田" } });
       if (!/^ここは 田 でした$/.test(春日部.head))
         fails.push(`明治期の区分が見出しになっていない: ${春日部.head}`);
       if (春日部.head.startsWith("ここは、"))
@@ -461,7 +494,7 @@ else {
       // ⚠ **② 明治期が無くても、⚠ 地形分類が昔を名指すなら、⚠ それを見出しに使う。**
       //   ⚠ **2 行目に同じことを重ねない。**⚠ **ラベルは地形分類のほうを名乗る。**
       for (const 区分 of A.PAST_IN_TERRAIN) {
-        const r = A.lines({ terrain: 区分, meiji: { none: "absent" } });
+        const r = A.lines({ terrain: 区分, meiji: { kind: "none", reason: "absent" } });
         if (r.head !== `ここは、${W.groundGloss(区分)}`)
           fails.push(`${区分}: 地形分類が昔を名指しているのに、見出しに使っていない: ${r.head}`);
         if (r.sub !== "") fails.push(`${区分}: 見出しと同じことを 2 行目でも言っている: ${r.sub}`);
@@ -481,7 +514,7 @@ else {
 
       // ⚠ **③-1 地形分類が読めているなら、⚠ そちらが見出し。**
       for (const none of 状態) {
-        const r = A.lines({ terrain: "低地", meiji: { none } });
+        const r = A.lines({ terrain: "低地", meiji: { kind: "none", reason: none } });
         if (r.head === A.MEIJI_NONE[none])
           fails.push(`${none}: 地形分類が読めているのに、⚠ 無いことを見出しにしている: ${r.head}`);
         if (!r.head.includes(W.groundGloss("低地")))
@@ -497,17 +530,17 @@ else {
           fails.push(`${none}: 断りが、⚠ 何の資料の話か名乗っていない: ${r.断り}`);
       }
       // ⚠ **3 つの状態を、⚠ 断りでも言い分ける**（`docs/adr/0056`。⚠ 1 文にまとめない）
-      const 断りたち = 状態.map((none) => A.lines({ terrain: "低地", meiji: { none } }).断り);
+      const 断りたち = 状態.map((none) => A.lines({ terrain: "低地", meiji: { kind: "none", reason: none } }).断り);
       if (new Set(断りたち).size !== 状態.length)
         fails.push(`3 つの状態が同じ断りになっている: ${断りたち.join(" ／ ")}`);
 
       // ⚠ **③-2 地形分類も読めていないなら、⚠ 言えるのは「なぜ無いか」だけ。**
-      const 出た = 状態.map((none) => A.lines({ terrain: null, meiji: { none } }).head);
+      const 出た = 状態.map((none) => A.lines({ terrain: null, meiji: { kind: "none", reason: none } }).head);
       for (const [i, none] of 状態.entries()) {
         if (出た[i] !== A.MEIJI_NONE[none])
           fails.push(`${none}: MEIJI_NONE の字を使っていない: ${出た[i]}`);
         if (!出た[i]) fails.push(`${none}: 見出しが空（⚠ 何も言わないと、⚠ 何も起きていないように見える）`);
-        const r = A.lines({ terrain: null, meiji: { none } });
+        const r = A.lines({ terrain: null, meiji: { kind: "none", reason: none } });
         if (r.label !== A.SOURCE.meiji)
           fails.push(`${none}: 何の資料の話か名乗っていない: ${JSON.stringify(r.label)}`);
         // ⚠ **ここはラベルが主語を引き受ける**ので、⚠ 字の中で「明治期の」を繰り返さない
@@ -520,8 +553,8 @@ else {
       // ⚠ **③-3 広い区分で答えたことを言う**（hidetzu/konjaku#495）。
       //   ⚠ **詳細版が無い土地では、⚠ 判定が広域版へ落ちている。**⚠ **黙ると、⚠ 詳細版と同じ確かさに読める。**
       {
-        const 粗 = A.lines({ terrain: "低地", meiji: { value: "田" }, 広い区分: true });
-        const 細 = A.lines({ terrain: "低地", meiji: { value: "田" }, 広い区分: false });
+        const 粗 = A.lines({ terrain: "低地", meiji: { kind: "area", value: "田" }, 広い区分: true });
+        const 細 = A.lines({ terrain: "低地", meiji: { kind: "area", value: "田" }, 広い区分: false });
         if (!粗.断り) fails.push("広い区分で答えたことを、⚠ どこにも書いていない");
         if (細.断り) fails.push(`詳細版で答えているのに、⚠ 広い区分だと言っている: ${細.断り}`);
         // ⚠ **`⚠` を付けない**（⚠ `⚠` は災害リスク専用。`CLAUDE.md` §4-1）
@@ -552,8 +585,15 @@ else {
         fails.push("top.js が、⚠ answer.js の返す断りを画面へ入れていない（⚠ 限界が消える）");
       if (!readFileSync(join(NEXT, "index.html"), "utf8").includes('id="glossNote"'))
         fails.push("index.html に断りの置き場が無い");
-      for (const none of 状態)
-        if (!TOP.includes(`"${none}"`)) fails.push(`top.js が ${none} の状態を作っていない`);
+      // ⚠ **状態を作るのは land.js の 1 か所**（2026-10-03。`docs/adr/0109`）。
+      //   ⚠ **前は top.js と deep.js が、⚠ それぞれ生の返りを解釈していた**（掟 6）。
+      //   ⚠ **だから「画面が作っていること」ではなく、⚠ 「画面が作っていないこと」を見る。**
+      const LAND = readFileSync(join(NEXT, "land.js"), "utf8");
+      for (const none of [...状態, "unmatched"]) {
+        if (!LAND.includes(`"${none}"`)) fails.push(`land.js が ${none} の状態を作っていない`);
+        if (new RegExp(`(none|reason):\\s*"${none}"`).test(TOP))
+          fails.push(`top.js が ${none} を自分で作っている（⚠ land.js が決める）`);
+      }
       // ⚠ **深掘り画面も、⚠ 同じ規則で見出しを決める**（2026-08-31。Owner 指示）。
       //   ⚠ **同じ場所で、⚠ トップは「ここは 田 でした」、⚠ 深掘りは「ここは、川や海が…」だった。**
       //   ⚠ **2 つの画面が、⚠ 別の答えを見出しにしていた。**
@@ -744,10 +784,12 @@ else {
     const win = {};
     for (const f of ["words.js", "answer.js"])
       new Function("window", "module", readFileSync(join(NEXT, f), "utf8"))(win, undefined);
-    const 三状態 = win.KonjakuAnswer?.MEIJI_NONE ?? {};
-    if (Object.keys(三状態).length !== 3)
-      欠け.push("KonjakuAnswer.MEIJI_NONE を読めていない（⚠ この検査が何も見ていない）");
-    for (const [k, 字] of Object.entries(三状態)) {
+    // ⚠ **4 状態になった**（2026-10-03。`docs/adr/0109`）。
+    //   ⚠ **`unmatched`（読み取れなかった）を足した。**⚠ **`noClass`（区分が無い）と別。**
+    const 状態の字 = win.KonjakuAnswer?.MEIJI_NONE ?? {};
+    if (Object.keys(状態の字).length !== 4)
+      欠け.push(`KonjakuAnswer.MEIJI_NONE を読めていない（⚠ この検査が何も見ていない。⚠ ${Object.keys(状態の字).length} 件）`);
+    for (const [k, 字] of Object.entries(状態の字)) {
       if (!字.includes("この地図"))
         欠け.push(`資料が無いときの字（${k}）が、⚠ 何の話かを名乗っていない: 「${字}」`);
       // ⚠ **アプリ全体の話に読める語を、⚠ 主語なしで置かない。**
@@ -755,8 +797,8 @@ else {
         if (字.includes(悪)) 欠け.push(`資料が無いときの字（${k}）に、⚠ アプリ全体に読める語がある: ${悪}`);
     }
     // ⚠ **3 つが別の字であること**（`docs/adr/0056`）。⚠ **主語を揃えて 1 つに潰さない。**
-    if (new Set(Object.values(三状態)).size !== 3)
-      欠け.push("資料が無いときの 3 状態が、⚠ 同じ字になっている（⚠ 無い・区分が無い・読めなかったは別）");
+    if (new Set(Object.values(状態の字)).size !== Object.keys(状態の字).length)
+      欠け.push("資料が無いときの状態が、⚠ 同じ字になっている（⚠ 無い・区分が無い・読み取れなかった・読み込めなかったは別）");
 
     // ⚠ 2. ⚠ **近くの碑が、⚠ その地点そのものの履歴に読まれた**（⚠ 6 名中 2 名）。
     //   ⚠ **一段分離して、⚠ 重要な情報より下に置くこと。**

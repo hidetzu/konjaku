@@ -60,6 +60,11 @@
     absent:      ["は、", "この地域を含んでいません"],
     noClass:     ["に、", "この場所の区分はありません"],
     unreachable: ["を、", "いま読み取れませんでした"],
+    // ⚠ **読み取れなかった**（2026-10-03。Owner が決めた字。`docs/adr/0109`）。
+    //   ⚠ **`noClass`（区分はありません）と混ぜない。**⚠ **あちらは「無い」と言っている。**
+    //   ⚠ **こちらは「読み取れなかった」**（掟 §1。⚠ 取れなかった ≠ 無い）。
+    //   ⚠ **内部語（区分を特定できず）は出さない。**
+    unmatched:   ["からは、", "この場所の区分を読み取れませんでした"],
   };
   const meijiNone = (none, 主 = "この地図") => {
     const p = MEIJI_NONE_PARTS[none];
@@ -116,7 +121,11 @@
       : `${SOURCE.terrain}は、${gloss}`;
     // 広い区分で答えたことは、どの筋でも同じ字で言う（字はここ 1 か所）。
     const 粗さ = 広い区分 ? COARSE_NOTE : "";
-    if (meiji && meiji.value)
+    // ⚠ **代表回答に使えるのは「面の分類」だけ**（2026-10-03。`docs/adr/0109`）。
+    //   ⚠ **線型（堤防）は、⚠ 土地が何だったかの答えではない**（⚠ 公式の凡例で「線型データ」）。
+    //   ⚠ **読み取れなかったとき（unmatched）も、⚠ ここには来ない。**
+    //   ⚠ **`kind` は land.js が決める。**⚠ **ここで生の返りを解釈しない。**
+    if (meiji && meiji.kind === "area" && meiji.value)
       return { label: SOURCE.meiji, head: `ここは ${meiji.value} でした`, sub: 成り立ち, 断り: 粗さ,
                出した: 区分名を添える && 成り立ち ? [meiji.value, terrain] : [meiji.value] };
     // 地形分類そのものが昔を名指す。出典は 2 行目と同じなので、ラベルはそちらに任せない。
@@ -134,14 +143,14 @@
     //     3/3 が「サイト全体がこの場所に対応していない」と読み、2 名が「閉じそうになった」。
     //     順を入れ替えた案を、3 名とも 1 位に選んだ。
     //   ⚠ 無いことは消さない（CLAUDE.md §1）。主語を付けて、答えの下へ移すだけ。
-    const 限界 = meijiNone(meiji && meiji.none, SOURCE.meiji);
+    const 限界 = meijiNone(meiji && meiji.reason, SOURCE.meiji);
     if (gloss)
       return { label: SOURCE.terrain,
                head: 区分名を添える ? `ここは ${terrain}（${gloss}）` : `ここは、${gloss}`,
                sub: "", 断り: [限界, 粗さ].filter(Boolean).join("。"),
                出した: 区分名を添える ? [terrain] : [] };
     // 地形分類も読めていない。言えるのは、なぜ無いかだけ。
-    return { label: SOURCE.meiji, head: MEIJI_NONE[meiji && meiji.none] ?? "", sub: "", 断り: 粗さ,
+    return { label: SOURCE.meiji, head: MEIJI_NONE[meiji && meiji.reason] ?? "", sub: "", 断り: 粗さ,
              出した: [] };
   };
 

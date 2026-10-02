@@ -463,7 +463,8 @@
     //   同時に投げる。待ち時間は max になり、いままでの最悪値（どちらも 8 秒で打ち切り）を超えない。
     //   実測 2026-08-31（手元・375×667）: 明治期は地形分類の 0〜30ms 後に届いた。
     const 地形の約束 = KonjakuLand.terrain(lon, lat).catch(() => null);
-    const 明治期の約束 = KonjakuLand.meijiPoint(lon, lat).catch(() => null);
+    // ⚠ 正規化済みを受け取る（2026-10-03。`docs/adr/0109`）。⚠ ここで生の返りを解釈しない
+    const 明治期の約束 = KonjakuLand.meijiAnswer(lon, lat);
     const v = await 地形の約束;
     if (seq !== askSeq) return;   // ⚠ **古い結果で上書きしない**
     hereName = null;
@@ -564,8 +565,13 @@
     const m = 答え.meiji;
     if (!m) return;
     meijiRow.hidden = false;
-    if (m.none) {
-      meijiEl.innerHTML = `<span class="none">${esc(KonjakuAnswer.MEIJI_NONE[m.none])}</span>`;
+    // ⚠ **言い切れるのは「面の分類」だけ**（2026-10-03。`docs/adr/0109`）。
+    //   ⚠ **線型（堤防）と、⚠ 読み取れなかったときは、⚠ 「○○ でした」と書かない。**
+    if (m.kind !== "area") {
+      // ⚠ **線型には理由が無い**（⚠ 読めてはいる）。⚠ **その回は、明治期の行を出さない。**
+      const 字 = m.reason ? KonjakuAnswer.MEIJI_NONE[m.reason] : "";
+      if (!字) { meijiRow.hidden = true; return; }
+      meijiEl.innerHTML = `<span class="none">${esc(字)}</span>`;
       return;
     }
     meijiEl.innerHTML = 出した.has(m.value)
@@ -592,11 +598,9 @@
     meijiRow.hidden = true;
     const m = await 約束;
     if (seq !== askSeq) return;
-    const none = (!m || m.state === Konjaku.STATE.UNREACHABLE) ? "unreachable"
-               : m.state === Konjaku.STATE.ABSENT ? "absent"
-               : !m.value ? "noClass" : null;
     // 字を描くのは drawWhySources の 1 か所（hidetzu/konjaku#362）。ここは状態だけ持つ。
-    答え.meiji = none ? { none } : { value: m.value };
+    //   ⚠ 何に落とすかは land.js が決めている（掟 6。⚠ 前はここと deep.js の 2 か所にあった）
+    答え.meiji = m;
     drawAnswer();
   }
 
