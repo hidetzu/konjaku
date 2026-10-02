@@ -468,6 +468,26 @@ else {
         }
       }
 
+      // ⚠ **⓪-2 どの見出しでも、⚠ 明治期の限界を同じところに出す**
+      //   （2026-10-03。`docs/adr/0109` の残件）。
+      //   ⚠ **前は「昔を名指す区分」のときだけ、⚠ 断りを出していなかった。**
+      //   ⚠ **読み取れなかったことが、⚠ 画面のどこにも出なかった**（掟 §1）。
+      {
+        const 昔を名指す = "旧水部";   // ⚠ PAST_IN_TERRAIN の 1 つ（⚠ 綴りは landform.json が正本）
+        for (const reason of ["unmatched", "absent", "unreachable", "noClass"]) {
+          const r = A.lines({ terrain: 昔を名指す, meiji: { kind: "none", reason } });
+          // ⚠ **ふつうの区分（下の枝）と、⚠ 同じ字であること。**⚠ **2 通りに分けない。**
+          //   ⚠ **`MEIJI_NONE` と直に比べない**（⚠ あちらは主語が「この地図」。⚠ ここは「明治期の地図」）。
+          const 比べる = A.lines({ terrain: "台地･段丘", meiji: { kind: "none", reason } });
+          if (!r.断り) fails.push(`昔を名指す区分のとき、${reason} の断りが出ていない`);
+          else if (r.断り !== 比べる.断り)
+            fails.push(`昔を名指す区分の断りが、⚠ ふつうの区分と違う字:「${r.断り}」／「${比べる.断り}」`);
+        }
+        // ⚠ **線型は限界ではない**（⚠ 読めている。⚠ 代表回答に使わないだけ）
+        const 線 = A.lines({ terrain: 昔を名指す, meiji: { kind: "structure", value: "堤防" } });
+        if (線.断り) fails.push(`線型なのに限界を出している: 「${線.断り}」`);
+      }
+
       // ⚠ **① 明治期に区分があれば、⚠ それが見出し。**
       //   ⚠ **ここが残 3 の本体。**⚠ **春日部は答えを持っていたのに、⚠ 見出しでなかった。**
       const 春日部 = A.lines({ terrain: "氾濫平野・海岸平野", meiji: { kind: "area", value: "田" } });
