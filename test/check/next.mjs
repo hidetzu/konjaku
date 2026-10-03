@@ -435,6 +435,33 @@ else {
     } else {
       const fails = [];
 
+      // ⚠ **⓪-0 明治期の 14 区分が、⚠ 出典の解説を持っていること**
+      //   （2026-10-03。`docs/adr/0110`）。
+      //   ⚠ **地形分類 36 区分は全部持っていたのに、⚠ 明治期は 1 つも持っていなかった。**
+      //   ⚠ **`words.js` の Owner 決定 4「例外を作らない。答えに出うる区分は全部持つ」。**
+      //   ⚠ **ここは「こちらの正しさ」だけを見る**（⚠ 相手先がいま何を返すかは主張しない。
+      //     `CLAUDE.md` §9）。⚠ **出典の字と突き合わせる検査は作らない。**
+      {
+        const 凡例 = JSON.parse(readFileSync(join(NEXT, "data/swale-legend.json"), "utf8"));
+        const SW = readFileSync(join(NEXT, "swale.js"), "utf8").replace(BLOCK_COMMENT, " ");
+        const 区分 = [...SW.matchAll(/name:\s*"([^"]+)"/g)].map((m) => m[1]);
+        if (区分.length !== 14) fails.push(`swale.js の区分が 14 件でない（${区分.length} 件）`);
+        for (const n of 区分) {
+          const c = 凡例.classes?.[n];
+          if (!c) { fails.push(`凡例に ${n} が無い（⚠ 例外を作らない）`); continue; }
+          if (!c.gloss) fails.push(`${n} の解説が空`);
+          if (!c.name) fails.push(`${n} の出典名が空`);
+        }
+        const 余り = Object.keys(凡例.classes ?? {}).filter((k) => !区分.includes(k));
+        if (余り.length) fails.push(`凡例に、swale.js に無い区分がある: ${余り.join("、")}`);
+        // ⚠ **要約していないこと。**⚠ **字数で切っていたら、⚠ それは要約**（掟 3）。
+        //   ⚠ **出典のいちばん長い解説は 60 字を超える**（⚠ 18 字の独自要約は作らないと決めた）。
+        const 最長 = Math.max(...Object.values(凡例.classes ?? {}).map((c) => (c.gloss ?? "").length));
+        if (最長 < 40) fails.push(`解説が短すぎる（最長 ${最長} 字）＝⚠ 要約している疑い`);
+        // ⚠ **出典を名乗っていること**
+        if (!/gsi\.go\.jp/.test(凡例.source ?? "")) fails.push("凡例が出典の URL を持っていない");
+      }
+
       // ⚠ **⓪ 生の読み取りを、⚠ land.js が 1 か所で正規化していること**
       //   （2026-10-03。`docs/adr/0109`）。⚠ **5 経路を固定する。**
       //   ⚠ **前は `/deep` と `/` が、⚠ それぞれ生の返りを解釈していた**（掟 6）。

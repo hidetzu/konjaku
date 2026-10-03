@@ -99,7 +99,7 @@
     glossNoteEl.textContent = 断り; glossNoteEl.hidden = !断り;
     termEl.textContent = `国土地理院の区分：${t.value}`;
     drawTime(lon, lat);
-    drawWhy(t);
+    drawWhy(t, meiji);
     drawElev(lon, lat, t);
     drawGround(lon, lat);
     drawBorder(lon, lat);
@@ -189,6 +189,21 @@
     borderNote.textContent = W.断り;
     borderFrom.textContent = W.出典;
     borderSec.hidden = false;
+  }
+
+  // ⚠ **凡例は自分の配信物。**⚠ **落ちても節は出す**（⚠ 解説が添わないだけ）。
+  //   ⚠ **出典の字をそのまま。**⚠ **見出しは出典の名称**（⚠ swale.js の字と 4 件違う）。
+  async function 明治期の解説(区分) {
+    const l = await Konjaku.swaleLegend().catch(() => null);
+    const c = l?.classes?.[区分];
+    if (!c?.gloss) return;
+    const 枠 = document.createElement("div");
+    枠.className = "why__item";
+    枠.innerHTML = `<p class="why__k"></p><p class="why__v"></p><p class="why__from"></p>`;
+    枠.children[0].textContent = c.name;
+    枠.children[1].textContent = c.gloss;
+    枠.children[2].textContent = "— 国土地理院";
+    whyEl.appendChild(枠);
   }
 
   // 近くに残る災害の記録（自然災害伝承碑）。
@@ -634,7 +649,12 @@
   //
   //   人工地形（盛土地･埋立地など）は、自然の区分とは別の資料。
   //   在るときだけ足す。混ぜない。
-  function drawWhy(t) {
+  // ⚠ **明治期の区分の解説も、⚠ ここへ添える**（2026-10-03。`docs/adr/0110`）。
+  //   ⚠ **地形分類は 36 区分すべてが説明を持つのに、⚠ 明治期の 14 区分は 1 つも持たなかった。**
+  //   ⚠ **字は出典のまま**（`public/data/swale-legend.json`）。⚠ **こちらで短くしない**（掟 3）。
+  //   ⚠ **見出しは出典の名称そのもの。**⚠ **新しい字を作らない。**
+  //   ⚠ **面の分類が読めたときだけ**（⚠ 線型・読み取れずのときは出さない）。
+  function drawWhy(t, meiji) {
     const 段 = [];
     const 出す = (見出し, 文, 相手, cls) => {
       if (!文) return;
@@ -645,6 +665,7 @@
         + `<p class="why__from">— ${esc(相手)}</p></div>`);
     };
     出す("この土地の成り立ち", t.why, "国土地理院", "");
+    if (meiji?.kind === "area" && meiji.value) 明治期の解説(meiji.value);
     出す("起こりうること", t.risk, "国土地理院", "why--risk");
     if (t.artificial) {
       出す(`人の手が入っている（${t.artificial}）`, t.artificialWhy, "国土地理院", "");

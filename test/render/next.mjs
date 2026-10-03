@@ -29,6 +29,7 @@ import { BORDERS } from "../../events.js";
 
 // ⚠ **`?ll=` は緯度,経度の順**（`place-arg.js`）。⚠ **逆に書くと、⚠ 黙って既定の場所になる。**
 const TOYOSU = "ll=35.6553,139.7967";     // ⚠ 旧水部・空中写真 7 年代
+const URAYASU = "ll=35.6536,139.9021";   // ⚠ 明治期が「泥地」・地形分類が「旧水部」
 const KASUKABE = "ll=35.9756,139.7523";   // ⚠ 氾濫平野・⚠ **周辺の記録が無い場所**
 
 // ⚠ **v0.1.0 は散歩中のスマホが相手**（`docs/adr/0064`）。⚠ **既定の 1200px では測る意味が薄い。**
@@ -4931,6 +4932,37 @@ for (const [名, viewport] of [
     },
   });
 }
+
+// ⚠ **明治期の区分にも、⚠ 出典の解説が添う**（2026-10-03。`docs/adr/0110`）。
+//
+// ⚠ **地形分類 36 区分は全部持っていたのに、⚠ 明治期の 14 区分は 1 つも持っていなかった。**
+// ⚠ **字は出典のまま**（⚠ こちらで短くしない。掟 3）。⚠ **見出しは出典の名称そのもの。**
+CASES.push({
+  name: "明治期の区分に、⚠ 出典の解説が添う",
+  path: `/deep?${URAYASU}`, origin: NEXT_BASE, viewport: SP,
+  async check(page) {
+    await 待つ(page, () => {
+      const g = document.getElementById("gloss");
+      return g && g.textContent.trim() && g.textContent.trim() !== "　";
+    }, "答え");
+    await page.waitForTimeout(3000);
+    const r = await page.evaluate(() => ({
+      段: [...document.querySelectorAll("#why .why__item")].map((d) =>
+        [...d.children].map((c) => c.textContent.trim())),
+      見出し: (document.getElementById("gloss")?.textContent ?? "").trim(),
+    }));
+    // ⚠ **明治期が代表回答のとき**だけを見る（⚠ ほかの土地では出なくてよい）
+    const 区分 = r.見出し.match(/^ここは (.+) でした$/)?.[1];
+    must(区分, `明治期が代表回答でない（⚠ この検査が何も見ていない）: ${r.見出し}`);
+    const 解説 = r.段.find((x) => x[0] && 区分 && (x[0] === 区分 || 区分.includes(x[0].slice(0, 2))));
+    must(解説, `明治期の区分（${区分}）の解説が出ていない: ${r.段.map((x) => x[0]).join("、")}`);
+    // ⚠ **要約していない**（⚠ 出典の解説は長い。⚠ 短く切っていたら要約）
+    must(解説[1].length >= 20, `解説が短すぎる＝⚠ 要約している疑い: 「${解説[1]}」`);
+    // ⚠ **出典を名乗る**
+    must(/国土地理院/.test(解説[2]), `解説が出典を名乗っていない: 「${解説[2]}」`);
+    return `${解説[0]}「${解説[1].slice(0, 24)}…」${解説[2]}`;
+  },
+});
 
 // ⚠ **明治期を読み取れなかったとき、⚠ 断定しない**（2026-10-03。`docs/adr/0109`）。
 //
