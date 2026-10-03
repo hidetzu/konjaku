@@ -375,6 +375,17 @@
     return tableP;
   }
 
+  // ⚠ **明治期の凡例**（2026-10-03。`docs/adr/0110`）。⚠ **landform.json と同じ作法。**
+  //   ⚠ **出典の字をそのまま持つ**（`public/data/swale-legend.json`）。⚠ **要約しない**（掟 3）。
+  let swaleLegendP = null;
+  function swaleLegend() {
+    if (!swaleLegendP) swaleLegendP = global.KonjakuStatic.取る("./data/swale-legend.json").then((r) => {
+      if (r.state !== "ok") { swaleLegendP = null; throw new Error(`swale-legend.json ${r.why}`); }
+      return r.data;
+    });
+    return swaleLegendP;
+  }
+
   const geoCache = new Map();
   async function geojson(url) {
     if (!geoCache.has(url)) geoCache.set(url, readGeo(url));
@@ -1045,6 +1056,7 @@
 
   global.Konjaku = { GSI, SWALE, ERAS, LATEST, AREA, tileOf, loadImage, classify, isWatery,
     landform, landformTiles, border, meiji, swaleArea, swalePixel, elevation, photos, facts, narrate,
+    swaleLegend,
     badges, suggestions,
     STATE: { OK, ABSENT, UNREACHABLE }, TIMEOUT_MS };
 })(window);
