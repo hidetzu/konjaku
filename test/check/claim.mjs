@@ -369,3 +369,35 @@ for (const f of htmlFiles) {
     ? bad(欠け.join(" ／ "))
     : ok(`索引の正本と sitemap は同じ顔ぶれ（${A.length} 画面。⚠ /deep /saved /take には置いていない）`);
 }
+
+// ⚠ **`robots.txt` を、⚠ 自分の配信物として持つ**（2026-10-07。`docs/adr/0111`）。
+//
+// ⚠ **前は置かないと決めていた**（⚠ 配信の側が返していたので）。⚠ **2026-10-07 に 404 になった。**
+//   ⚠ **こちらは `public/` に何も足していない。**⚠ **返す側がいなくなった。**
+//   ⚠ **外の設定に預けると、⚠ 消えたことに気づけない**（`CLAUDE.md` §1）。
+//
+// ⚠ **ここは「こちらの正しさ」だけを見る**（⚠ 配信の側がいま何を返すかは主張しない。§9）。
+{
+  const 欠け = [];
+  const r = await readFile(join(PUB, "robots.txt"), "utf8").catch(() => null);
+  if (!r) 欠け.push("public/robots.txt が無い（⚠ 置くと決めた）");
+  else {
+    // ⚠ **コメントを先に落とす**（⚠ 説明に書いた字を、⚠ 検査が拾わないため。`CLAUDE.md` §5）
+    const 実 = r.split("\n").filter((l) => !/^\s*#/.test(l)).join("\n");
+    // ⚠ **検索を塞いでいないこと**（⚠ 塞ぐと sitemap 以前の問題になる）
+    if (!/^Allow:\s*\/\s*$/m.test(実)) 欠け.push("robots.txt が検索に開いていない（⚠ Allow: / が無い）");
+    if (/^Disallow:\s*\/\s*$/m.test(実.split(/^User-agent:\s*\*/m)[1]?.split(/^User-agent:/m)[0] ?? ""))
+      欠け.push("robots.txt が、⚠ すべてを塞いでいる（⚠ User-agent: * に Disallow: /）");
+    // ⚠ **AI の学習を拒んでいること**（⚠ 2026-09-30 まで配信の側が返していた意思）
+    if (!/ai-train\s*=\s*no/.test(実)) 欠け.push("robots.txt が AI 学習の拒否を言っていない（⚠ Content-Signal）");
+    const 拒否 = [...実.matchAll(/^User-agent:\s*([^\s*]+)\s*$/gm)].map((m) => m[1]);
+    if (拒否.length < 3) 欠け.push(`AI 学習の相手を名指ししていない（⚠ ${拒否.length} 件）`);
+    // ⚠ **sitemap の在りかを知らせること。**⚠ **URL が canonical 側と食い違わないこと。**
+    const sm = 実.match(/^Sitemap:\s*(\S+)\s*$/m)?.[1];
+    if (!sm) 欠け.push("robots.txt が sitemap の在りかを知らせていない");
+    else if (sm !== `${SITE}/sitemap.xml`)
+      欠け.push(`robots.txt の Sitemap が、⚠ 配信している場所と違う: ${sm}`);
+  }
+  欠け.length ? bad(欠け.join(" ／ "))
+              : ok("robots.txt は、⚠ 検索に開き・⚠ AI 学習を拒み・⚠ sitemap の在りかを知らせる");
+}
