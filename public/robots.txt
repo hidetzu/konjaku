@@ -1,0 +1,49 @@
+# 索引に出てよい。AI の学習には使わせない。
+#
+# ⚠ 置く側を変えた（2026-10-07）。前は「置かない」と決めていた（public/_headers）。
+#   理由は「Cloudflare の Managed robots.txt が zone 全体へ先に挿入され、
+#   こちらが置くと同じ User-agent: * の塊へ連結されて、Disallow が打ち消されうる」だった。
+#
+#   ⚠ その前提が消えた。Cloudflare が 2026-09-15 に Managed robots.txt をやめ、
+#     Bot Preference Sync へ移した。生成分は BEGIN/END で囲んで先頭へ前置される形になり、
+#     こちらの記述はその下にそのまま残る。連結して打ち消される形ではなくなった。
+#
+#   ⚠ そして実際に消えた。2026-09-30 は 200 で返っていたものが、2026-10-07 は 404。
+#     こちらは public/ に何も足していない。返す側がいなくなった。
+#     つまり、AI 学習の拒否も sitemap の在りかも、どこにも無い状態が続いていた。
+#
+# ⚠ だから自分の配信物として持つ。外の設定に預けると、消えたことに気づけない。
+#   Cloudflare 側を有効に戻しても、生成分が上に入るだけで、ここは残る。どちらでも守られる。
+
+# ⚠ 検索には出てよい。AI の学習には使わせない。読んで答えるのは構わない。
+#   Content-Signal は意思表示で、従うかどうかは相手次第。下の Disallow と二重にしてある。
+User-agent: *
+Content-Signal: search=yes, ai-train=no, ai-input=yes
+Allow: /
+
+# ⚠ AI の学習に使うと公表しているもの。2026-10-07 に調べた顔ぶれ。
+#   ⚠ 網羅したとは言わない。ここに無い相手は「許した」ではなく「知らない」。
+#   ⚠ 増えたら足す。上の Content-Signal が、名前を知らない相手への意思表示を受け持つ。
+User-agent: GPTBot
+Disallow: /
+
+User-agent: ClaudeBot
+Disallow: /
+
+User-agent: CCBot
+Disallow: /
+
+User-agent: Google-Extended
+Disallow: /
+
+User-agent: Bytespider
+Disallow: /
+
+User-agent: Amazonbot
+Disallow: /
+
+User-agent: Applebot-Extended
+Disallow: /
+
+# ⚠ 索引に出したい画面の一覧。中身は sitemap.xml が持つ（ここには書かない）。
+Sitemap: https://konjaku.hidetzu.work/sitemap.xml
