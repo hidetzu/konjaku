@@ -24,26 +24,36 @@ const SQL_ONLY = process.argv.includes("--sql");
 //   ⚠ **実測 2026-10-09**: ⚠ **33 件 ÷ 26 日 = 1.27 と出ていたが、⚠ 経過は 34 日で 0.97。**
 //   ⚠ **別の範囲の数字を持ち込むと、⚠ その数字自体が嘘になる**（`CLAUDE.md` §6）。
 //   ⚠ **記録のある日も数えておく**（⚠ 分母に何日入れたかを、⚠ 出力で名乗るため）。
-const SQL = `
-  SELECT COUNT(DISTINCT session_id) AS 訪問,
-         COUNT(DISTINCT CASE WHEN event_type='map_opened' THEN session_id END) AS 調べた訪問,
-         SUM(CASE WHEN event_type='map_opened' THEN 1 ELSE 0 END) AS 判定,
-         COUNT(DISTINCT CASE WHEN event_type='deep_accessed'
-                               OR (event_type='page_load'
-                                   AND json_extract(metadata,'$.page')='deep')
-                             THEN session_id END) AS 深掘り訪問,
-         SUM(CASE WHEN event_type='shared' THEN 1 ELSE 0 END) AS 共有,
-         SUM(CASE WHEN event_type='save_place' THEN 1 ELSE 0 END) AS 保存,
-         SUM(CASE WHEN entry_point='link' THEN 1 ELSE 0 END) AS 共有リンク,
-         COUNT(DISTINCT CASE WHEN referrer NOT IN ('direct','konjaku')
-                             THEN session_id END) AS 外からの訪問,
-         MIN(created_at) AS 最初の日,
-         julianday(date('now')) - julianday(MIN(created_at)) + 1 AS 経過日数,
-         COUNT(DISTINCT created_at) AS 記録のある日,
-         COUNT(DISTINCT CASE WHEN created_at >= date('now','-14 days')
-                               AND referrer NOT IN ('direct','konjaku')
-                             THEN session_id END) AS 直近14日の外から
-  FROM events_simple WHERE session_id IS NOT NULL`;
+const SQL = `${__test.入口を作る(null, { 最初の入口も: true })}
+  SELECT COUNT(DISTINCT e.session_id) AS 訪問,
+         COUNT(DISTINCT CASE WHEN e.event_type='map_opened' THEN e.session_id END) AS 調べた訪問,
+         SUM(CASE WHEN e.event_type='map_opened' THEN 1 ELSE 0 END) AS 判定,
+         COUNT(DISTINCT CASE WHEN e.event_type='deep_accessed'
+                               OR (e.event_type='page_load'
+                                   AND json_extract(e.metadata,'$.page')='deep')
+                             THEN e.session_id END) AS 深掘り訪問,
+         SUM(CASE WHEN e.event_type='shared' THEN 1 ELSE 0 END) AS 共有,
+         SUM(CASE WHEN e.event_type='save_place' THEN 1 ELSE 0 END) AS 保存,
+         COUNT(DISTINCT CASE WHEN m.entry_point='link' THEN e.session_id END) AS 場所つき訪問,
+         COUNT(DISTINCT CASE WHEN m.entry_point='link' AND i.referrer='konjaku'
+                             THEN e.session_id END) AS 場所つき_サイト内,
+         COUNT(DISTINCT CASE WHEN m.entry_point='link' AND i.referrer='direct'
+                             THEN e.session_id END) AS 場所つき_direct,
+         COUNT(DISTINCT CASE WHEN m.entry_point='link'
+                               AND i.referrer NOT IN ('direct','konjaku')
+                             THEN e.session_id END) AS 場所つき_外から,
+         COUNT(DISTINCT CASE WHEN m.entry_point IS NULL THEN e.session_id END) AS 入口の記録なし,
+         COUNT(DISTINCT CASE WHEN i.referrer NOT IN ('direct','konjaku')
+                             THEN e.session_id END) AS 外からの訪問,
+         MIN(e.created_at) AS 最初の日,
+         julianday(date('now')) - julianday(MIN(e.created_at)) + 1 AS 経過日数,
+         COUNT(DISTINCT e.created_at) AS 記録のある日,
+         COUNT(DISTINCT CASE WHEN e.created_at >= date('now','-14 days')
+                               AND i.referrer NOT IN ('direct','konjaku')
+                             THEN e.session_id END) AS 直近14日の外から
+  FROM events_simple e JOIN 訪問の入口 i ON i.session_id = e.session_id
+                        LEFT JOIN 訪問の最初の入口 m ON m.session_id = e.session_id
+  WHERE e.session_id IS NOT NULL`;
 
 // ⚠ **評価できる最小の分母**（`docs/adr/0112`）。⚠ **`docs/adr/0010` の 100 を踏襲する。**
 const 最小の分母 = { 訪問: 50, 判定: 100 };
@@ -87,6 +97,33 @@ const 成長を判定する = ({ 外からの訪問, 経過日数, 直近の件�
   };
 };
 
+// ⚠ **共有のループは、⚠ 倍率で出さない**（2026-10-10 に直した）。
+//
+// ⚠ **直す前はこう出していた**: ⚠ **「共有された 10 件 ／ 共有リンクで開かれた 23 件（2.3 倍）」。**
+//   ⚠ **23 は `entry_point='link'` の本数で、⚠ 「共有リンクが開かれた数」ではない。**
+//   ⚠ **`link` は「URL に場所が入っていた」だけ**（`public/top.js` の `arg.state === "ok"`）。
+//   ⚠ **実測（2026-10-10・全期間 80 訪問）**: ⚠ **`link` で始まった訪問は 2 件だけ。**
+//     ⚠ **残りは `default` 60 件（⚠ URL に場所が無い）と、⚠ 入口の記録なし 18 件。**
+//     ⚠ **23 本という数は、⚠ 訪問の中で何度も数えた本数**（⚠ サイト内で深掘りへ進むたび付く）。
+//   ⚠ **分子（本数・サイト内の移動込み）と分母（共有を押した件数）が、⚠ 別のものを数えている。**
+//   ⚠ **それを割って「2.3 倍」と出していた。**⚠ **推定を実測のように見せていた**（`CLAUDE.md` §1）。
+//   ⚠ **この数字を根拠に「共有のループは回っている」と、⚠ 実際に判断していた。**
+//
+// ⚠ **直したあとは、⚠ 訪問の入口で分けて出すだけ。**⚠ **割らない。**
+//   ⚠ **`direct` は、⚠ 外から開いたのか、⚠ こちらの検査なのかを区別できない。**
+//   ⚠ **区別できないものを、⚠ どちらかに寄せない。**⚠ **そう書く。**
+const 共有を読む = ({ 共有 = 0, 場所つき_サイト内 = 0, 場所つき_direct = 0, 場所つき_外から = 0 } = {}) => ({
+  共有,
+  サイト内の移動: 場所つき_サイト内,
+  外から開かれた: 場所つき_外から,
+  区別できない: 場所つき_direct,
+  判定: 場所つき_外から > 0
+    ? `外から開かれた訪問が ${場所つき_外から} 件`
+    : 場所つき_direct > 0
+      ? "⚠ 外から開かれたかは読めない（⚠ direct は、⚠ こちらの作業と区別できない）"
+      : "⚠ 外から開かれた訪問は 1 件も無い",
+});
+
 const 率 = (a, b) => (b ? (a / b) * 100 : null);
 const 書く = (s) => process.stdout.write(s + "\n");
 
@@ -104,7 +141,7 @@ const 判定する = (r) => {
   return 行;
 };
 
-export const __gate = { SQL, 最小の分母, 止まっている線, 率, 判定する, 成長を判定する };
+export const __gate = { SQL, 最小の分母, 止まっている線, 率, 判定する, 成長を判定する, 共有を読む };
 
 // ⚠ **直に走らせたときだけ叩く**（⚠ `import` しただけで本番の D1 を触らない。`stats.mjs` と同じ形）
 const 直に走らせた = process.argv[1]
@@ -160,11 +197,16 @@ if (直に走らせた) {
   }
   書く("");
 
-  // ---- ループ ----
-  書く("■ 共有のループ");
-  書く(`  共有された        ${r.共有} 件`);
-  書く(`  共有リンクで開かれた ${r.共有リンク} 件`
-     + (r.共有 ? `（${(r.共有リンク / r.共有).toFixed(1)} 倍）` : ""));
+  // ---- 共有 ----
+  const 共有 = 共有を読む(r);
+  書く("■ 共有（⚠ 倍率は出さない。⚠ 分子と分母が別のものを数えている）");
+  書く(`  共有を押した                ${共有.共有} 件`);
+  書く(`  場所つき URL で始まった訪問  ${r.場所つき訪問} 件 / 訪問 ${r.訪問} 件`);
+  書く(`    入口が direct            ${共有.区別できない} 件  ⚠ 外から開いたのか、⚠ こちらの作業かを区別できない`);
+  書く(`    入口が外（検索・掲載）     ${共有.外から開かれた} 件`);
+  書く(`    入口が konjaku           ${共有.サイト内の移動} 件  ⚠ サイト内の移動。⚠ 共有ではない`);
+  書く(`  ⚠ 入口を名乗らなかった訪問   ${r.入口の記録なし} 件（⚠ 地図を開く前に離れた）`);
+  書く(`  判定                      ${共有.判定}`);
   書く("");
 
   // ---- 何をするか ----

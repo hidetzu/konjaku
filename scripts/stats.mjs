@@ -58,14 +58,40 @@ const DB = "konjaku";
 // ⚠ **SQL の中に `--` のコメントを書かない**（⚠ 実際に踏んだ。2026-09-08）。
 //   ⚠ **`打つ()` が `\s+` を 1 つの空白へ潰して 1 行にするので、⚠ `--` から後ろが全部消える。**
 //   ⚠ **「incomplete input」とだけ言われる。**⚠ **説明は、⚠ この JavaScript 側のコメントに書く。**
-const 入口 = `WITH 訪問の入口 AS (
+//
+// ⚠ **日数を渡さなければ全期間**（2026-10-10 に足した）。
+//   ⚠ **`npm run gate` が全期間で読むので、⚠ あちらでも同じ定義が要る。**
+//   ⚠ **書き写すと、⚠ 片方だけ古くなる**（`CLAUDE.md` §3。⚠ 同じ問いに答える実装を 2 つ持たない）。
+const 日の縛り = (日数) => (日数 === null ? "" : `created_at >= date('now', '-${日数} days') AND `);
+
+const 入口のCTE = (日数) => `訪問の入口 AS (
                  SELECT session_id, referrer FROM (
                    SELECT session_id, referrer,
                           ROW_NUMBER() OVER (PARTITION BY session_id ORDER BY id) AS 番
                    FROM events_simple
-                   WHERE created_at >= date('now', '-${DAYS} days') AND session_id IS NOT NULL
+                   WHERE ${日の縛り(日数)}session_id IS NOT NULL
                  ) WHERE 番 = 1
                )`;
+
+// ⚠ **訪問の最初の入口**（2026-10-10 に足した）。
+//
+// ⚠ **`entry_point` を持つのは、⚠ 地図を開いた行と深掘りの行だけ。**
+//   ⚠ **訪問の先頭の行（トップの `page_load`）は持っていない。**
+//   ⚠ **実測（2026-10-10・全期間）**: ⚠ **80 訪問のうち 78 件は、⚠ 先頭の行の `entry_point` が NULL。**
+//   ⚠ **だから「先頭の行の入口」を見ると、⚠ ほぼ全部が「入口なし」になる。**
+// ⚠ **見るのは「最初に入口を名乗った行」。**⚠ **その訪問が、⚠ どんな URL で始まったか。**
+const 最初の入口のCTE = (日数) => `訪問の最初の入口 AS (
+                 SELECT session_id, entry_point FROM (
+                   SELECT session_id, entry_point,
+                          ROW_NUMBER() OVER (PARTITION BY session_id ORDER BY id) AS 番
+                   FROM events_simple
+                   WHERE ${日の縛り(日数)}session_id IS NOT NULL AND entry_point IS NOT NULL
+                 ) WHERE 番 = 1
+               )`;
+
+const 入口を作る = (日数 = null, { 最初の入口も = false } = {}) =>
+  `WITH ${[入口のCTE(日数), ...(最初の入口も ? [最初の入口のCTE(日数)] : [])].join(",\n               ")}`;
+const 入口 = 入口を作る(DAYS);
 
 // ⚠ **問いごとに 1 本。**⚠ **1 つの SQL に詰め込まない**（⚠ 何を見ているか読めなくなる）。
 const 問い = [
@@ -113,7 +139,12 @@ const 問い = [
   },
   {
     見出し: "4. どの入口から場所が決まったか",
-    説明: "⚠ link は共有リンクで開かれたもの。⚠ 仮説（スマホ → 共有 → PC）はここに出る",
+    // ⚠ **`link` は「URL に場所が入っていた」だけ**（2026-10-10 に直した）。
+    //   ⚠ **前は「共有リンクで開かれたもの」と書いていた。**⚠ **それは嘘だった。**
+    //   ⚠ **実測（2026-10-10・全期間）**: ⚠ **`link` の 23 本のうち 22 本は入口が `konjaku`。**
+    //     ⚠ **つまりサイト内の移動**（⚠ 地図から深掘りへ進むと `?q=` が付く）。
+    //   ⚠ **保存した場所からの再訪も、⚠ こちらの検査も、⚠ 同じ `link` になる。**
+    説明: "⚠ link は URL に場所が入っていたもの。⚠ 共有リンクだけではない（⚠ サイト内の移動・保存からの再訪・こちらの検査も入る）",
     sql: `SELECT created_at AS 日, event_type AS 出来事, entry_point AS 入口, COUNT(*) AS n
           FROM events_simple
           WHERE created_at >= date('now', '-${DAYS} days') AND entry_point IS NOT NULL
@@ -246,7 +277,7 @@ const 打つ = 打つを作る(一度だけ叩く, (e) => 読めなかった理�
 
 // ⚠ **検査から呼べるようにする**（⚠ 幅の計算は、⚠ 目でしか分からないので数で固定する）。
 //   ⚠ **叩く側（wrangler）は呼ばない。**⚠ **本番の DB を検査が触らない。**
-export const __test = { 見た目の幅, 詰める, 表にする, 入口, 問い, 読めなかった理由, 打つを作る };
+export const __test = { 見た目の幅, 詰める, 表にする, 入口, 入口を作る, 問い, 読めなかった理由, 打つを作る };
 
 // ⚠ **直に走らせたときだけ、⚠ 実際に叩く。**
 //   ⚠ **`import` しただけで wrangler を呼ばない**（⚠ 検査が本番の DB を触りに行く）。
