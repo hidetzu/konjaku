@@ -4,9 +4,16 @@
      lastmod / changefreq / priority は書かない。どれも任意の項目で、
      手で書くと必ず古くなる。分からないことを、分かっているように書かない。
 
-     ⚠ robots.txt はこのリポジトリに置かない。配信の側が既に返しており、
-       こちらが置くと同じ塊へ連結されて、あちらの拒否を打ち消しうる。
-       だから、この一覧の在りかは robots.txt では知らせない。 -->
+     ⚠ この一覧の在りかは robots.txt が知らせる（2026-10-07 に変えた。docs/adr/0111）。
+
+       前は「robots.txt を置かない・だから在りかも知らせない」と決めていた。
+       配信の側が既に返しており、こちらが置くと同じ塊へ連結されて、
+       あちらの拒否を打ち消しうる、という理由だった。
+
+       その前提が消えた。Cloudflare が 2026-09-15 に Managed robots.txt をやめ、
+       生成分を BEGIN/END で囲んで先頭へ前置する形にした。連結して打ち消される形ではない。
+       そして 2026-10-07 に、返す側がいなくなって 404 になった。
+       外の設定に預けると、消えたことに気づけない。だから自分の配信物として持つ。 -->
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url><loc>https://konjaku.hidetzu.work/</loc></url>
   <url><loc>https://konjaku.hidetzu.work/about</loc></url>
