@@ -203,7 +203,10 @@ export const tally = report.tally;
 
 // ---------- 読む先 ----------
 // ⚠ **`public/` を 1 回だけ読む。**⚠ 節ごとに読み直さない。
-const pubFiles = await readdir(PUB);
+// ⚠ **下の階も見る**（2026-10-10。hidetzu/konjaku#535）。⚠ **`public/place/` に生成物を置いたため。**
+//   ⚠ **前は直下だけで、⚠ 下の階に置いた画面は、⚠ どの検査の網にも掛からなかった。**
+//   ⚠ **実測（2026-10-10）**: ⚠ **再帰で 34 件・直下だけで 33 件。**⚠ **増えるのは `place/` の 1 枚。**
+const pubFiles = await readdir(PUB, { recursive: true });
 export const htmlFiles = pubFiles.filter((f) => extname(f) === ".html");
 export const jsFiles = pubFiles.filter((f) => extname(f) === ".js");
 export const src = {};
