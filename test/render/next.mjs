@@ -1205,6 +1205,45 @@ CASES.push({
   },
 });
 
+CASES.push({
+  // ⚠ **場所のリンクも、⚠ 共有シートへ URL だけを渡す**（2026-10-10 に足した）。
+  //   ⚠ **手渡し（`/saved` → `/take#…`）には、⚠ 同じ主張の検査が既にある**
+  //     （「手渡しのリンクは、共有シートへ URL だけを渡す」）。
+  //   ⚠ **こちら（トップの「送る」）には無かった。**⚠ **だから、⚠ 字を添えても何も落ちない。**
+  // ⚠ **なぜ添えてはいけないか**（⚠ Owner が実機で 2 度踏んだ。2026-08-31 に主張を入れ替えた）:
+  //   ⚠ **受け取ったアプリが、⚠ 題・説明・URL をつなげて 1 本の字にする。**
+  //   ⚠ **つなぎ方は向こうが決めるので、⚠ こちらでは前にも後ろにも置けない。**
+  //   ⚠ **2 度目は URL の末尾に字が付いていて、⚠ 貼っても開けなかった。**
+  // ⚠ **手元の Chromium に `navigator.share` は無い。**⚠ **上のケースは写す道しか通っていない。**
+  //   ⚠ **持っているふりをして、⚠ 渡す荷物を見る。**
+  name: "場所のリンクも、共有シートへ URL だけを渡す",
+  path: `/?${TOYOSU}`, origin: NEXT_BASE, viewport: SP,
+  setup: (page) => page.addInitScript(() => {
+    globalThis.__渡した = null;
+    Object.defineProperty(navigator, "share", {
+      configurable: true,
+      value: async (d) => { globalThis.__渡した = d; },
+    });
+  }),
+  async check(page) {
+    await waitAnswer(page);
+    // ⚠ **答えが出てから押す**（⚠ 判定が出ていない場所では、⚠ そもそも押せる形にしていない）。
+    await 待つ(page, () => !document.getElementById("share").hidden, "送る");
+    // ⚠ **板が落ち着くまで待つ**（⚠ 明治期の往復が残っているうちは、⚠ 見出しが差し替わる）。
+    await waitEras(page);
+    await page.locator("#share").click();
+    await 待つ(page, () => globalThis.__渡した, "共有シートへ渡すもの");
+    const 渡した = await page.evaluate(() => globalThis.__渡した);
+    const キー = Object.keys(渡した).sort().join(",");
+    must(キー === "url", `URL 以外も渡している（${キー}）。⚠ 貼ったときに 1 本につながる`);
+    must(/[?&]ll=/.test(渡した.url ?? ""),
+      `渡したものに場所が入っていない: ${String(渡した.url).slice(0, 60)}`);
+    // ⚠ **地名を入れない**（⚠ 共有シートの先に地名が残る。⚠ `docs/adr/0008` の主旨）
+    must(!/豊洲/.test(渡した.url), `渡した URL に地名が入っている: ${渡した.url.slice(0, 60)}`);
+    return `渡したのは ${キー} だけ（${渡した.url.length} 文字）`;
+  },
+});
+
 // ⚠ **広い幅（帰宅後）**。⚠ **`docs/adr/0048` は「散歩＝スマホ、⚠ 家＝PC＝掘る」と分けている。**
 //   ⚠ **実測（2026-08-29・1280×950）**: ⚠ **スマホの形が横に伸びているだけだった。**
 //     ⚠ 答えの 1 文が 1238px 幅の 1 行 ／ ⚠ 年代が 1 つ 173px ／ ⚠ 右側の空きが 8px。
