@@ -105,6 +105,17 @@
   meLabel.className = "me-label";
   meLabel.textContent = "ここ";
   map.appendChild(meLabel);
+  // ⚠ **境目の印**（2026-10-10。`docs/adr/0092` の 1 行を、⚠ 地図の上でも示す）。
+  //   ⚠ **`.me` と同じ段に置く**（⚠ `canvas#face` より前に append する＝塗りに洗われる側）。
+  //   ⚠ **ただし位置は経緯度から出す**（⚠ `.me` は `left:50%` の画面固定）。
+  //   ⚠ **字を持たない。**⚠ **方角も距離も区分名も、⚠ `#edge` が字で全部言っている**
+  //     （⚠ ここに字を足すと、⚠ 同じことを 2 か所で言う）。⚠ **だから `aria-hidden`。**
+  //   ⚠ **押せない**（`docs/adr/0026` / `docs/adr/0092`）。⚠ **ここは「行き先」ではない。**
+  const edgeMark = document.createElement("div");
+  edgeMark.className = "edge-mark";
+  edgeMark.setAttribute("aria-hidden", "true");
+  edgeMark.hidden = true;
+  map.appendChild(edgeMark);
 
   // ⚠ **地形分類はベクタタイル（geojson）で、⚠ 画像タイルが無い。**
   //   ⚠ **色で塗るには、⚠ 自分で描く**（⚠ この縦切りでは canvas に描く）。
@@ -136,9 +147,13 @@
   new ResizeObserver(() => { layoutAim(); draw(); }).observe(card);
   addEventListener("resize", () => { layoutAim(); draw(); });
 
+  // ⚠ **いま地図が映している左上と大きさ**（⚠ `draw()` が毎回入れ直す）。
+  //   ⚠ **`draw()` の外から印を置き直すときに要る**（⚠ 答えは `draw()` と別の時計で返ってくる）。
+  const 画面 = { left: 0, top: 0, w: 0, h: 0 };
   function draw() {
     const w = map.clientWidth, h = map.clientHeight;
     const left = cx - w / 2, top = cy - aimY;
+    画面.left = left; 画面.top = top; 画面.w = w; 画面.h = h;
     const x0 = Math.floor(left / TILE), x1 = Math.floor((left + w) / TILE);
     const y0 = Math.floor(top / TILE), y1 = Math.floor((top + h) / TILE);
     for (const layer of layers) {
@@ -165,8 +180,33 @@
     //   ⚠ **重ねると、⚠ いまの区分が、⚠ その年代の写真の上の判定に読める。**
     //   ⚠ **描くのをやめるだけでは足りない。**⚠ **canvas は前に塗った絵を持ったまま。**
     //     ⚠ 実際に踏んだ（2026-08-29）: ⚠ 1936–42 の写真の全面に、⚠ 旧水部の青が乗っていた。
+    境目を置く(left, top, w, h);
     if (era) { face.getContext("2d").clearRect(0, 0, face.width, face.height); return; }
     drawFace(left, top, w, h);
+  }
+
+  // ⚠ **境目の印を置き直す**（2026-10-10）。
+  //
+  // ⚠ **描くのはここ 1 か所。**⚠ **`drawEdge` は経緯度を控えるだけ。**
+  //   ⚠ **`drawFace` は `drawSeq`、`drawEdge` は `境目の番` と、⚠ 別の世代印を持っている。**
+  //   ⚠ **同じ canvas に 2 人が書くと、⚠ どちらが最後か決まらない**（`.claude/rules/javascript.md`）。
+  //   ⚠ **だから canvas ではなく DOM。**⚠ **`draw()` は指を動かすたび走るので、⚠ 印は地物に貼りつく。**
+  //
+  // ⚠ **出す条件は 1 つ**: ⚠ **`#edge` が出ていて、⚠ 写真を出していないとき。**
+  //   ⚠ **`#edge` の出す／出さないは `drawEdge` が決める。**⚠ **印はそれに従うだけ**（正本を 2 つ持たない）。
+  //   ⚠ **写真の上には出さない。**⚠ **その年代にこの境目があった、と読める**（`top.js` の `clearRect` と同じ理由）。
+  //
+  // ⚠ **画面の外では置かない。**⚠ **`#map` は `overflow:hidden` を持っていない**（`top.css`）。
+  //   ⚠ **外に子を置くと、⚠ `documentElement.scrollWidth` が伸びて横にあふれる。**
+  //   ⚠ **上限 600m は z16 で 309px。**⚠ **375px 幅の半分（187.5px）を超えうる。**
+  function 境目を置く(left, top, w, h) {
+    const 出す = !!境目の点 && !era && !edgeEl.hidden;
+    if (!出す) { edgeMark.hidden = true; return; }
+    const x = lon2px(境目の点[0]) - left, y = lat2px(境目の点[1]) - top;
+    if (x < 0 || x > w || y < 0 || y > h) { edgeMark.hidden = true; return; }
+    edgeMark.style.left = `${x}px`;
+    edgeMark.style.top = `${y}px`;
+    edgeMark.hidden = false;
   }
 
   // ⚠ **押された年代の写真タイルを敷く。**⚠ **年代が変わったら、⚠ 前の年代の絵を残さない。**
@@ -518,17 +558,31 @@
   //   出せない土地では、行ごと出さない。出せない理由も書かない。
   //   古い結果で、いまの画面を上書きしない（.claude/rules/javascript.md）。
   let 境目の番 = 0;
+  // ⚠ **境目の最短点**（`[経度, 緯度]`）。⚠ **`border.js` が返したものを控えるだけ。**
+  //   ⚠ **こちらで計算し直さない**（掟 6）。⚠ **描くのは `境目を置く()` の 1 か所。**
+  let 境目の点 = null;
   async function drawEdge(lon, lat) {
     const 番 = ++境目の番;
     edgeEl.hidden = true;
+    // ⚠ **前の場所の点を、⚠ 次の場所へ持ち越さない**（⚠ 投げる前に消す）。
+    //   ⚠ **消しておけば、⚠ 返ってくるまでのあいだ印は出ない**（⚠ 字も出ていない）。
+    境目の点 = null;
+    境目を置き直す();
     const r = await Konjaku.border(lon, lat).catch(() => null);
     if (番 !== 境目の番) return;
     if (!r?.ok || !r.value || !r.from) return;
+    境目の点 = Array.isArray(r.点) ? r.点 : null;
     // 字は answer.js が持つ。ここでは何を渡すかだけ決める。
     edgeText.textContent = KonjakuAnswer.BORDER.一行(
       r.方角, KonjakuAnswer.距離の字(r.m), r.value);
     edgeEl.hidden = false;
+    境目を置き直す();
   }
+
+  // ⚠ **`draw()` の外から、⚠ 印だけ置き直す口。**
+  //   ⚠ **答えは `draw()` と別の時計で返ってくる**ので、⚠ そのとき `left` / `top` を持っていない。
+  //   ⚠ **`draw()` が控えた `画面` から読む**（⚠ 計算し直さない）。
+  const 境目を置き直す = () => 境目を置く(画面.left, 画面.top, 画面.w, 画面.h);
 
   // 見出しと 2 行目。問いへの近さ順（answer.js の lines が字を決める）。
   //   ここでは字を書かない。何を渡すかだけ決める（.claude/rules/domain.md）。
