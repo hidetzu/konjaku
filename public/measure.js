@@ -102,7 +102,20 @@
   const 流入元 = ({ from = null, referrer = "" } = {}) => {
     const 印 = from ? FROM[String(from).toLowerCase()] : null;
     if (印) return 印;
-    if (!referrer) return "direct";
+    // ⚠ **知らない印が付いていたら、⚠ `direct` に落とさない**（2026-10-10 に直した）。
+    //   ⚠ **前は、⚠ 列挙に無い `?from=` が `direct` になっていた。**
+    //   ⚠ **`direct` は「どこからも来ていない」の意味で、⚠ `npm run gate` は数えない**
+    //     （⚠ こちらの作業と区別できないので）。⚠ **その訪問は、⚠ 流入に数えられない。**
+    //   ⚠ **新しい置き場へリンクを貼ったとき**（⚠ `?from=note` など。⚠ まだ列挙に無い）、
+    //     ⚠ **その先が Referer を落とす造りだと、⚠ 流入そのものが見えなくなる。**
+    //   ⚠ **`?from=` が在ること自体が「こちらが貼ったリンクから来た」という観測。**
+    //     ⚠ **知らないのは「どこから」だけ。**⚠ **知らないことを「来ていない」にしない**
+    //     （`CLAUDE.md` §1）。
+    //   ⚠ **順番は変えない**（⚠ 印 → ホスト名 → どちらも無い。Owner 判断 2026-09-06）。
+    //     ⚠ **知らない印でも、⚠ ホスト名が読めるならそちらが正しい**
+    //     （⚠ 例: `?from=note` を検索で見つけて来た人は `search`）。
+    const 知らない印 = !!from && !印;
+    if (!referrer) return 知らない印 ? "other" : "direct";
     let host = "";
     try { host = new URL(referrer).hostname; } catch { return "other"; }
     for (const [印, 名] of HOSTS) if (印.test(host)) return 名;
