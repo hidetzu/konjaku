@@ -33,8 +33,12 @@
 対象:
 
 - 「今昔」「konjaku」という名称
-- `public/favicon.svg` / `icon-192.png` / `icon-512.png` / `icon-maskable.png` /
-  `ogp.png` / `ogp-peel.png`
+- `public/favicon.svg` / `apple-touch-icon.png` / `ogp.png`
+
+⚠ **2026-10-10 に、⚠ 実在する画像へ追随させた。**
+⚠ **`icon-192.png` / `icon-512.png` / `icon-maskable.png` / `ogp-peel.png` は
+2026-09-01 の v0.1.0 取り込みで落ち、⚠ 代わりに `apple-touch-icon.png` が入っている**
+（hidetzu/konjaku#438。`docs/adr/0080`）。⚠ **対象を狭めたのではなく、⚠ 画像が入れ替わった。**
 
 これらの**画像そのものの転載・改変・fork での利用**を含めて、条件は
 [`TRADEMARKS.md`](TRADEMARKS.md) に書いてある。
