@@ -570,6 +570,52 @@ head("1.9 計測の集計（訪問の入口）");
   }
 }
 
+// ---------- 1.9 成長と健康を判定する口（npm run gate） ----------
+head("1.9 成長と健康を判定する口（npm run gate）");
+// ⚠ **`stats` と責務が違う**（2026-10-10。`docs/adr/0112`）。
+//   ⚠ **あちらは「何が起きたか」。**⚠ **ここは「何が言えるか」。**
+// ⚠ **分母が足りなければ「まだ言えない」と言うこと**（`CLAUDE.md` §1）。
+//   ⚠ **実際に踏んだ**: ⚠ 直近 14 日だけを見て「共有ループが回っていない」と繰り返したが、
+//     ⚠ **全期間では 1 件の共有から 2.3 人が開いていた。**
+// ⚠ **叩く側は呼ばない**（⚠ 本番の DB を検査が触らない。`stats` と同じ）。
+{
+  const 欠け = [];
+  const P = join(ROOT, "scripts", "gate.mjs");
+  if (!existsSync(P)) 欠け.push("scripts/gate.mjs が無い");
+  else {
+    const pkg = JSON.parse(await readFile(join(ROOT, "package.json"), "utf8"));
+    if (pkg.scripts?.gate !== "node scripts/gate.mjs")
+      欠け.push(`package.json の gate が "${pkg.scripts?.gate}"`);
+    const src = await readFile(P, "utf8");
+    // ⚠ **書き込む口を持たないこと**（⚠ 読むだけ）
+    for (const 語 of ["INSERT", "UPDATE", "DELETE", "DROP", "--local"])
+      if (new RegExp(`\\b${語}\\b`).test(src.replace(BLOCK_COMMENT, " ").replace(LINE_COMMENT, "$1")))
+        欠け.push(`gate.mjs が ${語} を持っている（⚠ 読むだけの口）`);
+    // ⚠ **叩き方を stats から借りていること**（⚠ 同じ問いに答える実装を 2 つ持たない）
+    if (!/打つを作る/.test(src)) 欠け.push("gate.mjs が、⚠ stats の 打つを作る を使っていない（⚠ やり直しが効かない）");
+
+    const M = await import(P).catch((e) => { 欠け.push(`gate.mjs を読めない: ${e.message}`); return null; });
+    const G = M?.__gate;
+    if (!G) 欠け.push("gate.mjs が __gate を出していない（⚠ この検査が何も見ていない）");
+    else {
+      // ⚠ **分母が足りないときは「まだ言えない」**（⚠ ここが本体）
+      const 少ない = G.判定する({ 訪問: 3, 調べた訪問: 2, 判定: 5, 深掘り訪問: 1, 共有: 0, 保存: 0 });
+      if (少ない.some((x) => x.判定 !== "まだ言えない"))
+        欠け.push(`分母が足りないのに読んでいる: ${少ない.filter((x) => x.判定 !== "まだ言えない").map((x) => x.名).join("、")}`);
+      // ⚠ **足りていれば読める**
+      const 多い = G.判定する({ 訪問: 79, 調べた訪問: 59, 判定: 455, 深掘り訪問: 14, 共有: 10, 保存: 3 });
+      if (多い.some((x) => x.判定 !== "読める"))
+        欠け.push(`分母が足りているのに読めていない: ${多い.filter((x) => x.判定 !== "読める").map((x) => x.名).join("、")}`);
+      // ⚠ **`docs/adr/0010` の 100 を踏襲していること**（⚠ 勝手に緩めない）
+      if (G.最小の分母?.判定 !== 100) 欠け.push(`判定の最小の分母が ${G.最小の分母?.判定}（⚠ docs/adr/0010 は 100）`);
+      // ⚠ **成長の線を持っていること**
+      if (typeof G.止まっている線 !== "number") 欠け.push("成長の線（止まっている線）を持っていない");
+    }
+  }
+  欠け.length ? bad(欠け.join(" ／ "))
+              : ok("成長と健康を、⚠ 分母と閾値に照らして判定する（⚠ 足りなければ、まだ言えないと言う）");
+}
+
 // ---------- 7. 外部から来た文字列を HTML として実行させない ----------
 head("7. 外部から来た文字列");
 // 実際に踏んだ（2026-08-15）。配信物は一切変えず、応答だけ差し替えて広島を開くと、

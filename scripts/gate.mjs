@@ -1,0 +1,129 @@
+// 成長と健康を、閾値に照らして判定する（2026-10-10。`docs/adr/0112`）。
+//
+// ⚠ **`stats` とは責務が違う。**⚠ **あちらは「何が起きたか」。**⚠ **ここは「何が言えるか」。**
+//   ⚠ **同じ問いに答える実装を 2 つ持たない**（`CLAUDE.md` §3）。⚠ **叩く口は stats から借りる。**
+//
+// ⚠ **分母が足りなければ「まだ言えない」と言う。**⚠ **推測で埋めない**（`CLAUDE.md` §1）。
+//   ⚠ **実際に踏んだ**: ⚠ 直近 14 日だけを見て「共有ループが回っていない」と繰り返したが、
+//     ⚠ **全期間では 1 件の共有から 2.3 人が開いていた**（2026-10-10 に気づいた）。
+//
+// ## 使い方
+//
+//   npm run gate            ⚠ 全期間で判定する
+//   npm run gate -- --sql   ⚠ 打つ SQL を出すだけ（⚠ 叩かない）
+import { __test } from "./stats.mjs";
+
+const SQL_ONLY = process.argv.includes("--sql");
+
+// ⚠ **1 本で足りる。**⚠ **問いごとに叩くと、⚠ 1 本目が落ちる癖に何度も当たる**
+//   （⚠ `docs/adr` には無いが、⚠ 5 回続けて踏んでいる。`scripts/stats.mjs` の `打つ`）。
+const SQL = `
+  SELECT COUNT(DISTINCT session_id) AS 訪問,
+         COUNT(DISTINCT CASE WHEN event_type='map_opened' THEN session_id END) AS 調べた訪問,
+         SUM(CASE WHEN event_type='map_opened' THEN 1 ELSE 0 END) AS 判定,
+         COUNT(DISTINCT CASE WHEN event_type='deep_accessed'
+                               OR (event_type='page_load'
+                                   AND json_extract(metadata,'$.page')='deep')
+                             THEN session_id END) AS 深掘り訪問,
+         SUM(CASE WHEN event_type='shared' THEN 1 ELSE 0 END) AS 共有,
+         SUM(CASE WHEN event_type='save_place' THEN 1 ELSE 0 END) AS 保存,
+         SUM(CASE WHEN entry_point='link' THEN 1 ELSE 0 END) AS 共有リンク,
+         COUNT(DISTINCT CASE WHEN referrer NOT IN ('direct','konjaku')
+                             THEN session_id END) AS 外からの訪問,
+         COUNT(DISTINCT created_at) AS 日数,
+         COUNT(DISTINCT CASE WHEN created_at >= date('now','-14 days')
+                               AND referrer NOT IN ('direct','konjaku')
+                             THEN session_id END) AS 直近14日の外から
+  FROM events_simple WHERE session_id IS NOT NULL`;
+
+// ⚠ **評価できる最小の分母**（`docs/adr/0112`）。⚠ **`docs/adr/0010` の 100 を踏襲する。**
+const 最小の分母 = { 訪問: 50, 判定: 100 };
+
+// ⚠ **成長が止まっていると見なす線**（2026-10-10）。
+//   ⚠ **実測から置いた**: ⚠ 掲載の新着期間（09-06〜09-10）は 1 日 5.8 件、
+//     ⚠ そのあと（09-11〜10-08）は 1 日 0.17 件だった。
+//   ⚠ **「いくつなら良いか」は決められない**（⚠ 比べる相手がいない。`CLAUDE.md` §6）。
+//   ⚠ **決めたのは「止まっているかどうか」の線だけ。**
+const 止まっている線 = 0.5;   // ⚠ 1 日あたりの外からの訪問
+
+const 率 = (a, b) => (b ? (a / b) * 100 : null);
+const 書く = (s) => process.stdout.write(s + "\n");
+
+const 判定する = (r) => {
+  const 行 = [];
+  const 足す = (名, 分子, 分母, 分母の名) => {
+    const 足りている = 分母 >= (最小の分母[分母の名] ?? 50);
+    行.push({ 名, 分子, 分母, 分母の名, 値: 率(分子, 分母),
+              判定: 足りている ? "読める" : "まだ言えない" });
+  };
+  足す("調べた率", r.調べた訪問, r.訪問, "訪問");
+  足す("深掘り率", r.深掘り訪問, r.訪問, "訪問");
+  足す("保存率",   r.保存,       r.訪問, "訪問");
+  足す("共有率",   r.共有,       r.判定, "判定");
+  return 行;
+};
+
+export const __gate = { SQL, 最小の分母, 止まっている線, 率, 判定する };
+
+// ⚠ **直に走らせたときだけ叩く**（⚠ `import` しただけで本番の D1 を触らない。`stats.mjs` と同じ形）
+const 直に走らせた = process.argv[1]
+  && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop());
+if (直に走らせた) {
+  if (SQL_ONLY) { 書く(SQL.replace(/\s+/g, " ")); process.exit(0); }
+
+  const { execFileSync } = await import("node:child_process");
+  // ⚠ **叩き方と、⚠ やり直しは stats.mjs が持つ。**⚠ **ここで組み立て直さない**（掟 6）。
+  const 叩く = (sql) => {
+    const out = execFileSync("npx", ["--yes", "wrangler", "d1", "execute", "konjaku",
+      "--remote", "--json", "--command", sql.replace(/\s+/g, " ")],
+      { encoding: "utf8", maxBuffer: 1 << 24 });
+    const i = out.indexOf("[");
+    if (i < 0) throw new Error(`wrangler の返りを読めない: ${out.slice(0, 200)}`);
+    return JSON.parse(out.slice(i))[0]?.results ?? [];
+  };
+  const やり直し = [];
+  const 打つ = __test.打つを作る(叩く, (e) => __test.読めなかった理由(e, 120), やり直し);
+
+  let r;
+  try { r = 打つ(SQL, "成長と健康")[0]; }
+  catch (e) { 書く(`⚠ 読めなかった: ${__test.読めなかった理由(e)}`); process.exit(1); }
+
+  書く(`成長と健康（全期間 ／ ${new Date().toISOString().slice(0, 10)} 時点）\n`);
+
+  // ---- 成長（流入）----
+  const 日数 = r.日数 || 1;
+  const 一日あたり = r.外からの訪問 / 日数;
+  const 直近 = r.直近14日の外から / 14;
+  書く("■ 成長（⚠ 外からの訪問だけを数える。⚠ direct はこちらの作業と区別できない）");
+  書く(`  全期間      ${r.外からの訪問} 件 / ${日数} 日 = 1 日 ${一日あたり.toFixed(2)} 件`);
+  書く(`  直近 14 日   ${r.直近14日の外から} 件 / 14 日 = 1 日 ${直近.toFixed(2)} 件`);
+  書く(`  判定        ${直近 >= __gate.止まっている線 ? "動いている" : "⚠ 止まっている"}`
+     + `（線: 1 日 ${__gate.止まっている線} 件）\n`);
+
+  // ---- 健康（率）----
+  書く("■ 健康（⚠ 分母が足りなければ、⚠ 言わない）");
+  for (const x of 判定する(r)) {
+    const 値 = x.値 === null ? "—" : `${x.値.toFixed(1)}%`;
+    書く(`  ${x.名.padEnd(8)} ${String(x.分子).padStart(3)}/${String(x.分母).padEnd(4)} ${値.padStart(6)}`
+       + `  ${x.分母の名} ${x.分母} / 最小 ${最小の分母[x.分母の名]}  ${x.判定}`);
+  }
+  書く("");
+
+  // ---- ループ ----
+  書く("■ 共有のループ");
+  書く(`  共有された        ${r.共有} 件`);
+  書く(`  共有リンクで開かれた ${r.共有リンク} 件`
+     + (r.共有 ? `（${(r.共有リンク / r.共有).toFixed(1)} 倍）` : ""));
+  書く("");
+
+  // ---- 何をするか ----
+  const 健康 = 判定する(r).filter((x) => x.判定 === "読める");
+  書く("■ この数字で言えること（`docs/adr/0112`）");
+  if (!健康.length) 書く("  ⚠ 分母が足りない。⚠ まだ何も言えない");
+  else if (直近 < __gate.止まっている線)
+    書く("  ⚠ 健康は読める。⚠ 成長が止まっている。⚠ 流入を増やす手だけを採る");
+  else 書く("  動いている。⚠ 足すと、⚠ 何が効いたか分からなくなる");
+  書く("");
+
+  for (const y of やり直し) 書く(`⚠ やり直して通った（1 回目: ${y.理由}）`);
+}
