@@ -12,14 +12,18 @@
 ## 対象
 
 - **「今昔」** という名称（`konjaku` を含む）
-- `public/favicon.svg`
-- `public/icon-192.png` / `icon-512.png` / `icon-maskable.png`
-- `public/ogp.png` / `public/ogp-peel.png`
+- `public/favicon.svg` / `public/apple-touch-icon.png`
+- `public/ogp.png`
 - 公式サイト <https://konjaku.hidetzu.work> を指す表示
 
 ## 画像そのものの扱い
 
 ⚠ 上のアイコン・OGP 画像は、**このサービスを指すものとして**置いてある。
+
+⚠ **2026-10-10 に、⚠ 実在する画像へ追随させた。**
+⚠ **`icon-192.png` / `icon-512.png` / `icon-maskable.png` / `ogp-peel.png` は
+2026-09-01 の v0.1.0 取り込みで落ち、⚠ 代わりに `apple-touch-icon.png` が入っている**
+（hidetzu/konjaku#438）。⚠ **対象を狭めたのではなく、⚠ 画像が入れ替わった。**
 
 - **転載**: この製品を紹介する文脈（記事・発表・比較）ではそのまま使ってよい
 - **改変**: 改変したものを、この製品のロゴとして使わない
