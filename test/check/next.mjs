@@ -1729,7 +1729,65 @@ else {
           + "（⚠ 幅の数は CSS の 1 か所。⚠ 開いた状態は覚えない）");
   }
 
-  // ---- ⚠ ㉔ この先で土地が変わる、が 1 地点だけで、⚠ 探索画面になっていないか ----
+  // ---- ⚠ ㉔-2 「昔の姿」を名指す区分を、⚠ 地図が「それ以外」で塗っていないか ----
+//
+// ⚠ **実際に踏んだ**（2026-10-10・本番・`ll=35.87629,139.60119`）:
+//
+// ```text
+// 答え      「ここは、かつて川が流れていた、低い土地」
+// 凡例      旧河道（ここ）
+// 足元の色   rgba(122,171,106) = #7aab6a = 緑（⚠ **それ以外**）
+// ```
+//
+// ⚠ **カードは「かつて川が流れていた」と言い、⚠ 地図は台地や山地と同じ緑を塗っていた。**
+// ⚠ **同じ形を 2026-08-29 にも踏んでいる**（`public/top.js`「⚠ カードは「ここは 旧水部」と
+//   ⚠ 言っているのに、⚠ 地図は別のことを言っていた」）。
+//
+// ⚠ **原因は、⚠ 同じ主題に答える一覧が 2 つあって、⚠ 突き合わせていなかったこと**（掟 6）:
+//
+// ```text
+// 地図の色   WATERY          （verify.js）  水部 旧水部 河川敷･浜 湖 干拓地 落堀   ⚠ 旧河道が無い
+// 見出し     PAST_IN_TERRAIN （answer.js）  旧水部 旧河道 干拓地                   ⚠ 在る
+// ```
+//
+// ⚠ **2 つは別の問いに答えている**（⚠ 「水に由来するか」と「昔の姿を名指すか」）ので、
+//   ⚠ **同じ一覧にはできない。**⚠ **だから包含だけを見る。**
+// ⚠ **`PAST_IN_TERRAIN` は「昔は水だった」を名指す 3 つに限ってある**
+//   （`answer.js`「⚠ 「切土地（前は斜面）」「農耕平坦化地（前は山）」は入れない」）。
+//   ⚠ **だから、⚠ その 3 つは必ず「水に由来する」側に入っていなければならない。**
+{
+  const 欠け = [];
+  // ⚠ **コメントを先に落とす**（⚠ 説明に書いた区分名を、⚠ 検査が拾わないため。`CLAUDE.md` §5）
+  const 読む = (f) => readFileSync(join(NEXT, f), "utf8")
+    .replace(BLOCK_COMMENT, " ").replace(HEAD_COMMENT, " ");
+  const 素v = 読む("verify.js"), 素a = 読む("answer.js");
+  const 取る = (src, 名, 形) => {
+    const m = src.match(形);
+    return m ? [...m[1].matchAll(/"([^"]+)"/g)].map((x) => x[1]) : null;
+  };
+  const watery = 取る(素v, "WATERY", /const WATERY = new Set\(\[([^\]]*)\]\)/);
+  const past = 取る(素a, "PAST_IN_TERRAIN", /const PAST_IN_TERRAIN = \[([^\]]*)\]/);
+  if (!watery?.length) 欠け.push("verify.js の WATERY を読めない（⚠ この検査が何も見ていない）");
+  if (!past?.length) 欠け.push("answer.js の PAST_IN_TERRAIN を読めない（⚠ この検査が何も見ていない）");
+  if (watery?.length && past?.length) {
+    const 漏れ = past.filter((n) => !watery.includes(n));
+    if (漏れ.length)
+      欠け.push(`「昔の姿」を名指す区分が、⚠ 地図では「それ以外」に塗られる: ${漏れ.join("、")}`
+        + "（⚠ カードと地図が別のことを言う）");
+    // ⚠ **綴りは `landform.json` が正本**（⚠ どちらの一覧も、⚠ そこに在る名前であること）
+    const 表 = JSON.parse(readFileSync(join(NEXT, "data", "landform.json"), "utf8"));
+    const 名 = new Set(Object.values(表.codes));
+    for (const [一覧, xs] of [["WATERY", watery], ["PAST_IN_TERRAIN", past]])
+      for (const n of xs)
+        if (!名.has(n)) 欠け.push(`${一覧} の「${n}」が landform.json に無い（⚠ 綴りがずれている）`);
+  }
+  欠け.length
+    ? bad(欠け.join(" ／ "))
+    : ok(`「昔の姿」を名指す ${past.length} 区分は、⚠ 地図でも「水に由来する」側に塗られる`
+       + `（⚠ WATERY ${watery.length} 区分に含まれる）`);
+}
+
+// ---- ⚠ ㉔ この先で土地が変わる、が 1 地点だけで、⚠ 探索画面になっていないか ----
   // ⚠ **v0.3.0 のテーマ**（2026-09-05。Owner 判断。`docs/adr/0092`）。
   //   ⚠ **`/peel` の「別の場所を探す導線を足さない」を、⚠ このテーマのために動かした。**
   //   ⚠ **動かしたぶん、⚠ ガードレールを検査で固定する**（⚠ 規則だけでは約束にしかならない）。
