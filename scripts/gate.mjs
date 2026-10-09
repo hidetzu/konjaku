@@ -53,6 +53,9 @@ const 窓 = 窓を読む(process.argv);
 const SQL = `${__test.入口を作る(null, { 最初の入口も: true })}
   SELECT COUNT(DISTINCT e.session_id) AS 訪問,
          COUNT(DISTINCT CASE WHEN e.event_type='map_opened' THEN e.session_id END) AS 調べた訪問,
+         COUNT(DISTINCT CASE WHEN e.event_type='map_opened'
+                               AND e.entry_point IN ('map','search','here')
+                             THEN e.session_id END) AS 自分で選んだ訪問,
          SUM(CASE WHEN e.event_type='map_opened' THEN 1 ELSE 0 END) AS 判定,
          COUNT(DISTINCT CASE WHEN e.event_type='deep_accessed'
                                OR (e.event_type='page_load'
@@ -161,13 +164,21 @@ const 判定する = (r) => {
               判定: 足りている ? "読める" : "まだ言えない" });
   };
   足す("調べた率", r.調べた訪問, r.訪問, "訪問");
+  足す("自分で選んだ率", r.自分で選んだ訪問, r.訪問, "訪問");
   足す("深掘り率", r.深掘り訪問, r.訪問, "訪問");
   足す("保存率",   r.保存,       r.訪問, "訪問");
   足す("共有率",   r.共有,       r.判定, "判定");
   return 行;
 };
 
-export const __gate = { SQL, 最小の分母, 止まっている線, 率, 判定する, 成長を判定する, 共有を読む, 窓を読む };
+// ⚠ **自分で場所を選んだと数える入口**（2026-10-10）。
+//   ⚠ **`default` と `link` は数えない。**⚠ **どちらも人が選んでいない**
+//     （`default` は読み込んだだけ、`link` は URL に場所が入っていた）。
+//   ⚠ **一覧は `public/measure.js` の `ENTRIES` の部分集合。**⚠ **検査が突き合わせる。**
+const 自分で選んだ入口 = ["map", "search", "here"];
+
+export const __gate = { SQL, 最小の分母, 止まっている線, 率, 判定する, 成長を判定する, 共有を読む, 窓を読む,
+                        自分で選んだ入口 };
 
 // ⚠ **直に走らせたときだけ叩く**（⚠ `import` しただけで本番の D1 を触らない。`stats.mjs` と同じ形）
 const 直に走らせた = process.argv[1]
@@ -218,6 +229,12 @@ if (直に走らせた) {
 
   // ---- 健康（率）----
   書く("■ 健康（⚠ 分母が足りなければ、⚠ 言わない）");
+  // ⚠ **「調べた率」は、⚠ 人が調べた率ではない**（2026-10-10 に気づいた）。
+  //   ⚠ **地図は読み込んだだけで既定の地点の答えを出し、⚠ そこで `map_opened` が飛ぶ**
+  //     （`public/top.js:75` の `出どころ = "default"`）。⚠ **つまり、⚠ ほぼ全員が数えられる。**
+  //   ⚠ **自分で場所を選んだ訪問は別に数える**（⚠ 地図を動かした・検索した・いまここ）。
+  //   ⚠ **こちらが「次の場所を見に行ったか」を表す。**⚠ **混ぜない。**
+  書く("  ⚠ 調べた率は、⚠ 既定の地点の答えも数える（⚠ 読み込むだけで出る）");
   for (const x of 判定する(r)) {
     const 値 = x.値 === null ? "—" : `${x.値.toFixed(1)}%`;
     書く(`  ${x.名.padEnd(8)} ${String(x.分子).padStart(3)}/${String(x.分母).padEnd(4)} ${値.padStart(6)}`
