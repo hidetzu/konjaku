@@ -36,7 +36,12 @@ const 窓を読む = (argv, 今日 = new Date()) => {
   // ⚠ **日数は、⚠ 始めの日も入れて数える**（⚠ 当日に打ったなら 1 日）。
   const 日数 = Math.floor((Date.UTC(今日.getUTCFullYear(), 今日.getUTCMonth(), 今日.getUTCDate())
     - 始め.getTime()) / 86400000) + 1;
-  if (日数 < 1) return { 誤り: `--since が先の日（${a}）` };
+  // ⚠ **今日が何日かを添える**（2026-10-10 に足した。⚠ **自分で躓いた**）。
+  //   ⚠ **記録の日付は UTC**（`public/measure.js` の `訪問`。⚠ `toISOString().slice(0, 10)`）。
+  //   ⚠ **日本時間の朝 9 時より前は、⚠ UTC はまだ前の日。**
+  //   ⚠ **出した日を `--since` に渡したら「先の日」と言われて、⚠ 理由が分からなかった。**
+  if (日数 < 1)
+    return { 誤り: `--since が先の日（${a}）。⚠ 記録は UTC の日付で、⚠ 今日は ${今日.toISOString().slice(0, 10)}` };
   return { 種類: "から", 日数, 名: `${a} から ${日数} 日`, SQL: `'${a}'` };
 };
 const 窓 = 窓を読む(process.argv);
