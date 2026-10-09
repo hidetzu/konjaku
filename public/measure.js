@@ -61,6 +61,10 @@
     "tsukutta.app",  // ?from=tsukutta / tsukutta.app
     "konjaku",       // 同じサイトの中から
     "search",        // 検索から（⚠ どの検索かは残さない。2026-10-10 に足した）
+    "share",         // 共有された URL から（⚠ 2026-10-10 に足した）
+                     //   ⚠ **「送る」から出た URL だけに付く印**（`public/top.js` の shareUrl）。
+                     //   ⚠ **自分の別の端末へ渡す handoff には付けない**（⚠ あれは共有ではない。
+                     //     ⚠ 画面が「自分あてに送るもの」と言っている。`public/saved-page.js`）。
     "other",         // 列挙の外から来た（⚠ どこかは残さない）
     "direct",        // どこからも来ていない（直接開いた・ブックマーク）
   ]);
@@ -92,7 +96,8 @@
   ];
 
   // ?from= の字を、列挙の名前へ直す。
-  const FROM = { "app-village": "app-village", tsukutta: "tsukutta.app", "tsukutta.app": "tsukutta.app" };
+  const FROM = { "app-village": "app-village", tsukutta: "tsukutta.app", "tsukutta.app": "tsukutta.app",
+                 share: "share" };
 
   // 流入元を決める（ハイブリッド。Owner 判断 2026-09-06）。
   //   1 こちらが貼ったリンクの印（?from=）があれば、それ
