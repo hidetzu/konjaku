@@ -517,7 +517,7 @@
     return { ...base, ok: true, state: OK,
       value: tbl?.codes?.[r.toCode] ?? null,
       from: tbl?.codes?.[r.code] ?? null,
-      m: r.m, deg: r.deg, 方角: r.方角,
+      m: r.m, deg: r.deg, 方角: r.方角, 点: r.点,
       evidence: { zoom: z, tiles: 読めた, code: r.code, toCode: r.toCode } };
   }
 
