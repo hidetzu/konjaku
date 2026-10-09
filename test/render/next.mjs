@@ -3842,6 +3842,54 @@ for (const [名, path, 待つの, 要る] of [
   });
 }
 
+// ⚠ **場所のページの答えが、⚠ 地図の答えと食い違わないこと**（2026-10-10。hidetzu/konjaku#535）。
+//
+// ⚠ **これがこの機能の条件。**⚠ **事前に作った答えと、⚠ いま出る答えが違えば、⚠ 嘘を配る。**
+//   ⚠ **判定そのものは 1 か所**（⚠ 生成も本番の画面を開いて写している）。
+//   ⚠ **それでも、⚠ 写したのは作った時点の答え。**⚠ **資料が変われば食い違う。**
+//   ⚠ **静的検査では捕まえられない**（⚠ 片方は本番の判定を走らせないと出ない）。
+CASES.push({
+  name: "場所のページの答えが、⚠ 地図で同じ座標を開いた答えと一致する",
+  path: "/place/tokyo-station", origin: NEXT_BASE, viewport: SP,
+  async check(page) {
+    const 静 = await page.evaluate(() => {
+      const t = (s) => document.querySelector(s)?.textContent?.replace(/\s+/g, " ").trim() ?? null;
+      return {
+        題: document.title,
+        答え: t('[data-ans="head"]'),
+        二行目: t('[data-ans="sub"]'),
+        lang: document.documentElement.lang,
+        canonical: document.querySelector('link[rel="canonical"]')?.getAttribute("href") ?? null,
+        地図へ: document.querySelector('a[href^="/?ll="]')?.getAttribute("href") ?? null,
+        深掘りへ: document.querySelector('a[href^="/deep?ll="]')?.getAttribute("href") ?? null,
+        // ⚠ **画面に ⚠ を出していないこと**（⚠ あれは災害リスクの印。`CLAUDE.md` §4-1）
+        危険の印: (document.querySelector("main")?.textContent ?? "").includes("⚠"),
+      };
+    });
+    must(静.lang === "ja", `日本語だと名乗っていない: ${静.lang}`);
+    must(/東京駅/.test(静.題), `題に地名が入っていない: ${静.題}`);
+    must(静.答え && 静.二行目, `答えが載っていない: ${JSON.stringify(静)}`);
+    must(静.canonical === "https://konjaku.hidetzu.work/place/tokyo-station",
+      `索引の正本が違う: ${静.canonical}`);
+    must(静.地図へ && 静.深掘りへ, "地図・深掘りへの導線が無い");
+    must(!静.危険の印, "画面に ⚠ を出している（⚠ あれは災害リスクの印。CLAUDE.md §4-1）");
+
+    // ⚠ **同じ座標を、⚠ 地図で開く**（⚠ 別の道で得た答えと突き合わせる。`CLAUDE.md` §9）
+    await page.goto(`${NEXT_BASE}${静.地図へ}`, { waitUntil: "domcontentloaded" });
+    await waitAnswer(page);
+    const 動 = await page.evaluate(() => {
+      const t = (s) => document.querySelector(s)?.textContent?.replace(/\s+/g, " ").trim() ?? null;
+      return { 答え: t("#gloss"), 二行目: t("#sub") };
+    });
+    must(静.答え === 動.答え,
+      `答えが食い違う（場所のページ「${静.答え}」／ 地図「${動.答え}」）`
+      + "⚠ 事前に作った答えが古い。⚠ npm run build-place で作り直す");
+    must(静.二行目 === 動.二行目,
+      `2 行目が食い違う（場所のページ「${静.二行目}」／ 地図「${動.二行目}」）`);
+    return `「${静.答え}」／ 2 行目も一致 ／ 題「${静.題.slice(0, 14)}…」`;
+  },
+});
+
 CASES.push({
   // ⚠ **案A の本体**（2026-09-06。Owner 判断）。⚠ **座標は 1 つも送らない。**
   //   ⚠ **画面は座標を持っているので、⚠ 「送っていない」は検査でしか守れない。**

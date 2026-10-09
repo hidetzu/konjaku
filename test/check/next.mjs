@@ -2264,4 +2264,63 @@ else {
           + "（⚠ 縮尺とレイヤ名も、⚠ そこが持つ）");
   }
 
+
+// ---------- 場所ごとのページ（⚠ 事前に作る 1 枚） ----------
+head("場所ごとのページ");
+// ⚠ **2026-10-10 に足した**（hidetzu/konjaku#535。`docs/adr/0115`）。
+//
+// ⚠ **検索での表示回数が 0 だった**（⚠ Search Console・2026-10-10・Owner 確認）。
+//   ⚠ **索引の下地は生きている**（robots.txt 200 ／ sitemap.xml 200 ／ X-Robots-Tag 無し）。
+//   ⚠ **足りないのは「検索される語」**。⚠ **索引にある 4 ページに地名が 1 つも無かった。**
+//
+// ⚠ **ここが見るのは「配っているものの形」だけ。**
+//   ⚠ **答えが合っているかは、⚠ 実描画が見る**（⚠ 本番の判定を走らせないと出ない）。
+//   ⚠ **`npm run build-place -- --check` は CI から呼ばない**
+//     （⚠ 地理院を叩く。⚠ **検査が相手先の答えに依存してはいけない**。`CLAUDE.md` §9）。
+{
+  const 欠け = [];
+  const 作る口 = join(ROOT, "scripts", "build-place.mjs");
+  if (!existsSync(作る口)) 欠け.push("scripts/build-place.mjs が無い");
+  else {
+    // ⚠ **コメントを先に落とす**（`CLAUDE.md` §5。⚠ **落とさないと、⚠ 説明の字を拾う**）。
+    const コード = readFileSync(作る口, "utf8").replace(BLOCK_COMMENT, " ")
+      .split("\n").filter((l) => !/^\s*\/\//.test(l)).join("\n");
+    // ⚠ **取れなかったら作らない**（⚠ 古い答えを配らない。`CLAUDE.md` §1）。
+    //   ⚠ **「字があるか」では足りない**（2026-10-10。⚠ **実際に素通りさせた**）。
+    //   ⚠ **`if (false)` に変えても、⚠ 関数の定義が残っていれば字は見つかる。**
+    //   ⚠ **見るのは、⚠ 出すところで呼んでいるかどうか**（⚠ hidetzu/konjaku#505 と同じ型）。
+    const 使った = (コード.match(/答えが揃っている\s*\(/g) ?? []).length;
+    if (使った < 1)
+      欠け.push("「答えが揃っているか」を、⚠ 定義しただけで使っていない（⚠ 取れなかったときに作ってしまう）");
+    // ⚠ **判定を書いていないこと**（⚠ 本番の画面から写すだけ。`CLAUDE.md` §3）
+    for (const 語 of ["classify", "SWALE", "GROUND_GLOSS", "inRing"])
+      if (new RegExp(`\\b${語}\\b`).test(コード))
+        欠け.push(`作る口が判定を持っている（${語}）。⚠ 本番の画面から写すだけにする`);
+    const pkg = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8"));
+    if (pkg.scripts?.["build-place"] !== "node scripts/build-place.mjs")
+      欠け.push(`package.json の build-place が違う: ${JSON.stringify(pkg.scripts?.["build-place"])}`);
+  }
+
+  // ⚠ **配っている 1 枚**（⚠ 顔ぶれと sitemap の一致は「索引の正本」の節が見ている）
+  const PLACE = join(NEXT, "place");
+  const 枚 = existsSync(PLACE) ? readdirSync(PLACE).filter((f) => f.endsWith(".html")) : [];
+  if (!枚.length) 欠け.push("public/place/ に配るものが無い");
+  for (const f of 枚) {
+    const h = readFileSync(join(PLACE, f), "utf8");
+    if (!/これは生成物。手で直さない/.test(h))
+      欠け.push(`${f} に「生成物」の印が無い（⚠ 手で直されても気づけない）`);
+    if (!/測った日: \d{4}-\d{2}-\d{2}/.test(h))
+      欠け.push(`${f} に測った日が無い（⚠ いつの答えか言えない。CLAUDE.md §6）`);
+    // ⚠ **題に地名が入っていること**（⚠ これが無いと、⚠ 検索される語を持たない）
+    const 題 = h.match(/<title>([^<]+)<\/title>/)?.[1] ?? "";
+    if (!/は昔なんだったのか？/.test(題)) 欠け.push(`${f} の題が決めた形でない: ${題}`);
+    if (/^は昔/.test(題)) 欠け.push(`${f} の題に地名が入っていない: ${題}`);
+  }
+
+  欠け.length
+    ? bad(`場所ごとのページが決めたとおりでない: ${欠け.join(" ／ ")}`)
+    : ok(`場所ごとのページは ${枚.length} 枚（⚠ 生成物の印・測った日・題に地名。`
+        + "⚠ 答えが合っているかは実描画が見る）");
+}
+
 }
