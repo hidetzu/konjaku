@@ -353,6 +353,42 @@ head("1.8 計測を読む口（npm run stats）");
           if (/created_at AS 日|SELECT /.test(印))
             欠け.push(`相手が黙っているとき、⚠ SQL を出している: 「${印.slice(0, 60)}」`);
         }
+        // ⚠ **1 回だけやり直すこと**（2026-10-10。⚠ **5 回続けて 1 本目が落ちた**）。
+        //   ⚠ **黙ってやり直さない。**⚠ **名乗らないと、⚠ どれくらい起きているか分からなくなる。**
+        //   ⚠ **何度も叩かない**（⚠ 相手が落ちているときに迷惑をかける）。
+        //   ⚠ **字面ではなく、⚠ 実際に走らせて回数を数える。**
+        {
+          const 走り = [];
+          const 作る = (落ちる回数) => {
+            let n = 0;
+            return () => { n++; 走り.push(n);
+              if (n <= 落ちる回数) { const e = new Error("Command failed: npx"); e.status = 1; throw e; }
+              return ["ok"]; };
+          };
+          // ⚠ **`打つ` と同じ形を、⚠ ここで組み立て直さない。**⚠ **本体から借りる。**
+          const 打つ = M.__test.打つを作る?.(作る(1), () => "code=1");
+          if (typeof 打つ !== "function") 欠け.push("stats.mjs が 打つを作る を出していない（⚠ やり直しを確かめられない）");
+          else {
+            走り.length = 0;
+            // ⚠ **投げてきたら、⚠ それ自体が「やり直していない」**（⚠ 検査ごと止めない）。
+            //   ⚠ **try で受けないと、⚠ 節が丸ごと落ちて、⚠ 素通りに見える**（`CLAUDE.md` §9）。
+            let r = null, 投げた = null;
+            try { r = 打つ("SELECT 1", "1. 日ごとの本数"); } catch (e) { 投げた = String(e?.message ?? e).slice(0, 60); }
+            if (投げた) 欠け.push(`1 回落ちただけで投げている（⚠ やり直していない）: ${投げた}`);
+            else if (JSON.stringify(r) !== JSON.stringify(["ok"])) 欠け.push(`やり直しても通っていない: ${JSON.stringify(r)}`);
+            if (!投げた && 走り.length !== 2) 欠け.push(`叩いた回数が ${走り.length}（⚠ 2 のはず。⚠ 1 回だけやり直す）`);
+          }
+          // ⚠ **2 回とも落ちたら、⚠ 投げること**（⚠ 握りつぶさない）
+          const 打つ2 = M.__test.打つを作る?.(作る(9), () => "code=1");
+          if (typeof 打つ2 === "function") {
+            走り.length = 0;
+            let 投げた = false;
+            try { 打つ2("SELECT 1", "x"); } catch { 投げた = true; }
+            if (!投げた) 欠け.push("2 回とも落ちたのに、⚠ 投げていない（⚠ 読めなかったと言えない）");
+            if (走り.length > 2) 欠け.push(`落ち続けているのに ${走り.length} 回叩いた（⚠ 2 回まで）`);
+          }
+        }
+
         // ⚠ **wrangler は、⚠ `stdout` に字を返すことがある**（⚠ JSON とは限らない）。
         {
           const 出 = 理由(Object.assign(new Error(頭), { stdout: "Error: D1_ERROR: no such table" }));
