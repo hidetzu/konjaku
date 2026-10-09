@@ -438,6 +438,30 @@ body{
     0 0 0 .625rem color-mix(in srgb, var(--action) 22%, transparent),
     0 2px 6px color-mix(in srgb, var(--shadow) 40%, transparent);
 }
+/* ---- 境目の印（2026-10-10） ----
+   「この先で、土地が変わる」の 1 行が指している場所を、地図の上でも示す。
+
+   ⚠ 細い輪にする。塗った丸にしない。
+     ⚠ 実測で境目は 9〜283m（中央値 100m）。z16 では 4.6〜146px。
+     ⚠ 9m（4.6px）は「ここ」の印（半径およそ 22px）の内側に完全に入る。
+     ⚠ 輪なら、重なっても両方の形が読める。
+
+   ⚠ 大きさは px で決める。m で決めない。
+     ⚠ 面の縁の位置精度は公表されていない。m で決めると、知らない精度を主張することになる。
+
+   ⚠ 線を引かない。向きも作らない。
+     ⚠ border.js が返す deg は足元から境目への向きで、境界線の接線ではない。
+     ⚠ 「この向きに、この形で境が走っている」と形まで主張しない（docs/SPEC.md）。 */
+.edge-mark{
+  position:absolute; transform:translate(-50%, -50%);
+  width:1.25rem; height:1.25rem; border-radius:50%;
+  border:2px solid var(--pin-ring);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--shadow) 45%, transparent),
+    inset 0 0 0 1px color-mix(in srgb, var(--shadow) 45%, transparent);
+  pointer-events:none;
+}
+
 /* 現在地がどれか、字でも言う。色と位置だけで区別しない。 */
 .me-label{
   /* 印と同じ高さに置く。判定している点は縦中央ではなく、答えの板の 24px 上（top.js の layoutAim）。

@@ -4899,6 +4899,20 @@ for (const [名, viewport] of [
             // ⚠ **畳んだ状態のまま**（⚠ この行は畳む側に入れていない）
             開いている: !!document.getElementById("fold")?.open,
             横あふれ: document.documentElement.scrollWidth > document.documentElement.clientWidth,
+            // ⚠ **1 行が指している場所を、⚠ 地図の上でも示す**（2026-10-10）。
+            //   ⚠ **同じ 1 回の判定から出る 2 つの表示なので、⚠ 同じケースで一緒に見る**
+            //     （⚠ 別のケースにすると、⚠ 片方だけ出る形が通る）。
+            印: (() => {
+              const m = document.querySelector(".edge-mark");
+              if (!m || m.hidden || !m.checkVisibility()) return null;
+              const b = m.getBoundingClientRect(), me = document.querySelector(".me").getBoundingClientRect();
+              return { x: b.x + b.width / 2 - (me.x + me.width / 2),
+                       y: b.y + b.height / 2 - (me.y + me.height / 2),
+                       数: document.querySelectorAll(".edge-mark").length,
+                       押せる: m.matches("a, button, input"),
+                       読み上げ: m.getAttribute("aria-hidden"),
+                       字: m.textContent };
+            })(),
           };
         });
         const W = await page.evaluate(() => globalThis.KonjakuAnswer.BORDER);
@@ -4932,8 +4946,21 @@ for (const [名, viewport] of [
         must(!長い.横あふれ, `いちばん長い区分名で横にあふれる: 「${長い.字}」`);
         must(!r.開いている, "板が開いている（⚠ この行は畳む側ではない）");
         must(!r.横あふれ, "画面が横にあふれている");
+        // ⚠ **印が、⚠ 境目の上に在ること**（⚠ 字と絵を突き合わせる）。
+        //   ⚠ **作り物の境目は経度 +0.001 の経線。**⚠ **z16 では 0.001 × 2^16 × 256 / 360 = 46.6px 東。**
+        //   ⚠ **経線への最短点なので、⚠ 南北はずれない。**
+        must(r.印, "1 行は出ているのに、⚠ 地図に印が出ていない");
+        must(r.印.数 === 1, `印が ${r.印.数} 個ある（⚠ 1 地点だけと決めてある）`);
+        must(Math.abs(r.印.x - 46.6) <= 2,
+          `印が境目の上に無い（東へ ${r.印.x.toFixed(1)}px ／ 期待 46.6px）`);
+        must(Math.abs(r.印.y) <= 2, `印が南北にずれている（${r.印.y.toFixed(1)}px ／ 期待 0px）`);
+        // ⚠ **押せない・読み上げない・字を持たない**（⚠ 字は 1 行が全部言っている）
+        must(!r.印.押せる, "印が押せるものになっている（⚠ ここは行き先ではない）");
+        must(r.印.読み上げ === "true", `印に aria-hidden が無い（${r.印.読み上げ}）`);
+        must(r.印.字 === "", `印が字を持っている（「${r.印.字}」。⚠ 1 行と 2 か所で言うことになる）`);
         return `「${r.字}」／ 行 ${r.行}px ／ 板 ${r.板}px ／ 地図 ${r.地図}px`
-          + ` ／ 長い名（${長い.名}）でも 切れ 0・${長い.行}px`;
+          + ` ／ 長い名（${長い.名}）でも 切れ 0・${長い.行}px`
+          + ` ／ 印は東へ ${r.印.x.toFixed(1)}px（期待 46.6）`;
       },
     });
   }
@@ -4957,6 +4984,8 @@ for (const [名, viewport] of [
       await waitAnswer(page);
       await page.waitForTimeout(3000);
       const r = await page.evaluate(() => ({
+        // ⚠ **1 行が出ないときは、⚠ 印も出さない**（⚠ 「無い境目」に印を置かない）
+        印: [...document.querySelectorAll(".edge-mark")].filter((m) => !m.hidden).length,
         出ている: !document.getElementById("edge")?.hidden,
         区分: (document.getElementById("gloss")?.textContent ?? "").trim(),
         板: Math.round(document.getElementById("card").getBoundingClientRect().height),
@@ -4964,10 +4993,126 @@ for (const [名, viewport] of [
       }));
       must(r.区分.length > 2, "判定が出ていない（⚠ この検査が 1 行を見ていない）");
       must(!r.出ている, "別の区分が無いのに、⚠ 1 行が出ている");
+      must(r.印 === 0, `1 行が出ていないのに、⚠ 地図に印が ${r.印} 個ある`);
       // ⚠ **「無い」と言わない**（掟の一行目）
       for (const 悪 of ["境目はありません", "変わりません", "見つかりませんでした"])
         must(!r.全部の字.includes(悪), `「${悪}」と書いている`);
-      return `判定は出る ／ 1 行は出ない（板 ${r.板}px）`;
+      return `判定は出る ／ 1 行は出ない（板 ${r.板}px）／ 印も 0 個`;
+    },
+  });
+
+  // ⚠ **印が、⚠ 地図に貼りついていること**（2026-10-10）。
+  //
+  // ⚠ **印は DOM で置いている。**⚠ **`draw()` が毎回置き直す**（⚠ canvas には描かない）。
+  //   ⚠ **`drawFace` と `drawEdge` は別の時計を持っているので、⚠ canvas を 2 人で書かない。**
+  // ⚠ **ここで見るのは、⚠ 字の検査では見えない 4 つ**:
+  //   ⚠ 地図を動かしたら追いてくる ／ ⚠ 増えない ／ ⚠ 写真の上に出ない ／ ⚠ 画面の外へ置かない
+  CASES.push({
+    name: "境目の印は、⚠ 地図に貼りつき、⚠ 増えず、⚠ 写真の上に出ない",
+    path: `/?${KASUKABE}`, origin: NEXT_BASE, viewport: SP,
+    async setup(page) { await 面を返す3(page, 139.7523 + 0.001); },
+    async check(page) {
+      await waitAnswer(page);
+      await 待つ(page, () => !document.getElementById("edge")?.hidden, "この先で土地が変わる 1 行");
+      // ⚠ **位置は「ここ」の印からの差で測る**（⚠ 画面の絶対座標で測らない）。
+      //   ⚠ **実際に踏んだ**: ⚠ 畳みを開け閉めすると板の高さが変わり、⚠ 狙点（`--aim-y`）が動く。
+      //   ⚠ **「ここ」も印も同じだけ動くので、⚠ 差を見れば打ち消える**（⚠ 絶対座標だと 15px ずれた）。
+      const 読む = () => page.evaluate(() => {
+        const m = document.querySelector(".edge-mark");
+        const 出 = m && !m.hidden && m.checkVisibility();
+        const b = 出 ? m.getBoundingClientRect() : null;
+        const me = document.querySelector(".me").getBoundingClientRect();
+        return {
+          出: !!出,
+          x: b ? b.x + b.width / 2 - (me.x + me.width / 2) : null,
+          y: b ? b.y + b.height / 2 - (me.y + me.height / 2) : null,
+          数: document.querySelectorAll(".edge-mark").length,
+          行: !document.getElementById("edge")?.hidden,
+          あふれ: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+        };
+      });
+      const 前 = await 読む();
+      must(前.出, "印が出ていない（⚠ この検査が何も見ていない）");
+      must(前.数 === 1, `印が ${前.数} 個ある（⚠ 1 地点だけと決めてある）`);
+      void 前;
+
+      // ⚠ **① 写真の上には出さない**（⚠ その年代にこの境目があった、と読める）。
+      //   ⚠ **実際に踏んだ形**（`public/top.js` の「1936–42 の写真の全面に旧水部の青が乗っていた」）。
+      //   ⚠ **先にこれを見る。**⚠ **地図を動かしたあとは年代が入れ替わるので、⚠ 落ち着いた形で測る。**
+      // ⚠ **狭い幅では、⚠ 年代は畳みの中**（`docs/adr/0091`）。⚠ **利用者と同じ手順で開く。**
+      //   ⚠ **開かずに押そうとすると、⚠ `checkVisibility()` が false のまま時間切れになる**
+      //     （⚠ 実測 375×667・春日部: ⚠ 年代のボタンは y=617・63x44 で、⚠ 畳みの中）。
+      await ひらく(page);
+      await 待つ(page, () => document.querySelectorAll("#eras .era").length > 0, "年代のボタン");
+      await page.locator("#eras .era").first().click();
+      await 待つ(page, () => !document.getElementById("eraBack")?.hidden, "地図に戻すボタン");
+      const 写真 = await 読む();
+      must(!写真.出, "空中写真を出しているのに、⚠ 印が出ている");
+      // ⚠ **地図に戻したら、⚠ 戻ること**（⚠ 消したきりにしない）
+      await page.locator("#eraBack").click();
+      await 待つ(page, () => {
+        const m = document.querySelector(".edge-mark");
+        return !!m && !m.hidden && m.checkVisibility();
+      }, "地図に戻したあとの印");
+      const 戻り = await 読む();
+      must(戻り.数 === 1, `地図に戻したら印が ${戻り.数} 個になった`);
+
+      // ⚠ **② 地図を動かしたら、⚠ 同じだけ動く**（⚠ `.me` は画面に固定なので動かない）。
+      //   ⚠ **判定が返る前に測る**（⚠ 350ms 止まってから投げるので、⚠ 指を離す前なら前の点のまま）。
+      // ⚠ **板にかからない高さで引く**（⚠ 畳みを開いたぶん板が伸びている）。
+      //   ⚠ **実際に踏んだ**: ⚠ y=300 で引いたら、⚠ 板の上だったので地図が 1px も動かなかった
+      //     （⚠ `#card` は `pointer-events:auto`。`public/top.css`）。
+      const 引くy = await page.evaluate(() => {
+        const c = document.getElementById("card").getBoundingClientRect();
+        const b = document.getElementById("bar").getBoundingClientRect();
+        return Math.round((b.bottom + c.top) / 2);
+      });
+      await page.mouse.move(180, 引くy);
+      await page.mouse.down();
+      await page.mouse.move(120, 引くy, { steps: 6 });
+      const 途中 = await 読む();
+      await page.mouse.up();
+      must(途中.出, "地図を動かしている間に、⚠ 印が消えた");
+      must(Math.abs((途中.x - 戻り.x) + 60) <= 3,
+        `印が地図に追いていない（${(途中.x - 戻り.x).toFixed(1)}px ／ 期待 -60px）`);
+      must(Math.abs(途中.y - 戻り.y) <= 3, `印が縦にずれた（${(途中.y - 戻り.y).toFixed(1)}px）`);
+      // ⚠ **増えない**（⚠ `draw()` ごとに作っていたら、⚠ ここで 2 個目が出る）
+      must(途中.数 === 1, `地図を動かしたら印が ${途中.数} 個になった`);
+      must(途中.あふれ === 0, `印で画面が横にあふれた（${途中.あふれ}px）`);
+
+      return `写真で消える ／ 戻ると 1 個 ／ 追従 ${(途中.x - 戻り.x).toFixed(1)}px（期待 -60）`;
+    },
+  });
+
+  // ⚠ **画面の外の境目には、⚠ 印を置かない**（2026-10-10）。
+  //
+  // ⚠ **`#map` は `overflow:hidden` を持っていない**（`public/top.css`。⚠ `.layer` が各自で持つ）。
+  //   ⚠ **外に子を置くと、⚠ `documentElement.scrollWidth` が伸びて横にあふれる。**
+  // ⚠ **上限 600m は z16 で 309px。**⚠ **375px 幅の半分（187.5px）を超えうる。**
+  //   ⚠ **実測の 20/20 地点（9〜283m）は入るが、⚠ 入らない形を作って確かめる。**
+  CASES.push({
+    name: "画面の外の境目には、⚠ 印を置かない（⚠ 字は出す）",
+    path: `/?${KASUKABE}`, origin: NEXT_BASE, viewport: SP,
+    // ⚠ **約 500m 東に境目を置く**（⚠ 0.0055° ≒ 497m。⚠ 375px の半分は約 364m）
+    async setup(page) { await 面を返す3(page, 139.7523 + 0.0055); },
+    async check(page) {
+      await waitAnswer(page);
+      await 待つ(page, () => !document.getElementById("edge")?.hidden, "この先で土地が変わる 1 行");
+      await page.waitForTimeout(600);
+      const r = await page.evaluate(() => {
+        const m = document.querySelector(".edge-mark");
+        return {
+          字: document.getElementById("edgeText").textContent.trim(),
+          印: !!(m && !m.hidden && m.checkVisibility()),
+          幅: document.getElementById("map").clientWidth,
+          あふれ: document.documentElement.scrollWidth - document.documentElement.clientWidth,
+        };
+      });
+      // ⚠ **字は出す。**⚠ **「読めなかった」ではない**（⚠ 境目は在る。⚠ 画面に入らないだけ）
+      must(/境目/.test(r.字), `1 行が出ていない: 「${r.字}」`);
+      must(!r.印, "画面の外の境目に、⚠ 印を置いている");
+      must(r.あふれ === 0, `画面が横にあふれた（${r.あふれ}px）`);
+      return `「${r.字}」／ 印は置かない（地図 ${r.幅}px）／ 横あふれ 0`;
     },
   });
 }
