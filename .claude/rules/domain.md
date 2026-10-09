@@ -38,7 +38,9 @@ Source Data  →  Domain  →  Display  →  UI
 文・並び・強調・年代の呼び名。
 
 - MUST: ⚠ **文章化はここでやる。**
-- MUST: ⚠ **言葉は 1 か所から借りる**（`public/words.js` / `public/prov.js`）。
+- MUST: ⚠ **言葉は 1 か所から借りる**（`public/words.js` / `public/answer.js`）。
+  ⚠ **`prov.js` は β 版（`/peel`）の口で、⚠ もう無い。**
+  ⚠ **2026-09-01 の v0.1.0 取り込みで落ちた**（hidetzu/konjaku#438。`docs/adr/0080`）。
 
 ⚠ **この分け方を実装へ寄せる作業は hidetzu/konjaku#181。**⚠ ここには構造の設計を書かない。
 

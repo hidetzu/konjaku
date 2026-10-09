@@ -24,7 +24,7 @@
 - MUST: ⚠ **Source → Domain の変換に、代表ケースを持つ。**
 - MUST: ⚠ **欠損値・空配列・知らない値**の扱いを確かめる。
 - MUST: ⚠ **推定値と確定値を取り違えないこと**を確かめる。
-- SHOULD: ⚠ **DOM 無しで確かめられる形**にする（⚠ `photos.js` などと同じ作り）。
+- SHOULD: ⚠ **DOM 無しで確かめられる形**にする（⚠ `words.js` などと同じ作り。[`javascript.md`](javascript.md)）。
 
 ## 画面
 

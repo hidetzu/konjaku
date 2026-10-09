@@ -13,8 +13,12 @@
 - MUST: ⚠ **表示の文言を Domain のデータへ混ぜない。**
 - SHOULD: ⚠ **DOM も地図も持たない形に切り出す**（⚠ **Node から呼べると、検査がブラウザ抜きで回せる**）。
 
-⚠ **この repo には、その形が既に 7 つある**: `photos.js` / `words.js` / `prov.js` /
-`swale.js` / `ground.js` / `land.js` / `verify.js`。⚠ **新しく切り出すときは、⚠ これに倣う。**
+⚠ **この repo には、その形が既に 5 つある**: `words.js` / `swale.js` / `ground.js` /
+`land.js` / `verify.js`。⚠ **新しく切り出すときは、⚠ これに倣う。**
+
+⚠ **以前ここは「7 つ」と書き、⚠ `photos.js` と `prov.js` を挙げていた**（2026-10-10 に直した）。
+⚠ **どちらも β 版（`/peel`）の口で、⚠ 2026-09-01 の v0.1.0 取り込みで落ちている**
+（hidetzu/konjaku#438。`docs/adr/0080`）。⚠ **数は、⚠ 実在するものだけで名乗る**（`CLAUDE.md` §6）。
 
 ⚠ **ただし `SHOULD` であって `MUST` ではない。**⚠ **DOM を持つ UI 部品は
 [`components.md`](components.md) に従う**（⚠ **そちらが条件を強くしている**）。

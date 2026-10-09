@@ -43,7 +43,6 @@
 
 | 何 | ライセンス | 場所 |
 |---|---|---|
-| MapLibre GL JS **v5.24.0** | **BSD-3-Clause** ほか（下記） | `public/vendor/maplibre-gl.js` / `.css` |
 | Noto Sans CJK JP（OGP用の文字だけを収録） | **SIL Open Font License 1.1** | `assets/ogp/NotoSansCJKjp-Bold.subset.otf` |
 
 **全文は [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) に同梱してある。**
@@ -56,7 +55,14 @@ Noto Sans CJK JP のライセンス全文は
 
 この表示は元フォントのメタデータから引き継いでおり、文字を絞った同梱フォントにも保持している。
 
-⚠ 同梱ファイルの先頭にあるのは**種別と URL だけ**で、全文は入っていない。
+⚠ **MapLibre GL JS は、いまは同梱していない**（2026-10-10 に表から外した）。
+⚠ **β 版 `/peel` が使っていたもので、⚠ 2026-09-01 の v0.1.0 取り込みで
+`public/vendor/` ごと落ちた**（hidetzu/konjaku#438。`docs/adr/0080`）。
+⚠ **いまの地図はタイルを並べて自前で組んでいる**（`public/top.js`）。
+⚠ **条文は `THIRD_PARTY_NOTICES.md` に残してある**（⚠ また同梱するときに要る）。
+
+⚠ **以下は、⚠ 同梱していたときの記録。**
+⚠ 同梱ファイルの先頭にあるのは**種別と URL だけ**で、全文は入っていなかった。
 ⚠ **単一のライセンスではない。** MapLibre 本体（BSD-3-Clause）に加えて、
 同梱されている第三者コードの表示が含まれる（Mapbox / Evan Wallace / Mike Bostock）。
 取得元: <https://github.com/maplibre/maplibre-gl-js/blob/v5.24.0/LICENSE.txt>

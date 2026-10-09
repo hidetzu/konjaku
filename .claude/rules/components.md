@@ -28,15 +28,19 @@
 ```text
 1  自分の root 配下の DOM だけ持つ
 2  Domain の状態を所有しない
-3  MapLibre / URL / fetch を直接触らない
+3  地図 / URL / fetch を直接触らない
 4  入力 = update(state) ／ 出力 = callback（⚠ 一方向）
 ```
+
+⚠ **3 の「地図」は、⚠ いまはタイルを並べる自前の作り**（`public/top.js`）。
+⚠ **以前ここは `MapLibre` と書いていたが、⚠ β 版 `/peel` の話で、⚠ v0.1.0 へは運んでいない**
+（2026-10-10 に直した）。⚠ **触らない相手が変わっただけで、⚠ 条件は同じ。**
 
 - MUST: ⚠ **`document.getElementById` を使わない。**⚠ **`root` の中から引く。**
 - MUST: ⚠ **正本は画面が持つ**（いまの年代・選んだ場所・URL）。⚠ 部品は ⚠ **渡されたものを描くだけ。**
 - MUST: ⚠ **取りに行かない。**⚠ 整備の有無・幅の判断・開いているかも、⚠ **画面から受け取る。**
 - MUST NOT: ⚠ **部品の中で `input` を投げて、⚠ 自分の変更を自分で拾い直さない**（⚠ 環になる）。
-- MUST: ⚠ **字を決めない。**⚠ 文言は `public/words.js` / `public/prov.js` が持つ（`domain.md`）。
+- MUST: ⚠ **字を決めない。**⚠ 文言は `public/words.js` / `public/answer.js` が持つ（`domain.md`）。
 
 ## ⚠ 置き方
 
