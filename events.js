@@ -18,7 +18,7 @@ export const EVENTS = new Set([
   //   ⚠ **出せたときも、⚠ 出せなかったときも来る**（⚠ 分母を作るため）。
   "border_judged",
 ]);
-export const SOURCES = new Set(["app-village", "tsukutta.app", "konjaku", "other", "direct"]);
+export const SOURCES = new Set(["app-village", "tsukutta.app", "konjaku", "search", "other", "direct"]);
 export const ENTRIES = new Set(["default", "link", "map", "search", "here"]);
 export const PAGES = new Set(["about", "map", "deep", "saved", "take", "privacy", "terms"]);
 // ⚠ **境目の判定**（2026-09-30。hidetzu/konjaku#481）。⚠ **`public/border.js` の state をそのまま。**

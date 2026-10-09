@@ -60,16 +60,35 @@
     "app-village",   // ?from=app-village / www.app-village.jp
     "tsukutta.app",  // ?from=tsukutta / tsukutta.app
     "konjaku",       // 同じサイトの中から
+    "search",        // 検索から（⚠ どの検索かは残さない。2026-10-10 に足した）
     "other",         // 列挙の外から来た（⚠ どこかは残さない）
     "direct",        // どこからも来ていない（直接開いた・ブックマーク）
   ]);
 
   // 列挙の外の相手を、どの名前へ畳むか。
   //   ⚠ ホスト名だけ見る。パスもクエリも見ない（他人の閲覧元を集めない）。
+  //
+  // ⚠ **検索は 1 つの名前へ畳む**（2026-10-10 に足した）。⚠ **どの検索かは残さない。**
+  //   ⚠ **足した理由**: ⚠ **検索から来ても `other` になり、⚠ 誰かが貼ったリンクと区別できない。**
+  //     ⚠ **`npm run gate` が「流入が増えたか」を見るとき、⚠ 何が効いたかが読めない。**
+  //     ⚠ **計測は、⚠ その出来事より先に置いておかないと間に合わない**（⚠ 後から遡れない）。
+  //   ⚠ **検索の入口だけを合わせる。**⚠ **`docs.google.com` や `news.yahoo.co.jp` は検索ではない。**
+  //     ⚠ **広く合わせると、⚠ 書類の共有リンクまで「検索から来た」になる。**
+  //   ⚠ **網羅したとは言わない。**⚠ **ここに無い相手は「検索ではない」ではなく「知らない」**
+  //     （⚠ `public/robots.txt` と同じ立て方）。⚠ **知らない相手は `other` へ落ちる。**
   const HOSTS = [
     [/(^|\.)app-village\.jp$/, "app-village"],
     [/(^|\.)tsukutta\.app$/, "tsukutta.app"],
     [/(^|\.)konjaku\.hidetzu\.work$/, "konjaku"],
+    // ⚠ **Google は国ごとに別のホスト名**（`google.com` / `google.co.jp` …）。
+    //   ⚠ **`www.` と裸だけ。**⚠ **`docs.` `drive.` `mail.` は合わせない。**
+    [/^(www\.)?google\.[a-z]{2,3}(\.[a-z]{2})?$/, "search"],
+    [/^(www\.)?bing\.com$/, "search"],
+    // ⚠ **Yahoo! は検索だけ。**⚠ **`news.yahoo.co.jp` から来るのは記事のリンク。**
+    [/^search\.yahoo\.(co\.jp|com)$/, "search"],
+    [/^(html\.|lite\.)?duckduckgo\.com$/, "search"],
+    [/^(www\.)?ecosia\.org$/, "search"],
+    [/^(www\.)?startpage\.com$/, "search"],
   ];
 
   // ?from= の字を、列挙の名前へ直す。

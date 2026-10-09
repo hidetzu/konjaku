@@ -22,6 +22,7 @@ import { readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { join } from "node:path";
+import { createContext, runInContext } from "node:vm";
 import { ROOT, PUB, ok, bad, head, htmlFiles, jsFiles, src , BLOCK_COMMENT, LINE_COMMENT } from "./lib.mjs";
 
 
@@ -253,6 +254,69 @@ head("1.7 計測の受け口（/api/events を実際に呼ぶ）");
 }
 
 // ---------- 1.8 計測を読む口（npm run stats） ----------
+// ---------- 1.7-2 流入元の畳み方（⚠ **実際に動かす**） ----------
+head("1.7-2 流入元の畳み方");
+// ⚠ **`流入元` は、⚠ 来た相手のホスト名を列挙の名前へ畳む**（`public/measure.js`）。
+//   ⚠ **返すのは必ず列挙の中の 1 つ。**⚠ **生の字は返さない**（`docs/adr/0008`）。
+//
+// ⚠ **ここまで、⚠ この関数を動かす検査が 1 つも無かった**（2026-10-10 に気づいた）。
+//   ⚠ **見ていたのは「画面側と受け側の列挙が同じか」だけ。**
+//   ⚠ **畳み方を丸ごと壊しても、⚠ 列挙は同じままなので素通りする。**
+//
+// ⚠ **`search` を足したので、⚠ とくに「広く合わせすぎていないか」を見る。**
+//   ⚠ **`docs.google.com` を検索に数えると、⚠ 書類の共有リンクが「検索から来た」になる。**
+//   ⚠ **それは `npm run gate` の判断材料を汚す**（⚠ 何が効いたかを読めなくする）。
+{
+  const 欠け = [];
+  // ⚠ **classic script なので、⚠ 別の器を作って評価する**（`test/check/saved.mjs` と同じ形）。
+  //   ⚠ **器に渡すのは、⚠ ブラウザにも Node にも在るものだけ。**
+  //   ⚠ **`measure.js` が使ってよいのは、⚠ ここに書いたものだけ**という宣言でもある。
+  const 器 = createContext({ URL, crypto });
+  runInContext(await readFile(join(ROOT, "public", "measure.js"), "utf8"), 器);
+  const M = 器.KonjakuMeasure;
+  if (!M?.流入元) 欠け.push("measure.js から 流入元 を取り出せない（⚠ この検査が何も見ていない）");
+  else {
+    const f = (referrer, from = null) => M.流入元({ from, referrer });
+    // ⚠ **左が入り、⚠ 右が出るはずの名前。**⚠ **「検索ではないもの」を必ず混ぜる。**
+    const 組 = [
+      ["https://www.google.com/search?q=%E8%B1%8A%E6%B4%B2", "search"],
+      ["https://google.co.jp/", "search"],
+      ["https://www.google.co.uk/", "search"],
+      ["https://www.bing.com/search?q=x", "search"],
+      ["https://search.yahoo.co.jp/search", "search"],
+      ["https://duckduckgo.com/", "search"],
+      ["https://lite.duckduckgo.com/", "search"],
+      // ⚠ **ここから下は検索ではない。**⚠ **広く合わせると、⚠ ここが search に化ける。**
+      ["https://docs.google.com/document/d/1", "other"],
+      ["https://drive.google.com/file/d/1", "other"],
+      ["https://mail.google.com/mail/u/0", "other"],
+      ["https://news.yahoo.co.jp/articles/abc", "other"],
+      ["https://notgoogle.com/", "other"],
+      ["https://example.com/", "other"],
+      // ⚠ **既にあった顔ぶれが、⚠ 変わっていないこと**（⚠ 足したせいで動いていないか）
+      ["https://www.app-village.jp/apps", "app-village"],
+      ["https://tsukutta.app/apps/1", "tsukutta.app"],
+      ["https://konjaku.hidetzu.work/about", "konjaku"],
+      // ⚠ **読めない字・空**（⚠ 例外を外へ出さない）
+      ["これは URL ではない", "other"],
+      ["", "direct"],
+    ];
+    for (const [入, 出] of 組) {
+      const r = f(入);
+      if (r !== 出) 欠け.push(`${入 || "(空)"} → ${r}（⚠ ${出} のはず）`);
+      if (!M.SOURCES.has(r)) 欠け.push(`${入 || "(空)"} → ${r} は列挙の外`);
+    }
+    // ⚠ **`?from=` の印が、⚠ ホスト名より先に効くこと**（⚠ こちらが貼ったリンクの印）
+    if (f("https://www.google.com/", "tsukutta") !== "tsukutta.app")
+      欠け.push("?from= の印が、⚠ ホスト名に負けている");
+    // ⚠ **検索へ畳めたものが、⚠ ちゃんと在ること**（⚠ 一覧を空にしても、⚠ 上は全部 other になるだけ）
+    const 検索の数 = 組.filter(([入, 出]) => 出 === "search" && f(入) === "search").length;
+    if (検索の数 < 5) 欠け.push(`検索へ畳めたのが ${検索の数} 件（⚠ この検査が何も見ていない）`);
+  }
+  欠け.length ? bad(欠け.join(" ／ "))
+              : ok("流入元は、⚠ 列挙の名前へだけ畳む（⚠ 検索の入口だけを search に。⚠ 書類や記事は other）");
+}
+
 head("1.8 計測を読む口（npm run stats）");
 // ⚠ **ダッシュボードは作らないと決めた**（2026-09-06。Owner 判断。`docs/adr/0102`）。
 //   ⚠ **本番の Worker に読み出しの口を足すと、⚠ 攻撃面と Runtime 依存が増える。**
