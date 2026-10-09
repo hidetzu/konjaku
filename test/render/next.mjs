@@ -5356,3 +5356,38 @@ for (const [名, viewport] of [["PC", PCな幅], ["スマホ", SP]]) {
     },
   });
 }
+
+CASES.push({
+  // ⚠ **どの言語の文書かを、⚠ ブラウザが読めること**（2026-10-10 に足した）。
+  //
+  // ⚠ **静的検査は「配信物に `lang="ja"` の字が在る」を見ている。**
+  //   ⚠ **ここが見るのは、⚠ 解釈された結果**（⚠ `document.documentElement.lang`）。
+  //   ⚠ **同じ主張を 2 か所でしているのではない。**⚠ **字が在ることと、⚠ 根の要素に
+  //     属性として付くことは別**（⚠ `<html>` を省いた文書では、⚠ 字を足す場所が無い）。
+  //
+  // ⚠ **実際に踏んだ（2026-10-10・本番）**: ⚠ **7 画面すべてで空だった。**
+  //   ⚠ **根の要素に属性が 1 つも無かった**（⚠ `<html>` を書いていなかったので）。
+  //   ⚠ **読み上げの声の言語は `lang` で決まる。**⚠ **日本語を日本語として読まない。**
+  //
+  // ⚠ **1 ケースで 7 画面を回る**（⚠ 画面ごとに分けると、⚠ 地図を 7 回立ち上げることになる）。
+  name: "どの画面も、日本語だと名乗っている",
+  path: "/", origin: NEXT_BASE, viewport: SP,
+  async check(page) {
+    const 画面 = ["/", "/about", "/privacy", "/terms", "/deep", "/saved", "/take"];
+    const 読めた = [];
+    for (const u of 画面) {
+      // ⚠ **答えは待たない**（⚠ 見るのは根の要素だけ。⚠ 地図の往復に付き合わない）
+      await page.goto(NEXT_BASE + u, { waitUntil: "domcontentloaded" });
+      const r = await page.evaluate(() => ({
+        lang: document.documentElement.lang,
+        属性: document.documentElement.getAttributeNames(),
+      }));
+      must(r.lang === "ja",
+        `${u} が日本語だと名乗っていない（lang=${JSON.stringify(r.lang)}`
+        + ` ／ 根の属性 ${r.属性.length ? r.属性.join(",") : "無し"}）`);
+      読めた.push(u);
+    }
+    must(読めた.length === 画面.length, `回れていない（${読めた.length}/${画面.length} 画面）`);
+    return `${読めた.length} 画面すべてで lang="ja"`;
+  },
+});
