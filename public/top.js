@@ -75,7 +75,16 @@
   let 出どころ = arg.state === "ok" ? "link" : "default";
 
   // ---- 描く ----
-  const layers = [];   // ⚠ 下から: 地理院の淡色地図 → 地形分類（自然）→ 地形分類（人工）
+  // ⚠ **下から: 地理院の淡色地図 → 地形分類（自然）→ 地形分類（人工）。**
+  //   ⚠ **タイルを入れているのは淡色地図だけ**（⚠ 下の `if (layer.src !== "pale") continue`）。
+  //   ⚠ **地形分類は canvas（`face`）に塗っている**ので、⚠ **後ろの 2 枚は空のまま。**
+  //   ⚠ **「使っていない」ように読めるが、⚠ 消すと落ちていた**（hidetzu/konjaku#501）。
+  //     ⚠ **原因の 1 つは `layers[1].el` への依存だった**（⚠ 2026-10-10 に直した）。
+  //   ⚠ **まだ消せない。**⚠ **1 枚にすると、⚠ 例外なしで 2 件落ちる**
+  //     （⚠ 「場所が変わっても開いたまま」。⚠ 原因は突き止めていない。hidetzu/konjaku#501）。
+  //   ⚠ **本番は 3 枚なので、⚠ 利用者には影響していない。**
+  const layers = [];
+
   for (const src of ["pale", Konjaku.landformTiles.NAT, Konjaku.landformTiles.ART]) {
     const el = document.createElement("div");
     el.className = "layer";
@@ -91,7 +100,11 @@
   photoLayer.el.className = "layer";
   photoLayer.el.style.cssText = "position:absolute;inset:0;overflow:hidden";
   photoLayer.el.hidden = true;
-  map.insertBefore(photoLayer.el, layers[1].el);
+  // ⚠ **淡色地図の直後へ入れる**（⚠ 層の数に依存しない形。2026-10-10。hidetzu/konjaku#501）。
+  //   ⚠ **前は `layers[1].el` を基準にしていた。**⚠ **層を 1 枚にすると `undefined.el` で例外が出て、
+  //     ⚠ 初期化が止まった**（⚠ 答えも出ず、⚠ 地図も引けなくなる）。
+  //   ⚠ **層が 1 枚なら `nextSibling` は `null` で、⚠ 末尾に付く**（⚠ それで正しい）。
+  map.insertBefore(photoLayer.el, layers[0].el.nextSibling);
   let era = null;   // ⚠ **いま出している年代。**⚠ null は「写真を出していない」
 
   const me = document.createElement("div");
