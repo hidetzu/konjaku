@@ -85,11 +85,17 @@ npm run render -- --suite=next --group=core # 実描画
 ⚠ **配っているものと `LICENSES.md` の表がずれていないかは、⚠ 静的検査が見る**
 （⚠ 載せ忘れも、⚠ 消したデータの行が残ることも）。
 
-## ⚠ β 版の道具について
+## ⚠ β 版の道具は、消した（2026-10-10）
 
-⚠ **`scripts/` には、⚠ β 版のためのものが残っている**
-（⚠ `ingest-wikidata` `export-tiles` `ingest-buildings` `export-buildings`
-`pack-buildings` `build-water` `export-assets` `export-places` ほか）。
+⚠ **消した 10 本**（hidetzu/konjaku#538。`docs/adr/0118`）:
 
-⚠ **v0.1.0 はそのどれも配っていない。**⚠ **走らせても、⚠ 本番には何も届かない。**
-⚠ **消すかどうかは、⚠ まだ決めていない**（⚠ 決めたら、⚠ ここも直す）。
+```text
+ingest-wikidata  export-tiles      ingest-buildings  export-buildings  pack-buildings
+build-water      export-assets     export-places     fetch-buildings   bl-format
+```
+
+⚠ **どれも出力が `public/` に実在せず、⚠ 画面も検査も CI も読んでいなかった。**
+⚠ **β 版（`/peel`）の 3D・建物・Wikidata 用で、⚠ v0.1.0 へは運んでいない。**
+
+⚠ **また要るときは git 履歴から戻す**（⚠ `aee67c2` より前に出力があった）。
+⚠ **上の §1〜§4 は別の口を使う**ので、⚠ **0 から作り直す手順は失われていない。**

@@ -39,6 +39,7 @@ const tileOf = (lon, lat) => {
 
 // PNG を素で読む（Node に画像デコーダが無いので、必要なぶんだけ）。
 // ⚠ build-water.js / swale-sample.mjs と同じことをしている。
+//   ⚠ build-water.js は 2026-10-10 に消した（hidetzu/konjaku#538）。
 //   ここも将来まとめる候補だが、**まず凡例と分類を寄せた**（そちらのほうが危ない）。
 function decodePNG(buf) {
   let p = 8, w = 0, h = 0, ct = 0; const idat = [];
