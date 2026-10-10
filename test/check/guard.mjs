@@ -164,10 +164,11 @@ head("人の判断を飛ばさない");
     { re: /gh\s+pr\s+merge[^\n]*--auto/, why: "PR を自動 merge している" },
     { re: /gh\s+(pr|issue)[^\n]*--admin/, why: "保護を飛び越えている（--admin）" },
     { re: /gh\s+issue\s+close/, why: "Issue を自分で閉じている" },
-    // ⚠ **Issue を起こすのは人**（2026-08-24。`docs/adr/0037`）。
-    //   ⚠ **`product-discovery` は Draft を書くところまで。**⚠ **登録は人がする。**
-    //   ⚠ **実測（足す前）: `.claude/` 全体で該当 0 件。**⚠ 既存の Skill は 1 つも使っていない。
-    { re: /gh\s+issue\s+(create|new)/, why: "Issue を自分で起こしている" },
+    // ⚠ **`gh issue create` の禁止は外した**（2026-10-10。Owner 判断。`docs/adr/0117`）。
+    //   ⚠ **前は「Issue を起こすのは人」だった**（2026-08-24。`docs/adr/0037`）。
+    //   ⚠ **外したのは「起こす」だけ。**⚠ **閉じる・書き換える・ラベルを付けるは、⚠ 残っている。**
+    //   ⚠ **`ready-for-ai` を付けるのは人だけ**（`CLAUDE.md` §7-2。⚠ 上の行が見ている）。
+    //   ⚠ **起こすのと、⚠ 渡してよいと決めるのは別**（⚠ そこが人の判断）。
     { re: /gh\s+issue\s+edit/, why: "Issue を自分で書き換えている" },
   ];
   // ⚠ **地の文を読まない。手順として書かれた行だけを見る。**
@@ -200,7 +201,7 @@ head("人の判断を飛ばさない");
     ? bad(`AI が人の判断を飛ばせる書き方が入っている: ${[...new Set(hits)].join(" / ")}`
         + `（ラベルを付けるのも merge するのも人。Skill は判定を返すところまで）`)
     : ok(`Skill と Hook は、人の判断を飛ばさない（${files.length} ファイル・`
-        + `ラベル付与／自動 merge／--admin／Issue を 閉じる・起こす・書き換える が無く、`
+        + `ラベル付与／自動 merge／--admin／Issue を 閉じる・書き換える が無く、`
         + `ready-for-ai の意味は CLAUDE.md にある）`);
 }
 
