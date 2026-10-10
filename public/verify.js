@@ -69,6 +69,7 @@
   // 明治期の低湿地の14区分と、1画素の分類は **swale.js の1か所**にある。
   // ⚠ ここに書き写さない。同じ表が 4 か所に散っていて、`check.mjs` の突き合わせからも
   //   1 か所（build-water.js）が漏れていた（2026-08-17 に寄せた）。
+  //   ⚠ build-water.js は 2026-10-10 に消した（hidetzu/konjaku#538）。
   const SWALE = KonjakuSwale.SWALE;
 
   const ERAS = [

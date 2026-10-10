@@ -6,6 +6,7 @@
 //     public/peel3d.js        建物の足元の判定（/peel）
 //     scripts/swale-sample.mjs 手元のサンプリング
 //     build-water.js          面の集計と、水域の二値マスク → GeoJSON
+//                             ⚠ 2026-10-10 に消した（hidetzu/konjaku#538）
 //   ⚠ しかも `scripts/check.mjs` が突き合わせていたのは **3 か所だけ**で、
 //     build-water.js は走査対象から漏れていた（`.js` の一覧に入っていなかった）。
 //   掟6「同じ問いに答える実装を2つ持たない。やむを得ず持つときは機械で突き合わせる」。
