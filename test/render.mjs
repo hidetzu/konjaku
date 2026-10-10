@@ -238,6 +238,12 @@ async function runCase(c, attempt) {
     //   （⚠ 「新しいタブで開いた」＝ ⚠ 同じサイトの referrer なのに履歴が無い、を作る）。
     await page.goto((c.origin ?? BASE) + c.path,
       { waitUntil: "domcontentloaded", timeout: 45000, ...(c.goto ?? {}) });
+    // ⚠ **開いた時点で例外が出ていたら、⚠ `check` より先に言う**（2026-10-10。hidetzu/konjaku#501）。
+    //   ⚠ **前は `check` のあとだけ見ていた。**⚠ **`check` が先に落ちると、⚠ 例外が報告されない。**
+    //   ⚠ **実際に踏んだ**: ⚠ 層を 1 枚にすると `layers[1].el` で例外が出て初期化が止まるのに、
+    //     ⚠ 落ちた理由は「場所が変わっても開いたまま」としか出ず、⚠ **原因が 1 か月分からなかった。**
+    //   ⚠ **両方で見る**（⚠ 開いた時点と、⚠ `check` のあと）。⚠ **`check` 中に出る例外もある。**
+    if (errors.length) throw new Error(`JSエラー（開いた時点）: ${errors[0]}`);
     const detail = await c.check(page, reqs);
     // 描画自体は通っても、裏でエラーが出ていれば見逃さない
     if (errors.length) throw new Error(`JSエラー: ${errors[0]}`);
