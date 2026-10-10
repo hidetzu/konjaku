@@ -456,7 +456,10 @@ head("6. 外部リンク");
 // ⚠ **ここが「リンク」の仲間である理由**: ⚠ **そのままの問い。**
 //   ⚠ 元は `3. 内部リンク` という自分の節だった。
 {
-  const pages = new Set(htmlFiles.map((f) => basename(f, ".html")));
+  // ⚠ **下の階も見る**（2026-10-11。hidetzu/konjaku#535）。⚠ **`basename` はディレクトリを落とす**
+  //   （⚠ `place/tokyo-station.html` が `tokyo-station` になり、⚠ `./place/tokyo-station` が
+  //    ⚠ 「対応するページが無い」と落ちた）。⚠ **拡張子だけ落とす。**
+  const pages = new Set(htmlFiles.map((f) => f.replace(/\.html$/, "")));
   // ⚠ **JS も見る**（2026-08-24。⚠ **実際に踏んだ**）。
   //   ⚠ **地図の CSS は、⚠ JS が動的に読み込んでいる**（`css.href="./vendor/maplibre-gl.css"`）。
   //   ⚠ **前は `index.html` のインライン `<script>` にあったので、⚠ HTML を見るだけで拾えていた。**

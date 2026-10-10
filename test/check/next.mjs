@@ -2317,6 +2317,17 @@ head("場所ごとのページ");
     if (/^は昔/.test(題)) 欠け.push(`${f} の題に地名が入っていない: ${題}`);
   }
 
+  // ⚠ **どこかからリンクされていること**（2026-10-11。hidetzu/konjaku#535）。
+  //   ⚠ **`sitemap.xml` にしか載っていないと、⚠ 孤立ページになる**（⚠ 実際にそうなっていた）。
+  //   ⚠ **索引に入らない理由を 1 つ減らす。**⚠ **入るかどうかは相手が決める**（`CLAUDE.md` §9）。
+  for (const f of 枚) {
+    const 道 = `place/${f.replace(/\.html$/, "")}`;
+    const 貼り主 = readdirSync(NEXT).filter((g) => g.endsWith(".html"))
+      .filter((g) => readFileSync(join(NEXT, g), "utf8").includes(`./${道}`));
+    if (!貼り主.length)
+      欠け.push(`${f} が孤立している（⚠ sitemap だけ。⚠ どの画面からもリンクされていない）`);
+  }
+
   欠け.length
     ? bad(`場所ごとのページが決めたとおりでない: ${欠け.join(" ／ ")}`)
     : ok(`場所ごとのページは ${枚.length} 枚（⚠ 生成物の印・測った日・題に地名。`
