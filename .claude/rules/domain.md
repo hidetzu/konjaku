@@ -32,7 +32,7 @@ Source Data  →  Domain  →  Display  →  UI
 足元の判定・区分・集計。⚠ **数と意味だけを持つ。**
 
 - MUST: ⚠ **文言を持たせない。**「543 件中 510 件が水域でした」ではなく `{water: 510, total: 543}` まで。
-- MUST: ⚠ **取れた値と推定値を区別する**（正本は `CLAUDE.md` §1）。
+- MUST: ⚠ **取れた値と推定値を区別する**（正本は [`evidence.md`](evidence.md)）。
 
 ### Display（どう見せるか）
 文・並び・強調・年代の呼び名。

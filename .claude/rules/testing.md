@@ -9,7 +9,7 @@
 
 ⚠ **「実装したこと」ではなく、⚠ 「利用者に必要な挙動が壊れていないこと」**を確かめる。
 
-- MUST: ⚠ **テストが通ったことを、⚠ 検証の完了と呼ばない**（正本は `CLAUDE.md` §1）。
+- MUST: ⚠ **テストが通ったことを、⚠ 検証の完了と呼ばない**（正本は [`evidence.md`](evidence.md)）。
 
 ## 優先順位
 
@@ -63,7 +63,7 @@
 ```text
 .claude/hooks/ask-slack.mjs        chat.postMessage   ⚠ すげ替える口が無い。⚠ 走らせたら本当に投稿される
 .claude/hooks/slack-doctor.mjs     --post のときだけ  ⚠ 同上
-gh pr create / gh pr merge         GitHub            ⚠ 人の許可が要る（`CLAUDE.md` §8）
+gh pr create / gh pr merge         GitHub            ⚠ 人の許可が要る（`git.md`）
 git push / wrangler deploy         GitHub / 配信      ⚠ 同上
 ```
 
