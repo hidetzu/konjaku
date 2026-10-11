@@ -197,14 +197,21 @@ head("人の判断を飛ばさない");
         if (g.re.test(line)) hits.push(`${f.replace(ROOT + "/", "")}: ${g.why}`);
   }
   // ⚠ ラベルの意味が書かれていること。書いていないと、人も何を見て付けるか分からない
-  const rule = await readFile(join(ROOT, "CLAUDE.md"), "utf8").catch(() => "");
-  if (!/ready-for-ai/.test(rule)) hits.push("CLAUDE.md に ready-for-ai の意味が書かれていない");
+  //
+  // ⚠ 2026-10-11 に CLAUDE.md から .claude/rules/ へ移した。CLAUDE.md 側には宛先だけが残る。
+  //   ⚠ 宛先の行にも ready-for-ai の字は出るので、CLAUDE.md を見ていては何も見ていないのと同じ。
+  //   ⚠ だから正本のファイルを見て、⚠ 「付けるのは人」まで書かれていることを見る。
+  const RULE = ".claude/rules/owner-decisions.md";
+  const rule = await readFile(join(ROOT, RULE), "utf8").catch(() => "");
+  if (!/ready-for-ai/.test(rule)) hits.push(`${RULE} に ready-for-ai の意味が書かれていない`);
+  else if (!/付けるのは人/.test(rule))
+    hits.push(`${RULE} に「付けるのは人」が書かれていない（AI が付けてよいと読める）`);
   hits.length
     ? bad(`AI が人の判断を飛ばせる書き方が入っている: ${[...new Set(hits)].join(" / ")}`
         + `（ラベルを付けるのも merge するのも人。Skill は判定を返すところまで）`)
     : ok(`Skill と Hook は、人の判断を飛ばさない（${files.length} ファイル・`
         + `ラベル付与／自動 merge／--admin／Issue を 閉じる が無く、`
-        + `ready-for-ai の意味は CLAUDE.md にある）`);
+        + `ready-for-ai は人が付けると ${RULE} にある）`);
 }
 
 // ⚠ **計測が、作業を止めないこと**（2026-08-24。`.claude/hooks/telemetry.mjs`）。

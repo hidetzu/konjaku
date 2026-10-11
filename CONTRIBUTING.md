@@ -13,7 +13,8 @@
 |---|---|
 | **いま何ができて、何をどこまで言えるか** | [`docs/SPEC.md`](docs/SPEC.md) |
 | **なぜその作りなのか**（掟） | [`docs/adr/`](docs/adr/) |
-| 作業のきまり（詳しい） | [`CLAUDE.md`](CLAUDE.md) |
+| 作業のきまり（目次） | [`CLAUDE.md`](CLAUDE.md) |
+| 規則の本文（掟・言葉・git・コードの書き方） | [`.claude/rules/`](.claude/rules/README.md) |
 
 ⚠ **`docs/SPEC.md` の「掟」の節は先に読んでください。** この製品はそこが中心です。
 
