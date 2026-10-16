@@ -21,6 +21,7 @@
 ## 動かす
 
 Node.js 22 以上を使います。
+[mise](https://mise.jdx.dev/) を使っているなら、`mise install` で CI と同じ版が入ります（`mise.toml`）。
 
 ```
 node scripts/serve.mjs   # → http://localhost:8081
