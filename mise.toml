@@ -1,0 +1,5 @@
+# 手元の node を CI と同じ版にする（`mise install`。cd すると切り替わる）。
+# ⚠ CI は .github/workflows/check.yml の setup-node が入れる。⚠ 版を変えるときは両方を変える
+#   （揃っているかは test/check/deliver.mjs の「8. CI の固定」が見ている）。
+[tools]
+node = "22"

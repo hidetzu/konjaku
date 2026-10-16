@@ -200,6 +200,29 @@ head("8. CI の固定");
           : ok(`CONTRIBUTING.md の Playwright が CI と揃っている（${pin}・${inGuide.length} 箇所）`);
       }
     }
+
+  // ── node の版（⚠ 手元は mise.toml、⚠ CI は setup-node）─────────────
+  // ⚠ **2026-10-16 に足した。**⚠ 手元の node は、⚠ 入れた道具しだいで勝手に新しくなる
+  //   （⚠ 実測: Arch の pacman の node は 26、⚠ CI は 22）。⚠ `mise.toml` で手元を CI に揃える。
+  // ⚠ **出どころが 2 つになる。**⚠ setup-node は `mise.toml` を読まない。
+  //   掟「やむを得ず2つ持つときは、機械で突き合わせる」（上の Playwright と同じ形）。
+  //   ⚠ ずれると、⚠ **手元では通るのに CI で落ちる／その逆**が起きる。
+  {
+    const mise = await readFile(join(ROOT, "mise.toml"), "utf8").catch(() => "");
+    const want = /^\s*node\s*=\s*"([^"]+)"/m.exec(mise)?.[1];
+    if (!want) bad("mise.toml に node の版が書かれていない（手元の node が CI と揃わない）");
+    else {
+      const inCi = [...wf.matchAll(/node-version:\s*"?([^"\s]+)"?/g)].map((m) => m[1]);
+      if (!inCi.length) bad("check.yml に node-version が無い（mise.toml と突き合わせる相手が居ない）");
+      else {
+        const off = [...new Set(inCi)].filter((v) => v !== want);
+        off.length
+          ? bad(`mise.toml の node が CI と違う: mise.toml ${want} / CI ${off.join("、")}`
+              + `（手元と CI で別の版になる）`)
+          : ok(`mise.toml の node が CI と揃っている（${want}・CI ${inCi.length} 箇所）`);
+      }
+    }
+  }
   }
 }
 
