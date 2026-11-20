@@ -454,6 +454,44 @@ CASES.push(
       return `控え 1 件・名前は null・座標は在る・一覧は「地図から選んだ場所」`;
     },
   },
+
+  {
+    // ⚠ **押した瞬間に、⚠ 端末へ書く。**⚠ **町名を待たない。**
+    //   ⚠ **散歩中は、⚠ 押してすぐ画面を閉じる**（`docs/adr/0064`）。
+    //   ⚠ **前は町名の応答を待ってから書いていた。**⚠ 待つあいだ、⚠ 書き込みも描き直しも 0 回。
+    //   ⚠ **上の「町名が取れなくても」は ⚠ すぐ断るので、⚠ これを見逃していた**
+    //     （⚠ 断られると待ちが一瞬で終わる。⚠ **黙って待たされる**ときだけ起きる）。
+    // ⚠ **町名は返さずに止めておき、⚠ 見終わってから返す。**
+    //   ⚠ **待つのは 2 秒だけ**（⚠ 町名の打ち切りは 8 秒。⚠ 30 秒待つと、⚠ 打ち切りのあとの書き込みで通ってしまう）。
+    name: "保存は町名を待たずに、押した瞬間に端末へ書く", path: `/?${TOYOSU}`, origin: NEXT_BASE, viewport: SP,
+    setup: (page) => {
+      page.__町名を返す = null;
+      const 止め = new Promise((r) => { page.__町名を返す = r; });
+      return page.route("**://mreversegeocoder.gsi.go.jp/**", async (r) => {
+        await 止め;
+        await r.fulfill({ contentType: "application/json",
+          body: JSON.stringify({ results: { muniCd: "", lv01Nm: "検査の町" } }) }).catch(() => {});
+      });
+    },
+    async check(page) {
+      await waitAnswer(page);
+      await 待つ(page, () => !document.getElementById("save").hidden, "保存");
+      await page.locator("#save").click();
+      const 控えの数 = () => page.evaluate(() =>
+        JSON.parse(localStorage.getItem("konjaku-next-saved-v1") ?? "[]").length);
+      await page.waitForFunction(
+        () => document.getElementById("save").getAttribute("aria-pressed") === "true", null, { timeout: 2000 })
+        .catch(() => { throw new Error("⚠ 町名を待つあいだ「保存ずみ」にならない（⚠ 押してすぐ閉じると、⚠ 残ったか分からない）"); });
+      const 待つあいだ = await 控えの数();
+      must(待つあいだ === 1, `⚠ 町名を待つあいだ、⚠ 端末に書かれていない（控え ${待つあいだ} 件）`);
+      // ⚠ **町名を返す。**⚠ **あとから名前が埋まること**まで見る（⚠ 書く順を変えて、⚠ 埋める側を落とさない）
+      page.__町名を返す();
+      await 待つ(page, () =>
+        JSON.parse(localStorage.getItem("konjaku-next-saved-v1") ?? "[]")[0]?.name === "検査の町", "あとから埋まる町名");
+      must(await 控えの数() === 1, "町名を埋めたら、控えが増えた（⚠ 1 件のはず）");
+      return `待つあいだ: 保存ずみ・控え 1 件 ／ 町名を返したあと: 名前が埋まる`;
+    },
+  },
 );
 
 // ⚠ **配り物を 1 つずつ落として、⚠ 「無い」と言わないこと**（hidetzu/konjaku#99）。

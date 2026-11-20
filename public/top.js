@@ -965,19 +965,22 @@
     const hit = KonjakuSaved.findAt(saved, lon, lat);
     // ⚠ **足したときだけ数える**（⚠ 外したときは数えない）。⚠ **場所は送らない。**
     if (!hit) Konjaku計測.起こす("save_place");
-    if (hit) {
-      saved = KonjakuSaved.remove(saved, lon, lat);
-    } else {
-      // 先に足して、先に描く。名前は届いてから埋める（届かなくても保存は残る）。
-      const rec = { lon, lat, name: null, value: hereName,
-        gloss: KonjakuWords.groundGloss(hereName), at: Date.now() };
-      saved = KonjakuSaved.add(saved, rec);
-      const nm = await askName(lon, lat);
-      // 待っているあいだに外されていることがある。いま在るものだけ書き換える
-      if (nm && saved.includes(rec)) { rec.name = nm; KonjakuSaved.save(store, saved); KonjakuSaved.save(store, saved); }
-    }
+    const rec = hit ? null : { lon, lat, name: null, value: hereName,
+      gloss: KonjakuWords.groundGloss(hereName), at: Date.now() };
+    saved = hit ? KonjakuSaved.remove(saved, lon, lat) : KonjakuSaved.add(saved, rec);
+    // ⚠ **先に書いて、先に描く。**⚠ **名前を待たない。**
+    //   ⚠ **散歩中は、押してすぐ画面を閉じる。**⚠ 待ってから書くと、⚠ 閉じた時点で消える。
+    //   ⚠ **前は地名の応答を待ってから書いていた**（⚠ 待つあいだの書き込み 0 回・描き直し 0 回。
+    //   ⚠ コメントだけが「先に足して、先に描く」と言っていた）。
     if (store && !KonjakuSaved.save(store, saved)) storeOk = false;
     drawSave();
+    if (!rec) return;
+    // 名前は届いてから埋める（届かなくても保存は残る）。
+    const nm = await askName(lon, lat);
+    // 待っているあいだに外されていることがある。いま在るものだけ書き換える
+    if (!nm || !saved.includes(rec)) return;
+    rec.name = nm;
+    if (store && !KonjakuSaved.save(store, saved)) storeOk = false;
   });
 
 
