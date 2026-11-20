@@ -81,11 +81,14 @@
   //     ⚠ Node は zlib。⚠ ここが両方を知ると、⚠ 検査がブラウザ抜きで回せなくなる）。
   const 版 = { 生: "1", 圧縮: "2" };
 
-  // 並び: [lat, lon, name, value, at]
+  // 並び: [lat, lon, name, value, at, meiji]
   //   ⚠ **lat が先**（⚠ URL の ?ll= と同じ順。⚠ 逆にすると別の場所になる）
+  //   ⚠ **meiji は末尾に足した**（2026-11-21。`docs/adr/0122`）。⚠ **版は上げない。**
+  //     ⚠ 前の受け手は 6 つ目を読まずに捨て、⚠ 新しい受け手は 5 つの並びを null として読む。
+  //     ⚠ **どちらの向きでも、⚠ 前からある 5 つは欠けない。**
   const 詰める = (list) => JSON.stringify(list.map((r) => [
     Number(Number(r.lat).toFixed(5)), Number(Number(r.lon).toFixed(5)),
-    r.name ?? null, r.value ?? null, r.at ?? 0,
+    r.name ?? null, r.value ?? null, r.at ?? 0, r.meiji ?? null,
   ]));
 
   // ⚠ **戻すのは Domain の形。**⚠ **説明文は画面が作る**（`domain.md`）。
@@ -96,9 +99,10 @@
     const out = [];
     for (const r of v) {
       if (!Array.isArray(r) || r.length < 5) continue;
-      const [lat, lon, name, value, at] = r;
+      const [lat, lon, name, value, at, meiji] = r;
       if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;   // 座標が無いものは捨てる
-      out.push({ lat, lon, name: name ?? null, value: value ?? null, at: Number(at) || 0 });
+      out.push({ lat, lon, name: name ?? null, value: value ?? null, at: Number(at) || 0,
+                 meiji: typeof meiji === "string" && meiji ? meiji : null });
     }
     return out;
   }
@@ -158,6 +162,7 @@
       if (r.at && (!hit.at || r.at < hit.at)) hit.at = r.at;
       if (!hit.name && r.name) hit.name = r.name;
       if (!hit.value && r.value) hit.value = r.value;
+      if (!hit.meiji && r.meiji) hit.meiji = r.meiji;
     }
     out.sort((a, b) => (b.at ?? 0) - (a.at ?? 0));   // 新しいものが先頭
     return { list: out, 足した, 重なった };

@@ -127,9 +127,11 @@ const S = 器.KonjakuSaved;
   // ⚠ **座標は、⚠ 細かい桁まで入れる。**⚠ **キリのよい値だと、⚠ 桁を落としても気づけない**
   //   （⚠ 実際に踏んだ: ⚠ 0.01 刻みだと 2 桁に丸めても同じ値になり、⚠ 素通りした）。
   //   ⚠ **桁は 50m の判定（`SAME_M`）に効く。**⚠ **2 桁だとおよそ 1km で、⚠ 別の場所が同じになる。**
+  // ⚠ **明治期は半分だけ持たせる**（⚠ 控えていない行が null のまま戻ることも見る。`docs/adr/0122`）。
   const 作る = (n) => Array.from({ length: n }, (_, i) => ({
     lat: 35.65531 + i * 0.01234, lon: 139.79672 + i * 0.01234,
-    name: "東京都江東区豊洲三丁目", value: "旧水部", at: 1756400000000 + i * 86400000 }));
+    name: "東京都江東区豊洲三丁目", value: "旧水部", at: 1756400000000 + i * 86400000,
+    meiji: i % 2 ? "河川・湖沼・海面" : null }));
 
   const 生 = await S.toText(作る(50), null);
   const 圧 = await S.toText(作る(50), gz);
@@ -143,11 +145,28 @@ const S = 器.KonjakuSaved;
     元.every((r, i) => {
       const b = 戻り[i];
       return b && Number(r.lat.toFixed(5)) === b.lat && Number(r.lon.toFixed(5)) === b.lon &&
-             r.name === b.name && r.value === b.value && r.at === b.at;
+             r.name === b.name && r.value === b.value && r.at === b.at && r.meiji === b.meiji;
     });
   欠けていない(戻し生) && 欠けていない(戻し圧) && 圧.length < 生.length
-    ? ok(`保存した場所は、⚠ 名前も年代も欠けずに URL で渡して戻せる（⚠ 50 件で 生 ${生.length} 文字 → 圧縮 ${圧.length} 文字）`)
+    ? ok(`保存した場所は、⚠ 名前も年代も明治期の区分も欠けずに URL で渡して戻せる（⚠ 50 件で 生 ${生.length} 文字 → 圧縮 ${圧.length} 文字）`)
     : bad(`保存した場所が、⚠ URL から欠けずに戻らない（生 ${JSON.stringify(戻し生?.[0])} / 圧縮 ${JSON.stringify(戻し圧?.[0])}）`);
+
+  // ⚠ **明治期は末尾に足しただけで、⚠ 版は上げていない**（2026-11-21。`docs/adr/0122`）。
+  //   ⚠ **両向きを見る。**
+  //   ⚠ 前の端末が出した 5 つの並びを、⚠ いまの受け手が読める（明治期は null）。
+  //   ⚠ いまの並びの先頭 5 つが、⚠ 前の受け手の読む順のまま（⚠ 前の受け手は 6 つ目を捨てる）。
+  {
+    const 前の字 = "1" + Buffer.from(JSON.stringify([[35.65531, 139.79672, "豊洲", "旧水部", 100]]), "utf8")
+      .toString("base64url");
+    const 前から = await S.fromText(前の字, null);
+    const いまの並び = JSON.parse(Buffer.from(生.slice(1), "base64url").toString("utf8"));
+    const 先頭5 = いまの並び[1].slice(0, 5), 元1 = 作る(2)[1];
+    前から?.length === 1 && 前から[0].name === "豊洲" && 前から[0].at === 100 && 前から[0].meiji === null
+      && いまの並び.every((r) => r.length === 6)
+      && 先頭5[2] === 元1.name && 先頭5[3] === 元1.value && 先頭5[4] === 元1.at && いまの並び[1][5] === 元1.meiji
+      ? ok("明治期を足した手渡しは、⚠ 前の端末の字も読め、⚠ 前の受け手が読む 5 つの順も変えていない")
+      : bad(`明治期を足した手渡しが、⚠ 前の形と食い違う（前から ${JSON.stringify(前から)} / いまの 2 件目 ${JSON.stringify(いまの並び[1])}）`);
+  }
 
   // ⚠ **知らない版を、⚠ 黙って空にしない**（⚠ 「0 件だった」と読ませない）
   const 知らない = await S.fromText("9abc", ungz);
@@ -157,15 +176,30 @@ const S = 器.KonjakuSaved;
     : bad(`読めない字を、⚠ 空として返している（知らない版 ${JSON.stringify(知らない)} / 壊れ ${JSON.stringify(壊れ)}）`);
 
   // ⚠ **混ぜるのは足すだけ。**⚠ **消さない。**⚠ **先に見つけたほうを残す。**
-  const いま = [{ lat: 35, lon: 139, name: null, value: "旧水部", at: 200 }];
-  const 来た = [{ lat: 35.0001, lon: 139.0001, name: "豊洲", value: "旧水部", at: 100 },
+  const いま = [{ lat: 35, lon: 139, name: null, value: "旧水部", at: 200, meiji: null }];
+  const 来た = [{ lat: 35.0001, lon: 139.0001, name: "豊洲", value: "旧水部", at: 100, meiji: "泥地" },
                 { lat: 36, lon: 140, name: "別", value: "低地", at: 300 }];
   const m = S.merge(いま, 来た);
   const 同じ = m.list.find((r) => Math.abs(r.lat - 35) < 0.001);
   m.list.length === 2 && m.足した === 1 && m.重なった === 1
-    && 同じ.at === 100 && 同じ.name === "豊洲"
-    ? ok("手渡しを混ぜると、⚠ 足すだけで消さない（⚠ 先に見つけた時刻を残し、⚠ 名前は在るほうを採る）")
-    : bad(`手渡しの混ぜ方が違う（${m.list.length} 件・足した ${m.足した}・重なった ${m.重なった}・at ${同じ?.at}・name ${同じ?.name}）`);
+    && 同じ.at === 100 && 同じ.name === "豊洲" && 同じ.meiji === "泥地"
+    ? ok("手渡しを混ぜると、⚠ 足すだけで消さない（⚠ 先に見つけた時刻を残し、⚠ 名前と明治期の区分は在るほうを採る）")
+    : bad(`手渡しの混ぜ方が違う（${m.list.length} 件・足した ${m.足した}・重なった ${m.重なった}・at ${同じ?.at}・name ${同じ?.name}・meiji ${同じ?.meiji}）`);
+
+  // ⚠ **一覧の 1 行は、⚠ 出典を名乗る**（2026-11-21。Owner 判断。`docs/adr/0122`）。
+  //   ⚠ **控えていない行には何も出さない**（⚠ 「無かった」と言わない）。
+  {
+    const 器A = createContext({});
+    runInContext(readFileSync(join(NEXT, "answer.js"), "utf8"), 器A);
+    const A = 器A.KonjakuAnswer;
+    const 返り = A?.savedPast?.("田");
+    const 字 = 返り ? 返り.名乗り + 返り.区分 : null;
+    const 空 = [null, undefined, ""].map((v) => A?.savedPast?.(v));
+    字 === `${A?.SOURCE?.meiji}では 田` && /^明治期の地図/.test(字) && 返り.区分 === "田"
+      && 空.every((v) => v === null)
+      ? ok(`一覧の明治期の行は出典を名乗り（「${字}」）、⚠ 控えていない行には何も出さない`)
+      : bad(`一覧の明治期の行が違う（「${字}」／ 空のとき ${JSON.stringify(空)}）`);
+  }
 
   // ⚠ **座標が無いものは渡さない**（⚠ 戻れない記録を混ぜない）
   const 座標なし = await S.fromText(await S.toText(
