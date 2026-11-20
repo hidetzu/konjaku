@@ -965,7 +965,11 @@
     const hit = KonjakuSaved.findAt(saved, lon, lat);
     // ⚠ **足したときだけ数える**（⚠ 外したときは数えない）。⚠ **場所は送らない。**
     if (!hit) Konjaku計測.起こす("save_place");
-    const rec = hit ? null : { lon, lat, name: null, value: hereName,
+    // ⚠ **明治期は、⚠ 見出しが「○○ でした」と言い切れたときだけ控える**（面の分類。`docs/adr/0109`）。
+    //   ⚠ **保存したくなったのは見出しを読んだから。**⚠ 一覧で同じものを思い出せるようにする
+    //   （`docs/adr/0122`）。⚠ **線型・読めなかった・まだ来ていないは null**（⚠ 「無い」とは言わない）。
+    const 明治 = 答え.meiji?.kind === "area" && 答え.meiji.value ? 答え.meiji.value : null;
+    const rec = hit ? null : { lon, lat, name: null, value: hereName, meiji: 明治,
       gloss: KonjakuWords.groundGloss(hereName), at: Date.now() };
     saved = hit ? KonjakuSaved.remove(saved, lon, lat) : KonjakuSaved.add(saved, rec);
     // ⚠ **先に書いて、先に描く。**⚠ **名前を待たない。**

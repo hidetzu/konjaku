@@ -79,9 +79,14 @@
       //   区分が無い行もあるので、空を落としてから 1 本の字にする。
       const 名 = esc(r.name ?? "地図から選んだ場所");
       const 添え = esc([KonjakuWhen.text(r.at), r.value].filter(Boolean).join("　"));
+      // 保存したときの明治期の区分。控えていない行は出さない（字は answer.js が持つ）。
+      //   区分名は 1 かたまりで折る（狭い幅で「河川・湖沼・／海面」と割らない）。
+      const 昔 = KonjakuAnswer.savedPast(r.meiji);
       return `<li><a class="list__a" href="${esc(深掘りへ(r))}">`
         + `<span class="list__body">`
         + `<span class="list__name">${名}</span>`
+        + (昔 ? `<span class="list__past">${esc(昔.名乗り)}`
+            + `<span class="list__past-v">${esc(昔.区分)}</span></span>` : "")
         + `<span class="list__meta">${添え}</span>`
         + `</span><span class="list__go" aria-hidden="true">深く読む →</span>`
         + `</a></li>`;

@@ -168,6 +168,16 @@
     読めた:   "読み取れました",
   };
 
+  // 保存一覧で、保存したときの明治期の区分を言う 1 行（2026-11-21。Owner 判断。`docs/adr/0122`）。
+  //   出典を名乗る。すぐ下にいまの地形の区分が並ぶので、名乗らないとどちらが昔の話か読めない
+  //   （「ここは 田 でした」と「氾濫平野・海岸平野」が並ぶ）。
+  //   区分が無ければ null。⚠ 「無かった」とは言わない（控えていないだけ）。
+  //   ⚠ 名乗りと区分名を分けて返す。⚠ 320px では 1 行に収まらない
+  //     （実測 2026-11-21: 使える幅 178px に対し、「河川・湖沼・海面」の行は 211px）。
+  //     ⚠ 折り返すなら名乗りのあとで折り、⚠ 区分名の途中では折らない（画面がそう組む）。
+  const savedPast = (meiji) => typeof meiji === "string" && meiji
+    ? { 名乗り: `${SOURCE.meiji}では `, 区分: meiji } : null;
+
   // いま出している場所が、どこから来たか。画面が板の 1 行目に出す字。
   //   前は、どの場合でも「いまいる場所」と書いていた。
   //   実測（2026-09-02・本番）: 初回・共有リンク・地図を動かしたあとの 3 通りとも
@@ -337,6 +347,6 @@
   //   ⚠ **所要時間は出さない**（実測していない。⚠ 歩く速さも道のりも知らない）。
   const 距離の字 = (m) => m >= 1000 ? `${(m / 1000).toFixed(1)}km` : `${Math.round(m / 10) * 10}m`;
 
-  g.KonjakuAnswer = { SOURCE, BORDER, 距離の字, MEIJI_NONE, meijiNone, COARSE_NOTE, PAST_IN_TERRAIN, lines, WHY_READ, WHERE, WHERE_STILL, whereFailed, RECORD_KINDS, recordKind, RECORD_NOTE, HAZARD,
+  g.KonjakuAnswer = { SOURCE, BORDER, 距離の字, MEIJI_NONE, meijiNone, COARSE_NOTE, PAST_IN_TERRAIN, lines, WHY_READ, savedPast, WHERE, WHERE_STILL, whereFailed, RECORD_KINDS, recordKind, RECORD_NOTE, HAZARD,
                       GROUND, 確率の字 };
 })(typeof window === "undefined" ? globalThis : window);

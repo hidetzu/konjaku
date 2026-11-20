@@ -456,6 +456,52 @@ CASES.push(
   },
 
   {
+    // ⚠ **一覧に、⚠ 保存したときの明治期の区分を残す**（2026-11-21。Owner 判断。`docs/adr/0122`）。
+    //   ⚠ **保存したくなったのは地図の見出しを読んだから。**⚠ 一覧で同じものを思い出せること。
+    //   ⚠ **明治期の地図に区分が無い場所（品川・港南）には、⚠ 何も足さない**（⚠ 「無かった」と言わない）。
+    // ⚠ **いちばん狭い 320px で見る。**⚠ 一番長い区分（河川・湖沼・海面）は 1 行に収まらない
+    //   （実測 2026-11-21: 使える幅 178px ／ 13px で 211px・12px でも 195px）。
+    //   ⚠ **省略（…）にしない。**⚠ 区分名が欠ける。⚠ **名乗りのあとで折り、⚠ 区分名は割らない。**
+    name: "一覧に、保存したときの明治期の区分が出典つきで 1 行出る", path: `/?${TOYOSU}`, origin: NEXT_BASE,
+    viewport: { width: 320, height: 640 },
+    async check(page) {
+      const 保存する = async () => {
+        await waitAnswer(page);
+        await 待つ(page, () => !document.getElementById("save").hidden, "保存");
+        await page.locator("#save").click();
+        await 待つ(page,
+          () => document.getElementById("save").getAttribute("aria-pressed") === "true", "保存ずみ");
+      };
+      await 保存する();
+      await page.goto(`${NEXT_BASE}/?ll=35.6285,139.7387`, { waitUntil: "domcontentloaded" });
+      await 保存する();
+      const 控え = await page.evaluate(() => JSON.parse(localStorage.getItem("konjaku-next-saved-v1") ?? "[]")
+        .map((r) => r.meiji ?? null));
+      must(控え.length === 2, `控えが ${控え.length} 件（⚠ 2 件のはず）`);
+      // ⚠ 新しいものが先頭。⚠ [品川, 豊洲]
+      must(控え[0] === null && 控え[1] === "河川・湖沼・海面",
+        `控えの明治期が違う: ${JSON.stringify(控え)}（⚠ 品川は null、豊洲は 河川・湖沼・海面 のはず）`);
+      await page.goto(`${NEXT_BASE}/saved.html`, { waitUntil: "domcontentloaded" });
+      await 待つ(page, () => document.querySelectorAll("#listItems li").length === 2, "一覧の 2 行");
+      const 行 = await page.evaluate(() => [...document.querySelectorAll("#listItems li")].map((li) => {
+        const p = li.querySelector(".list__past");
+        if (!p) return null;
+        // ⚠ 行数は字の矩形で数える（⚠ line-height が normal だと高さからは割れない）
+        const 行数 = (el) => { const r = document.createRange(); r.selectNodeContents(el);
+          return new Set([...r.getClientRects()].map((q) => Math.round(q.top))).size; };
+        const v = p.querySelector(".list__past-v");
+        return { 字: p.textContent, 行数: 行数(p), 区分の行数: v ? 行数(v) : 0,
+                 あふれ: p.scrollWidth > p.clientWidth, 見える: p.checkVisibility() };
+      }));
+      must(行[0] === null, `明治期の区分が無い場所に、行を足している: ${JSON.stringify(行[0])}`);
+      must(行[1]?.字 === "明治期の地図では 河川・湖沼・海面", `豊洲の行の字が違う: ${JSON.stringify(行[1])}`);
+      must(行[1].見える && !行[1].あふれ, `豊洲の明治期の行が見えていないか、あふれている: ${JSON.stringify(行[1])}`);
+      must(行[1].区分の行数 === 1, `区分名が途中で折れている: ${JSON.stringify(行[1])}`);
+      return `豊洲:「${行[1].字}」${行[1].行数} 行（区分名は 1 行）／ 品川: 足さない`;
+    },
+  },
+
+  {
     // ⚠ **押した瞬間に、⚠ 端末へ書く。**⚠ **町名を待たない。**
     //   ⚠ **散歩中は、⚠ 押してすぐ画面を閉じる**（`docs/adr/0064`）。
     //   ⚠ **前は町名の応答を待ってから書いていた。**⚠ 待つあいだ、⚠ 書き込みも描き直しも 0 回。
